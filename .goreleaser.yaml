@@ -84,11 +84,6 @@ checksum:
   # Default is `{{ .ProjectName }}_{{ .Version }}_checksums.txt`.
   name_template: '{{ .ProjectName }}_checksums.txt'
 
-snapshot:
-  # Name template for snapshot builds.
-  # Default is `{{ incpatch .Version }}-next`.
-  name_template: "{{ .Version }}-next"
-
 changelog:
   # Sort order. Valid options are asc, desc and keep.
   # Default is asc.
