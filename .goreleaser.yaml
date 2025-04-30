@@ -1,0 +1,67 @@
+# .goreleaser.yaml
+version: 2
+project_name: envctl
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+    binary: envctl
+
+archives:
+  - id: default
+    # Default formats for all platforms (can be overridden per OS)
+    formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    # Format overrides per OS (using new plural 'formats' syntax)
+    format_overrides:
+    - goos: windows
+      formats: [zip]
+    - goos: darwin
+      formats: [zip]
+    files:
+      - README.md
+      - LICENSE
+      - CHANGELOG.md
+
+# Create a release with additional single binaries
+release:
+  disable: false # For snapshot builds
+  name_template: "Release {{.Tag}}"
+  extra_files:
+    - glob: ./dist/*linux_amd64*/envctl
+      name_template: envctl-linux-amd64
+    - glob: ./dist/*darwin_amd64*/envctl
+      name_template: envctl-darwin-amd64
+    - glob: ./dist/*darwin_arm64*/envctl
+      name_template: envctl-darwin-arm64
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - Merge pull request
+      - Merge branch
+
+checksum:
+  name_template: 'checksums.txt'

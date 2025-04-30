@@ -5,7 +5,7 @@
 #    https://github.com/giantswarm/devctl/blob/6a704f7e2a8b0f09e82b5bab88f17971af849711/pkg/gen/input/makefile/internal/file/Makefile.template
 #
 
-include Makefile.*.mk
+# include Makefile.*.mk (commented out as these files don't exist)
 
 ##@ General
 
@@ -23,3 +23,23 @@ include Makefile.*.mk
 .PHONY: help
 help: ## Display this help.
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z%\\\/_0-9-]+:.*?##/ { printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
+
+##@ Build
+
+.PHONY: build
+build: ## Build the binary for the current platform
+	go build -o envctl
+
+.PHONY: install
+install: build ## Install the binary
+	mv envctl $(GOPATH)/bin/envctl
+
+##@ Release
+
+.PHONY: release-dry-run
+release-dry-run: ## Test the release process without publishing
+	goreleaser release --snapshot --clean --skip=announce,publish,validate
+
+.PHONY: release-local
+release-local: ## Create a release locally
+	goreleaser release --clean

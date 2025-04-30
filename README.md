@@ -14,6 +14,10 @@ It automates the process of logging into clusters via Teleport (`tsh`) and setti
 *   **Teleport Integration:** Uses your existing `tsh` setup for Kubernetes access.
 *   **Shell Completion:** Provides dynamic command-line completion for cluster names (Bash & Zsh).
 
+## Releases 📦
+
+Releases are automatically created when pull requests are merged into the main branch. Each merged PR triggers a new release with an incremented version number. Pre-built binaries for multiple platforms (Linux, macOS, Windows) are available for download from the [Releases page](https://github.com/giantswarm/envctl/releases).
+
 ## Prerequisites 📋
 
 Before using `envctl`, ensure you have the following installed and configured:
@@ -24,13 +28,36 @@ Before using `envctl`, ensure you have the following installed and configured:
 
 ## Installation 🛠️
 
+### Option 1: Download from GitHub Releases
+
+Download the pre-built binary for your platform from the [Releases page](https://github.com/giantswarm/envctl/releases):
+
+```zsh
+# For macOS (Intel)
+curl -L https://github.com/giantswarm/envctl/releases/latest/download/envctl-darwin-amd64 -o envctl
+chmod +x envctl
+mv envctl /usr/local/bin/
+
+# For macOS (Apple Silicon)
+curl -L https://github.com/giantswarm/envctl/releases/latest/download/envctl-darwin-arm64 -o envctl
+chmod +x envctl
+mv envctl /usr/local/bin/
+
+# For Linux (AMD64)
+curl -L https://github.com/giantswarm/envctl/releases/latest/download/envctl-linux-amd64 -o envctl
+chmod +x envctl
+mv envctl /usr/local/bin/
+```
+
+### Option 2: Build from Source
+
 1.  Clone this repository (or ensure you are in the project directory).
 2.  Build the binary:
-    ```bash
+    ```zsh
     go build -o envctl .
     ```
 3.  (Optional) Move the `envctl` binary to a directory in your `$PATH` (e.g., `/usr/local/bin` or `~/bin`):
-    ```bash
+    ```zsh
     mv envctl /usr/local/bin/
     ```
 
