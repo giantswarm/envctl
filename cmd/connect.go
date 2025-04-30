@@ -4,14 +4,12 @@ import (
 	"envctl/internal/utils"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/spf13/cobra"
 )
 
 // Variable to hold the background port-forward process
-var portForwardCmd *exec.Cmd
 
 // connectCmd represents the connect command
 var connectCmd = &cobra.Command{
@@ -24,13 +22,15 @@ of the workload cluster (e.g., 've5v6' for 'enigma-ve5v6').
 
 - If only <management-cluster> is provided:
   Logs into the management cluster.
-  Starts Prometheus port-forwarding using the management cluster context.
   Sets the current Kubernetes context to the management cluster.
+  Starts Prometheus port-forwarding using the management cluster context,
+  running in the foreground until interrupted (Ctrl+C).
 
 - If <management-cluster> and [workload-cluster-shortname] are provided:
   Logs into both the management cluster and the full workload cluster (e.g., 'enigma-ve5v6').
-  Starts Prometheus port-forwarding using the management cluster context in the background.
-  Sets the current Kubernetes context to the full workload cluster name.`,
+  Sets the current Kubernetes context to the full workload cluster name.
+  Starts Prometheus port-forwarding using the management cluster context in the foreground
+  until interrupted (Ctrl+C).`, // Updated help text
 	Args: cobra.RangeArgs(1, 2), // Accepts 1 or 2 arguments
 	RunE: func(cmd *cobra.Command, args []string) error {
 		managementCluster := args[0]
@@ -39,18 +39,7 @@ of the workload cluster (e.g., 've5v6' for 'enigma-ve5v6').
 
 		if len(args) == 2 {
 			shortWorkloadClusterName = args[1]
-			// Construct the full name for internal use (login, context setting)
 			fullWorkloadClusterName = managementCluster + "-" + shortWorkloadClusterName
-		}
-
-		// Stop previous port-forward if any
-		if portForwardCmd != nil && portForwardCmd.Process != nil {
-			fmt.Println("Stopping previous port-forward process...")
-			err := utils.StopProcess(portForwardCmd.Process)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: could not stop previous port-forward: %v\n", err)
-			}
-			portForwardCmd = nil
 		}
 
 		// --- Login Logic ---
@@ -60,38 +49,42 @@ of the workload cluster (e.g., 've5v6' for 'enigma-ve5v6').
 			return fmt.Errorf("failed to log into management cluster '%s': %w", managementCluster, err)
 		}
 
-		kubeContextToUse := managementCluster
+		teleportContextToUse := "teleport.giantswarm.io-" + managementCluster
+
 		if fullWorkloadClusterName != "" {
-			// Log into the *full* workload cluster name.
 			err = utils.LoginToKubeCluster(fullWorkloadClusterName)
 			if err != nil {
-				// Include the short name in the error message for user clarity
 				return fmt.Errorf("failed to log into workload cluster '%s' (short name '%s'): %w", fullWorkloadClusterName, shortWorkloadClusterName, err)
 			}
-			kubeContextToUse = fullWorkloadClusterName // Context is the full name
+			teleportContextToUse = "teleport.giantswarm.io-" + fullWorkloadClusterName
 		}
 
-		fmt.Printf("Current Kubernetes context set to: %s\n", kubeContextToUse)
+		fmt.Printf("Current Kubernetes context set to: %s\n", teleportContextToUse)
 
-		// --- Prometheus Port-Forward ---
-		fmt.Println("--- Prometheus Connection ---")
-		var pfErr error
-		portForwardCmd, pfErr = utils.StartPrometheusPortForward(managementCluster)
-		if pfErr != nil {
-			return fmt.Errorf("failed to start Prometheus port-forward using context '%s': %w", managementCluster, pfErr)
-		}
-
+		// --- Print Setup Info Before Starting Blocking Port-Forward ---
 		fmt.Println("--------------------------")
-		fmt.Println("Setup complete:")
-		fmt.Printf("- Kubernetes context: %s", kubeContextToUse)
+		fmt.Println("Setup complete. Starting Prometheus port-forward...") // Moved messages
+		fmt.Printf("- Kubernetes context: %s", teleportContextToUse)
 		if fullWorkloadClusterName != "" {
 			fmt.Printf(" (connected via short name: %s)\n", shortWorkloadClusterName)
 		} else {
 			fmt.Println()
 		}
-		fmt.Printf("- Prometheus port-forward: Active (via %s context)\n", managementCluster)
+		fmt.Printf("- Prometheus port-forward will run via %s context (full name: teleport.giantswarm.io-%s)\n", managementCluster, managementCluster)
 		fmt.Println("--------------------------")
 
+		// --- Prometheus Port-Forward (Now Blocking) ---
+		fmt.Println("--- Prometheus Connection ---")
+		pfErr := utils.StartPrometheusPortForward(managementCluster) // New call, blocks here
+		if pfErr != nil {
+			// Error is already printed within StartPrometheusPortForward,
+			// but we return it to signal failure to cobra.
+			// Could add more context here if needed.
+			return fmt.Errorf("prometheus port-forward failed: %w", pfErr)
+		}
+
+		// Code here will only be reached if port-forward exits cleanly (rarely happens without error)
+		fmt.Println("Prometheus port-forwarding finished.")
 		return nil
 	},
 	// Add dynamic completion for cluster names

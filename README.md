@@ -56,8 +56,8 @@ envctl connect <management-cluster> [workload-cluster-shortname]
     ```
 
     *   Logs into `enigma` via `tsh kube login enigma`.
-    *   Sets the current `kubectl` context to `enigma`.
-    *   Starts port-forwarding for Prometheus (`kubectl --context enigma port-forward -n mimir service/mimir-query-frontend 8080:8080`) in the background.
+    *   Sets the current `kubectl` context to `teleport.giantswarm.io-enigma`.
+    *   Starts port-forwarding for Prometheus (`kubectl --context teleport.giantswarm.io-enigma port-forward -n mimir service/mimir-query-frontend 8080:8080`) in the background.
     *   Prints a summary and instructions for MCP.
 
 2.  **Connect to a Management and Workload Cluster:**
@@ -68,8 +68,8 @@ envctl connect <management-cluster> [workload-cluster-shortname]
 
     *   Logs into `wallaby` via `tsh kube login wallaby`.
     *   Logs into the *full* workload cluster name (`wallaby-plant-cassino-prod`) via `tsh`.
-    *   Sets the current `kubectl` context to the *full* workload cluster name (`wallaby-plant-cassino-prod`).
-    *   Starts port-forwarding for Prometheus using the *management cluster* context (`wallaby`) in the background.
+    *   Sets the current `kubectl` context to the *full* workload cluster name (`teleport.giantswarm.io-wallaby-plant-cassino-prod`).
+    *   Starts port-forwarding for Prometheus using the *management cluster* context (`teleport.giantswarm.io-wallaby`) in the background.
     *   Prints a summary and instructions for MCP.
 
 ## Shell Completion 🧠

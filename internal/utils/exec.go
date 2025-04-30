@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 )
 
@@ -23,49 +24,62 @@ func LoginToKubeCluster(clusterName string) error {
 	return nil
 }
 
-// StartPrometheusPortForward starts 'kubectl port-forward' for Mimir in the background.
+// StartPrometheusPortForward starts 'kubectl port-forward' for Mimir,
+// waits for it to complete, and streams its output.
 // It uses the specified kubectl context if provided, otherwise the current context.
-// Returns the command process and any error encountered during startup.
-func StartPrometheusPortForward(contextName string) (*exec.Cmd, error) {
+func StartPrometheusPortForward(contextName string) error {
 	fmt.Println("Attempting to start Prometheus (Mimir) port-forward...")
 
+	// Apply Teleport prefix to context name if it doesn't already have it
+	kubectlContextName := contextName
+	if contextName != "" && !strings.HasPrefix(contextName, "teleport.giantswarm.io-") {
+		kubectlContextName = "teleport.giantswarm.io-" + contextName
+	}
+
 	args := []string{"port-forward", "-n", "mimir", "service/mimir-query-frontend", "8080:8080"}
-	if contextName != "" {
-		args = append([]string{"--context", contextName}, args...)
-		fmt.Printf("Using Kubernetes context: %s\n", contextName)
+	if kubectlContextName != "" {
+		args = append([]string{"--context", kubectlContextName}, args...)
+		fmt.Printf("Using Kubernetes context: %s\n", kubectlContextName)
 	} else {
 		fmt.Println("Using current Kubernetes context.")
 	}
 
 	cmd := exec.Command("kubectl", args...)
 
-	// Redirect stdout/stderr to /dev/null or a log file if needed,
-	// otherwise the background process might hang if buffers fill.
-	// For now, let's discard them. In the future, logging could be added.
-	cmd.Stdout = nil
-	cmd.Stderr = nil
-	cmd.Stdin = nil // Prevent it from consuming stdin
+	// Stream output to the parent process
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = nil
 
-	// Start the command in the background
-	err := cmd.Start()
+	fmt.Println("Starting port-forward process. Press Ctrl+C to stop.")
+	fmt.Println("Ensure PROMETHEUS_URL in mcp.json is http://localhost:8080/prometheus")
+	fmt.Println("You might need to restart MCP servers or your IDE if they were running before the port-forward started.")
+
+	// Run the command and wait for it to finish
+	err := cmd.Run()
 	if err != nil {
-		return nil, fmt.Errorf("failed to start kubectl port-forward: %w", err)
+		// Check if the error is due to the process being killed (e.g., Ctrl+C)
+		// This might not be strictly necessary depending on desired exit message,
+		// as cmd.Run() often returns a non-nil error in this case.
+		// We can refine this error handling if needed.
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			// The command exited with a non-zero status.
+			// Often, killing the process via signal results in specific exit codes.
+			// For now, just return a formatted error.
+			fmt.Fprintf(os.Stderr, "Port-forward process exited.\n")
+			return fmt.Errorf("port-forward command failed: %w", exitErr)
+		}
+		// Other errors (e.g., command not found)
+		return fmt.Errorf("failed to run kubectl port-forward: %w", err)
 	}
 
-	fmt.Printf("Started Prometheus port-forward (PID: %d) in the background.\n", cmd.Process.Pid)
-	fmt.Println("Ensure PROMETHEUS_URL in mcp.json is http://localhost:8080/prometheus")
-	fmt.Println("You might need to restart MCP servers or your IDE.")
-	fmt.Println("To stop port-forwarding later, you may need to manually kill the process (e.g., kill %d).", cmd.Process.Pid)
-
-	// It's generally good practice to release the process immediately in Go
-	// if we don't plan to wait for it or manage it further within this specific function.
-	// The process will continue running in the background.
-	// _ = cmd.Process.Release() // Consider uncommenting if sure no more interaction is needed.
-
-	return cmd, nil
+	fmt.Println("Port-forward process finished.")
+	return nil // Return nil if cmd.Run() completes without error (e.g., port-forward exits cleanly)
 }
 
 // StopProcess sends a SIGTERM signal to the process.
+// This function might become less relevant for port-forward if it's always run synchronously,
+// but keeping it for potential other uses.
 func StopProcess(process *os.Process) error {
 	if process == nil {
 		return fmt.Errorf("process is nil")
