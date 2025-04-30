@@ -2,7 +2,7 @@
 # yamllint disable rule:truthy
 # .goreleaser.yaml
 # Make sure to check the documentation at https://goreleaser.com
-version: 2 # Explicitly set GoReleaser configuration version
+version: 2  # Explicitly set GoReleaser configuration version
 
 before:
   hooks:
