@@ -13,7 +13,7 @@ func LoginToKubeCluster(clusterName string) error {
 	cmd := exec.Command("tsh", "kube", "login", clusterName)
 	cmd.Stdout = os.Stdout // Restore output
 	cmd.Stderr = os.Stderr // Restore output
-	cmd.Stdin = os.Stdin  // Keep stdin for potential prompts
+	cmd.Stdin = os.Stdin   // Keep stdin for potential prompts
 
 	err := cmd.Run()
 	if err != nil {
