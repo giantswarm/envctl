@@ -53,7 +53,7 @@ mv envctl /usr/local/bin/
 
 1.  Clone this repository (or ensure you are in the project directory).
 2.  Build the binary:
-    ```zsh
+    ```sh
     go build -o envctl .
     ```
 3.  (Optional) Move the `envctl` binary to a directory in your `$PATH` (e.g., `/usr/local/bin` or `~/bin`):
