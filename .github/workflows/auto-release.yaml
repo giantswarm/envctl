@@ -27,7 +27,7 @@ jobs:
           go-version: '1.21'
 
       - name: Install GoReleaser
-        uses: goreleaser/goreleaser-action@v5
+        uses: goreleaser/goreleaser-action@v6
         with:
           install-only: true
 
@@ -104,7 +104,7 @@ EOF
           git push origin "${NEW_TAG}"
 
       - name: Build and Release
-        uses: goreleaser/goreleaser-action@v5
+        uses: goreleaser/goreleaser-action@v6
         with:
           version: latest
           args: release --clean
