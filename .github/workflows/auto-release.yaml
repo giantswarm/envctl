@@ -1,3 +1,5 @@
+---
+# yamllint disable rule:truthy
 name: Auto Release
 on:
   pull_request:
@@ -12,100 +14,128 @@ permissions:
 jobs:
   auto_release:
     name: Auto Release
-    # Run only when a PR is merged (not when closed without merging)
-    if: github.event.pull_request.merged == true
+    if: github.event.pull_request.merged
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # We need all tags for versioning
+          # Fetch all history and tags for version calculation and changelog
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.21'  # Specify Go version
 
       - name: Install GoReleaser
-        uses: goreleaser/goreleaser-action@v5
+        uses: goreleaser/goreleaser-action@v6
         with:
-          install-only: true
+          # either 'goreleaser' (default) or 'goreleaser-pro'
+          distribution: goreleaser
+          version: latest
+          args: --version  # Print version for verification
 
-      - name: Setup Git
+      - name: Configure Git
         run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
 
-      - name: Get current version
-        id: get_version
+      - name: Determine Next Version
+        id: version
         run: |
           set -e
-          # Find the latest tag
-          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          echo "Latest tag: $LATEST_TAG"
-          
+          # Get the latest tag, defaulting to v0.0.0 if none exists
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null \
+            || echo "v0.0.0")
           # Remove 'v' prefix
-          CURRENT_VERSION=${LATEST_TAG#v}
-          echo "Current version: $CURRENT_VERSION"
-          
-          # Split version into parts
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
-          
+          LATEST_VERSION=${LATEST_TAG#v}
+          # Split into major, minor, patch
+          IFS='.' read -r -a VERSION_PARTS <<< "$LATEST_VERSION"
           # Increment patch version
-          NEW_PATCH=$((PATCH + 1))
-          NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
-          echo "New version: $NEW_VERSION"
-          
-          # Set output
-          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
-          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "new_tag=v$NEW_VERSION" >> $GITHUB_OUTPUT
+          NEXT_PATCH=$((VERSION_PARTS[2] + 1))
+          # Construct next version string
+          NEXT_VERSION="v${VERSION_PARTS[0]}.${VERSION_PARTS[1]}.$NEXT_PATCH"
+          echo "Latest tag: $LATEST_TAG"
+          echo "Next version: $NEXT_VERSION"
+          # Set output for subsequent steps
+          echo "next_version=$NEXT_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Update CHANGELOG.md
-        id: update_changelog
+        id: changelog
         run: |
-          # Get PR title and number
-          PR_TITLE="${{ github.event.pull_request.title }}"
-          PR_NUMBER="${{ github.event.pull_request.number }}"
-          PR_AUTHOR="${{ github.event.pull_request.user.login }}"
-          NEW_VERSION="${{ steps.get_version.outputs.new_version }}"
-          TODAY=$(date +"%Y-%m-%d")
-          
-          # Create changelog entry
-          CHANGELOG_ENTRY="\n## [${NEW_VERSION}] - ${TODAY}\n\n### Changed\n\n- ${PR_TITLE} (PR #${PR_NUMBER}, @${PR_AUTHOR})\n"
-          
-          # Check if CHANGELOG.md exists and has the Unreleased section
-          if [ -f CHANGELOG.md ]; then
-            # Insert new version entry after the Unreleased section
-            sed -i "/## \[Unreleased\]/a\\${CHANGELOG_ENTRY}" CHANGELOG.md
+          PR_TITLE=$(jq -r .pull_request.title "$GITHUB_EVENT_PATH")
+          PR_NUMBER=$(jq -r .pull_request.number "$GITHUB_EVENT_PATH")
+          PR_URL=$(jq -r .pull_request.html_url "$GITHUB_EVENT_PATH")
+          PR_USER=$(jq -r .pull_request.user.login "$GITHUB_EVENT_PATH")
+          NEXT_VERSION="${{ steps.version.outputs.next_version }}"
+          # Format entry: "- PR Title (#PR) by @user"
+          # Break long line
+          CHANGELOG_ENTRY="- ${PR_TITLE} ([#${PR_NUMBER}](${PR_URL})) \
+            by @${PR_USER}"
+
+          echo "Generated changelog entry:"
+          echo "$CHANGELOG_ENTRY"
+
+          # Check if CHANGELOG.md exists
+          if [[ -f CHANGELOG.md ]]; then
+            # Check if [Unreleased] section exists
+            if grep -q "## \[Unreleased\]" CHANGELOG.md; then
+              # Insert entry under [Unreleased]
+              # Use printf for the entry to handle potential special characters
+              # Use sed with a unique delimiter (#) to avoid issues with slashes
+              printf '%s\n' "$CHANGELOG_ENTRY" | \
+                sed -i -e "/## \[Unreleased\]/a $(cat -)" CHANGELOG.md
+            else
+              # Prepend [Unreleased] section and the entry
+              TEMP_FILE=$(mktemp)
+              # Break long printf line
+              printf "## [Unreleased]\n\n%s\n\n" \
+                "$CHANGELOG_ENTRY" > "$TEMP_FILE"
+              cat CHANGELOG.md >> "$TEMP_FILE"
+              mv "$TEMP_FILE" CHANGELOG.md
+            fi
           else
-            # Create a new CHANGELOG.md
-            cat > CHANGELOG.md << EOF
-# Changelog
-
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [Unreleased]
-
-${CHANGELOG_ENTRY}
-EOF
+            # Create a new CHANGELOG.md with minimal content
+            printf "# Changelog\n\n" > CHANGELOG.md
+            printf "All notable changes to this project " >> CHANGELOG.md
+            printf "will be documented.\n\n" >> CHANGELOG.md
+            printf "Format based on [Keep a Changelog]" >> CHANGELOG.md
+            # Break long URL line further
+            printf "(https://keepachangelog.com/" >> CHANGELOG.md
+            printf "en/1.0.0/),\n" >> CHANGELOG.md
+            printf "and this project adheres to " >> CHANGELOG.md
+            printf "[Semantic Versioning]" >> CHANGELOG.md
+            # Break long URL line
+            printf "(https://semver.org/spec/" >> CHANGELOG.md
+            printf "v2.0.0.html).\n\n" >> CHANGELOG.md
+            printf "## [Unreleased]\n\n" >> CHANGELOG.md
+            printf "%s\n" "$CHANGELOG_ENTRY" >> CHANGELOG.md
           fi
-          
+
+          # Add and commit CHANGELOG.md
           git add CHANGELOG.md
-          git commit -m "Update CHANGELOG.md for release v${NEW_VERSION}"
+          # Check if there are changes to commit
+          if git diff --staged --quiet; then
+            echo "No changes to CHANGELOG.md to commit."
+          else
+            git commit -m "docs: Update CHANGELOG for release \
+              ${{ steps.version.outputs.next_version }}"
+            git push
+            echo "Committed and pushed CHANGELOG.md changes."
+          fi
 
       - name: Create Tag
         run: |
-          NEW_TAG="${{ steps.get_version.outputs.new_tag }}"
-          git tag -a "${NEW_TAG}" -m "Release ${NEW_TAG}"
-          git push origin "${NEW_TAG}"
+          NEXT_VERSION="${{ steps.version.outputs.next_version }}"
+          git tag "$NEXT_VERSION"
+          git push origin "$NEXT_VERSION"
+          echo "Created and pushed tag $NEXT_VERSION"
 
-      - name: Build and Release
-        uses: goreleaser/goreleaser-action@v5
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
         with:
+          distribution: goreleaser
           version: latest
           args: release --clean
         env:
