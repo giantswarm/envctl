@@ -72,6 +72,25 @@ of the workload cluster (e.g., 've5v6' for 'enigma-ve5v6').
 			fmt.Println()
 		}
 		fmt.Printf("- Prometheus port-forward will run via %s context (full name: teleport.giantswarm.io-%s)\n", managementCluster, managementCluster)
+
+		// Determine the provider for the management cluster
+		provider, err := utils.DetermineClusterProvider(managementCluster)
+		if err != nil {
+			fmt.Printf("- Could not determine provider: %v\n", err)
+		} else {
+			fmt.Printf("- Management cluster provider: %s\n", provider)
+		}
+
+		// If connected to a workload cluster, also show its provider
+		if fullWorkloadClusterName != "" {
+			workloadProvider, err := utils.DetermineClusterProvider(fullWorkloadClusterName)
+			if err != nil {
+				fmt.Printf("- Could not determine workload cluster provider: %v\n", err)
+			} else {
+				fmt.Printf("- Workload cluster provider: %s\n", workloadProvider)
+			}
+		}
+
 		fmt.Println("--------------------------")
 
 		// --- Prometheus Port-Forward (Now Blocking) ---
