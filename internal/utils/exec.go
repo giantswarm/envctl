@@ -10,17 +10,16 @@ import (
 
 // LoginToKubeCluster executes 'tsh kube login <clusterName>'.
 func LoginToKubeCluster(clusterName string) error {
-	fmt.Printf("Attempting to log into Kubernetes cluster '%s' via tsh...\n", clusterName)
 	cmd := exec.Command("tsh", "kube", "login", clusterName)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Stdin = os.Stdin // Allow potential interactive prompts
+	cmd.Stdout = os.Stdout // Restore output
+	cmd.Stderr = os.Stderr // Restore output
+	cmd.Stdin = os.Stdin  // Keep stdin for potential prompts
 
 	err := cmd.Run()
 	if err != nil {
+		// Original error format might be slightly more informative
 		return fmt.Errorf("failed to execute 'tsh kube login %s': %w", clusterName, err)
 	}
-	fmt.Printf("Successfully logged into %s via tsh.\n", clusterName)
 	return nil
 }
 

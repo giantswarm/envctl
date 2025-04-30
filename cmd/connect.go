@@ -44,6 +44,7 @@ of the workload cluster (e.g., 've5v6' for 'enigma-ve5v6').
 
 		// --- Login Logic ---
 		fmt.Println("--- Kubernetes Login ---")
+
 		err := utils.LoginToKubeCluster(managementCluster)
 		if err != nil {
 			return fmt.Errorf("failed to log into management cluster '%s': %w", managementCluster, err)
