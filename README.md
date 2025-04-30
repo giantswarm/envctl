@@ -57,7 +57,7 @@ mv envctl /usr/local/bin/
     go build -o envctl .
     ```
 3.  (Optional) Move the `envctl` binary to a directory in your `$PATH` (e.g., `/usr/local/bin` or `~/bin`):
-    ```zsh
+    ```sh
     mv envctl /usr/local/bin/
     ```
 
