@@ -14,9 +14,13 @@ It automates the process of logging into clusters via Teleport (`tsh`) and setti
 *   **Teleport Integration:** Uses your existing `tsh` setup for Kubernetes access.
 *   **Shell Completion:** Provides dynamic command-line completion for cluster names (Bash & Zsh).
 
-## Releases 📦
+## Releases & Changelog 📦
 
-Releases are automatically created when pull requests are merged into the main branch. Each merged PR triggers a new release with an incremented version number. Pre-built binaries for multiple platforms (Linux, macOS, Windows) are available for download from the [Releases page](https://github.com/giantswarm/envctl/releases).
+Releases are automatically created when pull requests are merged into the main branch. Each merged PR triggers a new release with an incremented version number.
+
+The changelog for each release is automatically generated and included in the release notes on the [GitHub Releases page](https://github.com/giantswarm/envctl/releases).
+
+Pre-built binaries for multiple platforms (Linux, macOS, Windows) are available for download from the Releases page.
 
 ## Prerequisites 📋
 
