@@ -7,6 +7,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// Version of the application, set by main.go
+var version = "dev"
+
+// SetVersion sets the version of the application
+func SetVersion(v string) {
+	version = v
+}
+
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "envctl",
@@ -17,6 +25,7 @@ and Prometheus via Teleport.`,
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	// Run: func(cmd *cobra.Command, args []string) { },
+	Version: version,
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
