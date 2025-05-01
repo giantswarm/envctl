@@ -6,11 +6,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	// Version is set by main
-	version string
-)
-
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "envctl",
@@ -25,7 +20,6 @@ and setting up necessary connections like Prometheus port-forwarding.`,
 
 // SetVersion sets the version for the root command
 func SetVersion(v string) {
-	version = v
 	rootCmd.Version = v // Set cobra's version field as well
 }
 
@@ -57,4 +51,3 @@ func init() {
 	// when this action is called directly.
 	// rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
-
