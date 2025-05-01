@@ -70,11 +70,10 @@ archives:
       - goos: darwin
         formats: [zip]
     # Files to include in the archive.
-    # Defaults to license*, readme*, changelog*, etc.
+    # Defaults to license*, readme*, etc.
     files:
       - LICENSE
       - README.md
-      - CHANGELOG.md
 
 checksum:
   # Algorithm to use. Valid options are sha256, sha512, sha1, crc32, md5, etc.
@@ -85,28 +84,10 @@ checksum:
   name_template: '{{ .ProjectName }}_checksums.txt'
 
 changelog:
-  # Sort order. Valid options are asc, desc and keep.
-  # Default is asc.
-  sort: asc
-  # Use git trailers to extract commit information.
-  # This is useful if you follow a convention like Conventional Commits.
-  use: git
-  # Group commits messages by the trailer used.
-  # Trailer sections are ordered by the order of the trailers in this list.
-  # Commits without any of the trailers listed here will be grouped last.
-  groups:
-    - title: Features
-    - title: Bug Fixes
-    - title: Others
-      order: 100  # Default is 0, set to a higher number to group last
-  # Filters out commit messages that match the regexp.
-  filters:
-    # Exclude merge commits
-    exclude:
-      - '^Merge pull request'
-      - '^Merge branch'
-      # Exclude conventional commit prefixes for non-user-facing changes
-      - '^(build|chore|ci|docs|perf|refactor|revert|style|test)\(.*\):'
+  # Use GitHub's native release notes generation.
+  # This automatically uses PRs merged since the last tag.
+  # Disables sort, groups, filters, etc.
+  use: github-native
 
 release:
   # Repo in format "owner/name".
