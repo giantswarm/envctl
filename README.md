@@ -73,7 +73,17 @@ The primary command is `envctl connect`:
 envctl connect <management-cluster> [workload-cluster-shortname]
 ```
 
-**Arguments:**
+Other commands:
+
+```
+# Show current version
+envctl version
+
+# Update envctl to the latest release
+envctl self-update
+```
+
+**Arguments for `connect`:**
 
 *   `<management-cluster>`: (Required) The name of the Giant Swarm management cluster (e.g., `wallaby`, `enigma`).
 *   `[workload-cluster-shortname]`: (Optional) The *short* name of the workload cluster (e.g., `plant-lille-prod` for `wallaby-plant-lille-prod`, `ve5v6` for `enigma-ve5v6`).

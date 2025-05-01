@@ -11,8 +11,8 @@ import (
 
 // Variable to hold the background port-forward process
 
-// connectCmd represents the connect command
-var connectCmd = &cobra.Command{
+// connectCmdDef defines the connect command structure
+var connectCmdDef = &cobra.Command{
 	Use:   "connect <management-cluster> [workload-cluster-shortname]",
 	Short: "Connect to Giant Swarm K8s and Prometheus",
 	Long: `Connects Kubernetes context and Prometheus for MCP servers.
@@ -72,6 +72,25 @@ of the workload cluster (e.g., 've5v6' for 'enigma-ve5v6').
 			fmt.Println()
 		}
 		fmt.Printf("- Prometheus port-forward will run via %s context (full name: teleport.giantswarm.io-%s)\n", managementCluster, managementCluster)
+
+		// Determine the provider for the management cluster
+		provider, err := utils.DetermineClusterProvider(managementCluster)
+		if err != nil {
+			fmt.Printf("- Could not determine provider: %v\n", err)
+		} else {
+			fmt.Printf("- Management cluster provider: %s\n", provider)
+		}
+
+		// If connected to a workload cluster, also show its provider
+		if fullWorkloadClusterName != "" {
+			workloadProvider, err := utils.DetermineClusterProvider(fullWorkloadClusterName)
+			if err != nil {
+				fmt.Printf("- Could not determine workload cluster provider: %v\n", err)
+			} else {
+				fmt.Printf("- Workload cluster provider: %s\n", workloadProvider)
+			}
+		}
+
 		fmt.Println("--------------------------")
 
 		// --- Prometheus Port-Forward (Now Blocking) ---
@@ -120,6 +139,7 @@ of the workload cluster (e.g., 've5v6' for 'enigma-ve5v6').
 	},
 }
 
-func init() {
-	rootCmd.AddCommand(connectCmd)
+// newConnectCmd creates and returns the connect command
+func newConnectCmd() *cobra.Command {
+	return connectCmdDef
 }

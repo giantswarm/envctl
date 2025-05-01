@@ -1,44 +1,46 @@
 package cmd
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
 )
 
-// Version of the application, set by main.go
-var version = "dev"
-
-// SetVersion sets the version of the application
-func SetVersion(v string) {
-	version = v
-}
-
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "envctl",
-	Short: "A CLI tool to help connect MCP servers to Giant Swarm environments",
-	Long: `envctl simplifies connecting your development environment
-and MCP servers to various Giant Swarm services like Kubernetes
-and Prometheus via Teleport.`,
-	// Uncomment the following line if your bare application
-	// has an action associated with it:
-	// Run: func(cmd *cobra.Command, args []string) { },
-	Version: version,
+	Short: "Connect your environment to Giant Swarm clusters",
+	Long: `envctl simplifies connecting your local development environment
+(e.g., MCP servers in Cursor) to Giant Swarm clusters via Teleport
+and setting up necessary connections like Prometheus port-forwarding.`,
+	// SilenceUsage is set to true to prevent printing usage message on errors
+	// handled by us (e.g. invalid arguments, failed connections)
+	SilenceUsage: true,
+}
+
+// SetVersion sets the version for the root command
+func SetVersion(v string) {
+	rootCmd.Version = v // Set cobra's version field as well
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
+	// Set up version template
+	rootCmd.SetVersionTemplate(`{{printf "envctl version %s\n" .Version}}`)
+
 	err := rootCmd.Execute()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
+		// Cobra prints the error, we just exit non-zero
 		os.Exit(1)
 	}
 }
 
 func init() {
+	rootCmd.AddCommand(newConnectCmd())
+	rootCmd.AddCommand(newVersionCmd())
+	rootCmd.AddCommand(newSelfUpdateCmd())
+
 	// Here you will define your flags and configuration settings.
 	// Cobra supports persistent flags, which, if defined here,
 	// will be global for your application.

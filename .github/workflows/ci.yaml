@@ -23,11 +23,6 @@ jobs:
         with:
           go-version: '1.24'  # Match the version used in auto-release
 
-      - name: Install golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
-
       - name: Install Python for yamllint
         uses: actions/setup-python@v5
         with:

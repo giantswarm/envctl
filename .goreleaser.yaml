@@ -112,23 +112,23 @@ release:
   # Default is empty.
   # footer: |
   #   This is the footer
+  # Add back the extra_files section with corrected globs
+  extra_files:
+    - glob: ./dist/envctl_darwin_amd64*/envctl
+      name_template: envctl_darwin_amd64
+    - glob: ./dist/envctl_darwin_arm64*/envctl
+      name_template: envctl_darwin_arm64
+    - glob: ./dist/envctl_linux_amd64*/envctl
+      name_template: envctl_linux_amd64
+    - glob: ./dist/envctl_linux_arm64*/envctl
+      name_template: envctl_linux_arm64
+    - glob: ./dist/envctl_windows_amd64*/envctl.exe
+      name_template: envctl_windows_amd64.exe
+    - glob: ./dist/envctl_windows_arm64*/envctl.exe
+      name_template: envctl_windows_arm64.exe
   # If set to true, will generate the release notes using github's api
   # instead of using the changelog.
   # Default is false.
-  # Extra files to attach to the release (beyond archives and packages).
-  extra_files:
-    - glob: ./envctl_darwin_amd64
-      name_template: envctl_darwin_amd64
-    - glob: ./envctl_darwin_arm64
-      name_template: envctl_darwin_arm64
-    - glob: ./envctl_linux_amd64
-      name_template: envctl_linux_amd64
-    - glob: ./envctl_linux_arm64
-      name_template: envctl_linux_arm64
-    - glob: ./envctl_windows_amd64.exe
-      name_template: envctl_windows_amd64.exe
-    - glob: ./envctl_windows_arm64.exe
-      name_template: envctl_windows_arm64.exe
 
 # Modelines
 # vim: set ts=2 sw=2 tw=0 fo=cnqoj
