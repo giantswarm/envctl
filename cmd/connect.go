@@ -11,8 +11,8 @@ import (
 
 // Variable to hold the background port-forward process
 
-// connectCmd represents the connect command
-var connectCmd = &cobra.Command{
+// connectCmdDef defines the connect command structure
+var connectCmdDef = &cobra.Command{
 	Use:   "connect <management-cluster> [workload-cluster-shortname]",
 	Short: "Connect to Giant Swarm K8s and Prometheus",
 	Long: `Connects Kubernetes context and Prometheus for MCP servers.
@@ -139,6 +139,7 @@ of the workload cluster (e.g., 've5v6' for 'enigma-ve5v6').
 	},
 }
 
-func init() {
-	rootCmd.AddCommand(connectCmd)
+// newConnectCmd creates and returns the connect command
+func newConnectCmd() *cobra.Command {
+	return connectCmdDef
 }
