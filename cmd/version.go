@@ -20,4 +20,4 @@ func newVersionCmd() *cobra.Command {
 			fmt.Printf("envctl version %s\n", rootCmd.Version)
 		},
 	}
-} 
+}

@@ -67,4 +67,4 @@ func runSelfUpdate(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("Successfully updated to version %s\n", latest.Version())
 	return nil
-} 
+}

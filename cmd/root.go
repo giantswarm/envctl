@@ -43,11 +43,9 @@ func Execute() {
 }
 
 func init() {
-	// Add subcommands here, e.g.:
-	// rootCmd.AddCommand(newCompletionCmd())
 	rootCmd.AddCommand(newConnectCmd())
-	rootCmd.AddCommand(newVersionCmd()) // Add version command
-	rootCmd.AddCommand(newSelfUpdateCmd()) // Add self-update command
+	rootCmd.AddCommand(newVersionCmd())
+	rootCmd.AddCommand(newSelfUpdateCmd())
 
 	// Here you will define your flags and configuration settings.
 	// Cobra supports persistent flags, which, if defined here,
