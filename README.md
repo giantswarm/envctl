@@ -38,17 +38,17 @@ Download the pre-built binary for your platform from the [Releases page](https:/
 
 ```zsh
 # For macOS (Intel)
-curl -L https://github.com/giantswarm/envctl/releases/latest/download/envctl-darwin-amd64 -o envctl
+curl -L https://github.com/giantswarm/envctl/releases/latest/download/envctl_darwin_amd64 -o envctl
 chmod +x envctl
 mv envctl /usr/local/bin/
 
 # For macOS (Apple Silicon)
-curl -L https://github.com/giantswarm/envctl/releases/latest/download/envctl-darwin-arm64 -o envctl
+curl -L https://github.com/giantswarm/envctl/releases/latest/download/envctl_darwin_arm64 -o envctl
 chmod +x envctl
 mv envctl /usr/local/bin/
 
 # For Linux (AMD64)
-curl -L https://github.com/giantswarm/envctl/releases/latest/download/envctl-linux-amd64 -o envctl
+curl -L https://github.com/giantswarm/envctl/releases/latest/download/envctl_linux_amd64 -o envctl
 chmod +x envctl
 mv envctl /usr/local/bin/
 ```
