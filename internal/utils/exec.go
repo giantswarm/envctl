@@ -75,6 +75,49 @@ func StartPrometheusPortForward(contextName string) error {
 	return nil // Return nil if cmd.Run() completes without error (e.g., port-forward exits cleanly)
 }
 
+// StartAlloyMetricsPortForward starts 'kubectl port-forward' for the alloy-metrics-cluster service,
+// using the specified kubectl context. This is intended to be used with a workload cluster context.
+func StartAlloyMetricsPortForward(contextName string) error {
+	fmt.Println("Attempting to start Alloy metrics port-forward...")
+
+	// Apply Teleport prefix to context name if it doesn't already have it
+	kubectlContextName := contextName
+	if contextName != "" && !strings.HasPrefix(contextName, "teleport.giantswarm.io-") {
+		kubectlContextName = "teleport.giantswarm.io-" + contextName
+	}
+
+	args := []string{"port-forward", "-n", "kube-system", "service/alloy-metrics-cluster", "12345:12345"}
+	if kubectlContextName != "" {
+		args = append([]string{"--context", kubectlContextName}, args...)
+		fmt.Printf("Using Kubernetes context: %s\n", kubectlContextName)
+	} else {
+		fmt.Println("Using current Kubernetes context.")
+	}
+
+	cmd := exec.Command("kubectl", args...)
+
+	// Stream output to the parent process
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = nil
+
+	fmt.Println("Starting Alloy metrics port-forward process. Press Ctrl+C to stop.")
+	fmt.Println("Alloy agent will be available at localhost:12345")
+
+	// Run the command and wait for it to finish
+	err := cmd.Run()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			fmt.Fprintf(os.Stderr, "Alloy metrics port-forward process exited.\n")
+			return fmt.Errorf("alloy metrics port-forward command failed: %w", exitErr)
+		}
+		return fmt.Errorf("failed to run kubectl port-forward for alloy-metrics: %w", err)
+	}
+
+	fmt.Println("Alloy metrics port-forward process finished.")
+	return nil
+}
+
 // StopProcess sends a SIGTERM signal to the process.
 // This function might become less relevant for port-forward if it's always run synchronously,
 // but keeping it for potential other uses.

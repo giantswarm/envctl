@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/spf13/cobra"
 )
@@ -29,8 +30,9 @@ of the workload cluster (e.g., 've5v6' for 'enigma-ve5v6').
 - If <management-cluster> and [workload-cluster-shortname] are provided:
   Logs into both the management cluster and the full workload cluster (e.g., 'enigma-ve5v6').
   Sets the current Kubernetes context to the full workload cluster name.
-  Starts Prometheus port-forwarding using the management cluster context in the foreground
-  until interrupted (Ctrl+C).`, // Updated help text
+  Starts Prometheus port-forwarding using the management cluster context.
+  Starts Alloy metrics port-forwarding using the workload cluster context.
+  Both port-forwards run until interrupted (Ctrl+C).`, // Updated help text
 	Args: cobra.RangeArgs(1, 2), // Accepts 1 or 2 arguments
 	RunE: func(cmd *cobra.Command, args []string) error {
 		managementCluster := args[0]
@@ -64,7 +66,7 @@ of the workload cluster (e.g., 've5v6' for 'enigma-ve5v6').
 
 		// --- Print Setup Info Before Starting Blocking Port-Forward ---
 		fmt.Println("--------------------------")
-		fmt.Println("Setup complete. Starting Prometheus port-forward...") // Moved messages
+		fmt.Println("Setup complete. Starting port-forwards...") // Updated messages
 		fmt.Printf("- Kubernetes context: %s", teleportContextToUse)
 		if fullWorkloadClusterName != "" {
 			fmt.Printf(" (connected via short name: %s)\n", shortWorkloadClusterName)
@@ -72,6 +74,10 @@ of the workload cluster (e.g., 've5v6' for 'enigma-ve5v6').
 			fmt.Println()
 		}
 		fmt.Printf("- Prometheus port-forward will run via %s context (full name: teleport.giantswarm.io-%s)\n", managementCluster, managementCluster)
+		
+		if fullWorkloadClusterName != "" {
+			fmt.Printf("- Alloy metrics port-forward will run via %s context (full name: teleport.giantswarm.io-%s)\n", fullWorkloadClusterName, fullWorkloadClusterName)
+		}
 
 		// Determine the provider for the management cluster
 		provider, err := utils.DetermineClusterProvider(managementCluster)
@@ -93,19 +99,57 @@ of the workload cluster (e.g., 've5v6' for 'enigma-ve5v6').
 
 		fmt.Println("--------------------------")
 
-		// --- Prometheus Port-Forward (Now Blocking) ---
-		fmt.Println("--- Prometheus Connection ---")
-		pfErr := utils.StartPrometheusPortForward(managementCluster) // New call, blocks here
-		if pfErr != nil {
-			// Error is already printed within StartPrometheusPortForward,
-			// but we return it to signal failure to cobra.
-			// Could add more context here if needed.
-			return fmt.Errorf("prometheus port-forward failed: %w", pfErr)
+		// If connected to a workload cluster, run both port-forwards in parallel
+		if fullWorkloadClusterName != "" {
+			var wg sync.WaitGroup
+			var promErr, alloyErr error
+			
+			// Start both port-forwards in goroutines
+			wg.Add(2)
+			
+			// Start Prometheus port-forward
+			go func() {
+				defer wg.Done()
+				fmt.Println("--- Prometheus Connection ---")
+				promErr = utils.StartPrometheusPortForward(managementCluster)
+			}()
+			
+			// Start Alloy metrics port-forward
+			go func() {
+				defer wg.Done()
+				fmt.Println("--- Alloy Metrics Connection ---")
+				alloyErr = utils.StartAlloyMetricsPortForward(fullWorkloadClusterName)
+			}()
+			
+			// Wait for both port-forwards to complete
+			wg.Wait()
+			
+			// Check for errors
+			if promErr != nil {
+				fmt.Printf("Prometheus port-forward failed: %v\n", promErr)
+			}
+			if alloyErr != nil {
+				fmt.Printf("Alloy metrics port-forward failed: %v\n", alloyErr)
+			}
+			
+			// Return an error if either port-forward failed
+			if promErr != nil || alloyErr != nil {
+				return fmt.Errorf("one or more port-forwards failed")
+			}
+			
+			fmt.Println("All port-forwarding processes finished.")
+			return nil
+		} else {
+			// For management cluster only, just run Prometheus port-forward
+			fmt.Println("--- Prometheus Connection ---")
+			pfErr := utils.StartPrometheusPortForward(managementCluster)
+			if pfErr != nil {
+				return fmt.Errorf("prometheus port-forward failed: %w", pfErr)
+			}
+			
+			fmt.Println("Prometheus port-forwarding finished.")
+			return nil
 		}
-
-		// Code here will only be reached if port-forward exits cleanly (rarely happens without error)
-		fmt.Println("Prometheus port-forwarding finished.")
-		return nil
 	},
 	// Add dynamic completion for cluster names
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
