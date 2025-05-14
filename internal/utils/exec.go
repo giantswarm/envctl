@@ -13,19 +13,19 @@ import (
 // LoginToKubeCluster executes 'tsh kube login <clusterName>' and returns its output.
 func LoginToKubeCluster(clusterName string) (stdout string, stderr string, err error) {
 	cmd := exec.Command("tsh", "kube", "login", clusterName)
-	
+
 	var stdoutBuf, stderrBuf bytes.Buffer
 	cmd.Stdout = &stdoutBuf
 	cmd.Stderr = &stderrBuf
-	
+
 	// Stdin might still be needed if tsh prompts for anything (e.g., 2FA),
 	// but for non-interactive TUI, this might be an issue if it hangs.
 	// For now, keep os.Stdin, but this could be a point of failure if tsh blocks.
 	// Consider if tsh login can be made fully non-interactive or if a timeout is needed.
-	cmd.Stdin = os.Stdin 
+	cmd.Stdin = os.Stdin
 
 	runErr := cmd.Run()
-	
+
 	stdoutStr := stdoutBuf.String()
 	stderrStr := stderrBuf.String()
 

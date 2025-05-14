@@ -100,12 +100,12 @@ type mcNameEnteredMsg struct {
 // kubeLoginResultMsg signals the result of a single utils.LoginToKubeCluster attempt.
 // It indicates whether it was for MC or WC for context.
 type kubeLoginResultMsg struct {
-	clusterName string // The cluster name that was attempted.
-	isMC        bool   // True if this login was for the Management Cluster.
+	clusterName        string // The cluster name that was attempted.
+	isMC               bool   // True if this login was for the Management Cluster.
 	desiredWcShortName string // Store the originally desired WC short name, to carry through MC login success.
-	loginStdout string // Captured stdout from tsh kube login
-	loginStderr string // Captured stderr from tsh kube login
-	err         error
+	loginStdout        string // Captured stdout from tsh kube login
+	loginStderr        string // Captured stderr from tsh kube login
+	err                error
 }
 
 // contextSwitchAndReinitializeResultMsg signals the result of attempting to switch context
@@ -128,4 +128,4 @@ type kubeContextSwitchedMsg struct {
 type clusterListResultMsg struct {
 	info *utils.ClusterInfo
 	err  error
-} 
+}

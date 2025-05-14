@@ -7,8 +7,8 @@ import (
 )
 
 const (
-	mcPaneFocusKey  = "__MC_PANE_FOCUS_KEY__"
-	wcPaneFocusKey  = "__WC_PANE_FOCUS_KEY__"
+	mcPaneFocusKey       = "__MC_PANE_FOCUS_KEY__"
+	wcPaneFocusKey       = "__WC_PANE_FOCUS_KEY__"
 	healthUpdateInterval = 30 * time.Second
 )
 
@@ -21,8 +21,8 @@ var (
 	// infoStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Padding(0, 1).MarginBottom(1)
 
 	panelStyle = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		Padding(1, 2)
+			Border(lipgloss.RoundedBorder()).
+			Padding(1, 2)
 
 	focusedPanelStyle = panelStyle.Copy().Border(lipgloss.ThickBorder()).BorderForeground(lipgloss.Color("62"))
 
@@ -37,7 +37,7 @@ var (
 	logPanelTitleStyle = lipgloss.NewStyle().Bold(true).Padding(0, 1).MarginBottom(1)
 
 	// Panel background styles based on status - Revised for better contrast
-	panelStatusDefaultStyle      = panelStyle.Copy() // Default, no specific background
+	panelStatusDefaultStyle      = panelStyle.Copy()                                   // Default, no specific background
 	panelStatusInitializingStyle = panelStyle.Copy().Background(lipgloss.Color("238")) // Darker Gray
 	panelStatusAttemptingStyle   = panelStyle.Copy().Background(lipgloss.Color("238")) // Darker Gray (for "Establishing...")
 	panelStatusRunningStyle      = panelStyle.Copy().Background(lipgloss.Color("28"))  // Dark Green
@@ -58,17 +58,17 @@ var (
 	statusMsgExitedStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("220")) // Light Yellow
 
 	contextPaneStyle = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		Padding(0, 1).
-		BorderForeground(lipgloss.Color("240")) // Light gray border for context panes
+				Border(lipgloss.RoundedBorder()).
+				Padding(0, 1).
+				BorderForeground(lipgloss.Color("240")) // Light gray border for context panes
 
 	activeContextPaneStyle = contextPaneStyle.Copy().Background(lipgloss.Color("235")) // Very subtle dark gray for active context background
 
-	focusedContextPaneStyle = contextPaneStyle.Copy().Border(lipgloss.ThickBorder()).BorderForeground(lipgloss.Color("62"))
+	focusedContextPaneStyle          = contextPaneStyle.Copy().Border(lipgloss.ThickBorder()).BorderForeground(lipgloss.Color("62"))
 	focusedAndActiveContextPaneStyle = activeContextPaneStyle.Copy().Border(lipgloss.ThickBorder()).BorderForeground(lipgloss.Color("62"))
 
 	healthLoadingStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("245")) // Dim gray for loading text
 	healthGoodStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("154")) // Light Green
 	healthWarnStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("220")) // Light Yellow
 	healthErrorStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("196")) // Light Red
-) 
+)

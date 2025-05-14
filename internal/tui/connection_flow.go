@@ -157,7 +157,9 @@ func handleContextSwitchAndReinitializeResultMsg(m model, msg contextSwitchAndRe
 				m.portForwards[pf_loop.label].stdoutClosed = true
 				m.portForwards[pf_loop.label].stderrClosed = true
 				// Send an error message for this specific port-forward
-				newInitCmds = append(newInitCmds, func() tea.Msg { return portForwardErrorMsg{label: pf_loop.label, streamType: "general", err: fmt.Errorf("failed to start %s: %w", pf_loop.label, err)} })
+				newInitCmds = append(newInitCmds, func() tea.Msg {
+					return portForwardErrorMsg{label: pf_loop.label, streamType: "general", err: fmt.Errorf("failed to start %s: %w", pf_loop.label, err)}
+				})
 			} else {
 				processID := startCmd.Process.Pid
 				m.portForwards[pf_loop.label].cmd = startCmd
@@ -180,4 +182,4 @@ func handleContextSwitchAndReinitializeResultMsg(m model, msg contextSwitchAndRe
 	newInitCmds = append(newInitCmds, tickCmd)
 
 	return m, tea.Batch(append(existingCmds, newInitCmds...)...)
-} 
+}

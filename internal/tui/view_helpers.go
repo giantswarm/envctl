@@ -60,7 +60,7 @@ func renderWcPane(m model, paneWidth int) string {
 	}
 
 	wcNameString := m.workloadCluster // This is the short WC name, e.g., "deu01"
-	
+
 	// Correctly form the full WC context name for display and active check
 	var wcFullContext string
 	if m.managementCluster != "" && m.workloadCluster != "" {
@@ -69,13 +69,13 @@ func renderWcPane(m model, paneWidth int) string {
 		// The fetchNodeStatusCmd and setupPortForwards handle this logic for their needs.
 		// For display here, we assume m.managementCluster and m.workloadCluster are the definitive short names.
 		wcFullContext = "teleport.giantswarm.io-" + m.managementCluster + "-" + m.workloadCluster
-	} else if m.workloadCluster != "" { 
+	} else if m.workloadCluster != "" {
 		// This case is less ideal, implies MC is empty. If wcNameString somehow has MC prefix, it would be doubled by teleport.
 		// However, StartPortForward and GetNodeStatus have their own prefix logic based on what they receive.
 		// For display consistency, if MC is empty, just use WC. The 'active' check might be off.
-		wcFullContext = "teleport.giantswarm.io-" + wcNameString 
+		wcFullContext = "teleport.giantswarm.io-" + wcNameString
 	} else {
-		wcFullContext = "N/A" 
+		wcFullContext = "N/A"
 	}
 
 	wcActiveString := ""
@@ -136,7 +136,7 @@ func renderPortForwardPanel(pf *portForwardProcess, m model, panelOuterWidth int
 	} else { // Covers "Initializing...", "Starting...", "Restarting..."
 		currentStatusTextStyle = statusMsgInitializingStyle
 	}
-	pfContent.WriteString(currentStatusTextStyle.Render("Status: " + currentStatusMsgText) + "\n")
+	pfContent.WriteString(currentStatusTextStyle.Render("Status: "+currentStatusMsgText) + "\n")
 
 	pfContent.WriteString(lipgloss.NewStyle().Bold(true).Render("Last output:") + "\n")
 	effectiveLogLineWidth := panelContentWidth
@@ -203,7 +203,7 @@ func renderPortForwardPanel(pf *portForwardProcess, m model, panelOuterWidth int
 	// This style is now responsible for ensuring the content area is `contentWidthForStyle` wide
 	// (hopefully by space-padding `processedText` if it's narrower) and then adding its frame.
 	finalPanelStyleToUse = finalPanelStyleToUse.Copy().Width(contentWidthForStyle)
-	
+
 	return finalPanelStyleToUse.Render(processedText)
 }
 

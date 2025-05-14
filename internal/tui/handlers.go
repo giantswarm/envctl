@@ -124,7 +124,7 @@ func handleKeyMsgGlobal(m model, keyMsg tea.KeyMsg, existingCmds []tea.Cmd) (mod
 		var quitCmds []tea.Cmd
 		for _, pf := range m.portForwards {
 			if pf.cmd != nil && pf.cmd.Process != nil {
-				pfToKill := pf 
+				pfToKill := pf
 				quitCmds = append(quitCmds, func() tea.Msg {
 					pfToKill.cmd.Process.Kill() //nolint:errcheck
 					return nil
@@ -236,7 +236,7 @@ func handleKeyMsgGlobal(m model, keyMsg tea.KeyMsg, existingCmds []tea.Cmd) (mod
 				if len(m.combinedOutput) > maxCombinedOutputLines {
 					m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
 				}
-				
+
 				pf_loop := pf
 				cmdToRun, stdout, stderr, err := utils.StartPortForward(pf_loop.context, pf_loop.namespace, pf_loop.service, pf_loop.port, pf_loop.label)
 				if err != nil {
@@ -253,7 +253,7 @@ func handleKeyMsgGlobal(m model, keyMsg tea.KeyMsg, existingCmds []tea.Cmd) (mod
 					pf_loop.stdout = stdout
 					pf_loop.stderr = stderr
 					pf_loop.statusMsg = "Starting..."
-					processID := cmdToRun.Process.Pid 
+					processID := cmdToRun.Process.Pid
 					cmds = append(cmds,
 						waitForPortForwardActivity(pf_loop.label, "stdout", stdout),
 						waitForPortForwardActivity(pf_loop.label, "stderr", stderr),
@@ -316,7 +316,9 @@ func handleRequestClusterHealthUpdate(m model) (model, tea.Cmd) {
 	var cmds []tea.Cmd
 	logMsg := fmt.Sprintf("[SYSTEM] Requesting cluster health updates at %s", time.Now().Format("15:04:05"))
 	m.combinedOutput = append(m.combinedOutput, logMsg)
-	if len(m.combinedOutput) > maxCombinedOutputLines { m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:] }
+	if len(m.combinedOutput) > maxCombinedOutputLines {
+		m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
+	}
 
 	if m.managementCluster != "" {
 		m.MCHealth.IsLoading = true
@@ -345,7 +347,9 @@ func handleNodeStatusMsg(m model, msg nodeStatusMsg) model {
 		clusterNameForLog = m.workloadCluster
 	} else {
 		m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[HEALTH STALE/MISMATCH] Received status for '%s' (isMC: %v), current MC: '%s', WC: '%s'. Discarding.", msg.clusterShortName, msg.forMC, m.managementCluster, m.workloadCluster))
-		if len(m.combinedOutput) > maxCombinedOutputLines { m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:] }
+		if len(m.combinedOutput) > maxCombinedOutputLines {
+			m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
+		}
 		return m // No further processing for this stale/mismatched message
 	}
 
@@ -362,7 +366,9 @@ func handleNodeStatusMsg(m model, msg nodeStatusMsg) model {
 		targetHealth.TotalNodes = msg.totalNodes
 		m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[HEALTH %s] Nodes: %d/%d", clusterNameForLog, msg.readyNodes, msg.totalNodes))
 	}
-	if len(m.combinedOutput) > maxCombinedOutputLines { m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:] }
+	if len(m.combinedOutput) > maxCombinedOutputLines {
+		m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
+	}
 	return m
 }
 
@@ -396,4 +402,4 @@ func handleKubeContextSwitchedMsg(m model, msg kubeContextSwitchedMsg) (model, t
 		m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
 	}
 	return m, tea.Batch(cmds...)
-} 
+}

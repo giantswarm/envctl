@@ -29,8 +29,8 @@ of the workload cluster (e.g., 've5v6' for 'enigma-ve5v6').
 - Sets the Kubernetes context.
 - Starts port-forwarding for Prometheus (management cluster) and 
   AlloyDB (workload cluster, if specified) in the background.
-- Displays connection status and logs in an interactive TUI.`, 
-	Args: cobra.RangeArgs(1, 2), 
+- Displays connection status and logs in an interactive TUI.`,
+	Args: cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		managementCluster := args[0]
 		shortWorkloadClusterName := ""

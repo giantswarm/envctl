@@ -29,7 +29,7 @@ type model struct {
 	MCHealth clusterHealthInfo
 	WCHealth clusterHealthInfo
 
-	portForwards     map[string]*portForwardProcess
+	portForwards map[string]*portForwardProcess
 	// portForwardOrder now includes MC/WC pane focus keys for unified navigation
 	portForwardOrder []string
 	focusedPanelKey  string
@@ -40,10 +40,10 @@ type model struct {
 	height           int
 
 	// --- New Connection Input State ---
-	isConnectingNew    bool             // True if the TUI is in 'new connection input' mode
-	newConnectionInput textinput.Model  // Text input field for new cluster names
-	currentInputStep   newInputStep     // Tracks if we are inputting MC or WC name
-	stashedMcName      string           // Temporarily stores MC name while WC name is being input
+	isConnectingNew    bool               // True if the TUI is in 'new connection input' mode
+	newConnectionInput textinput.Model    // Text input field for new cluster names
+	currentInputStep   newInputStep       // Tracks if we are inputting MC or WC name
+	stashedMcName      string             // Temporarily stores MC name while WC name is being input
 	clusterInfo        *utils.ClusterInfo // Holds fetched cluster list for autocompletion
 }
 
@@ -94,7 +94,7 @@ func (m *model) setupPortForwards(mcName, wcName string) {
 	if wcName != "" {
 		alloyLabel := "Alloy Metrics (WC)"
 		m.portForwardOrder = append(m.portForwardOrder, alloyLabel)
-		
+
 		// Construct the correct context name part for WC.
 		// mcName is the short MC name (e.g., "alba")
 		// wcName can be the short WC name (e.g., "apiel") or a full one (e.g., "alba-apiel" from CLI args)
@@ -103,7 +103,7 @@ func (m *model) setupPortForwards(mcName, wcName string) {
 			// If wcName is a short name (e.g., "apiel") and doesn't already start with "alba-",
 			// then prepend mcName to form "alba-apiel".
 			actualWcContextPart = mcName + "-" + wcName
-		} 
+		}
 		// If wcName was already "alba-apiel", it remains unchanged.
 		// If mcName was empty, actualWcContextPart remains wcName.
 
@@ -132,9 +132,9 @@ func InitialModel(mcName, wcName, kubeCtx string) model {
 		kubeContext:       kubeCtx,
 		portForwards:      make(map[string]*portForwardProcess),
 		// Initialize portForwardOrder with context pane keys first for navigation order
-		portForwardOrder:  make([]string, 0),
-		combinedOutput:    make([]string, 0),
-		MCHealth:          clusterHealthInfo{IsLoading: true},
+		portForwardOrder: make([]string, 0),
+		combinedOutput:   make([]string, 0),
+		MCHealth:         clusterHealthInfo{IsLoading: true},
 		// New connection input fields
 		isConnectingNew:    false,
 		newConnectionInput: ti,
@@ -294,7 +294,7 @@ func (m model) View() string {
 		} else {
 			inputPrompt.WriteString(fmt.Sprintf("\n\n[Input: Workload Cluster Name for MC: %s (optional)]", m.stashedMcName))
 		}
-		inputViewStyle := lipgloss.NewStyle().Padding(1, 2).Border(lipgloss.RoundedBorder()).Width(m.width -4).Align(lipgloss.Center)
+		inputViewStyle := lipgloss.NewStyle().Padding(1, 2).Border(lipgloss.RoundedBorder()).Width(m.width - 4).Align(lipgloss.Center)
 		return inputViewStyle.Render(inputPrompt.String())
 	}
 
@@ -311,8 +311,8 @@ func (m model) View() string {
 		mcPaneWidth := (availableWidth - separatorWidth) / 2
 		wcPaneWidth := availableWidth - separatorWidth - mcPaneWidth // Ensures total width is availableWidth
 
-		renderedMcPane := renderMcPane(m, mcPaneWidth) 
-		renderedWcPane := renderWcPane(m, wcPaneWidth) 
+		renderedMcPane := renderMcPane(m, mcPaneWidth)
+		renderedWcPane := renderWcPane(m, wcPaneWidth)
 		contextPanesView = lipgloss.JoinHorizontal(lipgloss.Top, renderedMcPane, lipgloss.NewStyle().Width(separatorWidth).Render(" "), renderedWcPane)
 	} else {
 		contextPanesView = renderMcPane(m, availableWidth)
@@ -338,7 +338,7 @@ func (m model) View() string {
 
 		baseOuterWidthPerPanel := availableWidth / numPanels
 		remainderOuterWidth := availableWidth % numPanels
-		
+
 		panelIndex := 0
 		for _, pfKey := range m.portForwardOrder {
 			if pfKey == mcPaneFocusKey || pfKey == wcPaneFocusKey {
@@ -350,13 +350,13 @@ func (m model) View() string {
 			if panelIndex < remainderOuterWidth {
 				currentPanelOuterWidth++
 			}
-			
+
 			currentPanelContentWidth := currentPanelOuterWidth - individualPanelFrameSize
 			if currentPanelContentWidth < 0 { // Ensure content width isn't negative
 				currentPanelContentWidth = 0
 			}
-			
-			renderedPanel := renderPortForwardPanel(pf, m, currentPanelOuterWidth, currentPanelContentWidth) 
+
+			renderedPanel := renderPortForwardPanel(pf, m, currentPanelOuterWidth, currentPanelContentWidth)
 			portForwardPanelViews = append(portForwardPanelViews, renderedPanel)
 			if lipgloss.Height(renderedPanel) > maxPfPanelHeight {
 				maxPfPanelHeight = lipgloss.Height(renderedPanel)

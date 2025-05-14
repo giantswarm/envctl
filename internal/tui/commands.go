@@ -33,7 +33,9 @@ func waitForPortForwardActivity(label string, streamType string, rc io.ReadClose
 
 // fetchNodeStatusCmd creates a tea.Cmd to get node status for a given cluster.
 // clusterNameToFetchStatusFor: The short name of the MC (e.g., "alba") or WC (e.g., "deu01").
-//                              For WCs, if initially coming from CLI, it might be "mc-wc" (e.g. "alba-deu01").
+//
+//	For WCs, if initially coming from CLI, it might be "mc-wc" (e.g. "alba-deu01").
+//
 // isMC: True if fetching for the MC.
 // mcNameIfWC: The short name of the MC, used only if isMC is false to help form the full WC context.
 func fetchNodeStatusCmd(clusterNameToFetchStatusFor string, isMC bool, mcNameIfWC string) tea.Cmd {
@@ -99,12 +101,12 @@ func performKubeLoginCmd(clusterName string, isMC bool, desiredWcShortNameToCarr
 	return func() tea.Msg {
 		stdout, stderr, err := utils.LoginToKubeCluster(clusterName)
 		return kubeLoginResultMsg{
-			clusterName: clusterName,
-			isMC:        isMC,
+			clusterName:        clusterName,
+			isMC:               isMC,
 			desiredWcShortName: desiredWcShortNameToCarry,
-			loginStdout: stdout,
-			loginStderr: stderr,
-			err:         err,
+			loginStdout:        stdout,
+			loginStderr:        stderr,
+			err:                err,
 		}
 	}
 }
@@ -166,4 +168,4 @@ func fetchClusterListCmd() tea.Cmd {
 		info, err := utils.GetClusterInfo()
 		return clusterListResultMsg{info: info, err: err}
 	}
-} 
+}

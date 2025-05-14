@@ -124,7 +124,7 @@ func handlePortForwardStreamEndedMsg(m model, msg portForwardStreamEndedMsg) (mo
 				pf.statusMsg = "Exited"
 			}
 			// pf.active = false // Consider if connection should be marked inactive once streams close.
-			                   // For now, keep it active as user might want to restart it.
+			// For now, keep it active as user might want to restart it.
 			pf.cmd = nil // Clear the command as we are no longer tracking its streams actively.
 		}
 
@@ -155,7 +155,9 @@ func getInitialPortForwardCmds(m *model) []tea.Cmd { // Pass model as pointer to
 				m.portForwards[pf_loop.label].statusMsg = "Failed to start"
 				m.portForwards[pf_loop.label].stdoutClosed = true // Mark streams as closed as they won't be used.
 				m.portForwards[pf_loop.label].stderrClosed = true
-				pfCmds = append(pfCmds, func() tea.Msg { return portForwardErrorMsg{label: pf_loop.label, streamType: "general", err: fmt.Errorf("failed to start %s: %w", pf_loop.label, err)} })
+				pfCmds = append(pfCmds, func() tea.Msg {
+					return portForwardErrorMsg{label: pf_loop.label, streamType: "general", err: fmt.Errorf("failed to start %s: %w", pf_loop.label, err)}
+				})
 			} else {
 				// If successful, store the command and stream readers, and set initial status.
 				processID := cmd.Process.Pid // Evaluate and capture the PID now.
@@ -171,4 +173,4 @@ func getInitialPortForwardCmds(m *model) []tea.Cmd { // Pass model as pointer to
 		}
 	}
 	return pfCmds
-} 
+}
