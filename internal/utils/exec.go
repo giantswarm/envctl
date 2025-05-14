@@ -1,121 +1,84 @@
 package utils
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
 	"syscall"
 )
 
-// LoginToKubeCluster executes 'tsh kube login <clusterName>'.
-func LoginToKubeCluster(clusterName string) error {
+// LoginToKubeCluster executes 'tsh kube login <clusterName>' and returns its output.
+func LoginToKubeCluster(clusterName string) (stdout string, stderr string, err error) {
 	cmd := exec.Command("tsh", "kube", "login", clusterName)
-	cmd.Stdout = os.Stdout // Restore output
-	cmd.Stderr = os.Stderr // Restore output
-	cmd.Stdin = os.Stdin   // Keep stdin for potential prompts
+	
+	var stdoutBuf, stderrBuf bytes.Buffer
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
+	
+	// Stdin might still be needed if tsh prompts for anything (e.g., 2FA),
+	// but for non-interactive TUI, this might be an issue if it hangs.
+	// For now, keep os.Stdin, but this could be a point of failure if tsh blocks.
+	// Consider if tsh login can be made fully non-interactive or if a timeout is needed.
+	cmd.Stdin = os.Stdin 
 
-	err := cmd.Run()
-	if err != nil {
-		return fmt.Errorf("failed to execute 'tsh kube login %s': %w", clusterName, err)
+	runErr := cmd.Run()
+	
+	stdoutStr := stdoutBuf.String()
+	stderrStr := stderrBuf.String()
+
+	if runErr != nil {
+		// Include tsh's stderr in the error message for better diagnostics
+		return stdoutStr, stderrStr, fmt.Errorf("failed to execute 'tsh kube login %s': %w. Stderr: %s", clusterName, runErr, stderrStr)
 	}
-	return nil
+	return stdoutStr, stderrStr, nil
 }
 
-// StartPrometheusPortForward starts 'kubectl port-forward' for Mimir,
-// waits for it to complete, and streams its output.
-// It uses the specified kubectl context if provided, otherwise the current context.
-func StartPrometheusPortForward(contextName string) error {
-	fmt.Println("Attempting to start Prometheus (Mimir) port-forward...")
+// PortForwardCommand represents a running port-forward command.
+// type PortForwardCommand struct {
+// 	Cmd    *exec.Cmd
+// 	Stdout io.ReadCloser
+// 	Stderr io.ReadCloser
+// 	Label  string // For TUI display
+// }
 
-	// Apply Teleport prefix to context name if it doesn't already have it
+// StartPortForward prepares and starts a kubectl port-forward command but does not wait for it to complete.
+// It returns the command object and pipes for its stdout and stderr.
+func StartPortForward(contextName, namespace, service, ports, label string) (*exec.Cmd, io.ReadCloser, io.ReadCloser, error) {
 	kubectlContextName := contextName
 	if contextName != "" && !strings.HasPrefix(contextName, "teleport.giantswarm.io-") {
 		kubectlContextName = "teleport.giantswarm.io-" + contextName
 	}
 
-	args := []string{"port-forward", "-n", "mimir", "service/mimir-query-frontend", "8080:8080"}
+	args := []string{"port-forward"}
+	if namespace != "" {
+		args = append(args, "-n", namespace)
+	}
+	args = append(args, service, ports)
+
 	if kubectlContextName != "" {
 		args = append([]string{"--context", kubectlContextName}, args...)
-		fmt.Printf("Using Kubernetes context: %s\n", kubectlContextName)
-	} else {
-		fmt.Println("Using current Kubernetes context.")
 	}
 
 	cmd := exec.Command("kubectl", args...)
 
-	// Stream output to the parent process
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Stdin = nil
-
-	fmt.Println("Starting port-forward process. Press Ctrl+C to stop.")
-	fmt.Println("Ensure PROMETHEUS_URL in mcp.json is http://localhost:8080/prometheus")
-	fmt.Println("You might need to restart MCP servers or your IDE if they were running before the port-forward started.")
-
-	// Run the command and wait for it to finish
-	err := cmd.Run()
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		// Check if the error is due to the process being killed (e.g., Ctrl+C)
-		// This might not be strictly necessary depending on desired exit message,
-		// as cmd.Run() often returns a non-nil error in this case.
-		// We can refine this error handling if needed.
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			// The command exited with a non-zero status.
-			// Often, killing the process via signal results in specific exit codes.
-			// For now, just return a formatted error.
-			fmt.Fprintf(os.Stderr, "Port-forward process exited.\n")
-			return fmt.Errorf("port-forward command failed: %w", exitErr)
-		}
-		// Other errors (e.g., command not found)
-		return fmt.Errorf("failed to run kubectl port-forward: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to get stdout pipe for %s: %w", label, err)
 	}
 
-	fmt.Println("Port-forward process finished.")
-	return nil // Return nil if cmd.Run() completes without error (e.g., port-forward exits cleanly)
-}
-
-// StartAlloyMetricsPortForward starts 'kubectl port-forward' for the alloy-metrics-cluster service,
-// using the specified kubectl context. This is intended to be used with a workload cluster context.
-func StartAlloyMetricsPortForward(contextName string) error {
-	fmt.Println("Attempting to start Alloy metrics port-forward...")
-
-	// Apply Teleport prefix to context name if it doesn't already have it
-	kubectlContextName := contextName
-	if contextName != "" && !strings.HasPrefix(contextName, "teleport.giantswarm.io-") {
-		kubectlContextName = "teleport.giantswarm.io-" + contextName
-	}
-
-	args := []string{"port-forward", "-n", "kube-system", "service/alloy-metrics-cluster", "12345:12345"}
-	if kubectlContextName != "" {
-		args = append([]string{"--context", kubectlContextName}, args...)
-		fmt.Printf("Using Kubernetes context: %s\n", kubectlContextName)
-	} else {
-		fmt.Println("Using current Kubernetes context.")
-	}
-
-	cmd := exec.Command("kubectl", args...)
-
-	// Stream output to the parent process
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Stdin = nil
-
-	fmt.Println("Starting Alloy metrics port-forward process. Press Ctrl+C to stop.")
-	fmt.Println("Alloy agent will be available at localhost:12345")
-
-	// Run the command and wait for it to finish
-	err := cmd.Run()
+	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			fmt.Fprintf(os.Stderr, "Alloy metrics port-forward process exited.\n")
-			return fmt.Errorf("alloy metrics port-forward command failed: %w", exitErr)
-		}
-		return fmt.Errorf("failed to run kubectl port-forward for alloy-metrics: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to get stderr pipe for %s: %w", label, err)
 	}
 
-	fmt.Println("Alloy metrics port-forward process finished.")
-	return nil
+	if err := cmd.Start(); err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to start port-forward for %s: %w", label, err)
+	}
+
+	return cmd, stdout, stderr, nil
 }
 
 // StopProcess sends a SIGTERM signal to the process.
@@ -215,4 +178,59 @@ func determineProviderFromLabels(contextName string) (string, error) {
 
 	// If we can't determine the provider from labels either, return unknown
 	return "unknown", nil
+}
+
+// GetCurrentKubeContext returns the current kubectl context name.
+func GetCurrentKubeContext() (string, error) {
+	cmd := exec.Command("kubectl", "config", "current-context")
+	output, err := cmd.Output()
+	if err != nil {
+		// If there's an error (e.g., kubectl not configured, no current context), return it.
+		// The error from cmd.Output() for exec.Command includes stderr, which is useful.
+		return "", fmt.Errorf("failed to get current kubectl context: %w", err)
+	}
+	// The output includes a newline character, so trim it.
+	return strings.TrimSpace(string(output)), nil
+}
+
+// GetNodeStatus retrieves the number of ready and total nodes in a cluster.
+func GetNodeStatus(contextName string) (readyNodes int, totalNodes int, err error) {
+	kubectlContextArg := []string{}
+	if contextName != "" {
+		kubectlContextArg = []string{"--context", contextName}
+	}
+
+	// Get all nodes and their ready status
+	// We'll count total nodes and then count how many are Ready: True
+	getNodesArgs := append(kubectlContextArg, "get", "nodes", "-o", "jsonpath={.items[*].status.conditions[?(@.type==\"Ready\")].status}")
+	cmdNodes := exec.Command("kubectl", getNodesArgs...)
+	outputNodes, err := cmdNodes.Output()
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to get node statuses for context '%s': %w", contextName, err)
+	}
+
+	statuses := strings.Fields(string(outputNodes))
+	totalNodes = len(statuses)
+	for _, status := range statuses {
+		if strings.ToLower(status) == "true" {
+			readyNodes++
+		}
+	}
+
+	// As an alternative for totalNodes, to be absolutely sure, we could count metadata.name
+	// but len(statuses) should be reliable if the jsonpath is correct for all nodes.
+
+	return readyNodes, totalNodes, nil
+}
+
+// SwitchKubeContext changes the current kubectl context.
+func SwitchKubeContext(contextName string) error {
+	cmd := exec.Command("kubectl", "config", "use-context", contextName)
+	// We don't want to inherit os.Stdout/Stderr directly for this one,
+	// as successful output is minimal and errors will be captured.
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to switch kubectl context to '%s': %w\\nOutput: %s", contextName, err, string(output))
+	}
+	return nil
 }
