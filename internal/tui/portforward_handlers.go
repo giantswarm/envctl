@@ -85,6 +85,20 @@ func setupPortForwards(m *model, mcName, wcName string) {
 			active:    true,
 			statusMsg: "Awaiting Setup...",
 		}
+	} else if mcName != "" { // Alloy Metrics for MC if no WC is specified
+		alloyLabel := "Alloy Metrics (MC)"
+		m.portForwardOrder = append(m.portForwardOrder, alloyLabel)
+
+		m.portForwards[alloyLabel] = &portForwardProcess{
+			label:     alloyLabel,
+			port:      "12345:12345",
+			isWC:      false, // Targets MC
+			context:   "teleport.giantswarm.io-" + mcName, // Context for MC
+			namespace: "kube-system",                     // Assuming same namespace
+			service:   "service/alloy-metrics-cluster",   // Assuming same service name
+			active:    true,
+			statusMsg: "Awaiting Setup...",
+		}
 	}
 }
 
