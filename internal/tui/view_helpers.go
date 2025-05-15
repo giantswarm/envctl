@@ -34,11 +34,11 @@ func renderMcPane(m model, paneWidth int) string {
 	if isMcActive {
 		mcActiveString = " (Active)"
 	}
-	
+
 	// Compact version with abbreviated context
 	shortContext := strings.TrimPrefix(mcFullContext, "teleport.giantswarm.io-")
 	mcPaneContent := fmt.Sprintf("MC: %s%s\nCtx: %s", mcFullNameString, mcActiveString, shortContext)
-	
+
 	var healthStatusText string
 	var healthStyle lipgloss.Style
 
@@ -105,10 +105,10 @@ func renderWcPane(m model, paneWidth int) string {
 	if isWcActive {
 		wcActiveString = " (Active)"
 	}
-	
+
 	// Compact version with abbreviated context
 	shortContext := wcClusterIdentifier // Use the identifier directly
-	if wcFullContext == "N/A" { // if identifier was empty
+	if wcFullContext == "N/A" {         // if identifier was empty
 		shortContext = "N/A"
 	}
 	wcPaneContent := fmt.Sprintf("WC: %s%s\nCtx: %s", wcNameString, wcActiveString, shortContext)
@@ -236,7 +236,7 @@ func renderPortForwardPanel(pf *portForwardProcess, m model, targetOuterWidth in
 	serviceName := strings.TrimPrefix(pf.service, "service/")
 	pfContentBuilder.WriteString(fmt.Sprintf("Svc: %s", serviceName))
 	pfContentBuilder.WriteString("\n")
-	
+
 	// Compact status line
 	pfContentBuilder.WriteString(contentFgTextStyle.Render(
 		fmt.Sprintf("Status: %s", trimStatusMessage(pf.statusMsg)),
@@ -264,17 +264,17 @@ func trimStatusMessage(status string) string {
 	if strings.HasPrefix(status, "Running (PID:") {
 		return "Running"
 	}
-	
-	// Abbreviate "Forwarding from 127.0.0.1:8080 to pod port 8080" 
+
+	// Abbreviate "Forwarding from 127.0.0.1:8080 to pod port 8080"
 	if strings.HasPrefix(status, "Forwarding from") {
 		return "Forwarding"
 	}
-	
+
 	// Keep error messages but limit length
 	if len(status) > 15 && (strings.Contains(status, "Error") || strings.Contains(status, "Failed")) {
 		return status[:12] + "..."
 	}
-	
+
 	return status
 }
 
@@ -299,33 +299,33 @@ func renderCombinedLogPanel(m *model, availableWidth int, logSectionHeight int) 
 
 	// Always use the original title for the log panel
 	title := "Combined Activity Log"
-	
+
 	// Debug information will be added to the log content instead of the title
-	
+
 	titleView := logPanelTitleStyle.Render(title)
-	
+
 	// The viewport is already sized correctly and content set in the main View function
 	// Simply get its rendered view
 	viewportView := m.mainLogViewport.View()
-	
+
 	// Create inner content by joining title and viewport vertically
 	panelContent := lipgloss.JoinVertical(lipgloss.Left, titleView, viewportView)
 
 	// Create a panel with specific styling
 	// Make sure we apply NO height limit to the panel
 	basePanel := panelStatusDefaultStyle.Copy().
-		Width(innerWidth). 
+		Width(innerWidth).
 		MaxHeight(0). // No max height limit!
 		BorderForeground(lipgloss.AdaptiveColor{Light: "#606060", Dark: "#A0A0A0"}).
 		Background(lipgloss.AdaptiveColor{Light: "#F8F8F8", Dark: "#2A2A3A"})
 
 	// Render the panel with our content inside
 	renderedPanel := basePanel.Render(panelContent)
-	
+
 	// Calculate the actual height of the rendered panel
 	actualHeight := lipgloss.Height(renderedPanel)
 	actualWidth := lipgloss.Width(renderedPanel)
-	
+
 	// If we're short on height or width, add padding
 	if actualHeight < logSectionHeight || actualWidth < availableWidth {
 		// Log discrepancies if in debug mode
@@ -334,23 +334,23 @@ func renderCombinedLogPanel(m *model, availableWidth int, logSectionHeight int) 
 				heightDiffMsg := fmt.Sprintf("[Panel height: %d/%d]", actualHeight, logSectionHeight)
 				m.combinedOutput = append([]string{heightDiffMsg}, m.combinedOutput...)
 			}
-			
+
 			if actualWidth < availableWidth {
 				widthDiffMsg := fmt.Sprintf("[Panel width: %d/%d]", actualWidth, availableWidth)
 				m.combinedOutput = append([]string{widthDiffMsg}, m.combinedOutput...)
 			}
 		}
-		
+
 		// Create final wrapped panel with exact dimensions
 		finalPanel := lipgloss.NewStyle().
 			Width(availableWidth).
 			Height(logSectionHeight).
 			Align(lipgloss.Left, lipgloss.Top).
 			Render(renderedPanel)
-			
+
 		return finalPanel
 	}
-	
+
 	return renderedPanel
 }
 
@@ -403,7 +403,7 @@ func renderHelpOverlay(m model, width, height int) string {
 	helpContent.WriteString(formatShortcut("Esc", "Close this help overlay"))
 
 	// Calculate overlay dimensions to fit within the screen
-	overlayWidth := width * 2/3
+	overlayWidth := width * 2 / 3
 	if overlayWidth > 80 {
 		overlayWidth = 80 // Cap at 80 columns wide
 	} else if overlayWidth < 50 {
@@ -441,12 +441,12 @@ func renderHeader(m model, contentWidth int) string {
 	// Use a simplified header when width is very small
 	if contentWidth < 40 {
 		headerTitleString := "envctl TUI"
-		
+
 		// Ensure there's no possible negative width when applying style
 		headerStyle := headerStyle.Copy().Width(contentWidth)
 		return headerStyle.Render(headerTitleString)
 	}
-	
+
 	// Regular header with more information
 	headerTitleString := "envctl TUI - Press h for Help | Tab to Navigate | q to Quit"
 
@@ -458,12 +458,12 @@ func renderHeader(m model, contentWidth int) string {
 	// Make sure we leave enough space for the header content by not over-subtracting frame size
 	headerWidth := contentWidth
 	frameSize := headerStyle.GetHorizontalFrameSize()
-	
+
 	if headerWidth <= frameSize {
 		// If available width is too small, use minimal style and content
 		return "envctl TUI"
 	}
-	
+
 	// Otherwise use styled header with full content
 	return headerStyle.Copy().
 		Width(headerWidth - frameSize).
@@ -478,21 +478,21 @@ func renderContextPanesRow(m model, contentWidth int, maxRowHeight int) string {
 		// First calculate the needed inner widths
 		mcPaneStyle := contextPaneStyle
 		wcPaneStyle := contextPaneStyle
-		
+
 		mcBorderSize := mcPaneStyle.GetHorizontalFrameSize()
 		wcBorderSize := wcPaneStyle.GetHorizontalFrameSize()
-		
+
 		// Subtract border sizes from total width to get distributable content space
 		innerWidth := contentWidth - mcBorderSize - wcBorderSize
-		
+
 		// Split the available inner width evenly between MC and WC panes
 		mcInnerWidth := innerWidth / 2
-		wcInnerWidth := innerWidth - mcInnerWidth  // Use remainder for WC to avoid rounding issues
-		
+		wcInnerWidth := innerWidth - mcInnerWidth // Use remainder for WC to avoid rounding issues
+
 		// The full width includes borders for each pane
 		mcPaneWidth := mcInnerWidth + mcBorderSize
 		wcPaneWidth := wcInnerWidth + wcBorderSize
-		
+
 		renderedMcPane := renderMcPane(m, mcPaneWidth)
 		renderedWcPane := renderWcPane(m, wcPaneWidth)
 		rowView = lipgloss.JoinHorizontal(lipgloss.Top, renderedMcPane, renderedWcPane)
@@ -512,7 +512,7 @@ func renderContextPanesRow(m model, contentWidth int, maxRowHeight int) string {
 // renderPortForwardingRow renders the row containing port forwarding panels.
 func renderPortForwardingRow(m model, contentWidth int, maxRowHeight int) string {
 	numFixedColumns := 3 // From original View logic for port forward panels
-	
+
 	// Get panels to show
 	pfPanelKeysToShow := []string{}
 	for _, key := range m.portForwardOrder {
@@ -520,7 +520,7 @@ func renderPortForwardingRow(m model, contentWidth int, maxRowHeight int) string
 			pfPanelKeysToShow = append(pfPanelKeysToShow, key)
 		}
 	}
-	
+
 	// Calculate total border size for all panels
 	totalBorderSize := 0
 	for i := 0; i < numFixedColumns; i++ {
@@ -528,7 +528,7 @@ func renderPortForwardingRow(m model, contentWidth int, maxRowHeight int) string
 			// Use actual panel style for real panels
 			pfKey := pfPanelKeysToShow[i]
 			pf := m.portForwards[pfKey]
-			
+
 			var borderStyle lipgloss.Style
 			if pf.err != nil || strings.HasPrefix(strings.ToLower(pf.statusMsg), "failed") {
 				borderStyle = panelStatusErrorStyle
@@ -537,42 +537,42 @@ func renderPortForwardingRow(m model, contentWidth int, maxRowHeight int) string
 			} else {
 				borderStyle = panelStatusInitializingStyle
 			}
-			
+
 			totalBorderSize += borderStyle.GetHorizontalFrameSize()
 		} else {
 			// Use default panel style for empty panels
 			totalBorderSize += panelStyle.GetHorizontalFrameSize()
 		}
 	}
-	
+
 	// Calculate distributable inner width
 	innerWidth := contentWidth - totalBorderSize
 	if innerWidth < 0 {
 		innerWidth = 0
 	}
-	
+
 	// Base width for each panel's content area
 	innerPanelBaseWidth := innerWidth / numFixedColumns
-	
+
 	// Remainder to distribute one extra character per panel from left to right
 	innerRemainder := innerWidth % numFixedColumns
-	
+
 	// Render panels with exact widths
 	cellsRendered := make([]string, numFixedColumns)
-	
+
 	for i := 0; i < numFixedColumns; i++ {
 		// Calculate inner content width for this panel
 		innerPanelWidth := innerPanelBaseWidth
 		if i < innerRemainder {
 			innerPanelWidth++
 		}
-		
+
 		// Get the border size for this specific panel
 		var panelBorderSize int
 		if i < len(pfPanelKeysToShow) {
 			pfKey := pfPanelKeysToShow[i]
 			pf := m.portForwards[pfKey]
-			
+
 			var borderStyle lipgloss.Style
 			if pf.err != nil || strings.HasPrefix(strings.ToLower(pf.statusMsg), "failed") {
 				borderStyle = panelStatusErrorStyle
@@ -581,12 +581,12 @@ func renderPortForwardingRow(m model, contentWidth int, maxRowHeight int) string
 			} else {
 				borderStyle = panelStatusInitializingStyle
 			}
-			
+
 			panelBorderSize = borderStyle.GetHorizontalFrameSize()
 		} else {
 			panelBorderSize = panelStyle.GetHorizontalFrameSize()
 		}
-		
+
 		// Calculate the full panel width including its border
 		currentPanelWidth := innerPanelWidth + panelBorderSize
 

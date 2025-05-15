@@ -138,7 +138,7 @@ func handleKubeLoginResultMsg(m model, msg kubeLoginResultMsg, cmds []tea.Cmd) (
 		// Proceed to context switch and re-initialize for MC + WC.
 		// m.stashedMcName should hold the MC name from the initial submitNewConnectionMsg.
 		finalMcName := m.stashedMcName // This is the short MC name (e.g., "alba")
-		
+
 		// msg.clusterName is the WC identifier (e.g., "alba-apiel") that was successfully logged into.
 		// We need the short WC name for desiredWcName in performPostLoginOperationsCmd.
 		var shortWcName string

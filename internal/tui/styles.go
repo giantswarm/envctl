@@ -10,8 +10,8 @@ import (
 const (
 	// mcPaneFocusKey and wcPaneFocusKey are special string keys used to identify
 	// the Management Cluster and Workload Cluster info panes for focus management in navigation.
-	mcPaneFocusKey       = "__MC_PANE_FOCUS_KEY__"
-	wcPaneFocusKey       = "__WC_PANE_FOCUS_KEY__"
+	mcPaneFocusKey = "__MC_PANE_FOCUS_KEY__"
+	wcPaneFocusKey = "__WC_PANE_FOCUS_KEY__"
 	// healthUpdateInterval defines how often cluster health information (node status) is refreshed.
 	healthUpdateInterval = 30 * time.Second
 	// minHeightForMainLogView defines the minimum terminal height (in lines)
@@ -29,35 +29,35 @@ var (
 
 	// headerStyle is for the main instruction header at the top of the TUI.
 	headerStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}).
-		Background(lipgloss.AdaptiveColor{Light: "#D0D0D0", Dark: "#303030"}).
-		Padding(0, 2).
-		MarginBottom(0)
+			Bold(true).
+			Foreground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}).
+			Background(lipgloss.AdaptiveColor{Light: "#D0D0D0", Dark: "#303030"}).
+			Padding(0, 2).
+			MarginBottom(0)
 
 	// panelStyle is the base style for all rectangular panels (e.g., port forwards, context info).
 	// It defines default border and padding.
 	panelStyle = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		Padding(0, 1)  // Minimal vertical padding for more compact panels
+			Border(lipgloss.RoundedBorder()).
+			Padding(0, 1) // Minimal vertical padding for more compact panels
 
 	// focusedPanelStyle is the base for focused panels, adding a thick adaptive border.
 	focusedPanelStyle = panelStyle.Copy().
-		Border(lipgloss.ThickBorder()).
-		BorderForeground(lipgloss.AdaptiveColor{Light: "#0000CC", Dark: "#58A6FF"}).  // Brighter blue in both modes
-		BorderBackground(lipgloss.AdaptiveColor{Light: "#E8E8FF", Dark: "#1E293B"})   // Subtle background for border
+				Border(lipgloss.ThickBorder()).
+				BorderForeground(lipgloss.AdaptiveColor{Light: "#0000CC", Dark: "#58A6FF"}). // Brighter blue in both modes
+				BorderBackground(lipgloss.AdaptiveColor{Light: "#E8E8FF", Dark: "#1E293B"})  // Subtle background for border
 
 	// Port Forward Panel Titles: Darker for light mode, White for dark mode
 	portTitleStyle = lipgloss.NewStyle().Bold(true).MarginBottom(1).Foreground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"})
 
 	// statusStyle is a general-purpose style, currently not heavily specialized.
-	statusStyle    = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"})
+	statusStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"})
 
 	// logLineStyle is for individual lines in the activity log - increased contrast for both modes
-	logLineStyle   = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"})
+	logLineStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"})
 
 	// errorStyle is a general style for error messages with high contrast in both modes
-	errorStyle     = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#B30000", Dark: "#FF6B6B"})
+	errorStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#B30000", Dark: "#FF6B6B"})
 
 	// Log Panel Title: Black on light mode, White on dark mode for maximum contrast
 	logPanelTitleStyle = lipgloss.NewStyle().Bold(true).Padding(0, 1).MarginBottom(1).Foreground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"})
@@ -65,41 +65,41 @@ var (
 	// --- Help Overlay Styles ---
 	// Help overlay style for the main container
 	helpOverlayStyle = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}).
-		Background(lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#222222"}).
-		Foreground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}).
-		Padding(1, 2).
-		Margin(2, 4)
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}).
+				Background(lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#222222"}).
+				Foreground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}).
+				Padding(1, 2).
+				Margin(2, 4)
 
 	// Help overlay title style
 	helpTitleStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}).
-		MarginBottom(1).
-		Underline(true)
+			Bold(true).
+			Foreground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}).
+			MarginBottom(1).
+			Underline(true)
 
 	// Help section title style
 	helpSectionStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}).
-		MarginTop(1).
-		MarginBottom(1)
+				Bold(true).
+				Foreground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}).
+				MarginTop(1).
+				MarginBottom(1)
 
 	// Help key style for keyboard shortcut keys
 	helpKeyStyle = lipgloss.NewStyle().
-		Background(lipgloss.AdaptiveColor{Light: "#D0D0D0", Dark: "#505050"}).
-		Foreground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}).
-		Padding(0, 1).
-		Margin(0, 1, 0, 0)
+			Background(lipgloss.AdaptiveColor{Light: "#D0D0D0", Dark: "#505050"}).
+			Foreground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}).
+			Padding(0, 1).
+			Margin(0, 1, 0, 0)
 
 	// --- Log Overlay Styles (similar to Help Overlay) ---
 	logOverlayStyle = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}).
-		Background(lipgloss.AdaptiveColor{Light: "#F8F8F8", Dark: "#2A2A3A"}). // Similar to combinedLogPanel background
-		Foreground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}).
-		Padding(1, 2)
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}).
+			Background(lipgloss.AdaptiveColor{Light: "#F8F8F8", Dark: "#2A2A3A"}). // Similar to combinedLogPanel background
+			Foreground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}).
+			Padding(1, 2)
 
 	// --- Panel Background Styles based on Status ---
 	// These define the background color of port-forward panels based on their operational status.
@@ -113,27 +113,27 @@ var (
 
 	// --- Focused Panel Background Styles based on Status ---
 	// Similar to the above, but these apply when a panel is focused.
-	focusedPanelStatusDefaultStyle      = panelStatusDefaultStyle.Copy().
-		Inherit(focusedPanelStyle).
-		Background(lipgloss.AdaptiveColor{Light: "#F0F8FF", Dark: "#252525"})
-		
+	focusedPanelStatusDefaultStyle = panelStatusDefaultStyle.Copy().
+					Inherit(focusedPanelStyle).
+					Background(lipgloss.AdaptiveColor{Light: "#F0F8FF", Dark: "#252525"})
+
 	focusedPanelStatusInitializingStyle = panelStatusInitializingStyle.Copy().
-		Inherit(focusedPanelStyle).
-		Background(lipgloss.AdaptiveColor{Light: "#E0E8FF", Dark: "#2F3D54"})
-		
-	focusedPanelStatusAttemptingStyle   = focusedPanelStatusInitializingStyle.Copy()
-	
-	focusedPanelStatusRunningStyle      = panelStatusRunningStyle.Copy().
-		Inherit(focusedPanelStyle).
-		Background(lipgloss.AdaptiveColor{Light: "#D4FFDF", Dark: "#1F4420"})
-		
-	focusedPanelStatusErrorStyle        = panelStatusErrorStyle.Copy().
-		Inherit(focusedPanelStyle).
-		Background(lipgloss.AdaptiveColor{Light: "#FFDBDB", Dark: "#582F2F"})
-		
-	focusedPanelStatusExitedStyle       = panelStatusExitedStyle.Copy().
-		Inherit(focusedPanelStyle).
-		Background(lipgloss.AdaptiveColor{Light: "#FFF3CF", Dark: "#574F2F"})
+						Inherit(focusedPanelStyle).
+						Background(lipgloss.AdaptiveColor{Light: "#E0E8FF", Dark: "#2F3D54"})
+
+	focusedPanelStatusAttemptingStyle = focusedPanelStatusInitializingStyle.Copy()
+
+	focusedPanelStatusRunningStyle = panelStatusRunningStyle.Copy().
+					Inherit(focusedPanelStyle).
+					Background(lipgloss.AdaptiveColor{Light: "#D4FFDF", Dark: "#1F4420"})
+
+	focusedPanelStatusErrorStyle = panelStatusErrorStyle.Copy().
+					Inherit(focusedPanelStyle).
+					Background(lipgloss.AdaptiveColor{Light: "#FFDBDB", Dark: "#582F2F"})
+
+	focusedPanelStatusExitedStyle = panelStatusExitedStyle.Copy().
+					Inherit(focusedPanelStyle).
+					Background(lipgloss.AdaptiveColor{Light: "#FFF3CF", Dark: "#574F2F"})
 
 	// --- Text Styles for Status Messages within Port Forward Panels ---
 	// These define the foreground color for status messages with higher contrast in both modes
@@ -144,23 +144,23 @@ var (
 
 	// --- Context Pane Styles (for MC and WC info panes) ---
 	contextPaneStyle = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		Padding(0, 1).  // Reduced from 1,2 to 0,1 for more compact panes
-		BorderForeground(lipgloss.AdaptiveColor{Light: "#606060", Dark: "#A0A0A0"}). // Lighter border in dark mode
-		Background(lipgloss.AdaptiveColor{Light: "#F8F8F8", Dark: "#2A2A3A"}). // Added background - light in light mode, medium dark in dark mode
-		Foreground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}) // Maximum contrast
+				Border(lipgloss.RoundedBorder()).
+				Padding(0, 1).                                                               // Reduced from 1,2 to 0,1 for more compact panes
+				BorderForeground(lipgloss.AdaptiveColor{Light: "#606060", Dark: "#A0A0A0"}). // Lighter border in dark mode
+				Background(lipgloss.AdaptiveColor{Light: "#F8F8F8", Dark: "#2A2A3A"}).       // Added background - light in light mode, medium dark in dark mode
+				Foreground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"})        // Maximum contrast
 
 	activeContextPaneStyle = contextPaneStyle.Copy().
-		BorderForeground(lipgloss.AdaptiveColor{Light: "#0000CC", Dark: "#A0A0FF"}). // Brighter border in dark mode
-		Background(lipgloss.AdaptiveColor{Light: "#E8F4FF", Dark: "#2A3450"})        // Slightly different background to indicate active
+				BorderForeground(lipgloss.AdaptiveColor{Light: "#0000CC", Dark: "#A0A0FF"}). // Brighter border in dark mode
+				Background(lipgloss.AdaptiveColor{Light: "#E8F4FF", Dark: "#2A3450"})        // Slightly different background to indicate active
 
 	focusedContextPaneStyle = contextPaneStyle.Copy().
-		Inherit(focusedPanelStyle).
-		Background(lipgloss.AdaptiveColor{Light: "#F0F0FF", Dark: "#2A385D"})       // Slightly blueish background when focused
+				Inherit(focusedPanelStyle).
+				Background(lipgloss.AdaptiveColor{Light: "#F0F0FF", Dark: "#2A385D"}) // Slightly blueish background when focused
 
 	focusedAndActiveContextPaneStyle = activeContextPaneStyle.Copy().
-		Inherit(focusedPanelStyle).
-		Background(lipgloss.AdaptiveColor{Light: "#E0E8FF", Dark: "#30406B"})       // More saturated blue background when focused and active
+						Inherit(focusedPanelStyle).
+						Background(lipgloss.AdaptiveColor{Light: "#E0E8FF", Dark: "#30406B"}) // More saturated blue background when focused and active
 
 	// --- Health Status Text Styles (used within Context Panes) ---
 	healthLoadingStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#303030", Dark: "#F0F0F0"}).Bold(true) // Bolder and brighter in dark mode

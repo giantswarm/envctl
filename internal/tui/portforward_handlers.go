@@ -71,9 +71,9 @@ func setupPortForwards(m *model, mcName, wcName string) {
 		// or make getWorkloadClusterContextIdentifier use the passed mcName/wcName.
 		// For now, this direct usage of the model's method after ensuring mcName is correct is acceptable.
 		originalModelMcName := m.managementCluster
-		m.managementCluster = mcName // Temporarily align model's MC name
+		m.managementCluster = mcName                                   // Temporarily align model's MC name
 		actualWcContextPart := m.getWorkloadClusterContextIdentifier() // Uses the model's method
-		m.managementCluster = originalModelMcName // Restore original
+		m.managementCluster = originalModelMcName                      // Restore original
 
 		m.portForwards[alloyLabel] = &portForwardProcess{
 			label:     alloyLabel,

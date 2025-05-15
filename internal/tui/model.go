@@ -44,15 +44,15 @@ type model struct {
 	focusedPanelKey  string                         // Key of the currently focused panel or pane for navigation.
 
 	// --- UI State & Output ---
-	combinedOutput []string // Log of messages and statuses displayed in the TUI.
-	quitting       bool     // Flag indicating if the application is in the process of quitting.
-	ready          bool     // Flag indicating if the TUI has received initial window size and is ready to render.
-	width          int      // Current width of the terminal window.
-	height         int      // Current height of the terminal window.
-	debugMode      bool     // Flag to show or hide debug information
-	colorMode      string   // Current color mode for debugging
-	helpVisible    bool     // Flag to show or hide the help overlay
-	logOverlayVisible bool    // Flag to show or hide the log overlay
+	combinedOutput    []string       // Log of messages and statuses displayed in the TUI.
+	quitting          bool           // Flag indicating if the application is in the process of quitting.
+	ready             bool           // Flag indicating if the TUI has received initial window size and is ready to render.
+	width             int            // Current width of the terminal window.
+	height            int            // Current height of the terminal window.
+	debugMode         bool           // Flag to show or hide debug information
+	colorMode         string         // Current color mode for debugging
+	helpVisible       bool           // Flag to show or hide the help overlay
+	logOverlayVisible bool           // Flag to show or hide the log overlay
 	logViewport       viewport.Model // Viewport for scrollable log overlay
 	mainLogViewport   viewport.Model // Viewport for the main, in-line log panel
 
@@ -122,7 +122,7 @@ func InitialModel(mcName, wcName, kubeCtx string) model {
 	// Detect current color profile and set dark mode ON by default
 	colorProfile := lipgloss.ColorProfile().String()
 	lipgloss.SetHasDarkBackground(true) // Force dark mode by default
-	isDarkBg := true // Set this explicitly since we're forcing dark mode
+	isDarkBg := true                    // Set this explicitly since we're forcing dark mode
 	colorMode := fmt.Sprintf("%s (Dark: %v)", colorProfile, isDarkBg)
 
 	m := model{
@@ -136,16 +136,16 @@ func InitialModel(mcName, wcName, kubeCtx string) model {
 		isConnectingNew:    false,
 		newConnectionInput: ti,
 		currentInputStep:   mcInputStep,
-		TUIChannel:         tuiMsgChannel, // Assign the channel to the model
-		debugMode:          false,         // Start with debug mode disabled by default
-		colorMode:          colorMode,     // Store the detected color mode
-		helpVisible:        false,         // Start with help overlay hidden
-		logOverlayVisible:  false,         // Initialize log overlay as hidden
-		logViewport:        viewport.New(0,0), // Initialize viewport (size will be set in View)
-		mainLogViewport:    viewport.New(0,0), // Initialize main log viewport
+		TUIChannel:         tuiMsgChannel,      // Assign the channel to the model
+		debugMode:          false,              // Start with debug mode disabled by default
+		colorMode:          colorMode,          // Store the detected color mode
+		helpVisible:        false,              // Start with help overlay hidden
+		logOverlayVisible:  false,              // Initialize log overlay as hidden
+		logViewport:        viewport.New(0, 0), // Initialize viewport (size will be set in View)
+		mainLogViewport:    viewport.New(0, 0), // Initialize main log viewport
 	}
 
-	m.logViewport.SetContent("Log overlay initialized...") // Initial content
+	m.logViewport.SetContent("Log overlay initialized...")  // Initial content
 	m.mainLogViewport.SetContent("Main log initialized...") // Initial content for main log
 
 	setupPortForwards(&m, mcName, wcName)
@@ -275,7 +275,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, channelReaderCmd(m.TUIChannel)
 			}
-			
+
 			m, cmd = handleKeyMsgGlobal(m, msg, []tea.Cmd{})
 		}
 		return m, tea.Batch(cmd, channelReaderCmd(m.TUIChannel))
@@ -301,22 +301,34 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				headerHeight := lipgloss.Height(renderHeader(m, contentWidth)) // Re-calc for current size
 
 				maxRow1Height := int(float64(totalAvailableHeight-headerHeight) * 0.20)
-				if maxRow1Height < 5 { maxRow1Height = 5 } else if maxRow1Height > 7 { maxRow1Height = 7 }
+				if maxRow1Height < 5 {
+					maxRow1Height = 5
+				} else if maxRow1Height > 7 {
+					maxRow1Height = 7
+				}
 				row1Height := lipgloss.Height(renderContextPanesRow(m, contentWidth, maxRow1Height))
 
 				maxRow2Height := int(float64(totalAvailableHeight-headerHeight) * 0.30)
-				if maxRow2Height < 7 { maxRow2Height = 7 } else if maxRow2Height > 9 { maxRow2Height = 9 }
+				if maxRow2Height < 7 {
+					maxRow2Height = 7
+				} else if maxRow2Height > 9 {
+					maxRow2Height = 9
+				}
 				row2Height := lipgloss.Height(renderPortForwardingRow(m, contentWidth, maxRow2Height))
 
 				if m.height >= minHeightForMainLogView {
 					numGaps := 3
 					heightConsumedByElementsAndGaps := headerHeight + row1Height + row2Height + numGaps
 					logSectionHeight := totalAvailableHeight - heightConsumedByElementsAndGaps
-					if logSectionHeight < 0 { logSectionHeight = 0 }
+					if logSectionHeight < 0 {
+						logSectionHeight = 0
+					}
 
 					m.mainLogViewport.Width = contentWidth - panelStatusDefaultStyle.GetHorizontalFrameSize()
-					m.mainLogViewport.Height = logSectionHeight - panelStatusDefaultStyle.GetVerticalBorderSize() - lipgloss.Height(logPanelTitleStyle.Render(" ")) -1
-					if m.mainLogViewport.Height < 0 { m.mainLogViewport.Height = 0}
+					m.mainLogViewport.Height = logSectionHeight - panelStatusDefaultStyle.GetVerticalBorderSize() - lipgloss.Height(logPanelTitleStyle.Render(" ")) - 1
+					if m.mainLogViewport.Height < 0 {
+						m.mainLogViewport.Height = 0
+					}
 				}
 			}
 		}
@@ -428,12 +440,12 @@ func (m model) View() string {
 	// Use the full terminal width with no margins for perfect alignment
 	contentWidth := m.width
 	totalAvailableHeight := m.height
-	
+
 	// For extremely small windows, just show a header
 	if totalAvailableHeight < 5 || contentWidth < 20 {
 		return renderHeader(m, contentWidth)
 	}
-	
+
 	// ----- GLOBAL HEADER SECTION -----
 	headerRenderedView := renderHeader(m, contentWidth) // Uses helper from view_helpers.go
 	headerHeight := lipgloss.Height(headerRenderedView)
@@ -447,10 +459,18 @@ func (m model) View() string {
 
 	// ----- Height Allocations -----
 	maxRow1Height := int(float64(totalAvailableHeight-headerHeight) * 0.20) // Adjusted percentage slightly for better balance
-	if maxRow1Height < 5 { maxRow1Height = 5 } else if maxRow1Height > 7 { maxRow1Height = 7 }
+	if maxRow1Height < 5 {
+		maxRow1Height = 5
+	} else if maxRow1Height > 7 {
+		maxRow1Height = 7
+	}
 
 	maxRow2Height := int(float64(totalAvailableHeight-headerHeight) * 0.30) // Adjusted percentage slightly
-	if maxRow2Height < 7 { maxRow2Height = 7 } else if maxRow2Height > 9 { maxRow2Height = 9 }
+	if maxRow2Height < 7 {
+		maxRow2Height = 7
+	} else if maxRow2Height > 9 {
+		maxRow2Height = 9
+	}
 
 	// ----- ROW 1: MC/WC Info -----
 	row1FinalView := renderContextPanesRow(m, contentWidth, maxRow1Height) // Uses helper from view_helpers.go
@@ -477,32 +497,32 @@ func (m model) View() string {
 		// Add debug info to see what's happening with height calculations
 		debugHeightInfo := fmt.Sprintf(
 			"DEBUG: total=%d fixed=%d log=%d | header=%d row1=%d row2=%d",
-			totalAvailableHeight, heightConsumedByFixedElements, logSectionHeight, 
+			totalAvailableHeight, heightConsumedByFixedElements, logSectionHeight,
 			headerHeight, row1Height, row2Height)
 		m.combinedOutput = append([]string{debugHeightInfo}, m.combinedOutput...)
 
 		if logSectionHeight < 0 { // Ensure it's not negative if space is very constrained
 			logSectionHeight = 0
 		}
-		
+
 		// IMPORTANT: We need to force the log panel to take all remaining space
-        // Set maximum log height - at least 30% of total height, or all remaining space
-        if logSectionHeight < int(float64(totalAvailableHeight) * 0.3) && totalAvailableHeight > 30 {
-            // Ensure log panel takes at least 30% of screen
-            logSectionHeight = int(float64(totalAvailableHeight) * 0.3)
-            
-            // Limit other sections if needed to make space
-            if row2Height > 7 {
-                row2Height = 7
-            }
-            if row1Height > 5 {
-                row1Height = 5
-            }
-        }
-		
+		// Set maximum log height - at least 30% of total height, or all remaining space
+		if logSectionHeight < int(float64(totalAvailableHeight)*0.3) && totalAvailableHeight > 30 {
+			// Ensure log panel takes at least 30% of screen
+			logSectionHeight = int(float64(totalAvailableHeight) * 0.3)
+
+			// Limit other sections if needed to make space
+			if row2Height > 7 {
+				row2Height = 7
+			}
+			if row1Height > 5 {
+				row1Height = 5
+			}
+		}
+
 		// Update log viewport size BEFORE rendering - forcing exact dimensions
 		m.mainLogViewport.Width = contentWidth - panelStatusDefaultStyle.GetHorizontalFrameSize()
-		
+
 		// Viewport height must account for panel title and borders
 		// Border top + title + gap + content + border bottom = log height
 		borderAndTitleHeight := panelStatusDefaultStyle.GetVerticalFrameSize() + 1 // +1 for title
@@ -510,26 +530,26 @@ func (m model) View() string {
 		if viewportHeight < 0 {
 			viewportHeight = 0
 		}
-		
+
 		// Force viewport height to match the calculated space
 		m.mainLogViewport.Height = viewportHeight
-		
+
 		// Set content AFTER setting dimensions
 		m.mainLogViewport.SetContent(strings.Join(m.combinedOutput, "\n"))
-		
+
 		// Now render log panel with the properly sized viewport
 		combinedLogViewString := renderCombinedLogPanel(&m, contentWidth, logSectionHeight)
-		
+
 		// Debug mode: Check if combined log view string starts with "Log [H=" and fix it
 		if m.debugMode && strings.Contains(combinedLogViewString, "Log [H=") {
 			// Replace the debug prefix with the regular title
 			combinedLogViewString = strings.Replace(
-				combinedLogViewString, 
-				"Log [H=", 
-				"Combined Activity Log", 
+				combinedLogViewString,
+				"Log [H=",
+				"Combined Activity Log",
 				1)
 		}
-		
+
 		finalViewLayout = append(finalViewLayout, combinedLogViewString)
 
 	} else {
@@ -543,10 +563,10 @@ func (m model) View() string {
 
 	// Join all layout elements vertically
 	joinedView := lipgloss.JoinVertical(lipgloss.Left, finalViewLayout...)
-	
+
 	// Make sure the view fills the entire terminal width and height
 	finalView := lipgloss.Place(
-		m.width, 
+		m.width,
 		m.height,
 		lipgloss.Left, // Align left horizontally
 		lipgloss.Top,  // Align top vertically
@@ -564,7 +584,7 @@ func (m model) View() string {
 	} else if m.logOverlayVisible {
 		overlayWidth := int(float64(m.width) * 0.8)
 		overlayHeight := int(float64(m.height) * 0.7)
-		
+
 		// Update viewport size before rendering it within the overlay
 		m.logViewport.Width = overlayWidth - logOverlayStyle.GetHorizontalFrameSize()
 		m.logViewport.Height = overlayHeight - logOverlayStyle.GetVerticalFrameSize()
@@ -575,6 +595,6 @@ func (m model) View() string {
 			lipgloss.WithWhitespaceBackground(lipgloss.AdaptiveColor{Light: "rgba(0,0,0,0.1)", Dark: "rgba(0,0,0,0.6)"}),
 		)
 	}
-	
+
 	return finalView
 }
