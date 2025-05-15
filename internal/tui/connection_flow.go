@@ -112,8 +112,8 @@ func handleKubeLoginResultMsg(m model, msg kubeLoginResultMsg, cmds []tea.Cmd) (
 	var nextCmds []tea.Cmd
 	if msg.isMC {
 		// MC Login was successful. Now, check if WC login is needed.
-		desiredMcForNextStep := msg.clusterName        // This is the confirmed MC name (e.g., "alba")
-		desiredWcForNextStep := msg.desiredWcShortName // WC name from original user input (e.g., "apiel")
+		desiredMcForNextStep := msg.clusterName        // This is the confirmed MC name (e.g., "myinstallation")
+		desiredWcForNextStep := msg.desiredWcShortName // WC name from original user input (e.g., "mycluster")
 
 		if desiredWcForNextStep != "" {
 			// Construct the canonical WC identifier for the tsh login command.
@@ -137,9 +137,9 @@ func handleKubeLoginResultMsg(m model, msg kubeLoginResultMsg, cmds []tea.Cmd) (
 		// WC Login was successful. msg.clusterName here is the WC identifier (e.g., "alba-apiel") used for login.
 		// Proceed to context switch and re-initialize for MC + WC.
 		// m.stashedMcName should hold the MC name from the initial submitNewConnectionMsg.
-		finalMcName := m.stashedMcName // This is the short MC name (e.g., "alba")
+		finalMcName := m.stashedMcName // This is the short MC name (e.g., "myinstallation")
 
-		// msg.clusterName is the WC identifier (e.g., "alba-apiel") that was successfully logged into.
+		// msg.clusterName is the WC identifier (e.g., "myinstallation-mycluster") that was successfully logged into.
 		// We need the short WC name for desiredWcName in performPostLoginOperationsCmd.
 		var shortWcName string
 		if finalMcName != "" && strings.HasPrefix(msg.clusterName, finalMcName+"-") {

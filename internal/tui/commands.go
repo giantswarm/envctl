@@ -169,7 +169,7 @@ func startPortForwardCmd(label, context, namespace, service, port string, tuiCha
 			if tuiChan == nil {
 				// This case should ideally not be reached if TUI is initialized correctly.
 				// If it does, a console log is still valuable for critical failure.
-				fmt.Printf("[CRITICAL KERNEL PANIC AVERTED] tuiChan is nil in sendUpdateFunc for label: %s. This is a bug.\n", label)
+				fmt.Printf("[CRITICAL ERROR] tuiChan is nil in sendUpdateFunc for label: %s. This is a bug.\n", label)
 				return // Avoid panic
 			}
 			tuiChan <- portForwardStatusUpdateMsg{
