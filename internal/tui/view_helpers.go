@@ -12,7 +12,11 @@ import (
 
 // This file will contain helper functions for the View() method in model.go
 
-// renderMcPane renders the Management Cluster information pane.
+// renderMcPane renders the Management Cluster (MC) information panel.
+// It displays the MC name, its full Kubernetes context, health status (node readiness),
+// and indicates if it's the currently active context and/or focused for navigation.
+// - m: The current TUI model containing all state information.
+// - paneWidth: The target outer width for this pane.
 func renderMcPane(m model, paneWidth int) string {
 	mcFullNameString := m.managementCluster
 	if mcFullNameString == "" {
@@ -53,7 +57,11 @@ func renderMcPane(m model, paneWidth int) string {
 	return mcPaneStyleToUse.Copy().Width(paneWidth - mcPaneStyleToUse.GetHorizontalFrameSize()).Render(mcPaneContent)
 }
 
-// renderWcPane renders the Workload Cluster information pane if a WC is defined.
+// renderWcPane renders the Workload Cluster (WC) information panel.
+// Similar to renderMcPane, it displays the WC name, context, health, and active/focused status.
+// If no workload cluster is defined in the model, it returns an empty string.
+// - m: The current TUI model.
+// - paneWidth: The target outer width for this pane.
 func renderWcPane(m model, paneWidth int) string {
 	if m.workloadCluster == "" {
 		return ""
@@ -113,101 +121,99 @@ func renderWcPane(m model, paneWidth int) string {
 	return wcPaneStyleToRender.Copy().Width(paneWidth - wcPaneStyleToRender.GetHorizontalFrameSize()).Render(wcPaneContent)
 }
 
-// renderPortForwardPanel renders a single port-forward panel.
-func renderPortForwardPanel(pf *portForwardProcess, m model, panelOuterWidth int, panelContentWidth int) string {
-	var pfContent strings.Builder
-
-	pfContent.WriteString(portTitleStyle.Render(pf.label) + "\n")
-	pfContent.WriteString(fmt.Sprintf("Port: %s | Ctx: %s\nSvc: %s/%s\n", pf.port, pf.context, pf.namespace, pf.service))
-
-	currentStatusMsgText := pf.statusMsg
-	currentStatusTextStyle := statusStyle // Default
-
-	// Determine text style based on status
-	if pf.err != nil || strings.HasPrefix(pf.statusMsg, "Failed") || strings.HasPrefix(pf.statusMsg, "Error") || strings.HasPrefix(pf.statusMsg, "Restart failed") {
-		currentStatusTextStyle = errorStyle
-	} else if pf.forwardingEstablished {
-		currentStatusTextStyle = statusMsgRunningStyle
-	} else if strings.HasPrefix(pf.statusMsg, "Exited") || strings.HasPrefix(pf.statusMsg, "Killed") {
-		currentStatusTextStyle = statusMsgExitedStyle
-	} else if strings.HasPrefix(pf.statusMsg, "Running (PID:") {
-		// This was a bit ambiguous before, let's use Initializing for "Running (PID:" as it's pre-Forwarding Established
-		currentStatusTextStyle = statusMsgInitializingStyle
-	} else { // Covers "Initializing...", "Starting...", "Restarting..."
-		currentStatusTextStyle = statusMsgInitializingStyle
-	}
-	pfContent.WriteString(currentStatusTextStyle.Render("Status: "+currentStatusMsgText) + "\n")
-
-	pfContent.WriteString(lipgloss.NewStyle().Bold(true).Render("Last output:") + "\n")
-	effectiveLogLineWidth := panelContentWidth
-	if effectiveLogLineWidth <= 0 {
-		effectiveLogLineWidth = 1 // Ensure it's at least 1 to avoid panic with slicing
-	}
-
-	for i, line := range pf.output {
-		displayLine := line
-		if len(line) > effectiveLogLineWidth {
-			if effectiveLogLineWidth > 3 {
-				displayLine = line[:effectiveLogLineWidth-3] + "..."
-			} else {
-				displayLine = line[:effectiveLogLineWidth] // Truncate directly if not enough space for ellipsis
-			}
-		}
-		pfContent.WriteString(logLineStyle.Render("  " + displayLine))
-		if i < len(pf.output)-1 {
-			pfContent.WriteString("\n")
-		}
-	}
-
-	// Determine panel background style based on status
-	var currentBasePanelStyle, currentFocusedBasePanelStyle lipgloss.Style
+// renderPortForwardPanel renders a single panel for a port-forwarding process.
+// It dynamically styles the panel (border, background, text color) based on the process's status
+// (e.g., running, error, initializing) and whether the panel is currently focused.
+// The panel displays the port-forward label, port, context, service, and current status message.
+// - pf: The portForwardProcess struct containing details of the specific port forward.
+// - m: The current TUI model (used to check for focus).
+// - targetOuterWidth: The target outer width for this panel. The function calculates the inner content width.
+func renderPortForwardPanel(pf *portForwardProcess, m model, targetOuterWidth int) string {
+	// --- 1. Determine panel style based on status and focus ---
+	// Selects base and focused styles (border, background) according to the port forward's current state (error, running, exited, initializing).
+	var baseStyleForPanel, focusedBaseStyleForPanel lipgloss.Style
 	statusToCheck := strings.ToLower(pf.statusMsg)
 
 	if pf.err != nil || strings.HasPrefix(statusToCheck, "failed") || strings.HasPrefix(statusToCheck, "error") || strings.HasPrefix(statusToCheck, "restart failed") {
-		currentBasePanelStyle = panelStatusErrorStyle
-		currentFocusedBasePanelStyle = focusedPanelStatusErrorStyle
+		baseStyleForPanel = panelStatusErrorStyle
+		focusedBaseStyleForPanel = focusedPanelStatusErrorStyle
 	} else if pf.forwardingEstablished {
-		currentBasePanelStyle = panelStatusRunningStyle
-		currentFocusedBasePanelStyle = focusedPanelStatusRunningStyle
-	} else if strings.HasPrefix(statusToCheck, "running (pid:") { // Indicates process is running but not yet fully established, or just started
-		currentBasePanelStyle = panelStatusAttemptingStyle
-		currentFocusedBasePanelStyle = focusedPanelStatusAttemptingStyle
+		baseStyleForPanel = panelStatusRunningStyle
+		focusedBaseStyleForPanel = focusedPanelStatusRunningStyle
+	} else if strings.HasPrefix(statusToCheck, "running (pid:") {
+		baseStyleForPanel = panelStatusAttemptingStyle
+		focusedBaseStyleForPanel = focusedPanelStatusAttemptingStyle
 	} else if strings.HasPrefix(statusToCheck, "exited") || strings.HasPrefix(statusToCheck, "killed") {
-		currentBasePanelStyle = panelStatusExitedStyle
-		currentFocusedBasePanelStyle = focusedPanelStatusExitedStyle
-	} else if strings.HasPrefix(statusToCheck, "initializing") || strings.HasPrefix(statusToCheck, "starting") || strings.HasPrefix(statusToCheck, "restarting") {
-		currentBasePanelStyle = panelStatusInitializingStyle
-		currentFocusedBasePanelStyle = focusedPanelStatusInitializingStyle
-	} else {
-		currentBasePanelStyle = panelStatusDefaultStyle
-		currentFocusedBasePanelStyle = focusedPanelStatusDefaultStyle
+		baseStyleForPanel = panelStatusExitedStyle
+		focusedBaseStyleForPanel = focusedPanelStatusExitedStyle
+	} else { // Covers "Initializing...", "Starting...", "Restarting..."
+		baseStyleForPanel = panelStatusInitializingStyle
+		focusedBaseStyleForPanel = focusedPanelStatusInitializingStyle
 	}
 
-	finalPanelStyleToUse := currentBasePanelStyle
+	finalPanelStyle := baseStyleForPanel
 	if pf.label == m.focusedPanelKey {
-		finalPanelStyleToUse = currentFocusedBasePanelStyle
+		finalPanelStyle = focusedBaseStyleForPanel
 	}
 
-	// Calculate the target width for the content area of the panel
-	contentWidthForStyle := panelOuterWidth - finalPanelStyleToUse.GetHorizontalFrameSize()
-	if contentWidthForStyle < 0 {
-		contentWidthForStyle = 0
+	// --- 2. Determine foreground text color based on status ---
+	// Sets the color of the text content within the panel, distinct from the panel's background or border color.
+	var contentFgTextStyle lipgloss.Style
+	if pf.err != nil || strings.HasPrefix(statusToCheck, "failed") || strings.HasPrefix(statusToCheck, "error") || strings.HasPrefix(statusToCheck, "restart failed") {
+		contentFgTextStyle = statusMsgErrorStyle
+	} else if pf.forwardingEstablished {
+		contentFgTextStyle = statusMsgRunningStyle
+	} else if strings.HasPrefix(statusToCheck, "exited") || strings.HasPrefix(statusToCheck, "killed") {
+		contentFgTextStyle = statusMsgExitedStyle
+	} else {
+		contentFgTextStyle = statusMsgInitializingStyle
 	}
 
-	// 1. Pre-process the text to ensure it conforms to contentWidthForStyle (truncate/wrap long lines).
-	// This style does not need background or other visual properties, only width.
-	textProcessingStyle := lipgloss.NewStyle().Width(contentWidthForStyle)
-	processedText := textProcessingStyle.Render(pfContent.String())
+	// Apply the determined foreground color to the panel's overall style.
+	// This ensures all text within the panel (title, info, status) inherits this color by default,
+	// unless overridden by a more specific style (like a bold title).
+	finalPanelStyle = finalPanelStyle.Copy().Foreground(contentFgTextStyle.GetForeground())
 
-	// 2. Apply the final panel style (border, padding, background) AND set its content width.
-	// This style is now responsible for ensuring the content area is `contentWidthForStyle` wide
-	// (hopefully by space-padding `processedText` if it's narrower) and then adding its frame.
-	finalPanelStyleToUse = finalPanelStyleToUse.Copy().Width(contentWidthForStyle)
+	// --- 3. Construct the textual content of the panel ---
+	// Builds the string containing title, port, context, service, and status message.
+	var pfContentBuilder strings.Builder
 
-	return finalPanelStyleToUse.Render(processedText)
+	// Title: Uses a specific bold style but inherits the foreground color from finalPanelStyle.
+	pfContentBuilder.WriteString(portTitleStyle.Render(pf.label))
+	pfContentBuilder.WriteString("\n")
+
+	// Info lines: Inherit foreground from finalPanelStyle.
+	displayedContext := strings.TrimPrefix(pf.context, "teleport.giantswarm.io-")
+	displayedService := strings.TrimPrefix(pf.service, "service/")
+	pfContentBuilder.WriteString(fmt.Sprintf("Port: %s\n", pf.port))
+	pfContentBuilder.WriteString(fmt.Sprintf("Ctx: %s\n", displayedContext))
+	pfContentBuilder.WriteString(fmt.Sprintf("Svc: %s/%s\n", pf.namespace, displayedService))
+
+	// Status line: Explicitly rendered with contentFgTextStyle for emphasis, matching the overall panel text color.
+	pfContentBuilder.WriteString(contentFgTextStyle.Render("Status: " + pf.statusMsg))
+
+	textForPanel := pfContentBuilder.String()
+
+	// --- 4. Calculate actual content width for the panel ---
+	// The actual width available for text inside the panel is the targetOuterWidth minus
+	// the horizontal space taken by the panel's border and padding (finalPanelStyle.GetHorizontalFrameSize()).
+	actualFrameSize := finalPanelStyle.GetHorizontalFrameSize()
+	actualContentWidth := targetOuterWidth - actualFrameSize
+	if actualContentWidth < 0 {
+		actualContentWidth = 0
+	}
+
+	// --- 5. Render the text content using the fully configured finalPanelStyle ---
+	// finalPanelStyle handles border, padding, background, overall foreground, and content wrapping.
+	return finalPanelStyle.Copy().Width(actualContentWidth).Render(textForPanel)
 }
 
-// renderCombinedLogPanel renders the combined activity log panel.
+// renderCombinedLogPanel renders the activity log panel at the bottom of the TUI.
+// It displays a capped number of recent log entries from the model's combinedOutput.
+// The panel has a title and styles log lines, ensuring they wrap within the available width.
+// - m: The current TUI model, used to access the combinedOutput log lines.
+// - availableWidth: The target outer width for the log panel.
+// - logSectionHeight: The target total outer height for the log panel, including its border and title.
 func renderCombinedLogPanel(m model, availableWidth int, logSectionHeight int) string {
 	var combinedLogContent strings.Builder
 	combinedLogContent.WriteString(logPanelTitleStyle.Render("Combined Activity Log") + "\n")
@@ -225,24 +231,37 @@ func renderCombinedLogPanel(m model, availableWidth int, logSectionHeight int) s
 	}
 	displayableLogs := m.combinedOutput[startIdx:]
 
-	// Ensure log lines fit within the panel width
-	availableWidthForLog := availableWidth - panelStatusDefaultStyle.GetHorizontalFrameSize()
-	if availableWidthForLog <= 0 {
-		availableWidthForLog = 1
+	// Calculate content width allowing for frame size
+	// panelStatusDefaultStyle is used for the log panel's border/padding
+	frameSize := panelStatusDefaultStyle.GetHorizontalFrameSize()
+	contentWidth := availableWidth - frameSize
+	if contentWidth < 0 {
+		contentWidth = 0
 	}
+	
+	logLineStyleToUse := logLineStyle.Copy().Width(contentWidth) // Ensure log lines wrap
 
 	for _, line := range displayableLogs {
-		displayLine := line
-		if len(line) > availableWidthForLog {
-			if availableWidthForLog > 3 {
-				displayLine = line[:availableWidthForLog-3] + "..."
-			} else {
-				displayLine = line[:availableWidthForLog]
-			}
-		}
-		combinedLogContent.WriteString(logLineStyle.Render(displayLine) + "\n")
+		// Truncation logic can be removed if Width() handles wrapping well.
+		// Lipgloss's Width() on a style applied at render time should handle wrapping.
+		combinedLogContent.WriteString(logLineStyleToUse.Render(line) + "\n")
 	}
-
-	combinedLogPanelStyle := panelStatusDefaultStyle.Copy().Width(availableWidth - panelStatusDefaultStyle.GetHorizontalFrameSize()).Height(logSectionHeight)
-	return combinedLogPanelStyle.Render(strings.TrimRight(combinedLogContent.String(), "\n"))
+	
+	// Apply panel style with the exact width and height
+	// availableWidth is the target total outer width for the log panel.
+	// panelStatusDefaultStyle is used for the log panel, calculate its frame.
+	logPanelFrameSize := panelStatusDefaultStyle.GetHorizontalFrameSize()
+	actualLogPanelContentWidth := availableWidth - logPanelFrameSize
+	if actualLogPanelContentWidth < 0 {
+		actualLogPanelContentWidth = 0
+	}
+	
+	logPanelStyle := panelStatusDefaultStyle.Copy().
+		Width(actualLogPanelContentWidth). // Set content width
+		Height(logSectionHeight)
+		
+	// The content string is already styled per line.
+	// logPanelStyle's job is to add border/padding around this.
+	// If logPanelStyle had a background, it would apply.
+	return logPanelStyle.Render(strings.TrimRight(combinedLogContent.String(), "\n"))
 }

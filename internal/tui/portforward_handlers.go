@@ -3,12 +3,19 @@ package tui
 import (
 	"fmt"
 	"strings"
+
 	// "strings" // Likely not needed anymore with simplified handlers
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// handlePortForwardSetupCompletedMsg handles the result of the initial port-forward setup command.
+// handlePortForwardSetupCompletedMsg processes the message received after the synchronous part
+// of a port-forward setup attempt (StartPortForwardClientGo) is finished.
+// It updates the model based on whether the initial setup was successful or encountered an error.
+// - m: The current TUI model.
+// - msg: The portForwardSetupCompletedMsg containing the label of the port-forward,
+//        its initial status, a stop channel (if successful), and any error encountered during setup.
+// Returns the updated model and a nil command as no further async operations are directly initiated here.
 func handlePortForwardSetupCompletedMsg(m model, msg portForwardSetupCompletedMsg) (model, tea.Cmd) {
 	if pf, ok := m.portForwards[msg.label]; ok {
 		if msg.err != nil { // Error during synchronous setup in StartPortForwardClientGo
@@ -45,7 +52,13 @@ func handlePortForwardSetupCompletedMsg(m model, msg portForwardSetupCompletedMs
 	return m, nil
 }
 
-// handlePortForwardStatusUpdateMsg handles ongoing status updates from a client-go port-forward.
+// handlePortForwardStatusUpdateMsg processes asynchronous status updates received from an active port-forwarding process.
+// These updates can include new log messages, changes in status (e.g., "Forwarding from...", "Error: ..."),
+// or notifications about the port-forwarding becoming ready or encountering an error.
+// It updates the specific port-forward's state in the model and appends relevant information to the combined activity log.
+// - m: The current TUI model.
+// - msg: The portForwardStatusUpdateMsg containing the label, status text, log output, and flags indicating readiness or error.
+// Returns the updated model and a nil command.
 func handlePortForwardStatusUpdateMsg(m model, msg portForwardStatusUpdateMsg) (model, tea.Cmd) {
 	if pf, ok := m.portForwards[msg.label]; ok {
 		// If status is provided, update the port-forward's status message
@@ -59,10 +72,10 @@ func handlePortForwardStatusUpdateMsg(m model, msg portForwardStatusUpdateMsg) (
 			}
 		}
 		
-		// Always add log output to both pf.output and combinedOutput when provided
+		// Add log output to combinedOutput when provided
 		if msg.outputLog != "" {
 			// Don't modify the original message - preserve it exactly as sent
-			pf.output = append(pf.output, msg.outputLog)
+			// pf.output = append(pf.output, msg.outputLog) // REMOVED: This line sent logs to individual panel
 			
 			// Format for the combined log with a prefix
 			logEntry := fmt.Sprintf("[%s] %s", msg.label, msg.outputLog)
@@ -110,7 +123,13 @@ func handlePortForwardStatusUpdateMsg(m model, msg portForwardStatusUpdateMsg) (
 	return m, nil
 }
 
-// getInitialPortForwardCmds now uses startPortForwardCmd.
+// getInitialPortForwardCmds generates a slice of tea.Cmds to initiate all active port-forwarding processes
+// when the TUI starts or when connections are re-initialized.
+// It iterates through the configured port forwards in m.portForwardOrder and, for each active one,
+// creates a startPortForwardCmd. This command, when executed, will begin the port-forwarding process
+// asynchronously and send updates back to the TUI via the TUIChannel.
+// - m: A pointer to the current TUI model, used to access port-forward configurations and the TUIChannel.
+// Returns a slice of tea.Cmds for starting port forwards.
 func getInitialPortForwardCmds(m *model) []tea.Cmd {
 	var pfCmds []tea.Cmd
 	for _, label := range m.portForwardOrder {

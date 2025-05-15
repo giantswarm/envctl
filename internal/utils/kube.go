@@ -18,16 +18,22 @@ import (
 	"k8s.io/client-go/transport/spdy"
 )
 
-// SendUpdateFunc defines the callback signature for sending status updates to the TUI.
+// SendUpdateFunc defines a callback function signature used by port-forwarding logic
+// to send status updates (including log messages, errors, and readiness status)
+// back to the caller, typically the TUI, for display and state management.
 type SendUpdateFunc func(status, outputLog string, isError, isReady bool)
 
-// tuiLogWriter is an io.Writer that sends data to the TUI via the SendUpdateFunc.
+// tuiLogWriter is an io.Writer implementation that wraps the SendUpdateFunc.
+// It's used to capture stdout/stderr from the client-go port forwarding process
+// and relay each line as a log message to the TUI.
 type tuiLogWriter struct {
-	label      string
-	sendUpdate SendUpdateFunc
-	asError    bool // True if this writer is for stderr
+	label      string         // Label to prefix messages, identifying the source port-forward.
+	sendUpdate SendUpdateFunc   // The callback function to send formatted log messages.
+	asError    bool             // If true, indicates this writer handles stderr-like messages, potentially flagging them as errors.
 }
 
+// Write processes the byte slice p, splits it into lines, and sends each line
+// via the sendUpdate callback. It also performs minor cleaning of client-go internal log prefixes.
 func (w *tuiLogWriter) Write(p []byte) (n int, err error) {
 	lines := strings.Split(strings.TrimSuffix(string(p), "\n"), "\n")
 	for _, line := range lines {
@@ -51,8 +57,26 @@ func (w *tuiLogWriter) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
-// StartPortForwardClientGo establishes a port forward using client-go.
-// It returns a channel to stop the port forward, an initial status message, and any setup error.
+// StartPortForwardClientGo establishes a port-forward to a Kubernetes pod using the client-go library.
+// This function handles the entire setup: parsing ports, loading Kubernetes configuration for the specified context,
+// creating a clientset, resolving the service/pod name to a target pod, constructing the port-forwarding URL,
+// and finally, creating and starting the port forwarder in a new goroutine.
+// It returns a channel that can be used to stop the port-forwarding process, an initial status message indicating
+// the setup attempt, and any error encountered during the synchronous part of the setup.
+// Asynchronous updates (status changes, logs, errors, readiness) are sent via the provided `sendUpdate` callback.
+//
+// Parameters:
+// - kubeContext: The name of the Kubernetes context to use.
+// - namespace: The Kubernetes namespace where the target service/pod resides.
+// - serviceArg: A string specifying the target, e.g., "service/my-service" or "pod/my-pod".
+// - portString: The port mapping, e.g., "localPort:remotePort" (e.g., "8080:80").
+// - pfLabel: A user-friendly label for this port-forward, used in updates sent via `sendUpdate`.
+// - sendUpdate: The callback function (SendUpdateFunc) for sending asynchronous updates.
+//
+// Returns:
+// - chan struct{}: A channel that, when closed, signals the port-forwarding goroutine to stop.
+// - string: An initial status message (e.g., "Initializing...") from the synchronous setup phase.
+// - error: Any error that occurred during the synchronous setup before the goroutine was started.
 func StartPortForwardClientGo(
 	kubeContext string,
 	namespace string,
@@ -199,9 +223,14 @@ func StartPortForwardClientGo(
 	return stopChan, initialStatusLog, nil
 }
 
-// getPodNameForPortForward resolves a service argument to a pod name.
-// serviceArg can be "service/my-service" or "pod/my-pod".
-// remotePodTargetPort is used to check if a service exposes this port.
+// getPodNameForPortForward resolves a service argument (like "service/my-svc" or "pod/my-pod")
+// to a specific, preferably ready, pod name that can be used as a target for port forwarding.
+// If the argument is a service, it lists pods matching the service's selector and picks a running/ready one.
+// - clientset: An initialized Kubernetes clientset.
+// - namespace: The namespace to look for the service/pod in.
+// - serviceArg: The string identifying the target (e.g., "service/my-service", "pod/my-pod").
+// - remotePodTargetPort: The port on the pod that the port-forward aims to connect to. Used to (softly) check service port exposure.
+// Returns the name of a suitable pod or an error if one cannot be found.
 func getPodNameForPortForward(clientset kubernetes.Interface, namespace, serviceArg string, remotePodTargetPort uint16) (string, error) {
 	parts := strings.SplitN(serviceArg, "/", 2)
 	if len(parts) != 2 {
@@ -285,6 +314,49 @@ func getPodNameForPortForward(clientset kubernetes.Interface, namespace, service
 	return "", fmt.Errorf("unsupported resource type %q in %q", resourceType, serviceArg)
 }
 
-// Ensure other utility functions (GetCurrentKubeContext, SwitchKubeContext, GetNodeStatus, LoginToKubeCluster, GetClusterInfo)
-// are also eventually refactored to use client-go where appropriate, or their exec-based nature is confirmed.
-// The StartPortForwardClientGo is the main focus of this change. 
+// GetNodeStatusClientGo retrieves the number of ready and total nodes in a cluster using client-go.
+// - kubeContext: The Kubernetes context to target.
+// Returns the count of ready nodes, total nodes, and an error if any occurs.
+func GetNodeStatusClientGo(kubeContext string) (readyNodes int, totalNodes int, err error) {
+	// 1. Kubernetes Config
+	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	configOverrides := &clientcmd.ConfigOverrides{CurrentContext: kubeContext}
+	kubeConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
+
+	restConfig, err := kubeConfig.ClientConfig()
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to get REST config for context %q: %w", kubeContext, err)
+	}
+	restConfig.Timeout = 15 * time.Second // Shorter timeout for non-interactive calls
+
+	// 2. Kubernetes Clientset
+	clientset, err := kubernetes.NewForConfig(restConfig)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to create Kubernetes clientset for context %q: %w", kubeContext, err)
+	}
+
+	// 3. List Nodes
+	nodeList, err := clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to list nodes in context %q: %w", kubeContext, err)
+	}
+
+	totalNodes = len(nodeList.Items)
+	for _, node := range nodeList.Items {
+		for _, condition := range node.Status.Conditions {
+			if condition.Type == corev1.NodeReady && condition.Status == corev1.ConditionTrue {
+				readyNodes++
+				break // Found a ready condition, move to the next node
+			}
+		}
+	}
+
+	return readyNodes, totalNodes, nil
+}
+
+// Note: Other utility functions within this package (e.g., GetCurrentKubeContext, SwitchKubeContext,
+// GetNodeStatus, LoginToKubeCluster, GetClusterInfo) are also essential for the application's functionality.
+// They primarily interact with external commands (`kubectl`, `tsh`) or system configurations.
+// While `StartPortForwardClientGo` has been refactored to use client-go directly, these other functions
+// currently retain their exec-based implementation. Future enhancements could involve migrating more of these
+// to use client-go for more robust and integrated Kubernetes interactions where applicable. 

@@ -11,6 +11,8 @@ import (
 	// We might need to adjust this if utils is not directly accessible or causes import cycle
 )
 
+// handleWindowSizeMsg updates the model with the new terminal dimensions when the window is resized.
+// It also sets the `ready` flag to true, indicating the TUI can perform its initial full render.
 func handleWindowSizeMsg(m model, msg tea.WindowSizeMsg) (model, tea.Cmd) {
 	m.width = msg.Width
 	m.height = msg.Height
@@ -18,6 +20,12 @@ func handleWindowSizeMsg(m model, msg tea.WindowSizeMsg) (model, tea.Cmd) {
 	return m, nil
 }
 
+// handleKeyMsgInputMode processes key presses when the TUI is in the 'new connection input' mode.
+// It handles keys for submitting input (Enter, Ctrl+S), canceling (Esc), and autocompletion (Tab).
+// - For Enter/Ctrl+S: If entering MC name, it stores it and moves to WC input. If entering WC name, it submits both.
+// - For Esc: Cancels the input mode and resets state.
+// - For Tab: Attempts to autocomplete the current input based on fetched cluster lists.
+// Other keys are passed to the textinput component for standard text editing.
 func handleKeyMsgInputMode(m model, keyMsg tea.KeyMsg) (model, tea.Cmd) {
 	switch keyMsg.String() {
 	case "ctrl+s": // Submit new connection (MC or WC)
@@ -113,6 +121,13 @@ func handleKeyMsgInputMode(m model, keyMsg tea.KeyMsg) (model, tea.Cmd) {
 	return m, nil // Should not be reached
 }
 
+// handleKeyMsgGlobal processes global key presses when not in a specific input mode.
+// It handles actions like:
+// - Quitting the application ('q', Ctrl+C): Closes active port-forward stop channels and sends tea.Quit.
+// - Initiating a new connection ('n'): Switches to input mode.
+// - Navigating panels (Tab, Shift+Tab, 'j'/Down, 'k'/Up): Cycles focus through UI panels.
+// - Restarting a focused port-forward ('r'): Stops and starts the selected port-forward process.
+// - Switching Kubernetes context ('s'): Attempts to switch to the context of the focused MC or WC pane.
 func handleKeyMsgGlobal(m model, keyMsg tea.KeyMsg, existingCmds []tea.Cmd) (model, tea.Cmd) {
 	var cmds = existingCmds // Start with existing commands
 
@@ -284,6 +299,8 @@ func handleKeyMsgGlobal(m model, keyMsg tea.KeyMsg, existingCmds []tea.Cmd) (mod
 	return m, tea.Batch(cmds...)
 }
 
+// handleKubeContextResultMsg updates the model with the current Kubernetes context or an error if fetching failed.
+// This is typically called after startup or a context switch to reflect the actual current context.
 func handleKubeContextResultMsg(m model, msg kubeContextResultMsg) model {
 	if msg.err != nil {
 		m.currentKubeContext = "Error fetching context"
@@ -298,6 +315,9 @@ func handleKubeContextResultMsg(m model, msg kubeContextResultMsg) model {
 	return m
 }
 
+// handleRequestClusterHealthUpdate is triggered by a ticker or after certain operations to refresh cluster health.
+// It sets the IsLoading flag for relevant clusters and issues fetchNodeStatusCmd for both MC and WC (if defined).
+// It also re-schedules the next health update tick.
 func handleRequestClusterHealthUpdate(m model) (model, tea.Cmd) {
 	var cmds []tea.Cmd
 	logMsg := fmt.Sprintf("[SYSTEM] Requesting cluster health updates at %s", time.Now().Format("15:04:05"))
@@ -321,6 +341,9 @@ func handleRequestClusterHealthUpdate(m model) (model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
+// handleNodeStatusMsg processes the results of a fetchNodeStatusCmd.
+// It updates the health information (ready/total nodes, error state, last updated time) for the specific cluster (MC or WC).
+// It discards stale or mismatched status messages (e.g., if the cluster context changed since the request was made).
 func handleNodeStatusMsg(m model, msg nodeStatusMsg) model {
 	var targetHealth *clusterHealthInfo
 	clusterNameForLog := ""
@@ -358,6 +381,9 @@ func handleNodeStatusMsg(m model, msg nodeStatusMsg) model {
 	return m
 }
 
+// handleClusterListResultMsg updates the model with the fetched list of management and workload clusters.
+// This information (m.clusterInfo) is used for autocompletion in the new connection input mode.
+// If fetching fails, an error is logged.
 func handleClusterListResultMsg(m model, msg clusterListResultMsg) model {
 	if msg.err != nil {
 		m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM ERROR] Failed to fetch cluster list: %v", msg.err))
@@ -368,6 +394,9 @@ func handleClusterListResultMsg(m model, msg clusterListResultMsg) model {
 	return m
 }
 
+// handleKubeContextSwitchedMsg processes the result of an attempt to switch the Kubernetes context (performSwitchKubeContextCmd).
+// If successful, it logs the success and triggers commands to refresh the current kube context display and cluster health data.
+// If failed, it logs the error.
 func handleKubeContextSwitchedMsg(m model, msg kubeContextSwitchedMsg) (model, tea.Cmd) {
 	var cmds []tea.Cmd
 	if msg.err != nil {

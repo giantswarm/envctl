@@ -6,9 +6,6 @@ import (
 	"fmt"
 	"os"
 
-	// "strings" // No longer needed directly here
-	// "sync" // No longer directly managing goroutines here
-
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 )
@@ -25,12 +22,18 @@ It provides an interactive terminal user interface to monitor connections.
 Provide the management cluster name and, optionally, the short name
 of the workload cluster (e.g., 've5v6' for 'enigma-ve5v6').
 
-- Logs into the specified cluster(s).
-- Sets the Kubernetes context.
-- Starts port-forwarding for Prometheus (management cluster) and 
-  AlloyDB (workload cluster, if specified) in the background.
-- Displays connection status and logs in an interactive TUI.`,
-	Args: cobra.RangeArgs(1, 2),
+- If only <management-cluster> is provided:
+  Logs into the management cluster.
+  Sets the current Kubernetes context to the management cluster.
+  Starts Prometheus port-forwarding using the management cluster context,
+  running in the foreground until interrupted (Ctrl+C).
+
+- If <management-cluster> and [workload-cluster-shortname] are provided:
+  Logs into both the management cluster and the full workload cluster (e.g., 'enigma-ve5v6').
+  Sets the current Kubernetes context to the full workload cluster name.
+  Starts Prometheus port-forwarding using the management cluster context in the foreground
+  until interrupted (Ctrl+C).`, // Updated help text
+	Args: cobra.RangeArgs(1, 2), // Accepts 1 or 2 arguments
 	RunE: func(cmd *cobra.Command, args []string) error {
 		managementCluster := args[0]
 		shortWorkloadClusterName := ""
@@ -44,14 +47,14 @@ of the workload cluster (e.g., 've5v6' for 'enigma-ve5v6').
 		// --- Login Logic ---
 		fmt.Println("--- Kubernetes Login ---")
 
-		// Call LoginToKubeCluster and handle its output for the initial non-TUI phase.
-		// We want its stdout/stderr to go to the console here.
+		// Initial login to the management cluster. The output of this initial login
+		// is printed directly to the console, as the TUI is not yet running.
 		mcLoginStdout, mcLoginStderr, err := utils.LoginToKubeCluster(managementCluster)
 		if mcLoginStdout != "" {
-			fmt.Print(mcLoginStdout) // Print to console
+			fmt.Print(mcLoginStdout) // Print stdout to console
 		}
 		if mcLoginStderr != "" {
-			fmt.Fprint(os.Stderr, mcLoginStderr) // Print to console stderr
+			fmt.Fprint(os.Stderr, mcLoginStderr) // Print stderr to console
 		}
 		if err != nil {
 			return fmt.Errorf("failed to log into management cluster '%s': %w", managementCluster, err)
@@ -73,30 +76,25 @@ of the workload cluster (e.g., 've5v6' for 'enigma-ve5v6').
 			teleportContextToUse = "teleport.giantswarm.io-" + fullWorkloadClusterName
 		}
 
-		// Note: The original `tsh` output is now manually printed above.
-		// The TUI will later capture and display `tsh` output for *new* connections made via the UI.
+		// The TUI will handle subsequent 'tsh' output for connections made via the UI.
+		// This initial login output is explicitly handled before the TUI starts.
 
 		fmt.Printf("Current Kubernetes context set to: %s\n", teleportContextToUse)
 
 		// --- Print Initial Setup Info (can be displayed in TUI later) ---
 		fmt.Println("--------------------------")
-		fmt.Println("Setup complete. Initializing TUI...")
-		// Provider determination can be moved into the TUI model or passed if needed
-		// For now, keeping it simple and focusing on port-forward display
-
-		// Initialize the TUI model
-		tuiModel := tui.InitialModel(managementCluster, fullWorkloadClusterName, teleportContextToUse)
-		p := tea.NewProgram(tuiModel, tea.WithAltScreen()) // tea.WithOutput(os.Stderr) can be useful for debugging
-
+		fmt.Println("Setup complete. Starting TUI...") // Updated message
+		
+		initialModel := tui.InitialModel(managementCluster, fullWorkloadClusterName, teleportContextToUse)
+		p := tea.NewProgram(initialModel, tea.WithAltScreen())
 		if _, err := p.Run(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error running TUI: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error running TUI: %v\\n", err)
 			return err
 		}
-
-		fmt.Println("Exited envctl.")
 		return nil
 	},
-	// Add dynamic completion for cluster names
+	// ValidArgsFunction provides dynamic command-line completion for cluster names.
+	// It fetches available management and workload clusters to suggest to the user.
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		clusterInfo, err := utils.GetClusterInfo()
 		if err != nil {
@@ -107,15 +105,14 @@ of the workload cluster (e.g., 've5v6' for 'enigma-ve5v6').
 		var candidates []string
 		if len(args) == 0 {
 			for _, cluster := range clusterInfo.ManagementClusters {
-				// This check was commented out in a previous step, ensuring it's still intended or fixing if not.
-				// For now, assuming it should include all clusters, not just prefixed ones.
+				// Provide all fetched management clusters as completion candidates.
 				candidates = append(candidates, cluster)
 			}
 		} else if len(args) == 1 {
 			managementClusterName := args[0]
 			if wcShortNames, ok := clusterInfo.WorkloadClusters[managementClusterName]; ok {
 				for _, shortName := range wcShortNames {
-					// Similar to above, assuming all short names are candidates.
+					// Provide all short names for the given management cluster as candidates.
 					candidates = append(candidates, shortName)
 				}
 			}
@@ -125,6 +122,7 @@ of the workload cluster (e.g., 've5v6' for 'enigma-ve5v6').
 }
 
 // newConnectCmd creates and returns the connect command
+// This function encapsulates the command definition for better organization.
 func newConnectCmd() *cobra.Command {
 	return connectCmdDef
 }

@@ -8,6 +8,16 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+// handleSubmitNewConnectionMsg handles the initial request to establish a new connection.
+// It performs the first part of the new connection sequence:
+// 1. Logs the intent to connect.
+// 2. Stops all currently active port-forwarding processes to prepare for the new setup.
+// 3. Validates that a management cluster name is provided.
+// 4. If valid, initiates the Kubernetes login process for the Management Cluster by returning a performKubeLoginCmd.
+// - m: The current TUI model.
+// - msg: The submitNewConnectionMsg containing the target MC and WC names.
+// - existingCmds: A slice of commands that might have been accumulated (though typically not used here as this starts a new flow).
+// Returns the updated model and a command to begin the login sequence or nil if validation fails.
 func handleSubmitNewConnectionMsg(m model, msg submitNewConnectionMsg, existingCmds []tea.Cmd) (model, tea.Cmd) {
 	m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Initiating new connection to MC: %s, WC: %s", msg.mc, msg.wc))
 	m.combinedOutput = append(m.combinedOutput, "[SYSTEM] Step 0: Stopping all existing port-forwarding processes...")
@@ -68,6 +78,17 @@ func handleSubmitNewConnectionMsg(m model, msg submitNewConnectionMsg, existingC
 	return m, performKubeLoginCmd(msg.mc, true, msg.wc)
 }
 
+// handleKubeLoginResultMsg processes the outcome of a `tsh kube login` attempt (performKubeLoginCmd).
+// It logs the stdout/stderr from the login command.
+// If the login was successful:
+//   - If it was for an MC and a WC is also desired, it triggers the login for the WC.
+//   - If it was for an MC and no WC is desired, or if it was for a WC (meaning MC login was already done),
+//     it proceeds to the post-login operations (context switching, TUI re-initialization) by returning a performPostLoginOperationsCmd.
+// If the login failed, it logs the error and takes no further action in the connection sequence.
+// - m: The current TUI model.
+// - msg: The kubeLoginResultMsg containing details of the login attempt (cluster name, success/failure, output).
+// - cmds: A slice of commands that might have been accumulated.
+// Returns the updated model and a command for the next step in the connection flow or nil if login failed or no next step is taken from here.
 func handleKubeLoginResultMsg(m model, msg kubeLoginResultMsg, cmds []tea.Cmd) (model, tea.Cmd) {
 	// Append login output to the combined log first, regardless of error
 	if strings.TrimSpace(msg.loginStdout) != "" {
@@ -129,6 +150,24 @@ func handleKubeLoginResultMsg(m model, msg kubeLoginResultMsg, cmds []tea.Cmd) (
 	return m, tea.Batch(append(cmds, nextCmds...)...)
 }
 
+// handleContextSwitchAndReinitializeResultMsg processes the result of the performPostLoginOperationsCmd.
+// This command attempts to switch the Kubernetes context and then prepares the TUI for re-initialization.
+// If successful, this handler will:
+// 1. Log diagnostic information and the successful context switch.
+// 2. Update the model with the new MC and WC names, and the current Kubernetes context.
+// 3. Reset health information for the clusters.
+// 4. Re-configure port forwards for the new cluster setup using m.setupPortForwards().
+// 5. Reset the focused panel in the TUI.
+// 6. Trigger a series of commands to re-initialize the TUI state, similar to model.Init(), including:
+//    - Fetching current kube context (to confirm the switch).
+//    - Fetching initial node statuses for the new clusters.
+//    - Starting all newly configured port-forwarding processes (getInitialPortForwardCmd).
+//    - Restarting the health update ticker.
+// If the context switch or preparation fails, it logs the error.
+// - m: The current TUI model.
+// - msg: The contextSwitchAndReinitializeResultMsg containing the outcome, new cluster names, and diagnostics.
+// - existingCmds: A slice of commands that might have been accumulated.
+// Returns the updated model and a batch of commands to re-initialize the TUI or nil if an error occurred.
 func handleContextSwitchAndReinitializeResultMsg(m model, msg contextSwitchAndReinitializeResultMsg, existingCmds []tea.Cmd) (model, tea.Cmd) {
 	if msg.diagnosticLog != "" {
 		m.combinedOutput = append(m.combinedOutput, "--- Diagnostic Log (Context Switch Phase) ---")
