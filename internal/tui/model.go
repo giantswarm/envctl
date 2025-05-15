@@ -45,6 +45,10 @@ type model struct {
 	currentInputStep   newInputStep       // Tracks if we are inputting MC or WC name
 	stashedMcName      string             // Temporarily stores MC name while WC name is being input
 	clusterInfo        *utils.ClusterInfo // Holds fetched cluster list for autocompletion
+
+	// TUIChannel is used by async operations (like client-go port forwarding)
+	// to send messages back to the TUI update loop.
+	TUIChannel         chan tea.Msg
 }
 
 // setupPortForwards populates the portForwards map and portForwardOrder slice.
@@ -68,11 +72,11 @@ func (m *model) setupPortForwards(mcName, wcName string) {
 			label:     promLabel,
 			port:      "8080:8080",
 			isWC:      false,
-			context:   mcName,
+			context:   "teleport.giantswarm.io-" + mcName,
 			namespace: "mimir",
 			service:   "service/mimir-query-frontend",
 			active:    true,
-			statusMsg: "Initializing...",
+			statusMsg: "Awaiting Setup...",
 		}
 
 		// Grafana for MC
@@ -82,11 +86,11 @@ func (m *model) setupPortForwards(mcName, wcName string) {
 			label:     grafanaLabel,
 			port:      "3000:3000",
 			isWC:      false,
-			context:   mcName,
+			context:   "teleport.giantswarm.io-" + mcName,
 			namespace: "monitoring",
 			service:   "service/grafana",
 			active:    true,
-			statusMsg: "Initializing...",
+			statusMsg: "Awaiting Setup...",
 		}
 	}
 
@@ -111,11 +115,11 @@ func (m *model) setupPortForwards(mcName, wcName string) {
 			label:     alloyLabel,
 			port:      "12345:12345",
 			isWC:      true,
-			context:   actualWcContextPart, // Use the correctly formed context part
+			context:   "teleport.giantswarm.io-" + actualWcContextPart,
 			namespace: "kube-system",
 			service:   "service/alloy-metrics-cluster",
 			active:    true,
-			statusMsg: "Initializing...",
+			statusMsg: "Awaiting Setup...",
 		}
 	}
 }
@@ -126,22 +130,24 @@ func InitialModel(mcName, wcName, kubeCtx string) model {
 	ti.CharLimit = 156 // Arbitrary limit
 	ti.Width = 50      // Arbitrary width
 
+	// Create the TUI message channel with a larger buffer
+	tuiMsgChannel := make(chan tea.Msg, 100)
+
 	m := model{
 		managementCluster: mcName,
 		workloadCluster:   wcName,
 		kubeContext:       kubeCtx,
 		portForwards:      make(map[string]*portForwardProcess),
-		// Initialize portForwardOrder with context pane keys first for navigation order
-		portForwardOrder: make([]string, 0),
-		combinedOutput:   make([]string, 0),
-		MCHealth:         clusterHealthInfo{IsLoading: true},
-		// New connection input fields
+		portForwardOrder:  make([]string, 0),
+		combinedOutput:    make([]string, 0),
+		MCHealth:          clusterHealthInfo{IsLoading: true},
 		isConnectingNew:    false,
 		newConnectionInput: ti,
 		currentInputStep:   mcInputStep,
+		TUIChannel:         tuiMsgChannel, // Assign the channel to the model
 	}
 
-	m.setupPortForwards(mcName, wcName) // Use the refactored method
+	m.setupPortForwards(mcName, wcName)
 
 	if wcName != "" {
 		m.WCHealth = clusterHealthInfo{IsLoading: true}
@@ -154,6 +160,13 @@ func InitialModel(mcName, wcName, kubeCtx string) model {
 		m.focusedPanelKey = mcPaneFocusKey
 	}
 	return m
+}
+
+// channelReaderCmd creates a tea.Cmd that reads messages from the TUIChannel and sends them to the update loop
+func channelReaderCmd(ch chan tea.Msg) tea.Cmd {
+	return func() tea.Msg {
+		return <-ch
+	}
 }
 
 func (m model) Init() tea.Cmd {
@@ -186,6 +199,9 @@ func (m model) Init() tea.Cmd {
 	})
 	cmds = append(cmds, tickCmd)
 
+	// Add channel reader to process messages from TUIChannel
+	cmds = append(cmds, channelReaderCmd(m.TUIChannel))
+
 	return tea.Batch(cmds...)
 }
 
@@ -197,59 +213,55 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		var cmd tea.Cmd
 		if m.isConnectingNew && m.newConnectionInput.Focused() {
-			// Pass m and msg. The handler will return the updated model and any command.
 			m, cmd = handleKeyMsgInputMode(m, msg)
 		} else {
-			// Pass m, msg, and the current cmds slice.
-			// The handler will return the updated model and any command.
-			// Note: handleKeyMsgGlobal might append to cmds or return a new tea.Cmd.
-			// If it returns a tea.Cmd, that should be the one used.
-			// If it appends to the passed cmds, then the batch at the end will pick it up.
-			// For simplicity and consistency, let's assume it returns a command.
-			m, cmd = handleKeyMsgGlobal(m, msg, []tea.Cmd{}) // Pass empty slice, expect direct cmd return
+			m, cmd = handleKeyMsgGlobal(m, msg, []tea.Cmd{}) 
 		}
-		return m, cmd
+		return m, tea.Batch(cmd, channelReaderCmd(m.TUIChannel))
 
 	// Window size messages are handled by a function in handlers.go
 	case tea.WindowSizeMsg:
-		return handleWindowSizeMsg(m, msg)
+		m, cmd := handleWindowSizeMsg(m, msg)
+		return m, tea.Batch(cmd, channelReaderCmd(m.TUIChannel))
 
 	// Port Forwarding Messages (handlers in portforward_handlers.go)
-	case portForwardStartedMsg:
-		return handlePortForwardStartedMsg(m, msg)
-	case portForwardOutputMsg:
-		return handlePortForwardOutputMsg(m, msg)
-	case portForwardErrorMsg:
-		return handlePortForwardErrorMsg(m, msg)
-	case portForwardStreamEndedMsg:
-		return handlePortForwardStreamEndedMsg(m, msg)
+	case portForwardSetupCompletedMsg:
+		m, cmd := handlePortForwardSetupCompletedMsg(m, msg)
+		return m, tea.Batch(cmd, channelReaderCmd(m.TUIChannel))
+	case portForwardStatusUpdateMsg:
+		// Pass directly to the handler without extra debugging output
+		m, cmd := handlePortForwardStatusUpdateMsg(m, msg)
+		return m, tea.Batch(cmd, channelReaderCmd(m.TUIChannel))
 
 	// New Connection Flow Messages (handlers in connection_flow.go)
-	// These handlers take the existing cmds []tea.Cmd, append to it, and return tea.Batch.
-	// So, we pass the local cmds and let the handler return the final batched command.
 	case submitNewConnectionMsg:
-		return handleSubmitNewConnectionMsg(m, msg, cmds)
+		m, cmd := handleSubmitNewConnectionMsg(m, msg, cmds)
+		return m, tea.Batch(cmd, channelReaderCmd(m.TUIChannel))
 	case kubeLoginResultMsg:
-		return handleKubeLoginResultMsg(m, msg, cmds)
+		m, cmd := handleKubeLoginResultMsg(m, msg, cmds)
+		return m, tea.Batch(cmd, channelReaderCmd(m.TUIChannel))
 	case contextSwitchAndReinitializeResultMsg:
-		return handleContextSwitchAndReinitializeResultMsg(m, msg, cmds)
+		m, cmd := handleContextSwitchAndReinitializeResultMsg(m, msg, cmds)
+		return m, tea.Batch(cmd, channelReaderCmd(m.TUIChannel))
 
 	// Other System/Async Messages (handlers in handlers.go)
 	case kubeContextResultMsg:
 		m = handleKubeContextResultMsg(m, msg) // Modifies model, returns no cmd
-		return m, nil
+		return m, channelReaderCmd(m.TUIChannel)
 	case requestClusterHealthUpdate:
 		// This handler returns (model, tea.Cmd)
-		return handleRequestClusterHealthUpdate(m)
+		m, cmd := handleRequestClusterHealthUpdate(m)
+		return m, tea.Batch(cmd, channelReaderCmd(m.TUIChannel))
 	case kubeContextSwitchedMsg:
 		// This handler returns (model, tea.Cmd)
-		return handleKubeContextSwitchedMsg(m, msg)
+		m, cmd := handleKubeContextSwitchedMsg(m, msg)
+		return m, tea.Batch(cmd, channelReaderCmd(m.TUIChannel))
 	case nodeStatusMsg:
 		m = handleNodeStatusMsg(m, msg) // Modifies model, returns no cmd
-		return m, nil
+		return m, channelReaderCmd(m.TUIChannel)
 	case clusterListResultMsg:
 		m = handleClusterListResultMsg(m, msg) // Modifies model, returns no cmd
-		return m, nil
+		return m, channelReaderCmd(m.TUIChannel)
 
 	default:
 		// Handle text input updates if in new connection mode and input is focused,
@@ -257,7 +269,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.isConnectingNew && m.newConnectionInput.Focused() {
 			var textInputCmd tea.Cmd
 			m.newConnectionInput, textInputCmd = m.newConnectionInput.Update(msg)
-			return m, textInputCmd
+			return m, tea.Batch(textInputCmd, channelReaderCmd(m.TUIChannel))
 		}
 		// If no other case matched, no specific command is returned here.
 		// Any accumulated cmds in the local `cmds` slice would be batched at the end.
@@ -272,6 +284,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// If the switch statement fell through without returning a specific command,
 	// batch any commands that might have been accumulated in the `cmds` slice.
 	// Most cases now return directly, so `cmds` will often be empty here.
+	cmds = append(cmds, channelReaderCmd(m.TUIChannel))
 	return m, tea.Batch(cmds...)
 }
 

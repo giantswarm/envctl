@@ -1,176 +1,137 @@
 package tui
 
 import (
-	"envctl/internal/utils"
 	"fmt"
 	"strings"
+	// "strings" // Likely not needed anymore with simplified handlers
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-func handlePortForwardStartedMsg(m model, msg portForwardStartedMsg) (model, tea.Cmd) {
+// handlePortForwardSetupCompletedMsg handles the result of the initial port-forward setup command.
+func handlePortForwardSetupCompletedMsg(m model, msg portForwardSetupCompletedMsg) (model, tea.Cmd) {
 	if pf, ok := m.portForwards[msg.label]; ok {
-		if pf.statusMsg != "Restart failed" {
-			pf.statusMsg = fmt.Sprintf("Running (PID: %d)", msg.pid)
+		if msg.err != nil { // Error during synchronous setup in StartPortForwardClientGo
+			pf.err = msg.err
+			// msg.status might be empty if error was very early, or could be a partial status.
+			// It's safer to construct a clear error status.
+			pf.statusMsg = fmt.Sprintf("Setup Failed: %v", msg.err)
+			pf.active = false
+			pf.stopChan = nil
+			m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[%s ERROR] Port-forward direct setup failed: %v. Async process not started.", msg.label, msg.err))
+		} else {
+			// Synchronous setup in StartPortForwardClientGo was successful.
+			// msg.status contains the initial status log (e.g., "Initializing...").
+			pf.stopChan = msg.stopChan
+			pf.statusMsg = msg.status // Set initial status for TUI display
+			pf.err = nil
+			pf.active = true
+			// The sendUpdate call within StartPortForwardClientGo also sent this initialStatus for logging.
+			m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[%s] Port-forward async setup initiated. Initial TUI status: %s", msg.label, msg.status))
 		}
-		m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[%s] Process started (PID: %d)", msg.label, msg.pid))
+
+		// Trim combined output
 		if len(m.combinedOutput) > maxCombinedOutputLines {
 			m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
 		}
+	} else {
+		m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[TUI WARNING] No PF found for Lbl['%s'] during SetupCompleted.", msg.label))
+	}
+
+	// Trim combined output - typically done at end of model.Update
+	if len(m.combinedOutput) > maxCombinedOutputLines+100 {
+		m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
 	}
 	return m, nil
 }
 
-func handlePortForwardOutputMsg(m model, msg portForwardOutputMsg) (model, tea.Cmd) {
-	var cmds []tea.Cmd
+// handlePortForwardStatusUpdateMsg handles ongoing status updates from a client-go port-forward.
+func handlePortForwardStatusUpdateMsg(m model, msg portForwardStatusUpdateMsg) (model, tea.Cmd) {
 	if pf, ok := m.portForwards[msg.label]; ok {
-		line := fmt.Sprintf("[%s %s] %s", msg.label, msg.streamType, msg.line)
-		pf.output = append(pf.output, msg.line)
-		m.combinedOutput = append(m.combinedOutput, line)
-
-		if !pf.forwardingEstablished && strings.Contains(msg.line, "Forwarding from") {
-			pf.forwardingEstablished = true
-			// Try to extract the local port more robustly
-			parts := strings.Fields(msg.line)
-			localPort := "unknown"
-			for i, p := range parts {
-				if (p == "from" || p == "From") && i+1 < len(parts) {
-					addressAndPort := parts[i+1]
-					lastColon := strings.LastIndex(addressAndPort, ":")
-					if lastColon != -1 && lastColon+1 < len(addressAndPort) {
-						localPort = addressAndPort[lastColon+1:]
-						break
-					}
-				}
+		// If status is provided, update the port-forward's status message
+		if msg.status != "" {
+			pf.statusMsg = msg.status
+			// Only log status changes to the activity log if they're meaningful
+			if !strings.HasPrefix(msg.status, "Initializing") && 
+			   !strings.Contains(msg.status, "Forwarding from") {
+				m.combinedOutput = append(m.combinedOutput, 
+					fmt.Sprintf("[%s] Status changed: %s", msg.label, msg.status))
 			}
-			pf.statusMsg = fmt.Sprintf("Forwarding Active (Local Port: %s)", localPort)
-			m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[%s] Confirmed: %s", msg.label, pf.statusMsg))
+		}
+		
+		// Always add log output to both pf.output and combinedOutput when provided
+		if msg.outputLog != "" {
+			// Don't modify the original message - preserve it exactly as sent
+			pf.output = append(pf.output, msg.outputLog)
+			
+			// Format for the combined log with a prefix
+			logEntry := fmt.Sprintf("[%s] %s", msg.label, msg.outputLog)
+			m.combinedOutput = append(m.combinedOutput, logEntry)
 		}
 
-		// Trim outputs
-		if len(m.combinedOutput) > maxCombinedOutputLines {
-			m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
+		// Update port-forward state based on message flags
+		if msg.isError {
+			pf.active = false
+			pf.forwardingEstablished = false
+			
+			// Add an error notification if there was no outputLog
+			if msg.outputLog == "" && msg.status == "" {
+				m.combinedOutput = append(m.combinedOutput, 
+					fmt.Sprintf("[%s] Error occurred (no details provided)", msg.label))
+			}
+		} else if msg.isReady {
+			pf.forwardingEstablished = true
+			pf.active = true
+			
+			// Add a ready notification if there was no status message
+			if msg.status == "" {
+				m.combinedOutput = append(m.combinedOutput, 
+					fmt.Sprintf("[%s] Port-forwarding established", msg.label))
+			}
 		}
-		if len(pf.output) > maxCombinedOutputLines { // Assuming same trim size for individual PFs
-			pf.output = pf.output[len(pf.output)-maxCombinedOutputLines:]
-		}
-
-		// Continue listening on streams if they are not closed
-		if msg.streamType == "stdout" && !pf.stdoutClosed {
-			cmds = append(cmds, waitForPortForwardActivity(msg.label, "stdout", pf.stdout))
-		} else if msg.streamType == "stderr" && !pf.stderrClosed {
-			cmds = append(cmds, waitForPortForwardActivity(msg.label, "stderr", pf.stderr))
-		}
+	} else {
+		// Only add this warning if the port-forward doesn't exist
+		m.combinedOutput = append(m.combinedOutput, 
+			fmt.Sprintf("[TUI WARNING] No port-forward found for label '%s'", msg.label))
 	}
-	return m, tea.Batch(cmds...)
-}
 
-func handlePortForwardErrorMsg(m model, msg portForwardErrorMsg) (model, tea.Cmd) {
+	// Trim combined output to prevent excessive growth
+	if len(m.combinedOutput) > maxCombinedOutputLines+100 {
+		m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
+	}
+	
+	// Trim port-forward's output if it exists
 	if pf, ok := m.portForwards[msg.label]; ok {
-		errMsgText := fmt.Sprintf("[%s %s ERROR] %s", msg.label, msg.streamType, msg.err.Error())
-		pf.err = msg.err
-		pf.output = append(pf.output, "ERROR: "+msg.err.Error())
-		m.combinedOutput = append(m.combinedOutput, errMsgText)
-
-		// Update status unless it's a more specific startup/restart failure message
-		if pf.statusMsg != "Failed to start" && pf.statusMsg != "Restart failed" {
-			pf.statusMsg = "Error"
-		}
-
-		// Mark streams as closed based on the error message context
-		// This is a heuristic; specific errors might imply specific streams closed.
-		// For a general error, or if streamType is "general", it might not close them.
-		if msg.streamType == "stdout" {
-			pf.stdoutClosed = true
-		} else if msg.streamType == "stderr" {
-			pf.stderrClosed = true
-		} else if msg.streamType == "general" {
-			// If it's a general error (e.g. process failed to start), both streams are effectively closed.
-			pf.stdoutClosed = true
-			pf.stderrClosed = true
-			pf.active = false // Mark as inactive if the process couldn't start or failed critically
-		}
-
-		// Trim outputs
-		if len(m.combinedOutput) > maxCombinedOutputLines {
-			m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
-		}
 		if len(pf.output) > maxCombinedOutputLines {
 			pf.output = pf.output[len(pf.output)-maxCombinedOutputLines:]
 		}
 	}
+
 	return m, nil
 }
 
-// handlePortForwardStreamEndedMsg handles the scenario where a port forward stream (stdout/stderr) ends.
-func handlePortForwardStreamEndedMsg(m model, msg portForwardStreamEndedMsg) (model, tea.Cmd) {
-	if pf, ok := m.portForwards[msg.label]; ok {
-		logMsg := fmt.Sprintf("[%s %s] Stream closed.", msg.label, msg.streamType)
-		m.combinedOutput = append(m.combinedOutput, logMsg)
-
-		if msg.streamType == "stdout" {
-			pf.stdoutClosed = true
-		} else if msg.streamType == "stderr" {
-			pf.stderrClosed = true
-		}
-
-		// If both streams are closed and the process was active, update status to Exited.
-		// This doesn't mean the process necessarily exited cleanly, just that we are no longer reading from it.
-		// Actual process exit might be handled by a different OS-level signal or a dedicated "process exited" message if implemented.
-		if pf.stdoutClosed && pf.stderrClosed && pf.active {
-			// Avoid overwriting more specific error states like "Killed", "Error", "Failed to start", "Restart failed"
-			isErrorState := pf.statusMsg == "Killed" || pf.statusMsg == "Error" || pf.statusMsg == "Failed to start" || pf.statusMsg == "Restart failed"
-			if !isErrorState {
-				pf.statusMsg = "Exited"
-			}
-			// pf.active = false // Consider if connection should be marked inactive once streams close.
-			// For now, keep it active as user might want to restart it.
-			pf.cmd = nil // Clear the command as we are no longer tracking its streams actively.
-		}
-
-		if len(m.combinedOutput) > maxCombinedOutputLines {
-			m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
-		}
-	}
-	return m, nil
-}
-
-// getInitialPortForwardCmds iterates over the model's portForwards and starts them,
-// returning a slice of tea.Cmd for their initial activity and status updates.
-// This is called from model.Init().
-func getInitialPortForwardCmds(m *model) []tea.Cmd { // Pass model as pointer to modify pf status directly
+// getInitialPortForwardCmds now uses startPortForwardCmd.
+func getInitialPortForwardCmds(m *model) []tea.Cmd {
 	var pfCmds []tea.Cmd
 	for _, label := range m.portForwardOrder {
-		// Check if the label corresponds to an actual port-forward process
-		// and not a special focus key like mcPaneFocusKey or wcPaneFocusKey.
 		pf, isActualPortForward := m.portForwards[label]
-
-		if isActualPortForward && pf.active { // Only proceed if it's a defined and active port-forward
-			pf_loop := pf // Capture loop variable for closure
-			// Attempt to start the port forward using the utility function
-			cmd, stdout, stderr, err := utils.StartPortForward(pf_loop.context, pf_loop.namespace, pf_loop.service, pf_loop.port, pf_loop.label)
-			if err != nil {
-				// If starting fails, update the process status and send an error message.
-				m.portForwards[pf_loop.label].err = err
-				m.portForwards[pf_loop.label].statusMsg = "Failed to start"
-				m.portForwards[pf_loop.label].stdoutClosed = true // Mark streams as closed as they won't be used.
-				m.portForwards[pf_loop.label].stderrClosed = true
-				pfCmds = append(pfCmds, func() tea.Msg {
-					return portForwardErrorMsg{label: pf_loop.label, streamType: "general", err: fmt.Errorf("failed to start %s: %w", pf_loop.label, err)}
-				})
-			} else {
-				// If successful, store the command and stream readers, and set initial status.
-				processID := cmd.Process.Pid // Evaluate and capture the PID now.
-				m.portForwards[pf_loop.label].cmd = cmd
-				m.portForwards[pf_loop.label].stdout = stdout
-				m.portForwards[pf_loop.label].stderr = stderr
-				m.portForwards[pf_loop.label].statusMsg = "Starting..."
-				// Add commands to listen for activity on stdout/stderr and a message for when it's started.
-				pfCmds = append(pfCmds, waitForPortForwardActivity(pf_loop.label, "stdout", stdout))
-				pfCmds = append(pfCmds, waitForPortForwardActivity(pf_loop.label, "stderr", stderr))
-				pfCmds = append(pfCmds, func() tea.Msg { return portForwardStartedMsg{label: pf_loop.label, pid: processID} })
+		// Check if pf.active is true to decide to start.
+		// The statusMsg is initialized to "Awaiting Setup..." in setupPortForwards.
+		// It will be updated by portForwardStatusUpdateMsg once StartPortForwardClientGo sends an update.
+		if isActualPortForward && pf.active { 
+			if m.TUIChannel == nil {
+				// This is a critical error, should ideally not happen.
+				// We can update the status directly here as no command will be issued.
+				if p, exists := m.portForwards[label]; exists {
+					p.statusMsg = "Error: TUIChannel nil"
+					p.active = false
+				}
+				m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[CRITICAL ERROR] TUIChannel is nil for %s. PF not started.", label))
+				continue
 			}
+			pfCmds = append(pfCmds, startPortForwardCmd(pf.label, pf.context, pf.namespace, pf.service, pf.port, m.TUIChannel))
 		}
 	}
 	return pfCmds
 }
+

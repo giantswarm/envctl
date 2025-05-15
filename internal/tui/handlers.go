@@ -7,10 +7,8 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-
 	// Assuming utils is in "envctl/internal/utils" based on model.go
 	// We might need to adjust this if utils is not directly accessible or causes import cycle
-	"envctl/internal/utils"
 )
 
 func handleWindowSizeMsg(m model, msg tea.WindowSizeMsg) (model, tea.Cmd) {
@@ -123,12 +121,13 @@ func handleKeyMsgGlobal(m model, keyMsg tea.KeyMsg, existingCmds []tea.Cmd) (mod
 		m.quitting = true
 		var quitCmds []tea.Cmd
 		for _, pf := range m.portForwards {
-			if pf.cmd != nil && pf.cmd.Process != nil {
-				pfToKill := pf
-				quitCmds = append(quitCmds, func() tea.Msg {
-					pfToKill.cmd.Process.Kill() //nolint:errcheck
-					return nil
-				})
+			if pf.stopChan != nil {
+				// Safely close the stopChan
+				// The goroutine managing the port-forward is expected to handle this signal
+				// and perform cleanup.
+				close(pf.stopChan)
+				pf.stopChan = nil // Avoid reusing a closed channel
+				pf.statusMsg = "Stopping..."
 			}
 		}
 		quitCmds = append(quitCmds, tea.Quit)
@@ -218,47 +217,34 @@ func handleKeyMsgGlobal(m model, keyMsg tea.KeyMsg, existingCmds []tea.Cmd) (mod
 	case "r": // Restart focused port-forward
 		if m.focusedPanelKey != "" {
 			if pf, ok := m.portForwards[m.focusedPanelKey]; ok {
-				if pf.cmd != nil && pf.cmd.Process != nil {
-					pf.cmd.Process.Kill() //nolint:errcheck
+				// Stop the existing port-forward if it's running
+				if pf.stopChan != nil {
+					m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[%s] Sending stop signal...", pf.label))
+					close(pf.stopChan)
+					pf.stopChan = nil
 				}
-				pf.cmd = nil
-				pf.stdout = nil
-				pf.stderr = nil
-				pf.err = nil
-				pf.output = []string{}
+
+				// Update UI immediately to reflect that a restart is in progress
 				pf.statusMsg = "Restarting..."
-				pf.stdoutClosed = false
-				pf.stderrClosed = false
-				pf.active = true
+				pf.output = []string{} // Clear old specific output for this PF
+				pf.err = nil
+				pf.active = true // It is attempting to become active
 				pf.forwardingEstablished = false
+				// Fields like cmd, stdout, stderr, stdoutClosed, stderrClosed are removed from portForwardProcess
 
 				m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[%s] Attempting restart...", pf.label))
 				if len(m.combinedOutput) > maxCombinedOutputLines {
 					m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
 				}
 
-				pf_loop := pf
-				cmdToRun, stdout, stderr, err := utils.StartPortForward(pf_loop.context, pf_loop.namespace, pf_loop.service, pf_loop.port, pf_loop.label)
-				if err != nil {
-					pf_loop.err = err
-					pf_loop.statusMsg = "Restart failed"
-					pf_loop.stdoutClosed = true
-					pf_loop.stderrClosed = true
-					pf_loop.active = false
-					cmds = append(cmds, func() tea.Msg {
-						return portForwardErrorMsg{label: pf_loop.label, streamType: "general", err: fmt.Errorf("failed to restart %s: %w", pf_loop.label, err)}
-					})
+				// Start the new port-forward using startPortForwardCmd
+				if m.TUIChannel != nil {
+					restartCmd := startPortForwardCmd(pf.label, pf.context, pf.namespace, pf.service, pf.port, m.TUIChannel)
+					cmds = append(cmds, restartCmd)
 				} else {
-					pf_loop.cmd = cmdToRun
-					pf_loop.stdout = stdout
-					pf_loop.stderr = stderr
-					pf_loop.statusMsg = "Starting..."
-					processID := cmdToRun.Process.Pid
-					cmds = append(cmds,
-						waitForPortForwardActivity(pf_loop.label, "stdout", stdout),
-						waitForPortForwardActivity(pf_loop.label, "stderr", stderr),
-						func() tea.Msg { return portForwardStartedMsg{label: pf_loop.label, pid: processID} },
-					)
+					m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[%s ERROR] TUIChannel is nil. Cannot restart.", pf.label))
+					pf.statusMsg = "Restart Failed (Internal Error)"
+					pf.active = false
 				}
 			}
 		}

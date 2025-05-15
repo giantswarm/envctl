@@ -2,8 +2,6 @@ package tui
 
 import (
 	"envctl/internal/utils"
-	"io"
-	"os/exec"
 	"time"
 )
 
@@ -17,47 +15,88 @@ type clusterHealthInfo struct {
 	LastUpdated time.Time
 }
 
-// portForwardProcess holds information about a running port-forward command.
+// portForwardProcess holds information about a running port-forward.
+// Adapted for client-go based port forwarding.
 type portForwardProcess struct {
 	label                 string
-	cmd                   *exec.Cmd
-	stdout                io.ReadCloser
-	stderr                io.ReadCloser
-	output                []string
+	// cmd                   *exec.Cmd // Removed for client-go
+	// stdout                io.ReadCloser // Removed for client-go
+	// stderr                io.ReadCloser // Removed for client-go
+	pid                   int             // May become informational, e.g., for logging association if available
+	stopChan              chan struct{}   // To signal the port-forwarding goroutine to stop
+	output                []string        // General output/log for this PF, less direct stdout/stderr
 	err                   error
-	port                  string
+	port                  string // e.g., "8080:80" or just "8080" if local and remote are same
 	isWC                  bool
 	context               string // The context name this port-forward targets
 	namespace             string
-	service               string
-	active                bool
-	statusMsg             string // More detailed status message
-	stdoutClosed          bool   // Flag to indicate stdout stream has ended
-	stderrClosed          bool   // Flag to indicate stderr stream has ended
-	forwardingEstablished bool   // True if "Forwarding from..." detected
+	service               string // Service name to target
+	active                bool   // Whether this PF is configured to be active
+	statusMsg             string // Detailed status message (e.g., "Running", "Stopped", "Error")
+	// stdoutClosed          bool   // Less relevant with client-go direct stream handling
+	// stderrClosed          bool   // Less relevant with client-go direct stream handling
+	forwardingEstablished bool // True if client-go signals forwarding is active
 }
 
 // Define messages for Bubble Tea
+
+// portForwardStatusUpdateMsg can be used for various status changes from client-go PFs
+type portForwardStatusUpdateMsg struct {
+	label     string
+	status    string // e.g., "Forwarding Active (Local Port: 1234)", "Error: ...", "Stopped"
+	outputLog string // Optional line to add to the PF's specific output log
+	isError   bool
+	isReady   bool // Specifically indicates the PF is now listening
+}
+
+// portForwardOutputMsg might be used for verbose logging from the PF wrapper if needed.
+// Its direct relevance decreases as client-go might log differently.
 type portForwardOutputMsg struct {
 	label      string
-	streamType string // "stdout" or "stderr"
+	streamType string // "stdout" or "stderr" (less direct, more for wrapper logs)
 	line       string
 }
 
+// portForwardErrorMsg for critical errors from the port-forwarding goroutine itself (not just stream errors)
+// This can be consolidated with portForwardStatusUpdateMsg by using its isError field.
 type portForwardErrorMsg struct {
-	label      string
-	streamType string // "stdout", "stderr", or "general" for non-stream specific errors
-	err        error
+	label string
+	err   error
 }
 
+// portForwardStreamEndedMsg is less relevant with client-go, which manages its own streams.
+// We might have a general "portForwardStoppedMsg" instead.
 type portForwardStreamEndedMsg struct {
 	label      string
 	streamType string // "stdout" or "stderr"
 }
 
-type portForwardStartedMsg struct { // To signal the command has actually started
-	label string
-	pid   int
+// portForwardStartedMsg could signal that the client-go ForwardPorts() is up and listening.
+// The PID might not be relevant anymore.
+// This can be consolidated with portForwardStatusUpdateMsg by using its isReady field.
+type portForwardStartedMsg struct {
+	label     string
+	localPort string // The actual local port it's listening on
+}
+
+// portForwardRestartCompletedMsg carries the result of an async restart attempt with client-go.
+// The PID of the kubectl command is no longer relevant.
+// The command, stdout, stderr are also not relevant as client-go handles this internally.
+type portForwardRestartCompletedMsg struct {
+	label       string
+	newStopChan chan struct{} // The stop channel for the newly started port-forward
+	localPort   string        // Actual local port if successfully (re)started
+	err         error
+}
+
+// portForwardSetupCompletedMsg is sent when the initial setup command for a client-go port-forward completes.
+// It carries the stop channel for the new port-forward and any immediate setup error.
+// Ongoing status updates will come via other messages like portForwardStatusUpdateMsg.
+type portForwardSetupCompletedMsg struct {
+	label    string
+	stopChan chan struct{}
+	status   string // Initial status message, e.g., "Initializing..." or error if initialError is nil but status indicates issue
+	err      error  // For immediate errors from the setup command itself
 }
 
 type kubeContextResultMsg struct {

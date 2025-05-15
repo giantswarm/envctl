@@ -11,23 +11,24 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// waitForPortForwardActivity returns a tea.Cmd that waits for the next line of output
-// or an error from a given io.ReadCloser.
+// waitForPortForwardActivity is DEPRECATED for client-go based port-forwarding.
+// Output and status will be handled by messages sent via TUIChannel from utils.StartPortForwardClientGo.
 func waitForPortForwardActivity(label string, streamType string, rc io.ReadCloser) tea.Cmd {
 	return func() tea.Msg {
-		if rc == nil { // Stream might have failed to open
-			return portForwardStreamEndedMsg{label: label, streamType: streamType}
+		if rc == nil {
+			return portForwardStreamEndedMsg{label: label, streamType: streamType} // This msg type might also be deprecated
 		}
 		scanner := bufio.NewScanner(rc)
 		if scanner.Scan() {
+			// This message type needs review; direct output might not be the primary way info is conveyed.
 			return portForwardOutputMsg{label: label, streamType: streamType, line: scanner.Text()}
 		}
 		err := scanner.Err()
 		if err != nil {
-			return portForwardErrorMsg{label: label, streamType: streamType, err: err}
+			// This message type needs review for client-go.
+			return portForwardErrorMsg{label: label, err: err}
 		}
-		// If Scan() is false and Err() is nil, it's EOF
-		return portForwardStreamEndedMsg{label: label, streamType: streamType}
+		return portForwardStreamEndedMsg{label: label, streamType: streamType} // This msg type might also be deprecated
 	}
 }
 
@@ -73,6 +74,7 @@ func fetchNodeStatusCmd(clusterNameToFetchStatusFor string, isMC bool, mcNameIfW
 			return nodeStatusMsg{clusterShortName: clusterNameToFetchStatusFor, forMC: isMC, err: fmt.Errorf("malformed full context name (prefix only)")}
 		}
 
+		// utils.GetNodeStatus would eventually use client-go
 		ready, total, err := utils.GetNodeStatus(fullContextName)
 		// clusterShortName in the msg is the original name passed, used by the model for logging against its m.managementCluster/m.workloadCluster fields.
 		return nodeStatusMsg{clusterShortName: clusterNameToFetchStatusFor, forMC: isMC, readyNodes: ready, totalNodes: total, err: err}
@@ -82,6 +84,7 @@ func fetchNodeStatusCmd(clusterNameToFetchStatusFor string, isMC bool, mcNameIfW
 // getCurrentKubeContextCmd is a helper to create a tea.Cmd for fetching the current kube context.
 func getCurrentKubeContextCmd() tea.Cmd {
 	return func() tea.Msg {
+		// utils.GetCurrentKubeContext would eventually use client-go
 		currentCtx, err := utils.GetCurrentKubeContext()
 		return kubeContextResultMsg{context: currentCtx, err: err}
 	}
@@ -90,6 +93,7 @@ func getCurrentKubeContextCmd() tea.Cmd {
 // performSwitchKubeContextCmd creates a tea.Cmd that attempts to switch the kubectl context.
 func performSwitchKubeContextCmd(targetContextName string) tea.Cmd {
 	return func() tea.Msg {
+		// utils.SwitchKubeContext would eventually use client-go
 		err := utils.SwitchKubeContext(targetContextName)
 		return kubeContextSwitchedMsg{TargetContext: targetContextName, err: err}
 	}
@@ -118,6 +122,7 @@ func performPostLoginOperationsCmd(targetKubeContext, desiredMc, desiredWc strin
 		var diagnosticLog strings.Builder
 		diagnosticLog.WriteString(fmt.Sprintf("Attempting to switch context to: %s\n", targetKubeContext))
 
+		// utils.SwitchKubeContext would eventually use client-go
 		err := utils.SwitchKubeContext(targetKubeContext)
 		if err != nil {
 			diagnosticLog.WriteString(fmt.Sprintf("SwitchKubeContext error: %v\n", err))
@@ -130,12 +135,13 @@ func performPostLoginOperationsCmd(targetKubeContext, desiredMc, desiredWc strin
 		}
 		diagnosticLog.WriteString("SwitchKubeContext successful.\n")
 
+		// utils.GetCurrentKubeContext would eventually use client-go
 		actualCurrentContext, err := utils.GetCurrentKubeContext()
 		if err != nil {
 			diagnosticLog.WriteString(fmt.Sprintf("GetCurrentKubeContext error: %v\n", err))
 			return contextSwitchAndReinitializeResultMsg{
 				err:             fmt.Errorf("failed to get current context after switch: %w", err),
-				switchedContext: targetKubeContext, // Use target as fallback if GetCurrent fails
+				switchedContext: targetKubeContext,
 				desiredMcName:   desiredMc,
 				desiredWcName:   desiredWc,
 				diagnosticLog:   diagnosticLog.String(),
@@ -143,7 +149,7 @@ func performPostLoginOperationsCmd(targetKubeContext, desiredMc, desiredWc strin
 		}
 		diagnosticLog.WriteString(fmt.Sprintf("GetCurrentKubeContext successful: %s\n", actualCurrentContext))
 
-		// Diagnostic: Get all contexts
+		// This kubectl call would also ideally use client-go
 		contextsListCmd := exec.Command("kubectl", "config", "get-contexts", "-o", "name")
 		contextsListOutput, contextsListErr := contextsListCmd.Output()
 		if contextsListErr != nil {
@@ -167,5 +173,40 @@ func fetchClusterListCmd() tea.Cmd {
 	return func() tea.Msg {
 		info, err := utils.GetClusterInfo()
 		return clusterListResultMsg{info: info, err: err}
+	}
+}
+
+// startPortForwardCmd initiates a port-forwarding process using client-go.
+// It communicates progress and status back to the TUI via the provided TUIChannel.
+func startPortForwardCmd(label, context, namespace, service, port string, tuiChan chan tea.Msg) tea.Cmd {
+	return func() tea.Msg {
+		sendUpdateFunc := func(status, outputLog string, isError, isReady bool) {
+			// The fmt.Printf debug logs previously here were for console debugging.
+			// We are now focusing on TUI-based logging for handler behavior.
+			if tuiChan == nil {
+				// This case should ideally not be reached if TUI is initialized correctly.
+				// If it does, a console log is still valuable for critical failure.
+				fmt.Printf("[CRITICAL KERNEL PANIC AVERTED] tuiChan is nil in sendUpdateFunc for label: %s. This is a bug.\n", label)
+				return // Avoid panic
+			}
+			tuiChan <- portForwardStatusUpdateMsg{
+				label:     label,
+				status:    status,
+				outputLog: outputLog,
+				isError:   isError,
+				isReady:   isReady,
+			}
+		}
+
+		// utils.StartPortForwardClientGo now returns (chan struct{}, string, error)
+		// The string is the initial status message if synchronous setup was successful.
+		stopChan, initialStatus, initialError := utils.StartPortForwardClientGo(context, namespace, service, port, label, sendUpdateFunc)
+
+		return portForwardSetupCompletedMsg{
+			label:    label,
+			stopChan: stopChan,
+			status:   initialStatus, // Pass status from the setup function
+			err:      initialError,
+		}
 	}
 }

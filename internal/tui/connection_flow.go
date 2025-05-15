@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"envctl/internal/utils"
 	"fmt"
 	"strings"
 	"time"
@@ -9,29 +8,64 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-func handleSubmitNewConnectionMsg(m model, msg submitNewConnectionMsg, cmds []tea.Cmd) (model, tea.Cmd) {
+func handleSubmitNewConnectionMsg(m model, msg submitNewConnectionMsg, existingCmds []tea.Cmd) (model, tea.Cmd) {
 	m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Initiating new connection to MC: %s, WC: %s", msg.mc, msg.wc))
+	m.combinedOutput = append(m.combinedOutput, "[SYSTEM] Step 0: Stopping all existing port-forwarding processes...")
 
-	// 1. Stop existing port forwards
-	for _, pfKey := range m.portForwardOrder {
-		if pf, ok := m.portForwards[pfKey]; ok {
-			if pf.cmd != nil && pf.cmd.Process != nil {
-				pf.cmd.Process.Kill() //nolint:errcheck // Best effort
-			}
+	stoppedCount := 0
+	for pfKey, pf := range m.portForwards {
+		if pf.stopChan != nil {
+			m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[%s] Sending stop signal...", pf.label))
+			close(pf.stopChan)
+			pf.stopChan = nil
+			pf.statusMsg = "Stopped (new conn)"
+			pf.active = false // Mark as inactive, setupPortForwards will re-evaluate
+			m.portForwards[pfKey] = pf // Ensure changes are written back if pf is a copy
+			stoppedCount++
+		} else if pf.active { // If it was supposed to be active but had no stopChan (e.g. setup failed before chan was set)
+			pf.statusMsg = "Stopped (new conn)"
+			pf.active = false
+			m.portForwards[pfKey] = pf
+			// No stopChan to close, but still log it as conceptually stopped.
+			// stoppedCount++; // Optionally count these as well, or only count those actively stopped.
 		}
 	}
 
+	if stoppedCount > 0 {
+		m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Finished stopping %d port-forwards.", stoppedCount))
+	} else {
+		m.combinedOutput = append(m.combinedOutput, "[SYSTEM] No active port-forwards to stop.")
+	}
+	if len(m.combinedOutput) > maxCombinedOutputLines {
+		m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
+	}
+
+	// Proceed with the new connection logic.
 	m.stashedMcName = msg.mc // Used to reconstruct WC name if needed later
 
 	if msg.mc == "" {
 		m.combinedOutput = append(m.combinedOutput, "[SYSTEM ERROR] Management Cluster name cannot be empty.")
-		// Consider how to provide feedback to the user or reset state
-		return m, nil
+		if len(m.combinedOutput) > maxCombinedOutputLines {
+			m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
+		}
+		// Reset input mode
+		m.isConnectingNew = false
+		m.newConnectionInput.Blur()
+		m.newConnectionInput.Reset()
+		m.currentInputStep = mcInputStep
+		if len(m.portForwardOrder) > 0 {
+			m.focusedPanelKey = m.portForwardOrder[0]
+		}
+		return m, nil // No command, user needs to try 'n' again or quit.
 	}
 
 	m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Step 1: Logging into Management Cluster: %s...", msg.mc))
-	updatedCmds := append(cmds, performKubeLoginCmd(msg.mc, true, msg.wc)) // Pass desired WC to carry through
-	return m, tea.Batch(updatedCmds...)
+	if len(m.combinedOutput) > maxCombinedOutputLines {
+		m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
+	}
+	// Return a new command to start the login process.
+	// We are not batching with existingCmds here as this handler starts a new logical flow.
+	return m, performKubeLoginCmd(msg.mc, true, msg.wc)
 }
 
 func handleKubeLoginResultMsg(m model, msg kubeLoginResultMsg, cmds []tea.Cmd) (model, tea.Cmd) {
@@ -123,7 +157,7 @@ func handleContextSwitchAndReinitializeResultMsg(m model, msg contextSwitchAndRe
 	}
 
 	// Reset and set up new port forwards
-	m.setupPortForwards(m.managementCluster, m.workloadCluster) // This clears and rebuilds
+	m.setupPortForwards(m.managementCluster, m.workloadCluster) // This clears and rebuilds portForwards map and order
 
 	// Reset focus
 	if len(m.portForwardOrder) > 0 {
@@ -145,35 +179,9 @@ func handleContextSwitchAndReinitializeResultMsg(m model, msg contextSwitchAndRe
 		newInitCmds = append(newInitCmds, fetchNodeStatusCmd(m.workloadCluster, false, m.managementCluster))
 	}
 
-	// Restart port-forwarding processes for the new setup
-	for _, label := range m.portForwardOrder {
-		pf, isActualPortForward := m.portForwards[label]
-		if isActualPortForward && pf.active { // Only if it's an actual, active port-forward config
-			pf_loop := pf // Capture loop variable
-			startCmd, stdout, stderr, err := utils.StartPortForward(pf_loop.context, pf_loop.namespace, pf_loop.service, pf_loop.port, pf_loop.label)
-			if err != nil {
-				m.portForwards[pf_loop.label].err = err
-				m.portForwards[pf_loop.label].statusMsg = "Failed to start"
-				m.portForwards[pf_loop.label].stdoutClosed = true
-				m.portForwards[pf_loop.label].stderrClosed = true
-				// Send an error message for this specific port-forward
-				newInitCmds = append(newInitCmds, func() tea.Msg {
-					return portForwardErrorMsg{label: pf_loop.label, streamType: "general", err: fmt.Errorf("failed to start %s: %w", pf_loop.label, err)}
-				})
-			} else {
-				processID := startCmd.Process.Pid
-				m.portForwards[pf_loop.label].cmd = startCmd
-				m.portForwards[pf_loop.label].stdout = stdout
-				m.portForwards[pf_loop.label].stderr = stderr
-				m.portForwards[pf_loop.label].statusMsg = "Starting..." // Will be updated by portForwardStartedMsg
-				newInitCmds = append(newInitCmds,
-					waitForPortForwardActivity(pf_loop.label, "stdout", stdout),
-					waitForPortForwardActivity(pf_loop.label, "stderr", stderr),
-					func() tea.Msg { return portForwardStartedMsg{label: pf_loop.label, pid: processID} },
-				)
-			}
-		}
-	}
+	// Start port-forwarding processes for the new setup using the centralized function
+	initialPfCmds := getInitialPortForwardCmds(&m)
+	newInitCmds = append(newInitCmds, initialPfCmds...)
 
 	// Re-add ticker for periodic health updates
 	tickCmd := tea.Tick(healthUpdateInterval, func(t time.Time) tea.Msg {
