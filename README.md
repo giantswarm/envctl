@@ -111,6 +111,7 @@ envctl self-update
     *   Logs into the *full* workload cluster name (`wallaby-plant-cassino-prod`) via `tsh`.
     *   Sets the current `kubectl` context to the *full* workload cluster name (`teleport.giantswarm.io-wallaby-plant-cassino-prod`).
     *   Starts port-forwarding for Prometheus using the *management cluster* context (`teleport.giantswarm.io-wallaby`) in the background.
+    *   Starts port-forwarding for Alloy metrics using the *workload cluster* context (`teleport.giantswarm.io-wallaby-plant-cassino-prod`) with ports 12345:12345.
     *   Prints a summary and instructions for MCP.
 
 ## Shell Completion 🧠
@@ -151,6 +152,7 @@ envctl connect wallaby <TAB>      # Shows short names of workload clusters for w
 ## MCP Integration Notes 💡
 
 *   After running `envctl connect`, Prometheus should be available at `http://localhost:8080/prometheus`.
+*   When connecting to a workload cluster, the Alloy agent will be available at `localhost:12345`.
 *   Ensure your `mcp.json` (e.g., `~/.cursor/mcp.json`) has the correct `PROMETHEUS_URL` for the Prometheus MCP server:
     ```json
     {
