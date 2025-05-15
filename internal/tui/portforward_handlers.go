@@ -92,10 +92,10 @@ func setupPortForwards(m *model, mcName, wcName string) {
 		m.portForwards[alloyLabel] = &portForwardProcess{
 			label:     alloyLabel,
 			port:      "12345:12345",
-			isWC:      false, // Targets MC
+			isWC:      false,                              // Targets MC
 			context:   "teleport.giantswarm.io-" + mcName, // Context for MC
-			namespace: "kube-system",                     // Assuming same namespace
-			service:   "service/alloy-metrics-cluster",   // Assuming same service name
+			namespace: "kube-system",                      // Assuming same namespace
+			service:   "service/alloy-metrics-cluster",    // Assuming same service name
 			active:    true,
 			statusMsg: "Awaiting Setup...",
 		}
