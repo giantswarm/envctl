@@ -9,6 +9,85 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+// setupPortForwards initializes or re-initializes the port-forwarding configurations.
+// It clears any existing port forwards and sets up new ones based on the provided
+// management cluster (mcName) and workload cluster (wcName).
+// This function defines the services to be port-forwarded (e.g., Prometheus, Grafana, Alloy Metrics)
+// and their respective configurations.
+// It directly modifies the model's portForwards and portForwardOrder fields.
+func setupPortForwards(m *model, mcName, wcName string) {
+	// Clear existing port forwards before setting up new ones
+	m.portForwards = make(map[string]*portForwardProcess)
+	m.portForwardOrder = make([]string, 0)
+
+	// Add context pane keys first for navigation order
+	m.portForwardOrder = append(m.portForwardOrder, mcPaneFocusKey)
+	if wcName != "" {
+		m.portForwardOrder = append(m.portForwardOrder, wcPaneFocusKey)
+	}
+
+	// Prometheus for MC
+	if mcName != "" {
+		promLabel := "Prometheus (MC)"
+		m.portForwardOrder = append(m.portForwardOrder, promLabel)
+		m.portForwards[promLabel] = &portForwardProcess{
+			label:     promLabel,
+			port:      "8080:8080",
+			isWC:      false,
+			context:   "teleport.giantswarm.io-" + mcName, // mcName is sufficient, no need for m.getManagementClusterContextIdentifier()
+			namespace: "mimir",
+			service:   "service/mimir-query-frontend",
+			active:    true,
+			statusMsg: "Awaiting Setup...",
+		}
+
+		// Grafana for MC
+		grafanaLabel := "Grafana (MC)"
+		m.portForwardOrder = append(m.portForwardOrder, grafanaLabel)
+		m.portForwards[grafanaLabel] = &portForwardProcess{
+			label:     grafanaLabel,
+			port:      "3000:3000",
+			isWC:      false,
+			context:   "teleport.giantswarm.io-" + mcName, // mcName is sufficient
+			namespace: "monitoring",
+			service:   "service/grafana",
+			active:    true,
+			statusMsg: "Awaiting Setup...",
+		}
+	}
+
+	// Alloy Metrics for WC
+	if wcName != "" {
+		alloyLabel := "Alloy Metrics (WC)"
+		m.portForwardOrder = append(m.portForwardOrder, alloyLabel)
+
+		// Construct the correct context name part for WC using the model's helper.
+		// This ensures consistent and correct context identifier generation.
+		// We need to use mcName here as well, because getWorkloadClusterContextIdentifier
+		// might rely on m.managementCluster which is set to mcName.
+		// To avoid issues if m.managementCluster is not yet mcName when this is called
+		// (e.g. during initial setup), we'll temporarily set it.
+		// A cleaner way would be to pass mcName to getWorkloadClusterContextIdentifier
+		// or make getWorkloadClusterContextIdentifier use the passed mcName/wcName.
+		// For now, this direct usage of the model's method after ensuring mcName is correct is acceptable.
+		originalModelMcName := m.managementCluster
+		m.managementCluster = mcName // Temporarily align model's MC name
+		actualWcContextPart := m.getWorkloadClusterContextIdentifier() // Uses the model's method
+		m.managementCluster = originalModelMcName // Restore original
+
+		m.portForwards[alloyLabel] = &portForwardProcess{
+			label:     alloyLabel,
+			port:      "12345:12345",
+			isWC:      true,
+			context:   "teleport.giantswarm.io-" + actualWcContextPart,
+			namespace: "kube-system",
+			service:   "service/alloy-metrics-cluster",
+			active:    true,
+			statusMsg: "Awaiting Setup...",
+		}
+	}
+}
+
 // handlePortForwardSetupCompletedMsg processes the message received after the synchronous part
 // of a port-forward setup attempt (StartPortForwardClientGo) is finished.
 // It updates the model based on whether the initial setup was successful or encountered an error.

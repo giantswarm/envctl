@@ -2,11 +2,12 @@ package tui
 
 import (
 	"envctl/internal/utils"
-	"fmt"
+	"fmt" // Import os for stderr
 	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -48,6 +49,12 @@ type model struct {
 	ready          bool     // Flag indicating if the TUI has received initial window size and is ready to render.
 	width          int      // Current width of the terminal window.
 	height         int      // Current height of the terminal window.
+	debugMode      bool     // Flag to show or hide debug information
+	colorMode      string   // Current color mode for debugging
+	helpVisible    bool     // Flag to show or hide the help overlay
+	logOverlayVisible bool    // Flag to show or hide the log overlay
+	logViewport       viewport.Model // Viewport for scrollable log overlay
+	mainLogViewport   viewport.Model // Viewport for the main, in-line log panel
 
 	// --- New Connection Input State ---
 	isConnectingNew    bool               // True if the TUI is in 'new connection input' mode.
@@ -62,80 +69,40 @@ type model struct {
 	TUIChannel chan tea.Msg
 }
 
-// setupPortForwards initializes or re-initializes the port-forwarding configurations.
-// It clears any existing port forwards and sets up new ones based on the provided
-// management cluster (mcName) and workload cluster (wcName).
-// This function defines the services to be port-forwarded (e.g., Prometheus, Grafana, Alloy Metrics)
-// and their respective configurations.
-func (m *model) setupPortForwards(mcName, wcName string) {
-	// Clear existing port forwards before setting up new ones
-	m.portForwards = make(map[string]*portForwardProcess)
-	m.portForwardOrder = make([]string, 0)
+// getManagementClusterContextIdentifier returns the canonical identifier part for the MC context.
+// For example, if m.managementCluster="alba", this returns "alba".
+// This identifier is typically used to form the full context name, e.g., "teleport.giantswarm.io-alba".
+// Other parts of the codebase (e.g., in commands.go, handlers.go) should use this
+// method when they need to construct or refer to the MC's context name.
+func (m *model) getManagementClusterContextIdentifier() string {
+	return m.managementCluster
+}
 
-	// Add context pane keys first for navigation order
-	m.portForwardOrder = append(m.portForwardOrder, mcPaneFocusKey)
-	if wcName != "" {
-		m.portForwardOrder = append(m.portForwardOrder, wcPaneFocusKey)
+// getWorkloadClusterContextIdentifier returns the canonical identifier part for the WC context.
+// It correctly forms "mc-wc" if m.workloadCluster is a short name, or uses m.workloadCluster
+// directly if it's already in "mc-wc" format.
+// For example:
+// - if m.managementCluster="alba" and m.workloadCluster="apiel", it returns "alba-apiel".
+// - if m.managementCluster="alba" and m.workloadCluster="alba-apiel", it returns "alba-apiel".
+// Returns an empty string if m.workloadCluster is empty.
+// This identifier is typically used to form the full context name, e.g., "teleport.giantswarm.io-alba-apiel".
+// Other parts of the codebase (e.g., in commands.go, handlers.go, connection_flow.go, and UI rendering logic
+// like isContextRelevantToPane) should use this method when they need to construct, switch to,
+// or match against the WC's context name. This will prevent errors like "alba-alba-apiel".
+func (m *model) getWorkloadClusterContextIdentifier() string {
+	if m.workloadCluster == "" {
+		return "" // No WC defined or selected
 	}
-
-	// Prometheus for MC
-	if mcName != "" {
-		promLabel := "Prometheus (MC)"
-		m.portForwardOrder = append(m.portForwardOrder, promLabel)
-		m.portForwards[promLabel] = &portForwardProcess{
-			label:     promLabel,
-			port:      "8080:8080",
-			isWC:      false,
-			context:   "teleport.giantswarm.io-" + mcName,
-			namespace: "mimir",
-			service:   "service/mimir-query-frontend",
-			active:    true,
-			statusMsg: "Awaiting Setup...",
-		}
-
-		// Grafana for MC
-		grafanaLabel := "Grafana (MC)"
-		m.portForwardOrder = append(m.portForwardOrder, grafanaLabel)
-		m.portForwards[grafanaLabel] = &portForwardProcess{
-			label:     grafanaLabel,
-			port:      "3000:3000",
-			isWC:      false,
-			context:   "teleport.giantswarm.io-" + mcName,
-			namespace: "monitoring",
-			service:   "service/grafana",
-			active:    true,
-			statusMsg: "Awaiting Setup...",
-		}
+	// If m.workloadCluster already starts with m.managementCluster + "-", it's likely the full name.
+	if m.managementCluster != "" && strings.HasPrefix(m.workloadCluster, m.managementCluster+"-") {
+		return m.workloadCluster
 	}
-
-	// Alloy Metrics for WC
-	if wcName != "" {
-		alloyLabel := "Alloy Metrics (WC)"
-		m.portForwardOrder = append(m.portForwardOrder, alloyLabel)
-
-		// Construct the correct context name part for WC.
-		// mcName is the short MC name (e.g., "alba")
-		// wcName can be the short WC name (e.g., "apiel") or a full one (e.g., "alba-apiel" from CLI args)
-		actualWcContextPart := wcName
-		if mcName != "" && !strings.HasPrefix(wcName, mcName+"-") {
-			// If wcName is a short name (e.g., "apiel") and doesn't already start with "alba-",
-			// then prepend mcName to form "alba-apiel".
-			actualWcContextPart = mcName + "-" + wcName
-		}
-		// If wcName was already "alba-apiel", it remains unchanged.
-		// If mcName was empty, actualWcContextPart remains wcName.
-
-		m.portForwards[alloyLabel] = &portForwardProcess{
-			label:     alloyLabel,
-			port:      "12345:12345",
-			isWC:      true,
-			context:   "teleport.giantswarm.io-" + actualWcContextPart,
-			namespace: "kube-system",
-			service:   "service/alloy-metrics-cluster",
-			active:    true,
-			statusMsg: "Awaiting Setup...",
-		}
+	// If m.workloadCluster is a short name and m.managementCluster is present, combine them.
+	if m.managementCluster != "" {
+		return m.managementCluster + "-" + m.workloadCluster
 	}
+	// Otherwise, use m.workloadCluster as is (e.g., MC name is empty, or WC is standalone).
+	return m.workloadCluster
 }
 
 // InitialModel creates the initial state of the TUI model.
@@ -152,6 +119,12 @@ func InitialModel(mcName, wcName, kubeCtx string) model {
 	// Create the TUI message channel with a larger buffer
 	tuiMsgChannel := make(chan tea.Msg, 100)
 
+	// Detect current color profile and set dark mode ON by default
+	colorProfile := lipgloss.ColorProfile().String()
+	lipgloss.SetHasDarkBackground(true) // Force dark mode by default
+	isDarkBg := true // Set this explicitly since we're forcing dark mode
+	colorMode := fmt.Sprintf("%s (Dark: %v)", colorProfile, isDarkBg)
+
 	m := model{
 		managementCluster:  mcName,
 		workloadCluster:    wcName,
@@ -164,9 +137,18 @@ func InitialModel(mcName, wcName, kubeCtx string) model {
 		newConnectionInput: ti,
 		currentInputStep:   mcInputStep,
 		TUIChannel:         tuiMsgChannel, // Assign the channel to the model
+		debugMode:          false,         // Start with debug mode disabled by default
+		colorMode:          colorMode,     // Store the detected color mode
+		helpVisible:        false,         // Start with help overlay hidden
+		logOverlayVisible:  false,         // Initialize log overlay as hidden
+		logViewport:        viewport.New(0,0), // Initialize viewport (size will be set in View)
+		mainLogViewport:    viewport.New(0,0), // Initialize main log viewport
 	}
 
-	m.setupPortForwards(mcName, wcName)
+	m.logViewport.SetContent("Log overlay initialized...") // Initial content
+	m.mainLogViewport.SetContent("Main log initialized...") // Initial content for main log
+
+	setupPortForwards(&m, mcName, wcName)
 
 	if wcName != "" {
 		m.WCHealth = clusterHealthInfo{IsLoading: true}
@@ -209,13 +191,17 @@ func (m model) Init() tea.Cmd {
 
 	// Initial health checks
 	if m.managementCluster != "" {
-		cmds = append(cmds, fetchNodeStatusCmd(m.managementCluster, true, ""))
+		mcIdentifier := m.getManagementClusterContextIdentifier()
+		if mcIdentifier != "" {
+			cmds = append(cmds, fetchNodeStatusCmd(mcIdentifier, true, m.managementCluster))
+		}
 	}
 	if m.workloadCluster != "" {
-		// When m.workloadCluster is from InitialModel, it might be the full "mc-wc" name.
-		// m.managementCluster is the short MC name.
-		// fetchNodeStatusCmd handles if clusterNameToFetchStatusFor is already "mc-wc".
-		cmds = append(cmds, fetchNodeStatusCmd(m.workloadCluster, false, m.managementCluster))
+		wcIdentifier := m.getWorkloadClusterContextIdentifier()
+		if wcIdentifier != "" {
+			// Pass m.workloadCluster (short name) as originalClusterShortName for the message tag.
+			cmds = append(cmds, fetchNodeStatusCmd(wcIdentifier, false, m.workloadCluster))
+		}
 	}
 
 	// Start port-forwarding processes
@@ -252,6 +238,44 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.isConnectingNew && m.newConnectionInput.Focused() {
 			m, cmd = handleKeyMsgInputMode(m, msg)
 		} else {
+			// Handle special keys for overlay and mode toggling
+			switch msg.String() {
+			case "h":
+				// Toggle help overlay
+				m.helpVisible = !m.helpVisible
+				return m, channelReaderCmd(m.TUIChannel)
+			case "D":
+				// Toggle dark mode and update color mode info
+				isDark := lipgloss.HasDarkBackground()
+				// Flip the dark background setting
+				lipgloss.SetHasDarkBackground(!isDark)
+				// Update the color mode status for display
+				m.colorMode = fmt.Sprintf("%s (Dark: %v)", lipgloss.ColorProfile().String(), !isDark)
+				return m, channelReaderCmd(m.TUIChannel)
+			case "z":
+				// Toggle debug mode
+				m.debugMode = !m.debugMode
+				return m, channelReaderCmd(m.TUIChannel)
+			case "esc":
+				// ESC key closes help overlay if it's open
+				if m.helpVisible {
+					m.helpVisible = false
+					return m, channelReaderCmd(m.TUIChannel)
+				}
+				// Otherwise fall through to normal handling
+			}
+
+			// Handle log overlay toggle if no other specific key for overlays was pressed
+			if !m.helpVisible && msg.String() == "L" { // Use 'L' for Log overlay
+				m.logOverlayVisible = !m.logOverlayVisible
+				if m.logOverlayVisible {
+					// When opening, set viewport content and move to bottom
+					m.logViewport.SetContent(strings.Join(m.combinedOutput, "\n"))
+					m.logViewport.GotoBottom()
+				}
+				return m, channelReaderCmd(m.TUIChannel)
+			}
+			
 			m, cmd = handleKeyMsgGlobal(m, msg, []tea.Cmd{})
 		}
 		return m, tea.Batch(cmd, channelReaderCmd(m.TUIChannel))
@@ -259,6 +283,43 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Window size messages are handled by a function in handlers.go
 	case tea.WindowSizeMsg:
 		m, cmd := handleWindowSizeMsg(m, msg)
+		// If log overlay is visible, update its size too
+		if m.logOverlayVisible {
+			// Example: 80% of screen width, 70% of screen height for the log overlay
+			logOverlayWidth := int(float64(m.width) * 0.8)
+			logOverlayHeight := int(float64(m.height) * 0.7)
+			m.logViewport.Width = logOverlayWidth - logOverlayStyle.GetHorizontalFrameSize() // Use a new logOverlayStyle
+			m.logViewport.Height = logOverlayHeight - logOverlayStyle.GetVerticalFrameSize()
+		} else {
+			// Update main log viewport size if overlay is not visible.
+			// The actual dimensions will be driven by the View() function's layout calculations.
+			// We can recalculate them here briefly or rely on View() to do it before rendering.
+			// For simplicity, we'll let View() manage it, but ensure it has non-zero initial if possible.
+			if m.ready { // only if model is ready and width/height are known
+				contentWidth := m.width - appStyle.GetHorizontalFrameSize()
+				totalAvailableHeight := m.height - appStyle.GetVerticalFrameSize()
+				headerHeight := lipgloss.Height(renderHeader(m, contentWidth)) // Re-calc for current size
+
+				maxRow1Height := int(float64(totalAvailableHeight-headerHeight) * 0.20)
+				if maxRow1Height < 5 { maxRow1Height = 5 } else if maxRow1Height > 7 { maxRow1Height = 7 }
+				row1Height := lipgloss.Height(renderContextPanesRow(m, contentWidth, maxRow1Height))
+
+				maxRow2Height := int(float64(totalAvailableHeight-headerHeight) * 0.30)
+				if maxRow2Height < 7 { maxRow2Height = 7 } else if maxRow2Height > 9 { maxRow2Height = 9 }
+				row2Height := lipgloss.Height(renderPortForwardingRow(m, contentWidth, maxRow2Height))
+
+				if m.height >= minHeightForMainLogView {
+					numGaps := 3
+					heightConsumedByElementsAndGaps := headerHeight + row1Height + row2Height + numGaps
+					logSectionHeight := totalAvailableHeight - heightConsumedByElementsAndGaps
+					if logSectionHeight < 0 { logSectionHeight = 0 }
+
+					m.mainLogViewport.Width = contentWidth - panelStatusDefaultStyle.GetHorizontalFrameSize()
+					m.mainLogViewport.Height = logSectionHeight - panelStatusDefaultStyle.GetVerticalBorderSize() - lipgloss.Height(logPanelTitleStyle.Render(" ")) -1
+					if m.mainLogViewport.Height < 0 { m.mainLogViewport.Height = 0}
+				}
+			}
+		}
 		return m, tea.Batch(cmd, channelReaderCmd(m.TUIChannel))
 
 	// Port Forwarding Messages (handlers in portforward_handlers.go)
@@ -300,17 +361,36 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m = handleClusterListResultMsg(m, msg) // Modifies model, returns no cmd
 		return m, channelReaderCmd(m.TUIChannel)
 
+	case tea.MouseMsg:
+		var cmd tea.Cmd
+		// If log overlay is visible, pass mouse events to it for scrolling
+		if m.logOverlayVisible {
+			m.logViewport, cmd = m.logViewport.Update(msg)
+			return m, tea.Batch(cmd, channelReaderCmd(m.TUIChannel))
+		} else {
+			// If log overlay is NOT visible, pass mouse events to the main log viewport
+			// (Assuming no other mouse-interactive components are active)
+			m.mainLogViewport, cmd = m.mainLogViewport.Update(msg)
+			return m, tea.Batch(cmd, channelReaderCmd(m.TUIChannel))
+		}
+		// If other mouse-interactive components are added later, handle them here.
+		// For now, if not the log overlay, ignore other mouse events.
+		return m, channelReaderCmd(m.TUIChannel) // Ensure channel reader continues
+
 	default:
 		// Handle text input updates if in new connection mode and input is focused,
 		// but not a key press (which is handled by tea.KeyMsg case above).
+		var finalCmd tea.Cmd
 		if m.isConnectingNew && m.newConnectionInput.Focused() {
 			var textInputCmd tea.Cmd
 			m.newConnectionInput, textInputCmd = m.newConnectionInput.Update(msg)
-			return m, tea.Batch(textInputCmd, channelReaderCmd(m.TUIChannel))
+			finalCmd = textInputCmd
+		} else if m.logOverlayVisible { // Pass messages to viewport if log overlay is active
+			var viewportCmd tea.Cmd
+			m.logViewport, viewportCmd = m.logViewport.Update(msg)
+			finalCmd = viewportCmd
 		}
-		// If no other case matched, no specific command is returned here.
-		// Any accumulated cmds in the local `cmds` slice would be batched at the end.
-		// However, most handlers now return directly.
+		return m, tea.Batch(finalCmd, channelReaderCmd(m.TUIChannel))
 	}
 
 	// Trim combinedOutput (general operation after message processing)
@@ -341,130 +421,160 @@ func (m model) View() string {
 
 	// If in new connection input mode, render the input UI
 	if m.isConnectingNew {
-		var inputPrompt strings.Builder
-		inputPrompt.WriteString("Enter new cluster information (ESC to cancel, Enter to confirm/next)\n\n")
-		inputPrompt.WriteString(m.newConnectionInput.View()) // Renders the text input bubble
-		if m.currentInputStep == mcInputStep {
-			inputPrompt.WriteString("\n\n[Input: Management Cluster Name]")
-		} else {
-			inputPrompt.WriteString(fmt.Sprintf("\n\n[Input: Workload Cluster Name for MC: %s (optional)]", m.stashedMcName))
-		}
-		inputViewStyle := lipgloss.NewStyle().Padding(1, 2).Border(lipgloss.RoundedBorder()).Width(m.width - 4).Align(lipgloss.Center)
-		return inputViewStyle.Render(inputPrompt.String())
+		return renderNewConnectionInputView(m, m.width) // Uses helper from view_helpers.go
 	}
 
-	// Regular view rendering - use consistent width for all sections
-	totalWidth := m.width
-	contentWidth := totalWidth - appStyle.GetHorizontalFrameSize()
-	marginTop := lipgloss.NewStyle().MarginTop(1)
-
+	// Regular view rendering
+	// Use the full terminal width with no margins for perfect alignment
+	contentWidth := m.width
+	totalAvailableHeight := m.height
+	
+	// For extremely small windows, just show a header
+	if totalAvailableHeight < 5 || contentWidth < 20 {
+		return renderHeader(m, contentWidth)
+	}
+	
 	// ----- GLOBAL HEADER SECTION -----
-	headerTitleString := "envctl TUI - Quit: 'q'/Ctrl+C | Navigate: Tab/Shift+Tab | Restart PF: 'r' | Switch Ctx: 's' | New Conn: N"
-	headerContentAreaWidth := contentWidth - headerStyle.GetHorizontalFrameSize()
-	if headerContentAreaWidth < 0 {
-		headerContentAreaWidth = 0
-	}
-	headerTitleView := headerStyle.Copy().Width(headerContentAreaWidth).Render(headerTitleString)
-	headerHeight := lipgloss.Height(headerTitleView)
+	headerRenderedView := renderHeader(m, contentWidth) // Uses helper from view_helpers.go
+	headerHeight := lipgloss.Height(headerRenderedView)
 
-	// ----- NEW ROW 1: MC/WC Info (Target: 2 columns or 1 if no WC) -----
-	var row1View string
-	if m.workloadCluster != "" {
-		mcPaneWidth := contentWidth / 2
-		wcPaneWidth := contentWidth - mcPaneWidth
-		renderedMcPane := renderMcPane(m, mcPaneWidth)
-		renderedWcPane := renderWcPane(m, wcPaneWidth)
-		row1View = lipgloss.JoinHorizontal(lipgloss.Top, renderedMcPane, renderedWcPane)
-	} else {
-		row1View = renderMcPane(m, contentWidth)
+	// Adjust layout approach for very small windows
+	if totalAvailableHeight < 15 {
+		// In small windows, just show header and cluster info
+		row1FinalView := renderContextPanesRow(m, contentWidth, totalAvailableHeight-headerHeight-1)
+		return lipgloss.JoinVertical(lipgloss.Left, headerRenderedView, row1FinalView)
 	}
-	// Ensure row1View itself is contentWidth wide, aligning its internal content left.
-	row1FinalView := lipgloss.NewStyle().Width(contentWidth).Align(lipgloss.Left).Render(row1View)
+
+	// ----- Height Allocations -----
+	maxRow1Height := int(float64(totalAvailableHeight-headerHeight) * 0.20) // Adjusted percentage slightly for better balance
+	if maxRow1Height < 5 { maxRow1Height = 5 } else if maxRow1Height > 7 { maxRow1Height = 7 }
+
+	maxRow2Height := int(float64(totalAvailableHeight-headerHeight) * 0.30) // Adjusted percentage slightly
+	if maxRow2Height < 7 { maxRow2Height = 7 } else if maxRow2Height > 9 { maxRow2Height = 9 }
+
+	// ----- ROW 1: MC/WC Info -----
+	row1FinalView := renderContextPanesRow(m, contentWidth, maxRow1Height) // Uses helper from view_helpers.go
 	row1Height := lipgloss.Height(row1FinalView)
 
-	// ----- NEW ROW 2: Port Forwarding (Target: 3 fixed columns) -----
-	numFixedColumnsForRow2 := 3
-	row2PanelBaseWidth := contentWidth / numFixedColumnsForRow2
-	row2RemainderPixels := contentWidth % numFixedColumnsForRow2
+	// ----- ROW 2: Port Forwarding -----
+	row2FinalView := renderPortForwardingRow(m, contentWidth, maxRow2Height) // Uses helper from view_helpers.go
+	row2Height := lipgloss.Height(row2FinalView)
 
-	row2CellsRendered := make([]string, numFixedColumnsForRow2)
-	pfPanelKeysToShow := []string{}
-	for _, key := range m.portForwardOrder {
-		if key != mcPaneFocusKey && key != wcPaneFocusKey {
-			pfPanelKeysToShow = append(pfPanelKeysToShow, key)
+	// ----- Main Content Assembly -----
+	var finalViewLayout []string
+	currentHeaderView := headerRenderedView
+
+	finalViewLayout = append(finalViewLayout, currentHeaderView)
+	finalViewLayout = append(finalViewLayout, row1FinalView)
+	finalViewLayout = append(finalViewLayout, row2FinalView)
+
+	if m.height >= minHeightForMainLogView { // minHeightForMainLogView is a constant from styles.go
+		// Calculate log section height to take all remaining space
+		numGaps := 3 // Gaps between header-row1, row1-row2, row2-logPanel
+		heightConsumedByFixedElements := headerHeight + row1Height + row2Height + numGaps
+		logSectionHeight := totalAvailableHeight - heightConsumedByFixedElements
+
+		// Add debug info to see what's happening with height calculations
+		debugHeightInfo := fmt.Sprintf(
+			"DEBUG: total=%d fixed=%d log=%d | header=%d row1=%d row2=%d",
+			totalAvailableHeight, heightConsumedByFixedElements, logSectionHeight, 
+			headerHeight, row1Height, row2Height)
+		m.combinedOutput = append([]string{debugHeightInfo}, m.combinedOutput...)
+
+		if logSectionHeight < 0 { // Ensure it's not negative if space is very constrained
+			logSectionHeight = 0
 		}
+		
+		// IMPORTANT: We need to force the log panel to take all remaining space
+        // Set maximum log height - at least 30% of total height, or all remaining space
+        if logSectionHeight < int(float64(totalAvailableHeight) * 0.3) && totalAvailableHeight > 30 {
+            // Ensure log panel takes at least 30% of screen
+            logSectionHeight = int(float64(totalAvailableHeight) * 0.3)
+            
+            // Limit other sections if needed to make space
+            if row2Height > 7 {
+                row2Height = 7
+            }
+            if row1Height > 5 {
+                row1Height = 5
+            }
+        }
+		
+		// Update log viewport size BEFORE rendering - forcing exact dimensions
+		m.mainLogViewport.Width = contentWidth - panelStatusDefaultStyle.GetHorizontalFrameSize()
+		
+		// Viewport height must account for panel title and borders
+		// Border top + title + gap + content + border bottom = log height
+		borderAndTitleHeight := panelStatusDefaultStyle.GetVerticalFrameSize() + 1 // +1 for title
+		viewportHeight := logSectionHeight - borderAndTitleHeight
+		if viewportHeight < 0 {
+			viewportHeight = 0
+		}
+		
+		// Force viewport height to match the calculated space
+		m.mainLogViewport.Height = viewportHeight
+		
+		// Set content AFTER setting dimensions
+		m.mainLogViewport.SetContent(strings.Join(m.combinedOutput, "\n"))
+		
+		// Now render log panel with the properly sized viewport
+		combinedLogViewString := renderCombinedLogPanel(&m, contentWidth, logSectionHeight)
+		
+		// Debug mode: Check if combined log view string starts with "Log [H=" and fix it
+		if m.debugMode && strings.Contains(combinedLogViewString, "Log [H=") {
+			// Replace the debug prefix with the regular title
+			combinedLogViewString = strings.Replace(
+				combinedLogViewString, 
+				"Log [H=", 
+				"Combined Activity Log", 
+				1)
+		}
+		
+		finalViewLayout = append(finalViewLayout, combinedLogViewString)
+
+	} else {
+		// If main log view is hidden, update header to hint 'L' for log overlay
+		if !strings.Contains(currentHeaderView, "L for Logs") {
+			updatedHeaderStr := strings.Replace(currentHeaderView, "h for Help", "h for Help | L for Logs", 1)
+			finalViewLayout[0] = updatedHeaderStr // Update the header in the layout
+		}
+		m.logViewport.SetContent(strings.Join(m.combinedOutput, "\n"))
 	}
 
-	maxPfPanelHeightRow2 := 0
-	for i := 0; i < numFixedColumnsForRow2; i++ {
-		currentCellWidth := row2PanelBaseWidth
-		if i < row2RemainderPixels {
-			currentCellWidth++
-		}
-
-		if i < len(pfPanelKeysToShow) {
-			pfKey := pfPanelKeysToShow[i]
-			pf := m.portForwards[pfKey]
-			renderedPfCell := renderPortForwardPanel(pf, m, currentCellWidth)
-			row2CellsRendered[i] = renderedPfCell
-			if lipgloss.Height(renderedPfCell) > maxPfPanelHeightRow2 {
-				maxPfPanelHeightRow2 = lipgloss.Height(renderedPfCell)
-			}
-		} else {
-			// Render an empty placeholder panel to maintain the 3-column structure
-			// Use panelStyle and ensure it respects its frame for width calculation.
-			placeholderContentWidth := currentCellWidth - panelStyle.GetHorizontalFrameSize()
-			if placeholderContentWidth < 0 {
-				placeholderContentWidth = 0
-			}
-			// For consistent height, try to use maxPfPanelHeightRow2 if already determined, or a sensible min.
-			// However, lipgloss.JoinHorizontal Top alignment handles varying heights.
-			// For simplicity, a basic empty panel.
-			emptyCell := panelStyle.Copy().Width(placeholderContentWidth).Render("")
-			// If we want empty cells to attempt to match height of actual panels for visual balance:
-			// if maxPfPanelHeightRow2 > 0 { // Requires panelStyle to have Height settable or content to force it.
-			//  emptyCell = panelStyle.Copy().Width(placeholderContentWidth).Height(maxPfPanelHeightRow2).Render("")
-			// } else { // if no panels yet, use a default min height for empty cells
-			//  minH := 7 // example
-			//  emptyCell = panelStyle.Copy().Width(placeholderContentWidth).Height(minH).Render("")
-			// }
-			row2CellsRendered[i] = emptyCell
-		}
-	}
-	row2JoinedPanels := lipgloss.JoinHorizontal(lipgloss.Top, row2CellsRendered...)
-	// Ensure row2View itself is contentWidth wide, aligning its internal content left.
-	row2FinalView := lipgloss.NewStyle().Width(contentWidth).Align(lipgloss.Left).Render(row2JoinedPanels)
-	row2Height := lipgloss.Height(row2FinalView) // Get height directly from the new overall row view
-
-	// Fallback for row2Height if it's still minimal (e.g., all placeholders resulted in a very short row)
-	if len(pfPanelKeysToShow) == 0 { // If there were no actual PF panels, only placeholders
-		// Ensure the row has a minimum sensible height to represent empty panel slots.
-		// A typical panel might be around 7 lines tall (title, blank, 3-4 lines info, status + padding/border).
-		const pragmaticMinRow2HeightWhenEmpty = 7
-		if row2Height < pragmaticMinRow2HeightWhenEmpty {
-			row2Height = pragmaticMinRow2HeightWhenEmpty
-		}
-	}
-
-	// ----- NEW ROW 3: Activity Log (1 column) -----
-	logPanelMinHeight := 5
-	// Calculate available height for log section, accounting for all rows and margins
-	// Total vertical space for margins between header, row1, row2, row3 (3 margins)
-	verticalMarginSpace := marginTop.GetVerticalFrameSize() * 3
-
-	logSectionHeight := m.height - appStyle.GetVerticalFrameSize() - headerHeight - row1Height - row2Height - verticalMarginSpace
-	if logSectionHeight < logPanelMinHeight {
-		logSectionHeight = logPanelMinHeight
-	}
-	combinedLogView := renderCombinedLogPanel(m, contentWidth, logSectionHeight)
-
-	// ----- FINAL ASSEMBLY -----
-	finalView := lipgloss.JoinVertical(lipgloss.Left,
-		headerTitleView,
-		marginTop.Render(row1FinalView), // Use the new width-enforced view
-		marginTop.Render(row2FinalView), // Use the new width-enforced view
-		marginTop.Render(combinedLogView),
+	// Join all layout elements vertically
+	joinedView := lipgloss.JoinVertical(lipgloss.Left, finalViewLayout...)
+	
+	// Make sure the view fills the entire terminal width and height
+	finalView := lipgloss.Place(
+		m.width, 
+		m.height,
+		lipgloss.Left, // Align left horizontally
+		lipgloss.Top,  // Align top vertically
+		joinedView,
+		lipgloss.WithWhitespaceBackground(lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#222222"}), // Match the terminal background
 	)
 
-	return appStyle.Render(finalView)
+	// ----- OVERLAYS (Help & Log) -----
+	if m.helpVisible {
+		helpOverlay := renderHelpOverlay(m, m.width, m.height) // Uses helper from view_helpers.go
+		return lipgloss.Place(
+			m.width, m.height, lipgloss.Center, lipgloss.Center, helpOverlay,
+			lipgloss.WithWhitespaceBackground(lipgloss.AdaptiveColor{Light: "rgba(0,0,0,0.1)", Dark: "rgba(0,0,0,0.6)"}),
+		)
+	} else if m.logOverlayVisible {
+		overlayWidth := int(float64(m.width) * 0.8)
+		overlayHeight := int(float64(m.height) * 0.7)
+		
+		// Update viewport size before rendering it within the overlay
+		m.logViewport.Width = overlayWidth - logOverlayStyle.GetHorizontalFrameSize()
+		m.logViewport.Height = overlayHeight - logOverlayStyle.GetVerticalFrameSize()
+
+		logOverlay := renderLogOverlay(m, overlayWidth, overlayHeight) // Uses helper from view_helpers.go
+		return lipgloss.Place(
+			m.width, m.height, lipgloss.Center, lipgloss.Center, logOverlay,
+			lipgloss.WithWhitespaceBackground(lipgloss.AdaptiveColor{Light: "rgba(0,0,0,0.1)", Dark: "rgba(0,0,0,0.6)"}),
+		)
+	}
+	
+	return finalView
 }

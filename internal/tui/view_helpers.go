@@ -22,26 +22,44 @@ func renderMcPane(m model, paneWidth int) string {
 	if mcFullNameString == "" {
 		mcFullNameString = "N/A"
 	}
-	mcFullContext := "teleport.giantswarm.io-" + m.managementCluster
+	// Use the helper method for consistency, though m.managementCluster should be the identifier.
+	mcIdentifier := m.getManagementClusterContextIdentifier()
+	mcFullContext := "N/A"
+	if mcIdentifier != "" {
+		mcFullContext = "teleport.giantswarm.io-" + mcIdentifier
+	}
+
 	mcActiveString := ""
-	isMcActive := m.currentKubeContext == mcFullContext
+	isMcActive := m.currentKubeContext == mcFullContext && mcIdentifier != ""
 	if isMcActive {
 		mcActiveString = " (Active)"
 	}
-	mcPaneContent := fmt.Sprintf("MC: %s%s\nCtx: %s", mcFullNameString, mcActiveString, mcFullContext)
-	var mcHealthStr string
+	
+	// Compact version with abbreviated context
+	shortContext := strings.TrimPrefix(mcFullContext, "teleport.giantswarm.io-")
+	mcPaneContent := fmt.Sprintf("MC: %s%s\nCtx: %s", mcFullNameString, mcActiveString, shortContext)
+	
+	var healthStatusText string
+	var healthStyle lipgloss.Style
+
 	if m.MCHealth.IsLoading {
-		mcHealthStr = healthLoadingStyle.Render("Nodes: Loading...")
+		healthStatusText = "Nodes: Loading..."
+		healthStyle = healthLoadingStyle
 	} else if m.MCHealth.StatusError != nil {
-		mcHealthStr = healthErrorStyle.Render(fmt.Sprintf("Nodes: Error (%s)", m.MCHealth.LastUpdated.Format("15:04:05")))
+		healthStatusText = fmt.Sprintf("Nodes: Error (%s)", m.MCHealth.LastUpdated.Format("15:04:05"))
+		healthStyle = healthErrorStyle
 	} else {
-		nodeStyleToUse := healthGoodStyle
+		healthStatusText = fmt.Sprintf("Nodes: %d/%d", m.MCHealth.ReadyNodes, m.MCHealth.TotalNodes)
 		if m.MCHealth.ReadyNodes < m.MCHealth.TotalNodes {
-			nodeStyleToUse = healthWarnStyle
+			healthStatusText = "[WARN] " + healthStatusText
+			healthStyle = healthWarnStyle
+		} else {
+			healthStyle = healthGoodStyle
 		}
-		mcHealthStr = nodeStyleToUse.Render(fmt.Sprintf("Nodes: %d/%d (%s)", m.MCHealth.ReadyNodes, m.MCHealth.TotalNodes, m.MCHealth.LastUpdated.Format("15:04:05")))
 	}
-	mcPaneContent += "\n" + mcHealthStr
+	// Render the health status with appropriate style
+	renderedHealthText := healthStyle.Render(healthStatusText)
+	mcPaneContent += "\n" + renderedHealthText
 
 	mcPaneStyleToUse := contextPaneStyle
 	if isMcActive {
@@ -67,45 +85,55 @@ func renderWcPane(m model, paneWidth int) string {
 		return ""
 	}
 
-	wcNameString := m.workloadCluster // This is the short WC name, e.g., "deu01"
+	wcNameString := m.workloadCluster // This is the short WC name, e.g., "apiel"
 
 	// Correctly form the full WC context name for display and active check
+	// using the model's helper method.
+	wcClusterIdentifier := m.getWorkloadClusterContextIdentifier()
 	var wcFullContext string
-	if m.managementCluster != "" && m.workloadCluster != "" {
-		// If m.workloadCluster already contains m.managementCluster (e.g. from initial connect command)
-		// we should avoid double prefixing. However, after a new connection, m.workloadCluster is the short name.
-		// The fetchNodeStatusCmd and setupPortForwards handle this logic for their needs.
-		// For display here, we assume m.managementCluster and m.workloadCluster are the definitive short names.
-		wcFullContext = "teleport.giantswarm.io-" + m.managementCluster + "-" + m.workloadCluster
-	} else if m.workloadCluster != "" {
-		// This case is less ideal, implies MC is empty. If wcNameString somehow has MC prefix, it would be doubled by teleport.
-		// However, StartPortForward and GetNodeStatus have their own prefix logic based on what they receive.
-		// For display consistency, if MC is empty, just use WC. The 'active' check might be off.
-		wcFullContext = "teleport.giantswarm.io-" + wcNameString
+	if wcClusterIdentifier != "" {
+		wcFullContext = "teleport.giantswarm.io-" + wcClusterIdentifier
 	} else {
+		// This case should ideally not be hit if m.workloadCluster was non-empty above,
+		// as getWorkloadClusterContextIdentifier should return something.
+		// However, as a fallback or if logic changes:
 		wcFullContext = "N/A"
 	}
 
 	wcActiveString := ""
-	isWcActive := m.currentKubeContext == wcFullContext
+	isWcActive := m.currentKubeContext == wcFullContext && wcClusterIdentifier != ""
 	if isWcActive {
 		wcActiveString = " (Active)"
 	}
-	wcPaneContent := fmt.Sprintf("WC: %s%s\nCtx: %s", wcNameString, wcActiveString, wcFullContext)
-
-	var wcHealthStr string
-	if m.WCHealth.IsLoading {
-		wcHealthStr = healthLoadingStyle.Render("Nodes: Loading...")
-	} else if m.WCHealth.StatusError != nil {
-		wcHealthStr = healthErrorStyle.Render(fmt.Sprintf("Nodes: Error (%s)", m.WCHealth.LastUpdated.Format("15:04:05")))
-	} else {
-		nodeStyleToUse := healthGoodStyle
-		if m.WCHealth.ReadyNodes < m.WCHealth.TotalNodes {
-			nodeStyleToUse = healthWarnStyle
-		}
-		wcHealthStr = nodeStyleToUse.Render(fmt.Sprintf("Nodes: %d/%d (%s)", m.WCHealth.ReadyNodes, m.WCHealth.TotalNodes, m.WCHealth.LastUpdated.Format("15:04:05")))
+	
+	// Compact version with abbreviated context
+	shortContext := wcClusterIdentifier // Use the identifier directly
+	if wcFullContext == "N/A" { // if identifier was empty
+		shortContext = "N/A"
 	}
-	wcPaneContent += "\n" + wcHealthStr
+	wcPaneContent := fmt.Sprintf("WC: %s%s\nCtx: %s", wcNameString, wcActiveString, shortContext)
+
+	var healthStatusText string
+	var healthStyle lipgloss.Style
+
+	if m.WCHealth.IsLoading {
+		healthStatusText = "Nodes: Loading..."
+		healthStyle = healthLoadingStyle
+	} else if m.WCHealth.StatusError != nil {
+		healthStatusText = fmt.Sprintf("Nodes: Error")
+		healthStyle = healthErrorStyle
+	} else {
+		healthStatusText = fmt.Sprintf("Nodes: %d/%d", m.WCHealth.ReadyNodes, m.WCHealth.TotalNodes)
+		if m.WCHealth.ReadyNodes < m.WCHealth.TotalNodes {
+			healthStatusText = "[WARN] " + healthStatusText
+			healthStyle = healthWarnStyle
+		} else {
+			healthStyle = healthGoodStyle
+		}
+	}
+	// Render the health status with appropriate style
+	renderedHealthText := healthStyle.Render(healthStatusText)
+	wcPaneContent += "\n" + renderedHealthText
 
 	wcPaneStyleToRender := contextPaneStyle
 	if isWcActive {
@@ -119,6 +147,24 @@ func renderWcPane(m model, paneWidth int) string {
 		}
 	}
 	return wcPaneStyleToRender.Copy().Width(paneWidth - wcPaneStyleToRender.GetHorizontalFrameSize()).Render(wcPaneContent)
+}
+
+// renderLogOverlay renders the scrollable activity log in an overlay.
+// - m: The current TUI model.
+// - width: The target width for the overlay (e.g., 80% of screen).
+// - height: The target height for the overlay (e.g., 70% of screen).
+func renderLogOverlay(m model, width, height int) string {
+	// Ensure viewport has latest content, sized correctly (already done in Update for WindowSizeMsg)
+	// Viewport.View() will render its current content within its set dimensions.
+	viewportView := m.logViewport.View()
+
+	// Apply the overlay style to the viewport's rendered content.
+	// The viewport itself doesn't have a border/padding, so logOverlayStyle provides that.
+	// We use the raw width and height passed, assuming they are the desired *outer* dimensions for the overlay box.
+	return logOverlayStyle.Copy().
+		Width(width - logOverlayStyle.GetHorizontalFrameSize()).
+		Height(height - logOverlayStyle.GetVerticalFrameSize()).
+		Render(viewportView)
 }
 
 // renderPortForwardPanel renders a single panel for a port-forwarding process.
@@ -183,14 +229,18 @@ func renderPortForwardPanel(pf *portForwardProcess, m model, targetOuterWidth in
 	pfContentBuilder.WriteString("\n")
 
 	// Info lines: Inherit foreground from finalPanelStyle.
-	displayedContext := strings.TrimPrefix(pf.context, "teleport.giantswarm.io-")
-	displayedService := strings.TrimPrefix(pf.service, "service/")
-	pfContentBuilder.WriteString(fmt.Sprintf("Port: %s\n", pf.port))
-	pfContentBuilder.WriteString(fmt.Sprintf("Ctx: %s\n", displayedContext))
-	pfContentBuilder.WriteString(fmt.Sprintf("Svc: %s/%s\n", pf.namespace, displayedService))
+	pfContentBuilder.WriteString(fmt.Sprintf("Port: %s", pf.port))
+	pfContentBuilder.WriteString("\n")
 
-	// Status line: Explicitly rendered with contentFgTextStyle for emphasis, matching the overall panel text color.
-	pfContentBuilder.WriteString(contentFgTextStyle.Render("Status: " + pf.statusMsg))
+	// Add Service information
+	serviceName := strings.TrimPrefix(pf.service, "service/")
+	pfContentBuilder.WriteString(fmt.Sprintf("Svc: %s", serviceName))
+	pfContentBuilder.WriteString("\n")
+	
+	// Compact status line
+	pfContentBuilder.WriteString(contentFgTextStyle.Render(
+		fmt.Sprintf("Status: %s", trimStatusMessage(pf.statusMsg)),
+	))
 
 	textForPanel := pfContentBuilder.String()
 
@@ -208,60 +258,356 @@ func renderPortForwardPanel(pf *portForwardProcess, m model, targetOuterWidth in
 	return finalPanelStyle.Copy().Width(actualContentWidth).Render(textForPanel)
 }
 
+// trimStatusMessage trims long status messages to make panels more compact
+func trimStatusMessage(status string) string {
+	// Shorten "Running (PID: 12345)" to just "Running"
+	if strings.HasPrefix(status, "Running (PID:") {
+		return "Running"
+	}
+	
+	// Abbreviate "Forwarding from 127.0.0.1:8080 to pod port 8080" 
+	if strings.HasPrefix(status, "Forwarding from") {
+		return "Forwarding"
+	}
+	
+	// Keep error messages but limit length
+	if len(status) > 15 && (strings.Contains(status, "Error") || strings.Contains(status, "Failed")) {
+		return status[:12] + "..."
+	}
+	
+	return status
+}
+
 // renderCombinedLogPanel renders the activity log panel at the bottom of the TUI.
 // It displays a capped number of recent log entries from the model's combinedOutput.
 // The panel has a title and styles log lines, ensuring they wrap within the available width.
 // - m: The current TUI model, used to access the combinedOutput log lines.
 // - availableWidth: The target outer width for the log panel.
 // - logSectionHeight: The target total outer height for the log panel, including its border and title.
-func renderCombinedLogPanel(m model, availableWidth int, logSectionHeight int) string {
-	var combinedLogContent strings.Builder
-	combinedLogContent.WriteString(logPanelTitleStyle.Render("Combined Activity Log") + "\n")
-
-	// Calculate how many lines of logs can be shown in the allocated height
-	logContentAreaHeight := logSectionHeight - lipgloss.Height(logPanelTitleStyle.Render("")) - panelStatusDefaultStyle.GetVerticalBorderSize()
-	if logContentAreaHeight < 1 {
-		logContentAreaHeight = 1
+func renderCombinedLogPanel(m *model, availableWidth int, logSectionHeight int) string {
+	// Return early if no height available
+	if logSectionHeight <= 0 {
+		return ""
 	}
 
-	numLogLinesToShow := logContentAreaHeight
-	startIdx := len(m.combinedOutput) - numLogLinesToShow
-	if startIdx < 0 {
-		startIdx = 0
+	// Calculate inner content area dimensions after accounting for border
+	borderSize := panelStatusDefaultStyle.GetHorizontalFrameSize()
+	innerWidth := availableWidth - borderSize
+	if innerWidth < 0 {
+		innerWidth = 0
 	}
-	displayableLogs := m.combinedOutput[startIdx:]
 
-	// Calculate content width allowing for frame size
-	// panelStatusDefaultStyle is used for the log panel's border/padding
-	frameSize := panelStatusDefaultStyle.GetHorizontalFrameSize()
-	contentWidth := availableWidth - frameSize
+	// Always use the original title for the log panel
+	title := "Combined Activity Log"
+	
+	// Debug information will be added to the log content instead of the title
+	
+	titleView := logPanelTitleStyle.Render(title)
+	
+	// The viewport is already sized correctly and content set in the main View function
+	// Simply get its rendered view
+	viewportView := m.mainLogViewport.View()
+	
+	// Create inner content by joining title and viewport vertically
+	panelContent := lipgloss.JoinVertical(lipgloss.Left, titleView, viewportView)
+
+	// Create a panel with specific styling
+	// Make sure we apply NO height limit to the panel
+	basePanel := panelStatusDefaultStyle.Copy().
+		Width(innerWidth). 
+		MaxHeight(0). // No max height limit!
+		BorderForeground(lipgloss.AdaptiveColor{Light: "#606060", Dark: "#A0A0A0"}).
+		Background(lipgloss.AdaptiveColor{Light: "#F8F8F8", Dark: "#2A2A3A"})
+
+	// Render the panel with our content inside
+	renderedPanel := basePanel.Render(panelContent)
+	
+	// Calculate the actual height of the rendered panel
+	actualHeight := lipgloss.Height(renderedPanel)
+	actualWidth := lipgloss.Width(renderedPanel)
+	
+	// If we're short on height or width, add padding
+	if actualHeight < logSectionHeight || actualWidth < availableWidth {
+		// Log discrepancies if in debug mode
+		if m.debugMode {
+			if actualHeight < logSectionHeight {
+				heightDiffMsg := fmt.Sprintf("[Panel height: %d/%d]", actualHeight, logSectionHeight)
+				m.combinedOutput = append([]string{heightDiffMsg}, m.combinedOutput...)
+			}
+			
+			if actualWidth < availableWidth {
+				widthDiffMsg := fmt.Sprintf("[Panel width: %d/%d]", actualWidth, availableWidth)
+				m.combinedOutput = append([]string{widthDiffMsg}, m.combinedOutput...)
+			}
+		}
+		
+		// Create final wrapped panel with exact dimensions
+		finalPanel := lipgloss.NewStyle().
+			Width(availableWidth).
+			Height(logSectionHeight).
+			Align(lipgloss.Left, lipgloss.Top).
+			Render(renderedPanel)
+			
+		return finalPanel
+	}
+	
+	return renderedPanel
+}
+
+// renderHelpOverlay renders a help overlay with all keyboard shortcuts and their descriptions.
+// The overlay is positioned in the center of the screen.
+// - m: The current TUI model.
+// - width: The target width for the overlay.
+// - height: The target height for the overlay.
+func renderHelpOverlay(m model, width, height int) string {
+	var helpContent strings.Builder
+
+	// Add title
+	helpContent.WriteString(helpTitleStyle.Render("Keyboard Shortcuts Help"))
+	helpContent.WriteString("\n\n")
+
+	// Function to format a shortcut line with key and description
+	formatShortcut := func(key, description string) string {
+		return fmt.Sprintf("%s %s", helpKeyStyle.Render(key), description)
+	}
+
+	// Navigation section
+	helpContent.WriteString(helpSectionStyle.Render("Navigation"))
+	helpContent.WriteString("\n")
+	helpContent.WriteString(formatShortcut("Tab", "Next panel"))
+	helpContent.WriteString("\n")
+	helpContent.WriteString(formatShortcut("Shift+Tab", "Previous panel"))
+	helpContent.WriteString("\n")
+
+	// Operations section
+	helpContent.WriteString(helpSectionStyle.Render("Operations"))
+	helpContent.WriteString("\n")
+	helpContent.WriteString(formatShortcut("q/Ctrl+C", "Quit the application"))
+	helpContent.WriteString("\n")
+	helpContent.WriteString(formatShortcut("r", "Restart port forwarding for focused panel"))
+	helpContent.WriteString("\n")
+	helpContent.WriteString(formatShortcut("s", "Switch Kubernetes context"))
+	helpContent.WriteString("\n")
+	helpContent.WriteString(formatShortcut("N", "Start new connection"))
+	helpContent.WriteString("\n")
+
+	// UI Controls section
+	helpContent.WriteString(helpSectionStyle.Render("UI Controls"))
+	helpContent.WriteString("\n")
+	helpContent.WriteString(formatShortcut("h", "Toggle this help overlay"))
+	helpContent.WriteString("\n")
+	helpContent.WriteString(formatShortcut("D", "Toggle dark/light mode"))
+	helpContent.WriteString("\n")
+	helpContent.WriteString(formatShortcut("z", "Toggle debug information"))
+	helpContent.WriteString("\n")
+	helpContent.WriteString(formatShortcut("Esc", "Close this help overlay"))
+
+	// Calculate overlay dimensions to fit within the screen
+	overlayWidth := width * 2/3
+	if overlayWidth > 80 {
+		overlayWidth = 80 // Cap at 80 columns wide
+	} else if overlayWidth < 50 {
+		overlayWidth = 50 // Min 50 columns
+	}
+
+	// Account for border and padding in the content width
+	contentWidth := overlayWidth - helpOverlayStyle.GetHorizontalFrameSize()
 	if contentWidth < 0 {
 		contentWidth = 0
 	}
 
-	logLineStyleToUse := logLineStyle.Copy().Width(contentWidth) // Ensure log lines wrap
+	// Create the final overlay with border and styling
+	return helpOverlayStyle.Copy().
+		Width(contentWidth).
+		Render(helpContent.String())
+}
 
-	for _, line := range displayableLogs {
-		// Truncation logic can be removed if Width() handles wrapping well.
-		// Lipgloss's Width() on a style applied at render time should handle wrapping.
-		combinedLogContent.WriteString(logLineStyleToUse.Render(line) + "\n")
+// renderNewConnectionInputView renders the UI when the application is in new connection input mode.
+func renderNewConnectionInputView(m model, width int) string {
+	var inputPrompt strings.Builder
+	inputPrompt.WriteString("Enter new cluster information (ESC to cancel, Enter to confirm/next)\n\n")
+	inputPrompt.WriteString(m.newConnectionInput.View()) // Renders the text input bubble
+	if m.currentInputStep == mcInputStep {
+		inputPrompt.WriteString("\n\n[Input: Management Cluster Name]")
+	} else {
+		inputPrompt.WriteString(fmt.Sprintf("\n\n[Input: Workload Cluster Name for MC: %s (optional)]", m.stashedMcName))
+	}
+	inputViewStyle := lipgloss.NewStyle().Padding(1, 2).Border(lipgloss.RoundedBorder()).Width(width - 4).Align(lipgloss.Center)
+	return inputViewStyle.Render(inputPrompt.String())
+}
+
+// renderHeader renders the global header for the TUI.
+func renderHeader(m model, contentWidth int) string {
+	// Use a simplified header when width is very small
+	if contentWidth < 40 {
+		headerTitleString := "envctl TUI"
+		
+		// Ensure there's no possible negative width when applying style
+		headerStyle := headerStyle.Copy().Width(contentWidth)
+		return headerStyle.Render(headerTitleString)
+	}
+	
+	// Regular header with more information
+	headerTitleString := "envctl TUI - Press h for Help | Tab to Navigate | q to Quit"
+
+	// Add color mode debug info if debugMode is enabled
+	if m.debugMode {
+		headerTitleString += fmt.Sprintf(" | Mode: %s | Toggle Dark: D | Debug: z", m.colorMode)
 	}
 
-	// Apply panel style with the exact width and height
-	// availableWidth is the target total outer width for the log panel.
-	// panelStatusDefaultStyle is used for the log panel, calculate its frame.
-	logPanelFrameSize := panelStatusDefaultStyle.GetHorizontalFrameSize()
-	actualLogPanelContentWidth := availableWidth - logPanelFrameSize
-	if actualLogPanelContentWidth < 0 {
-		actualLogPanelContentWidth = 0
+	// Make sure we leave enough space for the header content by not over-subtracting frame size
+	headerWidth := contentWidth
+	frameSize := headerStyle.GetHorizontalFrameSize()
+	
+	if headerWidth <= frameSize {
+		// If available width is too small, use minimal style and content
+		return "envctl TUI"
+	}
+	
+	// Otherwise use styled header with full content
+	return headerStyle.Copy().
+		Width(headerWidth - frameSize).
+		Render(headerTitleString)
+}
+
+// renderContextPanesRow renders the row containing MC and WC info panes.
+func renderContextPanesRow(m model, contentWidth int, maxRowHeight int) string {
+	var rowView string
+	if m.workloadCluster != "" {
+		// Ensure the panes together exactly match contentWidth by accounting for borders
+		// First calculate the needed inner widths
+		mcPaneStyle := contextPaneStyle
+		wcPaneStyle := contextPaneStyle
+		
+		mcBorderSize := mcPaneStyle.GetHorizontalFrameSize()
+		wcBorderSize := wcPaneStyle.GetHorizontalFrameSize()
+		
+		// Subtract border sizes from total width to get distributable content space
+		innerWidth := contentWidth - mcBorderSize - wcBorderSize
+		
+		// Split the available inner width evenly between MC and WC panes
+		mcInnerWidth := innerWidth / 2
+		wcInnerWidth := innerWidth - mcInnerWidth  // Use remainder for WC to avoid rounding issues
+		
+		// The full width includes borders for each pane
+		mcPaneWidth := mcInnerWidth + mcBorderSize
+		wcPaneWidth := wcInnerWidth + wcBorderSize
+		
+		renderedMcPane := renderMcPane(m, mcPaneWidth)
+		renderedWcPane := renderWcPane(m, wcPaneWidth)
+		rowView = lipgloss.JoinHorizontal(lipgloss.Top, renderedMcPane, renderedWcPane)
+	} else {
+		// If only MC pane, it should take full width
+		rowView = renderMcPane(m, contentWidth)
 	}
 
-	logPanelStyle := panelStatusDefaultStyle.Copy().
-		Width(actualLogPanelContentWidth). // Set content width
-		Height(logSectionHeight)
+	// Ensure rowView itself is exactly contentWidth wide, aligning its internal content left.
+	return lipgloss.NewStyle().
+		Width(contentWidth).
+		Align(lipgloss.Left).
+		MaxHeight(maxRowHeight). // Limit height
+		Render(rowView)
+}
 
-	// The content string is already styled per line.
-	// logPanelStyle's job is to add border/padding around this.
-	// If logPanelStyle had a background, it would apply.
-	return logPanelStyle.Render(strings.TrimRight(combinedLogContent.String(), "\n"))
+// renderPortForwardingRow renders the row containing port forwarding panels.
+func renderPortForwardingRow(m model, contentWidth int, maxRowHeight int) string {
+	numFixedColumns := 3 // From original View logic for port forward panels
+	
+	// Get panels to show
+	pfPanelKeysToShow := []string{}
+	for _, key := range m.portForwardOrder {
+		if key != mcPaneFocusKey && key != wcPaneFocusKey { // mcPaneFocusKey and wcPaneFocusKey are constants
+			pfPanelKeysToShow = append(pfPanelKeysToShow, key)
+		}
+	}
+	
+	// Calculate total border size for all panels
+	totalBorderSize := 0
+	for i := 0; i < numFixedColumns; i++ {
+		if i < len(pfPanelKeysToShow) {
+			// Use actual panel style for real panels
+			pfKey := pfPanelKeysToShow[i]
+			pf := m.portForwards[pfKey]
+			
+			var borderStyle lipgloss.Style
+			if pf.err != nil || strings.HasPrefix(strings.ToLower(pf.statusMsg), "failed") {
+				borderStyle = panelStatusErrorStyle
+			} else if pf.forwardingEstablished {
+				borderStyle = panelStatusRunningStyle
+			} else {
+				borderStyle = panelStatusInitializingStyle
+			}
+			
+			totalBorderSize += borderStyle.GetHorizontalFrameSize()
+		} else {
+			// Use default panel style for empty panels
+			totalBorderSize += panelStyle.GetHorizontalFrameSize()
+		}
+	}
+	
+	// Calculate distributable inner width
+	innerWidth := contentWidth - totalBorderSize
+	if innerWidth < 0 {
+		innerWidth = 0
+	}
+	
+	// Base width for each panel's content area
+	innerPanelBaseWidth := innerWidth / numFixedColumns
+	
+	// Remainder to distribute one extra character per panel from left to right
+	innerRemainder := innerWidth % numFixedColumns
+	
+	// Render panels with exact widths
+	cellsRendered := make([]string, numFixedColumns)
+	
+	for i := 0; i < numFixedColumns; i++ {
+		// Calculate inner content width for this panel
+		innerPanelWidth := innerPanelBaseWidth
+		if i < innerRemainder {
+			innerPanelWidth++
+		}
+		
+		// Get the border size for this specific panel
+		var panelBorderSize int
+		if i < len(pfPanelKeysToShow) {
+			pfKey := pfPanelKeysToShow[i]
+			pf := m.portForwards[pfKey]
+			
+			var borderStyle lipgloss.Style
+			if pf.err != nil || strings.HasPrefix(strings.ToLower(pf.statusMsg), "failed") {
+				borderStyle = panelStatusErrorStyle
+			} else if pf.forwardingEstablished {
+				borderStyle = panelStatusRunningStyle
+			} else {
+				borderStyle = panelStatusInitializingStyle
+			}
+			
+			panelBorderSize = borderStyle.GetHorizontalFrameSize()
+		} else {
+			panelBorderSize = panelStyle.GetHorizontalFrameSize()
+		}
+		
+		// Calculate the full panel width including its border
+		currentPanelWidth := innerPanelWidth + panelBorderSize
+
+		if i < len(pfPanelKeysToShow) {
+			pfKey := pfPanelKeysToShow[i]
+			pf := m.portForwards[pfKey]
+			renderedPfCell := renderPortForwardPanel(pf, m, currentPanelWidth)
+			cellsRendered[i] = renderedPfCell
+		} else {
+			// Render an empty placeholder panel with exact width
+			emptyCell := panelStyle.Copy().Width(innerPanelWidth).Render("")
+			cellsRendered[i] = emptyCell
+		}
+	}
+
+	joinedPanels := lipgloss.JoinHorizontal(lipgloss.Top, cellsRendered...)
+
+	// Ensure row is exactly contentWidth wide
+	return lipgloss.NewStyle().
+		Width(contentWidth).
+		Align(lipgloss.Left).
+		MaxHeight(maxRowHeight).
+		Render(joinedPanels)
 }

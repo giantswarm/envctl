@@ -11,6 +11,7 @@ It automates the process of logging into clusters via Teleport (`tsh`) and setti
 *   **Simplified Connection:** Connect to management and workload clusters with a single command.
 *   **Automatic Context Switching:** Sets your `kubectl` context correctly.
 *   **Prometheus Port-Forwarding:** Handles `kubectl port-forward` for the Mimir query frontend automatically.
+*   **Interactive Terminal UI:** View cluster status, manage port forwards, and monitor connections in a polished terminal interface.
 *   **Teleport Integration:** Uses your existing `tsh` setup for Kubernetes access.
 *   **Shell Completion:** Provides dynamic command-line completion for cluster names (Bash & Zsh).
 
@@ -73,6 +74,8 @@ The primary command is `envctl connect`:
 envctl connect <management-cluster> [workload-cluster-shortname]
 ```
 
+This command launches the interactive TUI by default, showing you real-time status of your clusters and port-forwards.
+
 Other commands:
 
 ```
@@ -81,6 +84,9 @@ envctl version
 
 # Update envctl to the latest release
 envctl self-update
+
+# Use the CLI mode without TUI (for scripts or CI environments)
+envctl connect <management-cluster> [workload-cluster-shortname] --no-tui
 ```
 
 **Arguments for `connect`:**
@@ -96,10 +102,12 @@ envctl self-update
     envctl connect enigma
     ```
 
+    *   Launches an interactive terminal UI
     *   Logs into `enigma` via `tsh kube login enigma`.
     *   Sets the current `kubectl` context to `teleport.giantswarm.io-enigma`.
     *   Starts port-forwarding for Prometheus (`kubectl --context teleport.giantswarm.io-enigma port-forward -n mimir service/mimir-query-frontend 8080:8080`) in the background.
-    *   Prints a summary and instructions for MCP.
+    *   Displays cluster health and connection status
+    *   Allows management of port-forwards and contexts
 
 2.  **Connect to a Management and Workload Cluster:**
 
@@ -113,6 +121,38 @@ envctl self-update
     *   Starts port-forwarding for Prometheus using the *management cluster* context (`teleport.giantswarm.io-wallaby`) in the background.
     *   Starts port-forwarding for Alloy metrics using the *workload cluster* context (`teleport.giantswarm.io-wallaby-plant-cassino-prod`) with ports 12345:12345.
     *   Prints a summary and instructions for MCP.
+
+## Terminal User Interface 🖥️
+
+When running `envctl connect`, the Terminal User Interface (TUI) provides a visual dashboard to monitor and control your connections:
+
+![envctl TUI overview](docs/images/tui-overview.png)
+
+### Key Features
+
+- **Cluster Status Monitoring**: View real-time health status of both management and workload clusters
+- **Port Forward Management**: Monitor active port forwards with status indicators
+- **Log Viewer**: View operation logs directly in the terminal
+- **Keyboard Navigation**: Easily navigate between panels with Tab/Shift+Tab
+- **Dark Mode Support**: Toggle between light and dark themes with 'D' key
+
+### Keyboard Shortcuts
+
+| Key          | Action                                   |
+|--------------|------------------------------------------|
+| Tab          | Navigate to next panel                   |
+| Shift+Tab    | Navigate to previous panel               |
+| q / Ctrl+C   | Quit the application                     |
+| r            | Restart port forwarding for focused panel|
+| s            | Switch Kubernetes context                |
+| N            | Start new connection                     |
+| h            | Toggle help overlay                      |
+| D            | Toggle dark/light mode                   |
+| z            | Toggle debug information                 |
+| L            | View log overlay (when logs are hidden)  |
+| Esc          | Close help/log overlay                   |
+
+For more details on the implementation and architecture of the TUI, see the [TUI documentation](docs/tui.md).
 
 ## Shell Completion 🧠
 

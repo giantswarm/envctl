@@ -7,6 +7,7 @@ import (
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 )
 
@@ -85,8 +86,10 @@ of the workload cluster (e.g., 've5v6' for 'enigma-ve5v6').
 		fmt.Println("--------------------------")
 		fmt.Println("Setup complete. Starting TUI...") // Updated message
 
+		_ = lipgloss.HasDarkBackground()
+
 		initialModel := tui.InitialModel(managementCluster, fullWorkloadClusterName, teleportContextToUse)
-		p := tea.NewProgram(initialModel, tea.WithAltScreen())
+		p := tea.NewProgram(initialModel, tea.WithAltScreen(), tea.WithMouseAllMotion())
 		if _, err := p.Run(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error running TUI: %v\\n", err)
 			return err

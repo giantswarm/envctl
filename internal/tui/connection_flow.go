@@ -112,40 +112,50 @@ func handleKubeLoginResultMsg(m model, msg kubeLoginResultMsg, cmds []tea.Cmd) (
 	var nextCmds []tea.Cmd
 	if msg.isMC {
 		// MC Login was successful. Now, check if WC login is needed.
-		desiredMcForNextStep := msg.clusterName        // This is the confirmed MC name
-		desiredWcForNextStep := msg.desiredWcShortName // WC name from original user input
+		desiredMcForNextStep := msg.clusterName        // This is the confirmed MC name (e.g., "alba")
+		desiredWcForNextStep := msg.desiredWcShortName // WC name from original user input (e.g., "apiel")
 
 		if desiredWcForNextStep != "" {
-			fullDesiredWcName := desiredMcForNextStep + "-" + desiredWcForNextStep
-			m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Step 2: Logging into Workload Cluster: %s...", fullDesiredWcName))
-			nextCmds = append(nextCmds, performKubeLoginCmd(fullDesiredWcName, false, "")) // For WC login, desiredWcShortNameToCarry is ""
+			// Construct the canonical WC identifier for the tsh login command.
+			// Ensures that if desiredWcForNextStep was already "mc-wc", it's not prefixed again.
+			var wcIdentifierForLogin string
+			if strings.HasPrefix(desiredWcForNextStep, desiredMcForNextStep+"-") {
+				wcIdentifierForLogin = desiredWcForNextStep
+			} else {
+				wcIdentifierForLogin = desiredMcForNextStep + "-" + desiredWcForNextStep
+			}
+			m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Step 2: Logging into Workload Cluster: %s...", wcIdentifierForLogin))
+			nextCmds = append(nextCmds, performKubeLoginCmd(wcIdentifierForLogin, false, "")) // For WC login, desiredWcShortNameToCarry is ""
 		} else {
 			// No WC specified, proceed to context switch and re-initialize for MC only.
 			m.combinedOutput = append(m.combinedOutput, "[SYSTEM] Step 2: No Workload Cluster specified. Proceeding to context switch for MC.")
+			// desiredMcForNextStep is the MC identifier (e.g., "alba")
 			targetKubeContext := "teleport.giantswarm.io-" + desiredMcForNextStep
 			nextCmds = append(nextCmds, performPostLoginOperationsCmd(targetKubeContext, desiredMcForNextStep, ""))
 		}
 	} else {
-		// WC Login was successful. Proceed to context switch and re-initialize for MC + WC.
-		// msg.clusterName is the full WC name (e.g., "mc-wc").
+		// WC Login was successful. msg.clusterName here is the WC identifier (e.g., "alba-apiel") used for login.
+		// Proceed to context switch and re-initialize for MC + WC.
 		// m.stashedMcName should hold the MC name from the initial submitNewConnectionMsg.
-		finalMcName := m.stashedMcName
-		shortWcName := ""
-		if strings.HasPrefix(msg.clusterName, finalMcName+"-") {
+		finalMcName := m.stashedMcName // This is the short MC name (e.g., "alba")
+		
+		// msg.clusterName is the WC identifier (e.g., "alba-apiel") that was successfully logged into.
+		// We need the short WC name for desiredWcName in performPostLoginOperationsCmd.
+		var shortWcName string
+		if finalMcName != "" && strings.HasPrefix(msg.clusterName, finalMcName+"-") {
 			shortWcName = strings.TrimPrefix(msg.clusterName, finalMcName+"-")
 		} else {
-			// This case implies wc name didn't need mc prefix, or stashedMcName was not set as expected.
-			// For robustness, if shortWcName is still empty, we might infer it or handle error.
-			// However, performPostLoginOperationsCmd expects a short WC name.
-			// If msg.clusterName is just "wc" and finalMcName is "mc", shortWcName calculation above will be correct.
-			// If msg.clusterName is "mc-wc" and finalMcName is "mc", it's also correct.
-			// What if user enters full "mc-wc" for WC and "mc" for MC? desiredWcShortName in kubeLoginResultMsg would be "mc-wc"
-			// Then fullDesiredWcName = "mc-mc-wc". This needs care in performKubeLoginCmd and how names are passed.
-			// For now, assume current logic for shortWcName is mostly okay.
+			// This implies msg.clusterName might be a short WC name itself (if finalMcName was empty or no prefix match)
+			// or some other naming convention was used for login that we need to adapt.
+			// For now, assume if it doesn't have the MC prefix, it *is* the short WC name.
+			// This matches the behavior of m.getWorkloadClusterContextIdentifier if MC is empty.
+			shortWcName = msg.clusterName // This might be problematic if msg.clusterName is complex and not just short WC
 		}
 
 		m.combinedOutput = append(m.combinedOutput, "[SYSTEM] Step 3: Workload Cluster login successful. Proceeding to context switch for WC.")
-		targetKubeContext := "teleport.giantswarm.io-" + msg.clusterName // Full WC name for context
+		// msg.clusterName is the WC identifier (e.g., "alba-apiel") that was successfully logged into.
+		// This is the correct identifier to form the targetKubeContext.
+		targetKubeContext := "teleport.giantswarm.io-" + msg.clusterName
 		nextCmds = append(nextCmds, performPostLoginOperationsCmd(targetKubeContext, finalMcName, shortWcName))
 	}
 	return m, tea.Batch(append(cmds, nextCmds...)...)
@@ -198,7 +208,7 @@ func handleContextSwitchAndReinitializeResultMsg(m model, msg contextSwitchAndRe
 	}
 
 	// Reset and set up new port forwards
-	m.setupPortForwards(m.managementCluster, m.workloadCluster) // This clears and rebuilds portForwards map and order
+	setupPortForwards(&m, m.managementCluster, m.workloadCluster) // This clears and rebuilds portForwards map and order
 
 	// Reset focus
 	if len(m.portForwardOrder) > 0 {
@@ -214,10 +224,16 @@ func handleContextSwitchAndReinitializeResultMsg(m model, msg contextSwitchAndRe
 	newInitCmds = append(newInitCmds, getCurrentKubeContextCmd()) // Verify/update displayed current context
 
 	if m.managementCluster != "" {
-		newInitCmds = append(newInitCmds, fetchNodeStatusCmd(m.managementCluster, true, ""))
+		mcIdentifier := m.getManagementClusterContextIdentifier()
+		if mcIdentifier != "" {
+			newInitCmds = append(newInitCmds, fetchNodeStatusCmd(mcIdentifier, true, m.managementCluster))
+		}
 	}
 	if m.workloadCluster != "" {
-		newInitCmds = append(newInitCmds, fetchNodeStatusCmd(m.workloadCluster, false, m.managementCluster))
+		wcIdentifier := m.getWorkloadClusterContextIdentifier()
+		if wcIdentifier != "" {
+			newInitCmds = append(newInitCmds, fetchNodeStatusCmd(wcIdentifier, false, m.workloadCluster))
+		}
 	}
 
 	// Start port-forwarding processes for the new setup using the centralized function

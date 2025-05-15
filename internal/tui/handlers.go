@@ -128,8 +128,31 @@ func handleKeyMsgInputMode(m model, keyMsg tea.KeyMsg) (model, tea.Cmd) {
 // - Navigating panels (Tab, Shift+Tab, 'j'/Down, 'k'/Up): Cycles focus through UI panels.
 // - Restarting a focused port-forward ('r'): Stops and starts the selected port-forward process.
 // - Switching Kubernetes context ('s'): Attempts to switch to the context of the focused MC or WC pane.
+// - Toggling Log Overlay ('L') is handled in model.Update's KeyMsg block.
 func handleKeyMsgGlobal(m model, keyMsg tea.KeyMsg, existingCmds []tea.Cmd) (model, tea.Cmd) {
 	var cmds = existingCmds // Start with existing commands
+
+	// If log overlay is visible, prioritize its controls
+	if m.logOverlayVisible {
+		switch keyMsg.String() {
+		case "L", "esc": // Close log overlay
+			m.logOverlayVisible = false
+			return m, nil
+		case "k", "up", "j", "down", "pgup", "pgdown", "home", "end": // Pass scrolling keys to viewport
+			var viewportCmd tea.Cmd
+			m.logViewport, viewportCmd = m.logViewport.Update(keyMsg)
+			return m, viewportCmd
+		default: // Other keys are ignored when log overlay is active
+			return m, nil
+		}
+	}
+
+	// If help overlay is visible, only Esc or h work (handled in model.Update's KeyMsg block)
+	if m.helpVisible {
+		// Key handling for when help is visible is done in model.Update
+		// We shouldn't process global keys here to avoid conflicts.
+		return m, nil
+	}
 
 	switch keyMsg.String() {
 	case "ctrl+c", "q":
@@ -266,27 +289,22 @@ func handleKeyMsgGlobal(m model, keyMsg tea.KeyMsg, existingCmds []tea.Cmd) (mod
 
 	case "s": // Switch kubectl context to focused MC/WC pane
 		var targetContextToSwitch string
-		var clusterShortNameForContext string
+		var clusterIdentifier string // Renamed from clusterShortNameForContext
 		var paneNameForLog string
 
 		if m.focusedPanelKey == mcPaneFocusKey && m.managementCluster != "" {
-			clusterShortNameForContext = m.managementCluster
+			clusterIdentifier = m.getManagementClusterContextIdentifier()
 			paneNameForLog = "MC"
 		} else if m.focusedPanelKey == wcPaneFocusKey && m.workloadCluster != "" {
-			if m.managementCluster != "" {
-				clusterShortNameForContext = m.managementCluster + "-" + m.workloadCluster
-			} else {
-				clusterShortNameForContext = m.workloadCluster
-			}
+			clusterIdentifier = m.getWorkloadClusterContextIdentifier()
 			paneNameForLog = "WC"
 		}
 
-		if clusterShortNameForContext != "" {
-			if !strings.HasPrefix(clusterShortNameForContext, "teleport.giantswarm.io-") {
-				targetContextToSwitch = "teleport.giantswarm.io-" + clusterShortNameForContext
-			} else {
-				targetContextToSwitch = clusterShortNameForContext
-			}
+		if clusterIdentifier != "" {
+			// The getManagementClusterContextIdentifier/getWorkloadClusterContextIdentifier methods return
+			// the part of the context name *after* "teleport.giantswarm.io-".
+			// So, we always prepend the prefix here.
+			targetContextToSwitch = "teleport.giantswarm.io-" + clusterIdentifier
 			m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Attempting to switch kubectl context to: %s (Pane: %s)", targetContextToSwitch, paneNameForLog))
 			cmds = append(cmds, performSwitchKubeContextCmd(targetContextToSwitch))
 		} else {
@@ -328,11 +346,17 @@ func handleRequestClusterHealthUpdate(m model) (model, tea.Cmd) {
 
 	if m.managementCluster != "" {
 		m.MCHealth.IsLoading = true
-		cmds = append(cmds, fetchNodeStatusCmd(m.managementCluster, true, ""))
+		mcIdentifier := m.getManagementClusterContextIdentifier()
+		if mcIdentifier != "" {
+			cmds = append(cmds, fetchNodeStatusCmd(mcIdentifier, true, m.managementCluster))
+		}
 	}
 	if m.workloadCluster != "" {
 		m.WCHealth.IsLoading = true
-		cmds = append(cmds, fetchNodeStatusCmd(m.workloadCluster, false, m.managementCluster))
+		wcIdentifier := m.getWorkloadClusterContextIdentifier()
+		if wcIdentifier != "" {
+			cmds = append(cmds, fetchNodeStatusCmd(wcIdentifier, false, m.workloadCluster))
+		}
 	}
 	// Re-tick for next update
 	cmds = append(cmds, tea.Tick(healthUpdateInterval, func(t time.Time) tea.Msg {
@@ -406,11 +430,17 @@ func handleKubeContextSwitchedMsg(m model, msg kubeContextSwitchedMsg) (model, t
 		cmds = append(cmds, getCurrentKubeContextCmd())
 		if m.managementCluster != "" {
 			m.MCHealth.IsLoading = true
-			cmds = append(cmds, fetchNodeStatusCmd(m.managementCluster, true, ""))
+			mcIdentifier := m.getManagementClusterContextIdentifier()
+			if mcIdentifier != "" {
+				cmds = append(cmds, fetchNodeStatusCmd(mcIdentifier, true, m.managementCluster))
+			}
 		}
 		if m.workloadCluster != "" {
 			m.WCHealth.IsLoading = true
-			cmds = append(cmds, fetchNodeStatusCmd(m.workloadCluster, false, m.managementCluster))
+			wcIdentifier := m.getWorkloadClusterContextIdentifier()
+			if wcIdentifier != "" {
+				cmds = append(cmds, fetchNodeStatusCmd(wcIdentifier, false, m.workloadCluster))
+			}
 		}
 	}
 	if len(m.combinedOutput) > maxCombinedOutputLines {

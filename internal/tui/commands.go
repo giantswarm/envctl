@@ -9,55 +9,34 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// fetchNodeStatusCmd creates a tea.Cmd to asynchronously fetch the node status (ready/total nodes)
-// for a given Kubernetes cluster. It determines the correct Kubernetes context name based on whether
-// it's an MC or WC and the provided cluster names.
-//   - clusterNameToFetchStatusFor: The short name of the cluster (e.g., "alba" for MC, "deu01" for WC).
-//     For WCs provided via CLI, this might initially be the full "mc-wc" form.
-//   - isMC: Boolean indicating if the status is for a Management Cluster.
-//   - mcNameIfWC: The short name of the MC; used only if isMC is false to help construct the full WC context name
-//     if clusterNameToFetchStatusFor is just the WC short name.
-//
-// Returns a tea.Cmd that, when run, will call utils.GetNodeStatusClientGo and send a nodeStatusMsg back to the TUI.
-func fetchNodeStatusCmd(clusterNameToFetchStatusFor string, isMC bool, mcNameIfWC string) tea.Cmd {
+// fetchNodeStatusCmd creates a tea.Cmd to asynchronously fetch the node status.
+// - clusterIdentifier: The canonical cluster identifier part of the context name (e.g., "alba" for MC, "alba-apiel" for WC).
+// - isMC: Boolean indicating if the status is for a Management Cluster.
+// - originalClusterShortName: The original short name of the cluster (e.g., "alba" or "apiel"), used for tagging the result message.
+// Returns a tea.Cmd that, when run, will call utils.GetNodeStatusClientGo and send a nodeStatusMsg.
+func fetchNodeStatusCmd(clusterIdentifier string, isMC bool, originalClusterShortName string) tea.Cmd {
 	return func() tea.Msg {
-		var contextClusterPart string
-
-		if clusterNameToFetchStatusFor == "" {
-			return nodeStatusMsg{clusterShortName: clusterNameToFetchStatusFor, forMC: isMC, err: fmt.Errorf("cluster name for health check is empty")}
+		if clusterIdentifier == "" {
+			return nodeStatusMsg{clusterShortName: originalClusterShortName, forMC: isMC, err: fmt.Errorf("cluster identifier for health check is empty")}
 		}
 
-		if isMC {
-			contextClusterPart = clusterNameToFetchStatusFor
-		} else { // For WC
-			if mcNameIfWC != "" && !strings.HasPrefix(clusterNameToFetchStatusFor, mcNameIfWC+"-") {
-				// If wc name (clusterNameToFetchStatusFor) doesn't already look like "mc-wc", construct it using mcNameIfWC.
-				contextClusterPart = mcNameIfWC + "-" + clusterNameToFetchStatusFor
-			} else {
-				// clusterNameToFetchStatusFor already looks like "mc-wc", or mcNameIfWC is empty.
-				// If mcNameIfWC is empty, we hope clusterNameToFetchStatusFor is the full "mc-wc" form.
-				contextClusterPart = clusterNameToFetchStatusFor
-			}
+		// clusterIdentifier is already the correct part, e.g., "alba" or "alba-apiel".
+		// We just need to prepend the teleport prefix if it's not already a full context name (though it shouldn't be).
+		fullContextName := clusterIdentifier
+		if !strings.HasPrefix(clusterIdentifier, "teleport.giantswarm.io-") {
+			fullContextName = "teleport.giantswarm.io-" + clusterIdentifier
+		} else {
+			// If it somehow already has the prefix, ensure it doesn't get double prefixed by a mistake upstream.
+			// However, the expectation is clusterIdentifier is just the cluster part.
 		}
 
-		if contextClusterPart == "" { // Should be caught by earlier check, but as safeguard.
-			return nodeStatusMsg{clusterShortName: clusterNameToFetchStatusFor, forMC: isMC, err: fmt.Errorf("derived cluster part for context is empty")}
+		// Ensure fullContextName is not just the prefix if clusterIdentifier was somehow empty and skipped previous checks.
+		if fullContextName == "teleport.giantswarm.io-" && clusterIdentifier == "" { // defensive check
+			return nodeStatusMsg{clusterShortName: originalClusterShortName, forMC: isMC, err: fmt.Errorf("malformed full context name (prefix only from empty identifier)")}
 		}
 
-		fullContextName := contextClusterPart
-		if !strings.HasPrefix(contextClusterPart, "teleport.giantswarm.io-") {
-			fullContextName = "teleport.giantswarm.io-" + contextClusterPart
-		}
-
-		// Ensure fullContextName is not just the prefix if contextClusterPart was somehow empty and skipped previous checks.
-		if fullContextName == "teleport.giantswarm.io-" {
-			return nodeStatusMsg{clusterShortName: clusterNameToFetchStatusFor, forMC: isMC, err: fmt.Errorf("malformed full context name (prefix only)")}
-		}
-
-		// utils.GetNodeStatus would eventually use client-go
 		ready, total, err := utils.GetNodeStatusClientGo(fullContextName)
-		// clusterShortName in the msg is the original name passed, used by the model for logging against its m.managementCluster/m.workloadCluster fields.
-		return nodeStatusMsg{clusterShortName: clusterNameToFetchStatusFor, forMC: isMC, readyNodes: ready, totalNodes: total, err: err}
+		return nodeStatusMsg{clusterShortName: originalClusterShortName, forMC: isMC, readyNodes: ready, totalNodes: total, err: err}
 	}
 }
 
