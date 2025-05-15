@@ -136,7 +136,7 @@ func handlePortForwardSetupCompletedMsg(m model, msg portForwardSetupCompletedMs
 			m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
 		}
 	} else {
-		m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[TUI WARNING] No PF found for Lbl['%s'] during SetupCompleted.", msg.label))
+		m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[TUI WARNING] No Port-forward found for label['%s'] during SetupCompleted.", msg.label))
 	}
 
 	// Trim combined output - typically done at end of model.Update
