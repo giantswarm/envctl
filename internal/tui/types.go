@@ -22,8 +22,8 @@ type clusterHealthInfo struct {
 type portForwardProcess struct {
 	label                 string        // User-friendly label for the port-forward (e.g., "Prometheus (MC)").
 	pid                   int           // PID of the process, mainly for informational/logging purposes if available (less critical with client-go).
-	stopChan              chan struct{}   // Channel used to signal the port-forwarding goroutine to stop.
-	output                []string        // Stores general output or log messages specific to this port-forward.
+	stopChan              chan struct{} // Channel used to signal the port-forwarding goroutine to stop.
+	output                []string      // Stores general output or log messages specific to this port-forward.
 	err                   error         // Any error encountered by this port-forwarding process.
 	port                  string        // Port mapping string (e.g., "8080:8080").
 	isWC                  bool          // True if this port-forward targets a workload cluster service.

@@ -12,11 +12,12 @@ import (
 // fetchNodeStatusCmd creates a tea.Cmd to asynchronously fetch the node status (ready/total nodes)
 // for a given Kubernetes cluster. It determines the correct Kubernetes context name based on whether
 // it's an MC or WC and the provided cluster names.
-// - clusterNameToFetchStatusFor: The short name of the cluster (e.g., "alba" for MC, "deu01" for WC).
-//                                For WCs provided via CLI, this might initially be the full "mc-wc" form.
-// - isMC: Boolean indicating if the status is for a Management Cluster.
-// - mcNameIfWC: The short name of the MC; used only if isMC is false to help construct the full WC context name
-//               if clusterNameToFetchStatusFor is just the WC short name.
+//   - clusterNameToFetchStatusFor: The short name of the cluster (e.g., "alba" for MC, "deu01" for WC).
+//     For WCs provided via CLI, this might initially be the full "mc-wc" form.
+//   - isMC: Boolean indicating if the status is for a Management Cluster.
+//   - mcNameIfWC: The short name of the MC; used only if isMC is false to help construct the full WC context name
+//     if clusterNameToFetchStatusFor is just the WC short name.
+//
 // Returns a tea.Cmd that, when run, will call utils.GetNodeStatusClientGo and send a nodeStatusMsg back to the TUI.
 func fetchNodeStatusCmd(clusterNameToFetchStatusFor string, isMC bool, mcNameIfWC string) tea.Cmd {
 	return func() tea.Msg {

@@ -84,7 +84,7 @@ of the workload cluster (e.g., 've5v6' for 'enigma-ve5v6').
 		// --- Print Initial Setup Info (can be displayed in TUI later) ---
 		fmt.Println("--------------------------")
 		fmt.Println("Setup complete. Starting TUI...") // Updated message
-		
+
 		initialModel := tui.InitialModel(managementCluster, fullWorkloadClusterName, teleportContextToUse)
 		p := tea.NewProgram(initialModel, tea.WithAltScreen())
 		if _, err := p.Run(); err != nil {

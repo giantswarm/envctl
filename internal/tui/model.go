@@ -50,10 +50,10 @@ type model struct {
 	height         int      // Current height of the terminal window.
 
 	// --- New Connection Input State ---
-	isConnectingNew    bool            // True if the TUI is in 'new connection input' mode.
-	newConnectionInput textinput.Model // Bubbletea text input component for new cluster names.
-	currentInputStep   newInputStep    // Current step in the new connection input flow (mcInputStep or wcInputStep).
-	stashedMcName      string          // Temporarily stores the MC name while the WC name is being inputted.
+	isConnectingNew    bool               // True if the TUI is in 'new connection input' mode.
+	newConnectionInput textinput.Model    // Bubbletea text input component for new cluster names.
+	currentInputStep   newInputStep       // Current step in the new connection input flow (mcInputStep or wcInputStep).
+	stashedMcName      string             // Temporarily stores the MC name while the WC name is being inputted.
 	clusterInfo        *utils.ClusterInfo // Holds fetched cluster list for autocompletion during new connection input.
 
 	// TUIChannel is a channel used by asynchronous operations (e.g., port forwarding, Kubernetes API calls)
@@ -153,13 +153,13 @@ func InitialModel(mcName, wcName, kubeCtx string) model {
 	tuiMsgChannel := make(chan tea.Msg, 100)
 
 	m := model{
-		managementCluster: mcName,
-		workloadCluster:   wcName,
-		kubeContext:       kubeCtx,
-		portForwards:      make(map[string]*portForwardProcess),
-		portForwardOrder:  make([]string, 0),
-		combinedOutput:    make([]string, 0),
-		MCHealth:          clusterHealthInfo{IsLoading: true},
+		managementCluster:  mcName,
+		workloadCluster:    wcName,
+		kubeContext:        kubeCtx,
+		portForwards:       make(map[string]*portForwardProcess),
+		portForwardOrder:   make([]string, 0),
+		combinedOutput:     make([]string, 0),
+		MCHealth:           clusterHealthInfo{IsLoading: true},
 		isConnectingNew:    false,
 		newConnectionInput: ti,
 		currentInputStep:   mcInputStep,
@@ -252,7 +252,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.isConnectingNew && m.newConnectionInput.Focused() {
 			m, cmd = handleKeyMsgInputMode(m, msg)
 		} else {
-			m, cmd = handleKeyMsgGlobal(m, msg, []tea.Cmd{}) 
+			m, cmd = handleKeyMsgGlobal(m, msg, []tea.Cmd{})
 		}
 		return m, tea.Batch(cmd, channelReaderCmd(m.TUIChannel))
 
@@ -386,7 +386,7 @@ func (m model) View() string {
 	numFixedColumnsForRow2 := 3
 	row2PanelBaseWidth := contentWidth / numFixedColumnsForRow2
 	row2RemainderPixels := contentWidth % numFixedColumnsForRow2
-	
+
 	row2CellsRendered := make([]string, numFixedColumnsForRow2)
 	pfPanelKeysToShow := []string{}
 	for _, key := range m.portForwardOrder {
@@ -450,7 +450,7 @@ func (m model) View() string {
 	logPanelMinHeight := 5
 	// Calculate available height for log section, accounting for all rows and margins
 	// Total vertical space for margins between header, row1, row2, row3 (3 margins)
-	verticalMarginSpace := marginTop.GetVerticalFrameSize() * 3 
+	verticalMarginSpace := marginTop.GetVerticalFrameSize() * 3
 
 	logSectionHeight := m.height - appStyle.GetVerticalFrameSize() - headerHeight - row1Height - row2Height - verticalMarginSpace
 	if logSectionHeight < logPanelMinHeight {
@@ -458,11 +458,11 @@ func (m model) View() string {
 	}
 	combinedLogView := renderCombinedLogPanel(m, contentWidth, logSectionHeight)
 
-	// ----- FINAL ASSEMBLY ----- 
+	// ----- FINAL ASSEMBLY -----
 	finalView := lipgloss.JoinVertical(lipgloss.Left,
 		headerTitleView,
 		marginTop.Render(row1FinalView), // Use the new width-enforced view
-		marginTop.Render(row2FinalView),  // Use the new width-enforced view
+		marginTop.Render(row2FinalView), // Use the new width-enforced view
 		marginTop.Render(combinedLogView),
 	)
 

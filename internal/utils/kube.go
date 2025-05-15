@@ -28,8 +28,8 @@ type SendUpdateFunc func(status, outputLog string, isError, isReady bool)
 // and relay each line as a log message to the TUI.
 type tuiLogWriter struct {
 	label      string         // Label to prefix messages, identifying the source port-forward.
-	sendUpdate SendUpdateFunc   // The callback function to send formatted log messages.
-	asError    bool             // If true, indicates this writer handles stderr-like messages, potentially flagging them as errors.
+	sendUpdate SendUpdateFunc // The callback function to send formatted log messages.
+	asError    bool           // If true, indicates this writer handles stderr-like messages, potentially flagging them as errors.
 }
 
 // Write processes the byte slice p, splits it into lines, and sends each line
@@ -41,7 +41,7 @@ func (w *tuiLogWriter) Write(p []byte) (n int, err error) {
 			// For plain log output, status is empty, isReady is false.
 			// Strip out client-go internal formatting and provide cleaner messages
 			cleanLine := line
-			
+
 			// Remove timestamp prefixes often seen in client-go logs
 			if strings.Contains(cleanLine, "I") && strings.Contains(cleanLine, "client-go") {
 				parts := strings.SplitN(cleanLine, " ", 3)
@@ -49,7 +49,7 @@ func (w *tuiLogWriter) Write(p []byte) (n int, err error) {
 					cleanLine = parts[2]
 				}
 			}
-			
+
 			// Send as log output without additional label prefix since handler will add it
 			w.sendUpdate("", cleanLine, w.asError, false)
 		}
@@ -108,7 +108,7 @@ func StartPortForwardClientGo(
 	// 2. Kubernetes Config
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
 	// ExplicitPath can be set here if envctl uses a specific kubeconfig path
-	// loadingRules.ExplicitPath = clientcmd.RecommendedHomeFile 
+	// loadingRules.ExplicitPath = clientcmd.RecommendedHomeFile
 	configOverrides := &clientcmd.ConfigOverrides{CurrentContext: kubeContext}
 	kubeConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
 
@@ -138,7 +138,7 @@ func StartPortForwardClientGo(
 		Name(podName).
 		SubResource("portforward").
 		URL()
-		
+
 	// 6. Create Dialer & PortForwarder
 	transport, upgrader, err := spdy.RoundTripperFor(restConfig)
 	if err != nil {
@@ -213,7 +213,7 @@ func StartPortForwardClientGo(
 			sendUpdate(
 				"Timeout.",
 				"Port-forward timed out after 60s waiting for ready signal.",
-				true, // isError = true
+				true,  // isError = true
 				false, // isReady = false
 			)
 			return
@@ -266,7 +266,6 @@ func getPodNameForPortForward(clientset kubernetes.Interface, namespace, service
 			// return "", fmt.Errorf("service %s/%s does not have a TargetPort matching %d", namespace, resourceName, remotePodTargetPort)
 		}
 
-
 		if len(svc.Spec.Selector) == 0 {
 			return "", fmt.Errorf("service %s/%s has no selector, cannot find backing pods", namespace, resourceName)
 		}
@@ -295,7 +294,7 @@ func getPodNameForPortForward(clientset kubernetes.Interface, namespace, service
 					allContainersReady := true
 					if len(pod.Status.ContainerStatuses) == 0 && len(pod.Spec.Containers) > 0 {
 						// Pod is running but container statuses not yet reported, might be initializing
-						allContainersReady = false 
+						allContainersReady = false
 					}
 					for _, cs := range pod.Status.ContainerStatuses {
 						if !cs.Ready {
@@ -359,4 +358,4 @@ func GetNodeStatusClientGo(kubeContext string) (readyNodes int, totalNodes int, 
 // They primarily interact with external commands (`kubectl`, `tsh`) or system configurations.
 // While `StartPortForwardClientGo` has been refactored to use client-go directly, these other functions
 // currently retain their exec-based implementation. Future enhancements could involve migrating more of these
-// to use client-go for more robust and integrated Kubernetes interactions where applicable. 
+// to use client-go for more robust and integrated Kubernetes interactions where applicable.

@@ -12,7 +12,7 @@ import (
 type ClusterInfo struct {
 	ManagementClusters []string            // A list of standalone management cluster names.
 	WorkloadClusters   map[string][]string // A map where the key is a management cluster name,
-	                                     // and the value is a list of short workload cluster names belonging to that MC.
+	// and the value is a list of short workload cluster names belonging to that MC.
 }
 
 // GetClusterInfo executes the `tsh kube ls` command and parses its output to populate a ClusterInfo struct.

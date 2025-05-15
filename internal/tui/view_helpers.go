@@ -238,7 +238,7 @@ func renderCombinedLogPanel(m model, availableWidth int, logSectionHeight int) s
 	if contentWidth < 0 {
 		contentWidth = 0
 	}
-	
+
 	logLineStyleToUse := logLineStyle.Copy().Width(contentWidth) // Ensure log lines wrap
 
 	for _, line := range displayableLogs {
@@ -246,7 +246,7 @@ func renderCombinedLogPanel(m model, availableWidth int, logSectionHeight int) s
 		// Lipgloss's Width() on a style applied at render time should handle wrapping.
 		combinedLogContent.WriteString(logLineStyleToUse.Render(line) + "\n")
 	}
-	
+
 	// Apply panel style with the exact width and height
 	// availableWidth is the target total outer width for the log panel.
 	// panelStatusDefaultStyle is used for the log panel, calculate its frame.
@@ -255,11 +255,11 @@ func renderCombinedLogPanel(m model, availableWidth int, logSectionHeight int) s
 	if actualLogPanelContentWidth < 0 {
 		actualLogPanelContentWidth = 0
 	}
-	
+
 	logPanelStyle := panelStatusDefaultStyle.Copy().
 		Width(actualLogPanelContentWidth). // Set content width
 		Height(logSectionHeight)
-		
+
 	// The content string is already styled per line.
 	// logPanelStyle's job is to add border/padding around this.
 	// If logPanelStyle had a background, it would apply.

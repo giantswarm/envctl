@@ -39,7 +39,6 @@ func LoginToKubeCluster(clusterName string) (stdout string, stderr string, err e
 	return stdoutStr, stderrStr, nil
 }
 
-
 // DetermineClusterProvider attempts to identify the cloud provider (e.g., AWS, Azure, GCP)
 // of a Kubernetes cluster by inspecting the `providerID` of the first node.
 // It uses `kubectl get nodes -o jsonpath={.items[0].spec.providerID}`.

@@ -10,8 +10,8 @@ import (
 const (
 	// mcPaneFocusKey and wcPaneFocusKey are special string keys used to identify
 	// the Management Cluster and Workload Cluster info panes for focus management in navigation.
-	mcPaneFocusKey       = "__MC_PANE_FOCUS_KEY__"
-	wcPaneFocusKey       = "__WC_PANE_FOCUS_KEY__"
+	mcPaneFocusKey = "__MC_PANE_FOCUS_KEY__"
+	wcPaneFocusKey = "__WC_PANE_FOCUS_KEY__"
 	// healthUpdateInterval defines how often cluster health information (node status) is refreshed.
 	healthUpdateInterval = 30 * time.Second
 )
@@ -38,13 +38,13 @@ var (
 	portTitleStyle = lipgloss.NewStyle().Bold(true).MarginBottom(1)
 
 	// statusStyle is a general-purpose style, currently not heavily specialized.
-	statusStyle    = lipgloss.NewStyle()
+	statusStyle = lipgloss.NewStyle()
 
 	// logLineStyle is for individual lines in the activity log, typically making them less prominent (faint).
-	logLineStyle   = lipgloss.NewStyle().Faint(true)
+	logLineStyle = lipgloss.NewStyle().Faint(true)
 
 	// errorStyle is a general style for error messages, primarily setting a red foreground color.
-	errorStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
+	errorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
 
 	// logPanelTitleStyle is for the title of the combined activity log panel.
 	logPanelTitleStyle = lipgloss.NewStyle().Bold(true).Padding(0, 1).MarginBottom(1)
@@ -87,7 +87,7 @@ var (
 	activeContextPaneStyle = contextPaneStyle.Copy().Background(lipgloss.Color("235")) // Subtle dark gray background for active context
 
 	// focusedContextPaneStyle is applied when a context pane is focused for navigation.
-	focusedContextPaneStyle          = contextPaneStyle.Copy().Border(lipgloss.ThickBorder()).BorderForeground(lipgloss.Color("62"))
+	focusedContextPaneStyle = contextPaneStyle.Copy().Border(lipgloss.ThickBorder()).BorderForeground(lipgloss.Color("62"))
 	// focusedAndActiveContextPaneStyle is applied when a context pane is both focused and its context is active.
 	focusedAndActiveContextPaneStyle = activeContextPaneStyle.Copy().Border(lipgloss.ThickBorder()).BorderForeground(lipgloss.Color("62"))
 

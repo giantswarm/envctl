@@ -12,9 +12,10 @@ import (
 // handlePortForwardSetupCompletedMsg processes the message received after the synchronous part
 // of a port-forward setup attempt (StartPortForwardClientGo) is finished.
 // It updates the model based on whether the initial setup was successful or encountered an error.
-// - m: The current TUI model.
-// - msg: The portForwardSetupCompletedMsg containing the label of the port-forward,
-//        its initial status, a stop channel (if successful), and any error encountered during setup.
+//   - m: The current TUI model.
+//   - msg: The portForwardSetupCompletedMsg containing the label of the port-forward,
+//     its initial status, a stop channel (if successful), and any error encountered during setup.
+//
 // Returns the updated model and a nil command as no further async operations are directly initiated here.
 func handlePortForwardSetupCompletedMsg(m model, msg portForwardSetupCompletedMsg) (model, tea.Cmd) {
 	if pf, ok := m.portForwards[msg.label]; ok {
@@ -65,18 +66,18 @@ func handlePortForwardStatusUpdateMsg(m model, msg portForwardStatusUpdateMsg) (
 		if msg.status != "" {
 			pf.statusMsg = msg.status
 			// Only log status changes to the activity log if they're meaningful
-			if !strings.HasPrefix(msg.status, "Initializing") && 
-			   !strings.Contains(msg.status, "Forwarding from") {
-				m.combinedOutput = append(m.combinedOutput, 
+			if !strings.HasPrefix(msg.status, "Initializing") &&
+				!strings.Contains(msg.status, "Forwarding from") {
+				m.combinedOutput = append(m.combinedOutput,
 					fmt.Sprintf("[%s] Status changed: %s", msg.label, msg.status))
 			}
 		}
-		
+
 		// Add log output to combinedOutput when provided
 		if msg.outputLog != "" {
 			// Don't modify the original message - preserve it exactly as sent
 			// pf.output = append(pf.output, msg.outputLog) // REMOVED: This line sent logs to individual panel
-			
+
 			// Format for the combined log with a prefix
 			logEntry := fmt.Sprintf("[%s] %s", msg.label, msg.outputLog)
 			m.combinedOutput = append(m.combinedOutput, logEntry)
@@ -86,25 +87,25 @@ func handlePortForwardStatusUpdateMsg(m model, msg portForwardStatusUpdateMsg) (
 		if msg.isError {
 			pf.active = false
 			pf.forwardingEstablished = false
-			
+
 			// Add an error notification if there was no outputLog
 			if msg.outputLog == "" && msg.status == "" {
-				m.combinedOutput = append(m.combinedOutput, 
+				m.combinedOutput = append(m.combinedOutput,
 					fmt.Sprintf("[%s] Error occurred (no details provided)", msg.label))
 			}
 		} else if msg.isReady {
 			pf.forwardingEstablished = true
 			pf.active = true
-			
+
 			// Add a ready notification if there was no status message
 			if msg.status == "" {
-				m.combinedOutput = append(m.combinedOutput, 
+				m.combinedOutput = append(m.combinedOutput,
 					fmt.Sprintf("[%s] Port-forwarding established", msg.label))
 			}
 		}
 	} else {
 		// Only add this warning if the port-forward doesn't exist
-		m.combinedOutput = append(m.combinedOutput, 
+		m.combinedOutput = append(m.combinedOutput,
 			fmt.Sprintf("[TUI WARNING] No port-forward found for label '%s'", msg.label))
 	}
 
@@ -112,7 +113,7 @@ func handlePortForwardStatusUpdateMsg(m model, msg portForwardStatusUpdateMsg) (
 	if len(m.combinedOutput) > maxCombinedOutputLines+100 {
 		m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
 	}
-	
+
 	// Trim port-forward's output if it exists
 	if pf, ok := m.portForwards[msg.label]; ok {
 		if len(pf.output) > maxCombinedOutputLines {
@@ -137,7 +138,7 @@ func getInitialPortForwardCmds(m *model) []tea.Cmd {
 		// Check if pf.active is true to decide to start.
 		// The statusMsg is initialized to "Awaiting Setup..." in setupPortForwards.
 		// It will be updated by portForwardStatusUpdateMsg once StartPortForwardClientGo sends an update.
-		if isActualPortForward && pf.active { 
+		if isActualPortForward && pf.active {
 			if m.TUIChannel == nil {
 				// This is a critical error, should ideally not happen.
 				// We can update the status directly here as no command will be issued.
@@ -153,4 +154,3 @@ func getInitialPortForwardCmds(m *model) []tea.Cmd {
 	}
 	return pfCmds
 }
-

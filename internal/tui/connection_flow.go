@@ -29,7 +29,7 @@ func handleSubmitNewConnectionMsg(m model, msg submitNewConnectionMsg, existingC
 			close(pf.stopChan)
 			pf.stopChan = nil
 			pf.statusMsg = "Stopped (new conn)"
-			pf.active = false // Mark as inactive, setupPortForwards will re-evaluate
+			pf.active = false          // Mark as inactive, setupPortForwards will re-evaluate
 			m.portForwards[pfKey] = pf // Ensure changes are written back if pf is a copy
 			stoppedCount++
 		} else if pf.active { // If it was supposed to be active but had no stopChan (e.g. setup failed before chan was set)
@@ -84,6 +84,7 @@ func handleSubmitNewConnectionMsg(m model, msg submitNewConnectionMsg, existingC
 //   - If it was for an MC and a WC is also desired, it triggers the login for the WC.
 //   - If it was for an MC and no WC is desired, or if it was for a WC (meaning MC login was already done),
 //     it proceeds to the post-login operations (context switching, TUI re-initialization) by returning a performPostLoginOperationsCmd.
+//
 // If the login failed, it logs the error and takes no further action in the connection sequence.
 // - m: The current TUI model.
 // - msg: The kubeLoginResultMsg containing details of the login attempt (cluster name, success/failure, output).
@@ -159,10 +160,11 @@ func handleKubeLoginResultMsg(m model, msg kubeLoginResultMsg, cmds []tea.Cmd) (
 // 4. Re-configure port forwards for the new cluster setup using m.setupPortForwards().
 // 5. Reset the focused panel in the TUI.
 // 6. Trigger a series of commands to re-initialize the TUI state, similar to model.Init(), including:
-//    - Fetching current kube context (to confirm the switch).
-//    - Fetching initial node statuses for the new clusters.
-//    - Starting all newly configured port-forwarding processes (getInitialPortForwardCmd).
-//    - Restarting the health update ticker.
+//   - Fetching current kube context (to confirm the switch).
+//   - Fetching initial node statuses for the new clusters.
+//   - Starting all newly configured port-forwarding processes (getInitialPortForwardCmd).
+//   - Restarting the health update ticker.
+//
 // If the context switch or preparation fails, it logs the error.
 // - m: The current TUI model.
 // - msg: The contextSwitchAndReinitializeResultMsg containing the outcome, new cluster names, and diagnostics.
