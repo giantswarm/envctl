@@ -158,7 +158,6 @@ Arguments:
 						return
 					}
 
-
 					fmt.Printf("[%s] Port-forwarding setup initiated. Initial TUI status: %s\n", config.label, initialStatus)
 					stopChannels = append(stopChannels, individualStopChan) // Add to a shared slice (needs mutex if accessed by main goroutine concurrently, but here it's fine)
 
@@ -186,7 +185,7 @@ Arguments:
 				fmt.Println("\nReceived interrupt signal. Shutting down port forwards...")
 				close(allStopChan) // Signal all goroutines to stop
 			}
-			
+
 			wg.Wait() // Wait for all port-forwarding goroutines to finish
 			fmt.Println("All port forwards gracefully shut down.")
 			return nil
@@ -262,7 +261,6 @@ func getPortForwardConfigs(mcName, wcName, baseKubeContext string) []portForward
 	if wcName != "" {
 		wcKubeContext = "teleport.giantswarm.io-" + wcName // wcName is already full here e.g. mc-wc
 	}
-
 
 	// Prometheus for MC
 	if mcName != "" {
