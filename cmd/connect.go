@@ -21,24 +21,33 @@ var noTUI bool // Variable to store the value of the --no-tui flag
 // connectCmdDef defines the connect command structure
 var connectCmdDef = &cobra.Command{
 	Use:   "connect <management-cluster> [workload-cluster-shortname]",
-	Short: "Connect to Giant Swarm K8s and Prometheus with an interactive TUI",
-	Long: `Connects Kubernetes context and sets up port-forwarding for MCP servers.
-It provides an interactive terminal user interface to monitor connections.
+	Short: "Connect to Giant Swarm K8s and managed services with an interactive TUI or CLI mode.",
+	Long: `Connects to Giant Swarm Kubernetes clusters, sets the kubectl context, and manages port-forwarding for essential services.
+It can run in two modes:
 
-Provide the management cluster name and, optionally, the short name
-of the workload cluster (e.g., 've5v6' for 'enigma-ve5v6').
+1. Interactive TUI Mode (default):
+   - Launches a terminal user interface to monitor connections, cluster health, and manage port-forwards.
+   - Logs into the specified Management Cluster (MC) and, if provided, the Workload Cluster (WC).
+   - Sets the kubectl context (to WC if specified, otherwise MC).
+   - Automatically starts and manages port-forwarding for:
+     - Prometheus (MC) on localhost:8080
+     - Grafana (MC) on localhost:3000
+     - Alloy Metrics (on localhost:12345):
+       - For the Workload Cluster (WC) if specified.
+       - For the Management Cluster (MC) if only an MC is specified.
+   - Provides real-time status and allows interactive control over port-forwards and context switching.
 
-- If only <management-cluster> is provided:
-  Logs into the management cluster.
-  Sets the current Kubernetes context to the management cluster.
-  Starts Prometheus port-forwarding using the management cluster context,
-  running in the foreground until interrupted (Ctrl+C).
+2. Non-TUI / CLI Mode (using --no-tui flag):
+   - Performs logins and context switching as in TUI mode.
+   - Starts the same set of port-forwards (Prometheus (MC), Grafana (MC), Alloy Metrics (WC if specified, otherwise MC))
+     but runs them in the background.
+   - Prints a summary of actions and connection details to the console, then exits.
+   - Useful for scripting or when a TUI is not desired. Port-forwards continue to run
+     until the 'envctl' process initiated by 'connect --no-tui' is terminated (e.g., Ctrl+C).
 
-- If <management-cluster> and [workload-cluster-shortname] are provided:
-  Logs into both the management cluster and the full workload cluster (e.g., 'enigma-ve5v6').
-  Sets the current Kubernetes context to the full workload cluster name.
-  Starts Prometheus port-forwarding using the management cluster context in the foreground
-  until interrupted (Ctrl+C).`, // Updated help text
+Arguments:
+  <management-cluster>: (Required) The name of the Giant Swarm management cluster (e.g., "wallaby", "enigma").
+  [workload-cluster-shortname]: (Optional) The *short* name of the workload cluster (e.g., "plant-lille-prod" for "wallaby-plant-lille-prod", "ve5v6" for "enigma-ve5v6").`,
 	Args: cobra.RangeArgs(1, 2), // Accepts 1 or 2 arguments
 	RunE: func(cmd *cobra.Command, args []string) error {
 		managementCluster := args[0]

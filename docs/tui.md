@@ -117,6 +117,13 @@ All UI styling is centralized in `styles.go` using the [Lipgloss](https://github
 - ESC to exit overlays
 - Shortcut keys for common operations
 
+### Port Forward Management
+
+- Monitor active port forwards (Prometheus, Grafana, Alloy Metrics) with status indicators.
+- Prometheus (MC) and Grafana (MC) are standard.
+- Alloy Metrics is port-forwarded for the Workload Cluster (WC) if specified; otherwise, for the Management Cluster (MC).
+- Restart individual port forwards.
+
 ### Dark Mode Support
 
 - Complete dark mode support with 'D' key toggle
@@ -139,9 +146,9 @@ All UI styling is centralized in `styles.go` using the [Lipgloss](https://github
 ### Port Forwarding Management
 
 Port forwards are managed by:
-- `portforward_handlers.go`: Logic for setting up, monitoring, and restarting port forwards
-- `portForwardProcess` struct: Tracks process state, output, and errors
-- Status update messages: Keep the UI in sync with actual process status
+- `portforward_handlers.go`: Logic for setting up, monitoring, and restarting port forwards. This includes defining configurations for Prometheus (MC), Grafana (MC), and Alloy Metrics (conditionally for WC or MC).
+- `portForwardProcess` struct: Tracks process state (including which cluster it targets, e.g., MC or WC for Alloy), output, and errors for each port-forward.
+- Status update messages: Keep the UI in sync with actual process status for all services.
 
 ### Context Switching
 

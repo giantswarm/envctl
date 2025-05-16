@@ -86,6 +86,16 @@ envctl version
 envctl self-update
 
 # Use the CLI mode without TUI (for scripts or CI environments)
+# This mode will:
+# - Log into the specified cluster(s) via tsh.
+# - Set the kubectl context.
+# - Start port-forwarding for:
+#   - Prometheus (MC) on localhost:8080
+#   - Grafana (MC) on localhost:3000
+#   - Alloy Metrics (on localhost:12345):
+#     - For the Workload Cluster (WC) if specified.
+#     - For the Management Cluster (MC) if only an MC is specified.
+# - Print a summary and instructions, then exit. Port-forwards will run in the background.
 envctl connect <management-cluster> [workload-cluster-shortname] --no-tui
 ```
 
@@ -105,7 +115,7 @@ envctl connect <management-cluster> [workload-cluster-shortname] --no-tui
     *   Launches an interactive terminal UI
     *   Logs into `enigma` via `tsh kube login enigma`.
     *   Sets the current `kubectl` context to `teleport.giantswarm.io-enigma`.
-    *   Starts port-forwarding for Prometheus (`kubectl --context teleport.giantswarm.io-enigma port-forward -n mimir service/mimir-query-frontend 8080:8080`) in the background.
+    *   Starts port-forwarding for Prometheus (MC) on `localhost:8080`, Grafana (MC) on `localhost:3000`, and Alloy Metrics (MC) on `localhost:12345`.
     *   Displays cluster health and connection status
     *   Allows management of port-forwards and contexts
 
@@ -118,8 +128,9 @@ envctl connect <management-cluster> [workload-cluster-shortname] --no-tui
     *   Logs into `wallaby` via `tsh kube login wallaby`.
     *   Logs into the *full* workload cluster name (`wallaby-plant-cassino-prod`) via `tsh`.
     *   Sets the current `kubectl` context to the *full* workload cluster name (`teleport.giantswarm.io-wallaby-plant-cassino-prod`).
-    *   Starts port-forwarding for Prometheus using the *management cluster* context (`teleport.giantswarm.io-wallaby`) in the background.
-    *   Starts port-forwarding for Alloy metrics using the *workload cluster* context (`teleport.giantswarm.io-wallaby-plant-cassino-prod`) with ports 12345:12345.
+    *   Starts port-forwarding for Prometheus using the *management cluster* context (`teleport.giantswarm.io-wallaby`) to `localhost:8080`.
+    *   Starts port-forwarding for Grafana using the *management cluster* context (`teleport.giantswarm.io-wallaby`) to `localhost:3000`.
+    *   Starts port-forwarding for Alloy metrics using the *workload cluster* context (`teleport.giantswarm.io-wallaby-plant-cassino-prod`) to `localhost:12345`.
     *   Prints a summary and instructions for MCP.
 
 ## Terminal User Interface 🖥️
@@ -147,9 +158,9 @@ When running `envctl connect`, the Terminal User Interface (TUI) provides a visu
 | s            | Switch Kubernetes context                |
 | N            | Start new connection                     |
 | h            | Toggle help overlay                      |
+| L            | Toggle log overlay                       |
 | D            | Toggle dark/light mode                   |
 | z            | Toggle debug information                 |
-| L            | View log overlay (when logs are hidden)  |
 | Esc          | Close help/log overlay                   |
 
 For more details on the implementation and architecture of the TUI, see the [TUI documentation](docs/tui.md).
@@ -191,8 +202,10 @@ envctl connect wallaby <TAB>      # Shows short names of workload clusters for w
 
 ## MCP Integration Notes 💡
 
-*   After running `envctl connect`, Prometheus should be available at `http://localhost:8080/prometheus`.
-*   When connecting to a workload cluster, the Alloy agent will be available at `localhost:12345`.
+*   After running `envctl connect`, services should be available at:
+    *   Prometheus: `http://localhost:8080/prometheus` (context: Management Cluster)
+    *   Grafana: `http://localhost:3000` (context: Management Cluster)
+    *   Alloy Metrics: `http://localhost:12345` (context: Workload Cluster if specified, otherwise Management Cluster)
 *   Ensure your `mcp.json` (e.g., `~/.cursor/mcp.json`) has the correct `PROMETHEUS_URL` for the Prometheus MCP server:
     ```json
     {

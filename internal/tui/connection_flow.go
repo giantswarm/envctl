@@ -129,12 +129,12 @@ func handleKubeLoginResultMsg(m model, msg kubeLoginResultMsg, cmds []tea.Cmd) (
 		} else {
 			// No WC specified, proceed to context switch and re-initialize for MC only.
 			m.combinedOutput = append(m.combinedOutput, "[SYSTEM] Step 2: No Workload Cluster specified. Proceeding to context switch for MC.")
-			// desiredMcForNextStep is the MC identifier (e.g., "alba")
+			// desiredMcForNextStep is the MC identifier (e.g., "myinstallation")
 			targetKubeContext := "teleport.giantswarm.io-" + desiredMcForNextStep
 			nextCmds = append(nextCmds, performPostLoginOperationsCmd(targetKubeContext, desiredMcForNextStep, ""))
 		}
 	} else {
-		// WC Login was successful. msg.clusterName here is the WC identifier (e.g., "alba-apiel") used for login.
+		// WC Login was successful. msg.clusterName here is the WC identifier (e.g., "myinstallation-mycluster") used for login.
 		// Proceed to context switch and re-initialize for MC + WC.
 		// m.stashedMcName should hold the MC name from the initial submitNewConnectionMsg.
 		finalMcName := m.stashedMcName // This is the short MC name (e.g., "myinstallation")
@@ -153,7 +153,7 @@ func handleKubeLoginResultMsg(m model, msg kubeLoginResultMsg, cmds []tea.Cmd) (
 		}
 
 		m.combinedOutput = append(m.combinedOutput, "[SYSTEM] Step 3: Workload Cluster login successful. Proceeding to context switch for WC.")
-		// msg.clusterName is the WC identifier (e.g., "alba-apiel") that was successfully logged into.
+		// msg.clusterName is the WC identifier (e.g., "myinstallation-mycluster") that was successfully logged into.
 		// This is the correct identifier to form the targetKubeContext.
 		targetKubeContext := "teleport.giantswarm.io-" + msg.clusterName
 		nextCmds = append(nextCmds, performPostLoginOperationsCmd(targetKubeContext, finalMcName, shortWcName))

@@ -199,7 +199,7 @@ func handlePortForwardStatusUpdateMsg(m model, msg portForwardStatusUpdateMsg) (
 	} else {
 		// Only add this warning if the port-forward doesn't exist
 		m.combinedOutput = append(m.combinedOutput,
-			fmt.Sprintf("[TUI WARNING] No port-forward found for label '%s'", msg.label))
+			fmt.Sprintf("[TUI WARNING] No Port-forward found for label['%s']", msg.label))
 	}
 
 	// Trim combined output to prevent excessive growth
