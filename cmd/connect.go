@@ -46,8 +46,8 @@ It can run in two modes:
      until the 'envctl' process initiated by 'connect --no-tui' is terminated (e.g., Ctrl+C).
 
 Arguments:
-  <management-cluster>: (Required) The name of the Giant Swarm management cluster (e.g., "wallaby", "enigma").
-  [workload-cluster-shortname]: (Optional) The *short* name of the workload cluster (e.g., "plant-lille-prod" for "wallaby-plant-lille-prod", "ve5v6" for "enigma-ve5v6").`,
+  <management-cluster>: (Required) The name of the Giant Swarm management cluster (e.g., "myinstallation", "mycluster").
+  [workload-cluster-shortname]: (Optional) The *short* name of the workload cluster (e.g., "myworkloadcluster" for "myinstallation-myworkloadcluster", "customerprod" for "mycluster-customerprod").`,
 	Args: cobra.RangeArgs(1, 2), // Accepts 1 or 2 arguments
 	RunE: func(cmd *cobra.Command, args []string) error {
 		managementCluster := args[0]

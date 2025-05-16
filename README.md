@@ -103,20 +103,20 @@ envctl connect <management-cluster> [workload-cluster-shortname] --no-tui
 
 **Arguments for `connect`:**
 
-*   `<management-cluster>`: (Required) The name of the Giant Swarm management cluster (e.g., `wallaby`, `enigma`).
-*   `[workload-cluster-shortname]`: (Optional) The *short* name of the workload cluster (e.g., `plant-lille-prod` for `wallaby-plant-lille-prod`, `ve5v6` for `enigma-ve5v6`).
+*   `<management-cluster>`: (Required) The name of the Giant Swarm management cluster (e.g., `myinstallation`, `mycluster`).
+*   `[workload-cluster-shortname]`: (Optional) The *short* name of the workload cluster (e.g., `myworkloadcluster` for `myinstallation-myworkloadcluster`, `customerprod` for `mycluster-customerprod`).
 
 **Examples:**
 
 1.  **Connect to a Management Cluster only:**
 
     ```bash
-    envctl connect enigma
+    envctl connect myinstallation
     ```
 
     *   Launches an interactive terminal UI
-    *   Logs into `enigma` via `tsh kube login enigma`.
-    *   Sets the current `kubectl` context to `teleport.giantswarm.io-enigma`.
+    *   Logs into `myinstallation` via `tsh kube login myinstallation`.
+    *   Sets the current `kubectl` context to `teleport.giantswarm.io-myinstallation`.
     *   Starts port-forwarding for Prometheus (MC) on `localhost:8080`, Grafana (MC) on `localhost:3000`, and Alloy Metrics (MC) on `localhost:12345`.
     *   Displays cluster health and connection status
     *   Allows management of port-forwards and contexts
@@ -124,15 +124,15 @@ envctl connect <management-cluster> [workload-cluster-shortname] --no-tui
 2.  **Connect to a Management and Workload Cluster:**
 
     ```bash
-    envctl connect wallaby plant-cassino-prod
+    envctl connect myinstallation myworkloadcluster
     ```
 
-    *   Logs into `wallaby` via `tsh kube login wallaby`.
-    *   Logs into the *full* workload cluster name (`wallaby-plant-cassino-prod`) via `tsh`.
-    *   Sets the current `kubectl` context to the *full* workload cluster name (`teleport.giantswarm.io-wallaby-plant-cassino-prod`).
-    *   Starts port-forwarding for Prometheus using the *management cluster* context (`teleport.giantswarm.io-wallaby`) to `localhost:8080`.
-    *   Starts port-forwarding for Grafana using the *management cluster* context (`teleport.giantswarm.io-wallaby`) to `localhost:3000`.
-    *   Starts port-forwarding for Alloy metrics using the *workload cluster* context (`teleport.giantswarm.io-wallaby-plant-cassino-prod`) to `localhost:12345`.
+    *   Logs into `myinstallation` via `tsh kube login myinstallation`.
+    *   Logs into the *full* workload cluster name (`myinstallation-myworkloadcluster`) via `tsh`.
+    *   Sets the current `kubectl` context to the *full* workload cluster name (`teleport.giantswarm.io-myinstallation-myworkloadcluster`).
+    *   Starts port-forwarding for Prometheus using the *management cluster* context (`teleport.giantswarm.io-myinstallation`) to `localhost:8080`.
+    *   Starts port-forwarding for Grafana using the *management cluster* context (`teleport.giantswarm.io-myinstallation`) to `localhost:3000`.
+    *   Starts port-forwarding for Alloy metrics using the *workload cluster* context (`teleport.giantswarm.io-myinstallation-myworkloadcluster`) to `localhost:12345`.
     *   Prints a summary and instructions for MCP.
 
 ## Terminal User Interface 🖥️
@@ -198,8 +198,7 @@ source ~/.bashrc # Reload shell
 Now you can use TAB to complete cluster names:
 
 ```bash
-envctl connect <TAB>              # Shows management clusters
-envctl connect wallaby <TAB>      # Shows short names of workload clusters for wallaby
+envctl connect myinstallation <TAB>      # Shows short names of workload clusters for myinstallation
 ```
 
 ## MCP Integration Notes 💡
