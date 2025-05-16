@@ -85,7 +85,7 @@ func renderWcPane(m model, paneWidth int) string {
 		return ""
 	}
 
-	wcNameString := m.workloadCluster // This is the short WC name, e.g., "apiel"
+	wcNameString := m.workloadCluster // This is the short WC name, e.g., "myworkloadcluster"
 
 	// Correctly form the full WC context name for display and active check
 	// using the model's helper method.

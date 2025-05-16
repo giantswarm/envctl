@@ -10,9 +10,9 @@ import (
 )
 
 // fetchNodeStatusCmd creates a tea.Cmd to asynchronously fetch the node status.
-// - clusterIdentifier: The canonical cluster identifier part of the context name (e.g., "alba" for MC, "alba-apiel" for WC).
+// - clusterIdentifier: The canonical cluster identifier part of the context name (e.g., "myinstallation" for MC, "myinstallation-myworkloadcluster" for WC).
 // - isMC: Boolean indicating if the status is for a Management Cluster.
-// - originalClusterShortName: The original short name of the cluster (e.g., "alba" or "apiel"), used for tagging the result message.
+// - originalClusterShortName: The original short name of the cluster (e.g., "myinstallation" or "myworkloadcluster"), used for tagging the result message.
 // Returns a tea.Cmd that, when run, will call utils.GetNodeStatusClientGo and send a nodeStatusMsg.
 func fetchNodeStatusCmd(clusterIdentifier string, isMC bool, originalClusterShortName string) tea.Cmd {
 	return func() tea.Msg {
@@ -20,7 +20,7 @@ func fetchNodeStatusCmd(clusterIdentifier string, isMC bool, originalClusterShor
 			return nodeStatusMsg{clusterShortName: originalClusterShortName, forMC: isMC, err: fmt.Errorf("cluster identifier for health check is empty")}
 		}
 
-		// clusterIdentifier is already the correct part, e.g., "alba" or "alba-apiel".
+		// clusterIdentifier is already the correct part, e.g., "myinstallation" or "myinstallation-myworkloadcluster".
 		// We just need to prepend the teleport prefix if it's not already a full context name (though it shouldn't be).
 		fullContextName := clusterIdentifier
 		if !strings.HasPrefix(clusterIdentifier, "teleport.giantswarm.io-") {

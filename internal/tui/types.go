@@ -103,7 +103,7 @@ type kubeContextResultMsg struct {
 
 // nodeStatusMsg carries node health information (ready/total nodes) for a specific cluster.
 type nodeStatusMsg struct {
-	clusterShortName string // Short name of the cluster (e.g., "alba" or "deu01").
+	clusterShortName string // Short name of the cluster (e.g., "myinstallation" or "deu01").
 	forMC            bool   // True if this status is for the Management Cluster, false for Workload Cluster.
 	readyNodes       int    // Number of ready nodes.
 	totalNodes       int    // Total number of nodes.

@@ -69,26 +69,23 @@ type model struct {
 	TUIChannel chan tea.Msg
 }
 
-// getManagementClusterContextIdentifier returns the canonical identifier part for the MC context.
-// For example, if m.managementCluster="alba", this returns "alba".
-// This identifier is typically used to form the full context name, e.g., "teleport.giantswarm.io-alba".
+// getManagementClusterContextIdentifier generates the MC part of a kube context name.
+// For example, if m.managementCluster="myinstallation", this returns "myinstallation".
+// This identifier is typically used to form the full context name, e.g., "teleport.giantswarm.io-myinstallation".
 // Other parts of the codebase (e.g., in commands.go, handlers.go) should use this
 // method when they need to construct or refer to the MC's context name.
 func (m *model) getManagementClusterContextIdentifier() string {
 	return m.managementCluster
 }
 
-// getWorkloadClusterContextIdentifier returns the canonical identifier part for the WC context.
-// It correctly forms "mc-wc" if m.workloadCluster is a short name, or uses m.workloadCluster
-// directly if it's already in "mc-wc" format.
-// For example:
-// - if m.managementCluster="alba" and m.workloadCluster="apiel", it returns "alba-apiel".
-// - if m.managementCluster="alba" and m.workloadCluster="alba-apiel", it returns "alba-apiel".
-// Returns an empty string if m.workloadCluster is empty.
-// This identifier is typically used to form the full context name, e.g., "teleport.giantswarm.io-alba-apiel".
-// Other parts of the codebase (e.g., in commands.go, handlers.go, connection_flow.go, and UI rendering logic
-// like isContextRelevantToPane) should use this method when they need to construct, switch to,
-// or match against the WC's context name. This will prevent errors like "alba-alba-apiel".
+// getWorkloadClusterContextIdentifier generates the WC context name or combined MC-WC, based on m.managementCluster and m.workloadCluster.
+// Examples:
+// - if m.managementCluster="myinstallation" and m.workloadCluster="myworkloadcluster", it returns "myinstallation-myworkloadcluster".
+// - if m.managementCluster="myinstallation" and m.workloadCluster="myinstallation-myworkloadcluster", it returns "myinstallation-myworkloadcluster".
+//
+// This identifier is typically used to form the full context name, e.g., "teleport.giantswarm.io-myinstallation-myworkloadcluster".
+// The function attempts to prevent accidental double prefixing of the MC name when constructing
+// or match against the WC's context name. This will prevent errors like "myinstallation-myinstallation-myworkloadcluster".
 func (m *model) getWorkloadClusterContextIdentifier() string {
 	if m.workloadCluster == "" {
 		return "" // No WC defined or selected
