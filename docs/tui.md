@@ -120,9 +120,11 @@ All UI styling is centralized in `styles.go` using the [Lipgloss](https://github
 ### Port Forward Management
 
 - Monitor active port forwards (Prometheus, Grafana, Alloy Metrics) with status indicators.
-- Prometheus (MC) and Grafana (MC) are standard.
-- Alloy Metrics is port-forwarded for the Workload Cluster (WC) if specified; otherwise, for the Management Cluster (MC).
-- Restart individual port forwards.
+- Prometheus (MC) and Grafana (MC) are standard and always use the Management Cluster context.
+- Alloy Metrics port-forwarding follows this logic:
+  - If both a Management Cluster and a Workload Cluster are configured, Alloy Metrics connects to the Workload Cluster.
+  - If only a Management Cluster is configured, Alloy Metrics connects to that Management Cluster.
+- Restart individual port forwards when needed using the 'r' key with the panel focused.
 
 ### Dark Mode Support
 
@@ -146,8 +148,10 @@ All UI styling is centralized in `styles.go` using the [Lipgloss](https://github
 ### Port Forwarding Management
 
 Port forwards are managed by:
-- `portforward_handlers.go`: Logic for setting up, monitoring, and restarting port forwards. This includes defining configurations for Prometheus (MC), Grafana (MC), and Alloy Metrics (conditionally for WC or MC).
-- `portForwardProcess` struct: Tracks process state (including which cluster it targets, e.g., MC or WC for Alloy), output, and errors for each port-forward.
+- `portforward_handlers.go`: Logic for setting up, monitoring, and restarting port forwards, with specific behavior for each service:
+  - Prometheus (MC) and Grafana (MC) always connect to the Management Cluster
+  - Alloy Metrics connects to the Workload Cluster if one is specified, otherwise it connects to the Management Cluster
+- `portForwardProcess` struct: Tracks process state (including which cluster it targets), output, and errors for each port-forward.
 - Status update messages: Keep the UI in sync with actual process status for all services.
 
 ### Context Switching

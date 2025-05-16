@@ -14,6 +14,13 @@ import (
 // management cluster (mcName) and workload cluster (wcName).
 // This function defines the services to be port-forwarded (e.g., Prometheus, Grafana, Alloy Metrics)
 // and their respective configurations.
+//
+// Port-forwarding behavior:
+// - Prometheus and Grafana are always port-forwarded using the Management Cluster context
+// - Alloy Metrics port-forwarding depends on the cluster configuration:
+//   - If both management and workload clusters are specified, Alloy Metrics points to the Workload Cluster
+//   - If only a management cluster is specified, Alloy Metrics points to that Management Cluster
+//
 // It directly modifies the model's portForwards and portForwardOrder fields.
 func setupPortForwards(m *model, mcName, wcName string) {
 	// Clear existing port forwards before setting up new ones
@@ -56,8 +63,11 @@ func setupPortForwards(m *model, mcName, wcName string) {
 		}
 	}
 
-	// Alloy Metrics for WC
+	// Configure Alloy Metrics port-forwarding based on cluster selection:
+	// If a Workload Cluster is specified, Alloy Metrics points to the WC
+	// Otherwise, if only a Management Cluster is specified, Alloy Metrics points to the MC
 	if wcName != "" {
+		// Alloy Metrics for WC (when both Management and Workload clusters are provided)
 		alloyLabel := "Alloy Metrics (WC)"
 		m.portForwardOrder = append(m.portForwardOrder, alloyLabel)
 
@@ -86,6 +96,7 @@ func setupPortForwards(m *model, mcName, wcName string) {
 			statusMsg: "Awaiting Setup...",
 		}
 	} else if mcName != "" { // Alloy Metrics for MC if no WC is specified
+		// Alloy Metrics for MC (when only a Management Cluster is provided)
 		alloyLabel := "Alloy Metrics (MC)"
 		m.portForwardOrder = append(m.portForwardOrder, alloyLabel)
 

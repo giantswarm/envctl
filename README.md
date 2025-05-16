@@ -10,7 +10,9 @@ It automates the process of logging into clusters via Teleport (`tsh`) and setti
 
 *   **Simplified Connection:** Connect to management and workload clusters with a single command.
 *   **Automatic Context Switching:** Sets your `kubectl` context correctly.
-*   **Prometheus Port-Forwarding:** Handles `kubectl port-forward` for the Mimir query frontend automatically.
+*   **Port-Forwarding Management:** 
+    *   Prometheus and Grafana services (always from the Management Cluster)
+    *   Alloy Metrics (from the Workload Cluster if specified, otherwise from the Management Cluster)
 *   **Interactive Terminal UI:** View cluster status, manage port forwards, and monitor connections in a polished terminal interface.
 *   **Teleport Integration:** Uses your existing `tsh` setup for Kubernetes access.
 *   **Shell Completion:** Provides dynamic command-line completion for cluster names (Bash & Zsh).
@@ -205,7 +207,9 @@ envctl connect wallaby <TAB>      # Shows short names of workload clusters for w
 *   After running `envctl connect`, services should be available at:
     *   Prometheus: `http://localhost:8080/prometheus` (context: Management Cluster)
     *   Grafana: `http://localhost:3000` (context: Management Cluster)
-    *   Alloy Metrics: `http://localhost:12345` (context: Workload Cluster if specified, otherwise Management Cluster)
+    *   Alloy Metrics: `http://localhost:12345` (context depends on your connection type):
+        *   If you specified both a Management Cluster and a Workload Cluster, the Alloy Metrics port-forward uses the Workload Cluster context.
+        *   If you specified only a Management Cluster, the Alloy Metrics port-forward uses that Management Cluster context.
 *   Ensure your `mcp.json` (e.g., `~/.cursor/mcp.json`) has the correct `PROMETHEUS_URL` for the Prometheus MCP server:
     ```json
     {
