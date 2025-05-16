@@ -3,14 +3,17 @@ package utils
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"strings"
-	"syscall"
 )
 
-// LoginToKubeCluster executes 'tsh kube login <clusterName>' and returns its output.
+// LoginToKubeCluster executes `tsh kube login <clusterName>` to authenticate with a Teleport Kubernetes cluster.
+// It captures and returns the standard output and standard error from the command.
+// Note: This function currently passes os.Stdin to the command, which might cause issues
+// if `tsh` prompts for interactive input (e.g., 2FA) in a non-interactive environment like the TUI.
+// - clusterName: The name of the Teleport Kubernetes cluster to log into.
+// Returns the stdout string, stderr string, and an error if the command execution fails.
 func LoginToKubeCluster(clusterName string) (stdout string, stderr string, err error) {
 	cmd := exec.Command("tsh", "kube", "login", clusterName)
 
@@ -36,77 +39,12 @@ func LoginToKubeCluster(clusterName string) (stdout string, stderr string, err e
 	return stdoutStr, stderrStr, nil
 }
 
-// PortForwardCommand represents a running port-forward command.
-// type PortForwardCommand struct {
-// 	Cmd    *exec.Cmd
-// 	Stdout io.ReadCloser
-// 	Stderr io.ReadCloser
-// 	Label  string // For TUI display
-// }
-
-// StartPortForward prepares and starts a kubectl port-forward command but does not wait for it to complete.
-// It returns the command object and pipes for its stdout and stderr.
-func StartPortForward(contextName, namespace, service, ports, label string) (*exec.Cmd, io.ReadCloser, io.ReadCloser, error) {
-	kubectlContextName := contextName
-	if contextName != "" && !strings.HasPrefix(contextName, "teleport.giantswarm.io-") {
-		kubectlContextName = "teleport.giantswarm.io-" + contextName
-	}
-
-	args := []string{"port-forward"}
-	if namespace != "" {
-		args = append(args, "-n", namespace)
-	}
-	args = append(args, service, ports)
-
-	if kubectlContextName != "" {
-		args = append([]string{"--context", kubectlContextName}, args...)
-	}
-
-	cmd := exec.Command("kubectl", args...)
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to get stdout pipe for %s: %w", label, err)
-	}
-
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to get stderr pipe for %s: %w", label, err)
-	}
-
-	if err := cmd.Start(); err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to start port-forward for %s: %w", label, err)
-	}
-
-	return cmd, stdout, stderr, nil
-}
-
-// StopProcess sends a SIGTERM signal to the process.
-// This function might become less relevant for port-forward if it's always run synchronously,
-// but keeping it for potential other uses.
-func StopProcess(process *os.Process) error {
-	if process == nil {
-		return fmt.Errorf("process is nil")
-	}
-	fmt.Printf("Attempting to stop process with PID: %d\n", process.Pid)
-	err := process.Signal(syscall.SIGTERM)
-	if err != nil {
-		// Fallback to SIGKILL if SIGTERM fails or isn't appropriate
-		fmt.Printf("SIGTERM failed (%v), trying SIGKILL for PID: %d\n", err, process.Pid)
-		err = process.Signal(syscall.SIGKILL)
-	}
-	if err != nil {
-		return fmt.Errorf("failed to stop process %d: %w", process.Pid, err)
-	}
-	fmt.Printf("Successfully sent termination signal to process %d\n", process.Pid)
-	// Note: Sending the signal doesn't guarantee immediate termination.
-	// We could add a Wait() here if synchronous stop is needed.
-	return nil
-}
-
-// DetermineClusterProvider determines the cloud provider (AWS, Azure, GCP, etc.)
-// of a Kubernetes cluster by examining node information.
-// It uses the specified kubectl context if provided, otherwise the current context.
+// DetermineClusterProvider attempts to identify the cloud provider (e.g., AWS, Azure, GCP)
+// of a Kubernetes cluster by inspecting the `providerID` of the first node.
+// It uses `kubectl get nodes -o jsonpath={.items[0].spec.providerID}`.
+// If `providerID` is not available, it falls back to `determineProviderFromLabels`.
+// - contextName: The Kubernetes context to use. If empty, the current context is used.
+// Returns the determined provider name (e.g., "aws") or "unknown", and an error if `kubectl` fails.
 func DetermineClusterProvider(contextName string) (string, error) {
 	fmt.Println("Determining cluster provider...")
 
@@ -151,8 +89,11 @@ func DetermineClusterProvider(contextName string) (string, error) {
 	return "unknown", nil
 }
 
-// determineProviderFromLabels tries to determine the provider from node labels
-// as a fallback when providerID is not available.
+// determineProviderFromLabels is a fallback mechanism for `DetermineClusterProvider`.
+// It inspects node labels for known provider-specific labels using
+// `kubectl get nodes -o jsonpath={.items[0].metadata.labels}`
+// - contextName: The Kubernetes context to use.
+// Returns the provider name or "unknown", and an error if `kubectl` fails.
 func determineProviderFromLabels(contextName string) (string, error) {
 	args := []string{"get", "nodes", "-o", "jsonpath={.items[0].metadata.labels}"}
 	if contextName != "" {
@@ -180,7 +121,9 @@ func determineProviderFromLabels(contextName string) (string, error) {
 	return "unknown", nil
 }
 
-// GetCurrentKubeContext returns the current kubectl context name.
+// GetCurrentKubeContext retrieves the name of the currently active Kubernetes context using
+// `kubectl config current-context`.
+// Returns the context name (trimmed of whitespace) and an error if the command fails.
 func GetCurrentKubeContext() (string, error) {
 	cmd := exec.Command("kubectl", "config", "current-context")
 	output, err := cmd.Output()
@@ -193,37 +136,10 @@ func GetCurrentKubeContext() (string, error) {
 	return strings.TrimSpace(string(output)), nil
 }
 
-// GetNodeStatus retrieves the number of ready and total nodes in a cluster.
-func GetNodeStatus(contextName string) (readyNodes int, totalNodes int, err error) {
-	kubectlContextArg := []string{}
-	if contextName != "" {
-		kubectlContextArg = []string{"--context", contextName}
-	}
-
-	// Get all nodes and their ready status
-	// We'll count total nodes and then count how many are Ready: True
-	getNodesArgs := append(kubectlContextArg, "get", "nodes", "-o", "jsonpath={.items[*].status.conditions[?(@.type==\"Ready\")].status}")
-	cmdNodes := exec.Command("kubectl", getNodesArgs...)
-	outputNodes, err := cmdNodes.Output()
-	if err != nil {
-		return 0, 0, fmt.Errorf("failed to get node statuses for context '%s': %w", contextName, err)
-	}
-
-	statuses := strings.Fields(string(outputNodes))
-	totalNodes = len(statuses)
-	for _, status := range statuses {
-		if strings.ToLower(status) == "true" {
-			readyNodes++
-		}
-	}
-
-	// As an alternative for totalNodes, to be absolutely sure, we could count metadata.name
-	// but len(statuses) should be reliable if the jsonpath is correct for all nodes.
-
-	return readyNodes, totalNodes, nil
-}
-
-// SwitchKubeContext changes the current kubectl context.
+// SwitchKubeContext changes the active Kubernetes context to the specified context name
+// using `kubectl config use-context <contextName>`.
+// - contextName: The name of the Kubernetes context to switch to.
+// Returns an error if the command fails, including the command's output in the error message.
 func SwitchKubeContext(contextName string) error {
 	cmd := exec.Command("kubectl", "config", "use-context", contextName)
 	// We don't want to inherit os.Stdout/Stderr directly for this one,

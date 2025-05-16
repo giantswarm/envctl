@@ -7,12 +7,12 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-
 	// Assuming utils is in "envctl/internal/utils" based on model.go
 	// We might need to adjust this if utils is not directly accessible or causes import cycle
-	"envctl/internal/utils"
 )
 
+// handleWindowSizeMsg updates the model with the new terminal dimensions when the window is resized.
+// It also sets the `ready` flag to true, indicating the TUI can perform its initial full render.
 func handleWindowSizeMsg(m model, msg tea.WindowSizeMsg) (model, tea.Cmd) {
 	m.width = msg.Width
 	m.height = msg.Height
@@ -20,6 +20,12 @@ func handleWindowSizeMsg(m model, msg tea.WindowSizeMsg) (model, tea.Cmd) {
 	return m, nil
 }
 
+// handleKeyMsgInputMode processes key presses when the TUI is in the 'new connection input' mode.
+// It handles keys for submitting input (Enter, Ctrl+S), canceling (Esc), and autocompletion (Tab).
+// - For Enter/Ctrl+S: If entering MC name, it stores it and moves to WC input. If entering WC name, it submits both.
+// - For Esc: Cancels the input mode and resets state.
+// - For Tab: Attempts to autocomplete the current input based on fetched cluster lists.
+// Other keys are passed to the textinput component for standard text editing.
 func handleKeyMsgInputMode(m model, keyMsg tea.KeyMsg) (model, tea.Cmd) {
 	switch keyMsg.String() {
 	case "ctrl+s": // Submit new connection (MC or WC)
@@ -115,20 +121,51 @@ func handleKeyMsgInputMode(m model, keyMsg tea.KeyMsg) (model, tea.Cmd) {
 	return m, nil // Should not be reached
 }
 
+// handleKeyMsgGlobal processes global key presses when not in a specific input mode.
+// It handles actions like:
+// - Quitting the application ('q', Ctrl+C): Closes active port-forward stop channels and sends tea.Quit.
+// - Initiating a new connection ('n'): Switches to input mode.
+// - Navigating panels (Tab, Shift+Tab, 'j'/Down, 'k'/Up): Cycles focus through UI panels.
+// - Restarting a focused port-forward ('r'): Stops and starts the selected port-forward process.
+// - Switching Kubernetes context ('s'): Attempts to switch to the context of the focused MC or WC pane.
+// - Toggling Log Overlay ('L') is handled in model.Update's KeyMsg block.
 func handleKeyMsgGlobal(m model, keyMsg tea.KeyMsg, existingCmds []tea.Cmd) (model, tea.Cmd) {
 	var cmds = existingCmds // Start with existing commands
+
+	// If log overlay is visible, prioritize its controls
+	if m.logOverlayVisible {
+		switch keyMsg.String() {
+		case "L", "esc": // Close log overlay
+			m.logOverlayVisible = false
+			return m, nil
+		case "k", "up", "j", "down", "pgup", "pgdown", "home", "end": // Pass scrolling keys to viewport
+			var viewportCmd tea.Cmd
+			m.logViewport, viewportCmd = m.logViewport.Update(keyMsg)
+			return m, viewportCmd
+		default: // Other keys are ignored when log overlay is active
+			return m, nil
+		}
+	}
+
+	// If help overlay is visible, only Esc or h work (handled in model.Update's KeyMsg block)
+	if m.helpVisible {
+		// Key handling for when help is visible is done in model.Update
+		// We shouldn't process global keys here to avoid conflicts.
+		return m, nil
+	}
 
 	switch keyMsg.String() {
 	case "ctrl+c", "q":
 		m.quitting = true
 		var quitCmds []tea.Cmd
 		for _, pf := range m.portForwards {
-			if pf.cmd != nil && pf.cmd.Process != nil {
-				pfToKill := pf
-				quitCmds = append(quitCmds, func() tea.Msg {
-					pfToKill.cmd.Process.Kill() //nolint:errcheck
-					return nil
-				})
+			if pf.stopChan != nil {
+				// Safely close the stopChan
+				// The goroutine managing the port-forward is expected to handle this signal
+				// and perform cleanup.
+				close(pf.stopChan)
+				pf.stopChan = nil // Avoid reusing a closed channel
+				pf.statusMsg = "Stopping..."
 			}
 		}
 		quitCmds = append(quitCmds, tea.Quit)
@@ -218,74 +255,56 @@ func handleKeyMsgGlobal(m model, keyMsg tea.KeyMsg, existingCmds []tea.Cmd) (mod
 	case "r": // Restart focused port-forward
 		if m.focusedPanelKey != "" {
 			if pf, ok := m.portForwards[m.focusedPanelKey]; ok {
-				if pf.cmd != nil && pf.cmd.Process != nil {
-					pf.cmd.Process.Kill() //nolint:errcheck
+				// Stop the existing port-forward if it's running
+				if pf.stopChan != nil {
+					m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[%s] Sending stop signal...", pf.label))
+					close(pf.stopChan)
+					pf.stopChan = nil
 				}
-				pf.cmd = nil
-				pf.stdout = nil
-				pf.stderr = nil
-				pf.err = nil
-				pf.output = []string{}
+
+				// Update UI immediately to reflect that a restart is in progress
 				pf.statusMsg = "Restarting..."
-				pf.stdoutClosed = false
-				pf.stderrClosed = false
-				pf.active = true
+				pf.output = []string{} // Clear old specific output for this PF
+				pf.err = nil
+				pf.active = true // It is attempting to become active
 				pf.forwardingEstablished = false
+				// Fields like cmd, stdout, stderr, stdoutClosed, stderrClosed are removed from portForwardProcess
 
 				m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[%s] Attempting restart...", pf.label))
 				if len(m.combinedOutput) > maxCombinedOutputLines {
 					m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
 				}
 
-				pf_loop := pf
-				cmdToRun, stdout, stderr, err := utils.StartPortForward(pf_loop.context, pf_loop.namespace, pf_loop.service, pf_loop.port, pf_loop.label)
-				if err != nil {
-					pf_loop.err = err
-					pf_loop.statusMsg = "Restart failed"
-					pf_loop.stdoutClosed = true
-					pf_loop.stderrClosed = true
-					pf_loop.active = false
-					cmds = append(cmds, func() tea.Msg {
-						return portForwardErrorMsg{label: pf_loop.label, streamType: "general", err: fmt.Errorf("failed to restart %s: %w", pf_loop.label, err)}
-					})
+				// Start the new port-forward using startPortForwardCmd
+				if m.TUIChannel != nil {
+					restartCmd := startPortForwardCmd(pf.label, pf.context, pf.namespace, pf.service, pf.port, m.TUIChannel)
+					cmds = append(cmds, restartCmd)
 				} else {
-					pf_loop.cmd = cmdToRun
-					pf_loop.stdout = stdout
-					pf_loop.stderr = stderr
-					pf_loop.statusMsg = "Starting..."
-					processID := cmdToRun.Process.Pid
-					cmds = append(cmds,
-						waitForPortForwardActivity(pf_loop.label, "stdout", stdout),
-						waitForPortForwardActivity(pf_loop.label, "stderr", stderr),
-						func() tea.Msg { return portForwardStartedMsg{label: pf_loop.label, pid: processID} },
-					)
+					m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[%s ERROR] TUIChannel is nil. Cannot restart.", pf.label))
+					pf.statusMsg = "Restart Failed (Internal Error)"
+					pf.active = false
 				}
 			}
 		}
 
 	case "s": // Switch kubectl context to focused MC/WC pane
 		var targetContextToSwitch string
-		var clusterShortNameForContext string
+		var clusterIdentifier string // Renamed from clusterShortNameForContext
 		var paneNameForLog string
 
 		if m.focusedPanelKey == mcPaneFocusKey && m.managementCluster != "" {
-			clusterShortNameForContext = m.managementCluster
+			clusterIdentifier = m.getManagementClusterContextIdentifier()
 			paneNameForLog = "MC"
 		} else if m.focusedPanelKey == wcPaneFocusKey && m.workloadCluster != "" {
-			if m.managementCluster != "" {
-				clusterShortNameForContext = m.managementCluster + "-" + m.workloadCluster
-			} else {
-				clusterShortNameForContext = m.workloadCluster
-			}
+			clusterIdentifier = m.getWorkloadClusterContextIdentifier()
 			paneNameForLog = "WC"
 		}
 
-		if clusterShortNameForContext != "" {
-			if !strings.HasPrefix(clusterShortNameForContext, "teleport.giantswarm.io-") {
-				targetContextToSwitch = "teleport.giantswarm.io-" + clusterShortNameForContext
-			} else {
-				targetContextToSwitch = clusterShortNameForContext
-			}
+		if clusterIdentifier != "" {
+			// The getManagementClusterContextIdentifier/getWorkloadClusterContextIdentifier methods return
+			// the part of the context name *after* "teleport.giantswarm.io-".
+			// So, we always prepend the prefix here.
+			targetContextToSwitch = "teleport.giantswarm.io-" + clusterIdentifier
 			m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Attempting to switch kubectl context to: %s (Pane: %s)", targetContextToSwitch, paneNameForLog))
 			cmds = append(cmds, performSwitchKubeContextCmd(targetContextToSwitch))
 		} else {
@@ -298,6 +317,8 @@ func handleKeyMsgGlobal(m model, keyMsg tea.KeyMsg, existingCmds []tea.Cmd) (mod
 	return m, tea.Batch(cmds...)
 }
 
+// handleKubeContextResultMsg updates the model with the current Kubernetes context or an error if fetching failed.
+// This is typically called after startup or a context switch to reflect the actual current context.
 func handleKubeContextResultMsg(m model, msg kubeContextResultMsg) model {
 	if msg.err != nil {
 		m.currentKubeContext = "Error fetching context"
@@ -312,6 +333,9 @@ func handleKubeContextResultMsg(m model, msg kubeContextResultMsg) model {
 	return m
 }
 
+// handleRequestClusterHealthUpdate is triggered by a ticker or after certain operations to refresh cluster health.
+// It sets the IsLoading flag for relevant clusters and issues fetchNodeStatusCmd for both MC and WC (if defined).
+// It also re-schedules the next health update tick.
 func handleRequestClusterHealthUpdate(m model) (model, tea.Cmd) {
 	var cmds []tea.Cmd
 	logMsg := fmt.Sprintf("[SYSTEM] Requesting cluster health updates at %s", time.Now().Format("15:04:05"))
@@ -322,11 +346,17 @@ func handleRequestClusterHealthUpdate(m model) (model, tea.Cmd) {
 
 	if m.managementCluster != "" {
 		m.MCHealth.IsLoading = true
-		cmds = append(cmds, fetchNodeStatusCmd(m.managementCluster, true, ""))
+		mcIdentifier := m.getManagementClusterContextIdentifier()
+		if mcIdentifier != "" {
+			cmds = append(cmds, fetchNodeStatusCmd(mcIdentifier, true, m.managementCluster))
+		}
 	}
 	if m.workloadCluster != "" {
 		m.WCHealth.IsLoading = true
-		cmds = append(cmds, fetchNodeStatusCmd(m.workloadCluster, false, m.managementCluster))
+		wcIdentifier := m.getWorkloadClusterContextIdentifier()
+		if wcIdentifier != "" {
+			cmds = append(cmds, fetchNodeStatusCmd(wcIdentifier, false, m.workloadCluster))
+		}
 	}
 	// Re-tick for next update
 	cmds = append(cmds, tea.Tick(healthUpdateInterval, func(t time.Time) tea.Msg {
@@ -335,6 +365,9 @@ func handleRequestClusterHealthUpdate(m model) (model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
+// handleNodeStatusMsg processes the results of a fetchNodeStatusCmd.
+// It updates the health information (ready/total nodes, error state, last updated time) for the specific cluster (MC or WC).
+// It discards stale or mismatched status messages (e.g., if the cluster context changed since the request was made).
 func handleNodeStatusMsg(m model, msg nodeStatusMsg) model {
 	var targetHealth *clusterHealthInfo
 	clusterNameForLog := ""
@@ -372,6 +405,9 @@ func handleNodeStatusMsg(m model, msg nodeStatusMsg) model {
 	return m
 }
 
+// handleClusterListResultMsg updates the model with the fetched list of management and workload clusters.
+// This information (m.clusterInfo) is used for autocompletion in the new connection input mode.
+// If fetching fails, an error is logged.
 func handleClusterListResultMsg(m model, msg clusterListResultMsg) model {
 	if msg.err != nil {
 		m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM ERROR] Failed to fetch cluster list: %v", msg.err))
@@ -382,6 +418,9 @@ func handleClusterListResultMsg(m model, msg clusterListResultMsg) model {
 	return m
 }
 
+// handleKubeContextSwitchedMsg processes the result of an attempt to switch the Kubernetes context (performSwitchKubeContextCmd).
+// If successful, it logs the success and triggers commands to refresh the current kube context display and cluster health data.
+// If failed, it logs the error.
 func handleKubeContextSwitchedMsg(m model, msg kubeContextSwitchedMsg) (model, tea.Cmd) {
 	var cmds []tea.Cmd
 	if msg.err != nil {
@@ -391,11 +430,17 @@ func handleKubeContextSwitchedMsg(m model, msg kubeContextSwitchedMsg) (model, t
 		cmds = append(cmds, getCurrentKubeContextCmd())
 		if m.managementCluster != "" {
 			m.MCHealth.IsLoading = true
-			cmds = append(cmds, fetchNodeStatusCmd(m.managementCluster, true, ""))
+			mcIdentifier := m.getManagementClusterContextIdentifier()
+			if mcIdentifier != "" {
+				cmds = append(cmds, fetchNodeStatusCmd(mcIdentifier, true, m.managementCluster))
+			}
 		}
 		if m.workloadCluster != "" {
 			m.WCHealth.IsLoading = true
-			cmds = append(cmds, fetchNodeStatusCmd(m.workloadCluster, false, m.managementCluster))
+			wcIdentifier := m.getWorkloadClusterContextIdentifier()
+			if wcIdentifier != "" {
+				cmds = append(cmds, fetchNodeStatusCmd(wcIdentifier, false, m.workloadCluster))
+			}
 		}
 	}
 	if len(m.combinedOutput) > maxCombinedOutputLines {

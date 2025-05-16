@@ -10,7 +10,10 @@ It automates the process of logging into clusters via Teleport (`tsh`) and setti
 
 *   **Simplified Connection:** Connect to management and workload clusters with a single command.
 *   **Automatic Context Switching:** Sets your `kubectl` context correctly.
-*   **Prometheus Port-Forwarding:** Handles `kubectl port-forward` for the Mimir query frontend automatically.
+*   **Port-Forwarding Management:** 
+    *   Prometheus and Grafana services (always from the Management Cluster)
+    *   Alloy Metrics (from the Workload Cluster if specified, otherwise from the Management Cluster)
+*   **Interactive Terminal UI:** View cluster status, manage port forwards, and monitor connections in a polished terminal interface.
 *   **Teleport Integration:** Uses your existing `tsh` setup for Kubernetes access.
 *   **Shell Completion:** Provides dynamic command-line completion for cluster names (Bash & Zsh).
 
@@ -73,6 +76,8 @@ The primary command is `envctl connect`:
 envctl connect <management-cluster> [workload-cluster-shortname]
 ```
 
+This command launches the interactive TUI by default, showing you real-time status of your clusters and port-forwards.
+
 Other commands:
 
 ```
@@ -81,38 +86,86 @@ envctl version
 
 # Update envctl to the latest release
 envctl self-update
+
+# Use the CLI mode without TUI (for scripts or CI environments)
+# This mode will:
+# - Log into the specified cluster(s) via tsh.
+# - Set the kubectl context.
+# - Start port-forwarding for:
+#   - Prometheus (MC) on localhost:8080
+#   - Grafana (MC) on localhost:3000
+#   - Alloy Metrics (on localhost:12345):
+#     - For the Workload Cluster (WC) if specified.
+#     - For the Management Cluster (MC) if only an MC is specified.
+# - Print a summary and instructions, then exit. Port-forwards will run in the background.
+envctl connect <management-cluster> [workload-cluster-shortname] --no-tui
 ```
 
 **Arguments for `connect`:**
 
-*   `<management-cluster>`: (Required) The name of the Giant Swarm management cluster (e.g., `wallaby`, `enigma`).
-*   `[workload-cluster-shortname]`: (Optional) The *short* name of the workload cluster (e.g., `plant-lille-prod` for `wallaby-plant-lille-prod`, `ve5v6` for `enigma-ve5v6`).
+*   `<management-cluster>`: (Required) The name of the Giant Swarm management cluster (e.g., `myinstallation`, `mycluster`).
+*   `[workload-cluster-shortname]`: (Optional) The *short* name of the workload cluster (e.g., `myworkloadcluster` for `myinstallation-myworkloadcluster`, `customerprod` for `mycluster-customerprod`).
 
 **Examples:**
 
 1.  **Connect to a Management Cluster only:**
 
     ```bash
-    envctl connect enigma
+    envctl connect myinstallation
     ```
 
-    *   Logs into `enigma` via `tsh kube login enigma`.
-    *   Sets the current `kubectl` context to `teleport.giantswarm.io-enigma`.
-    *   Starts port-forwarding for Prometheus (`kubectl --context teleport.giantswarm.io-enigma port-forward -n mimir service/mimir-query-frontend 8080:8080`) in the background.
-    *   Prints a summary and instructions for MCP.
+    *   Launches an interactive terminal UI
+    *   Logs into `myinstallation` via `tsh kube login myinstallation`.
+    *   Sets the current `kubectl` context to `teleport.giantswarm.io-myinstallation`.
+    *   Starts port-forwarding for Prometheus (MC) on `localhost:8080`, Grafana (MC) on `localhost:3000`, and Alloy Metrics (MC) on `localhost:12345`.
+    *   Displays cluster health and connection status
+    *   Allows management of port-forwards and contexts
 
 2.  **Connect to a Management and Workload Cluster:**
 
     ```bash
-    envctl connect wallaby plant-cassino-prod
+    envctl connect myinstallation myworkloadcluster
     ```
 
-    *   Logs into `wallaby` via `tsh kube login wallaby`.
-    *   Logs into the *full* workload cluster name (`wallaby-plant-cassino-prod`) via `tsh`.
-    *   Sets the current `kubectl` context to the *full* workload cluster name (`teleport.giantswarm.io-wallaby-plant-cassino-prod`).
-    *   Starts port-forwarding for Prometheus using the *management cluster* context (`teleport.giantswarm.io-wallaby`) in the background.
-    *   Starts port-forwarding for Alloy metrics using the *workload cluster* context (`teleport.giantswarm.io-wallaby-plant-cassino-prod`) with ports 12345:12345.
+    *   Logs into `myinstallation` via `tsh kube login myinstallation`.
+    *   Logs into the *full* workload cluster name (`myinstallation-myworkloadcluster`) via `tsh`.
+    *   Sets the current `kubectl` context to the *full* workload cluster name (`teleport.giantswarm.io-myinstallation-myworkloadcluster`).
+    *   Starts port-forwarding for Prometheus using the *management cluster* context (`teleport.giantswarm.io-myinstallation`) to `localhost:8080`.
+    *   Starts port-forwarding for Grafana using the *management cluster* context (`teleport.giantswarm.io-myinstallation`) to `localhost:3000`.
+    *   Starts port-forwarding for Alloy metrics using the *workload cluster* context (`teleport.giantswarm.io-myinstallation-myworkloadcluster`) to `localhost:12345`.
     *   Prints a summary and instructions for MCP.
+
+## Terminal User Interface 🖥️
+
+When running `envctl connect`, the Terminal User Interface (TUI) provides a visual dashboard to monitor and control your connections:
+
+![envctl TUI overview](docs/images/tui-overview.png)
+
+### Key Features
+
+- **Cluster Status Monitoring**: View real-time health status of both management and workload clusters
+- **Port Forward Management**: Monitor active port forwards with status indicators
+- **Log Viewer**: View operation logs directly in the terminal
+- **Keyboard Navigation**: Easily navigate between panels with Tab/Shift+Tab
+- **Dark Mode Support**: Toggle between light and dark themes with 'D' key
+
+### Keyboard Shortcuts
+
+| Key          | Action                                   |
+|--------------|------------------------------------------|
+| Tab          | Navigate to next panel                   |
+| Shift+Tab    | Navigate to previous panel               |
+| q / Ctrl+C   | Quit the application                     |
+| r            | Restart port forwarding for focused panel|
+| s            | Switch Kubernetes context                |
+| N            | Start new connection                     |
+| h            | Toggle help overlay                      |
+| L            | Toggle log overlay                       |
+| D            | Toggle dark/light mode                   |
+| z            | Toggle debug information                 |
+| Esc          | Close help/log overlay                   |
+
+For more details on the implementation and architecture of the TUI, see the [TUI documentation](docs/tui.md).
 
 ## Shell Completion 🧠
 
@@ -145,14 +198,17 @@ source ~/.bashrc # Reload shell
 Now you can use TAB to complete cluster names:
 
 ```bash
-envctl connect <TAB>              # Shows management clusters
-envctl connect wallaby <TAB>      # Shows short names of workload clusters for wallaby
+envctl connect myinstallation <TAB>      # Shows short names of workload clusters for myinstallation
 ```
 
 ## MCP Integration Notes 💡
 
-*   After running `envctl connect`, Prometheus should be available at `http://localhost:8080/prometheus`.
-*   When connecting to a workload cluster, the Alloy agent will be available at `localhost:12345`.
+*   After running `envctl connect`, services should be available at:
+    *   Prometheus: `http://localhost:8080/prometheus` (context: Management Cluster)
+    *   Grafana: `http://localhost:3000` (context: Management Cluster)
+    *   Alloy Metrics: `http://localhost:12345` (context depends on your connection type):
+        *   If you specified both a Management Cluster and a Workload Cluster, the Alloy Metrics port-forward uses the Workload Cluster context.
+        *   If you specified only a Management Cluster, the Alloy Metrics port-forward uses that Management Cluster context.
 *   Ensure your `mcp.json` (e.g., `~/.cursor/mcp.json`) has the correct `PROMETHEUS_URL` for the Prometheus MCP server:
     ```json
     {
