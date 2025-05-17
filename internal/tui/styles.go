@@ -20,6 +20,30 @@ const (
 	minHeightForMainLogView = 28
 )
 
+// Nerd Font Icons
+// Ensure your terminal is configured with a Nerd Font to see these correctly.
+const (
+	IconCheck         = "✔" // U+2714
+	IconCross         = "❌" // U+274C
+	IconWarning       = "⚠"  // U+26A0 without VS16
+	IconHourglass     = "⏳" // U+23F3 (keep)
+	IconSpinner       = "🔄" // maybe leave
+	IconFire          = "🔥" // U+1F525 (for very critical errors)
+	IconSparkles      = "✨" // U+2728 (for success messages)
+	IconThumbsUp      = "👍" // U+1F44D
+	IconThumbsDown    = "👎" // U+1F44E
+	IconLightbulb     = "💡" // U+1F4A1
+	IconKubernetes    = "☸"  // U+2638
+	IconDesktop       = "💻" // U+1F4BB
+	IconLink          = "🔗" // U+1F517
+	IconPlay          = "▶" // U+25B6 without VS16
+	IconStop          = "⏹" // U+23F9 without VS16
+	IconServer        = "🖥" // U+1F5A5 without VS16
+	IconGear          = "⚙" // U+2699 without VS16
+	IconScroll        = "📜" // U+1F4DC
+	IconInfo          = "ℹ" // U+2139 without VS16
+)
+
 // Styles for the TUI, defined using the lipgloss library.
 // These styles control the appearance of various UI elements like panels, text, borders, and backgrounds.
 var (
@@ -72,12 +96,12 @@ var (
 				Padding(1, 2).
 				Margin(2, 4)
 
-	// Help overlay title style
+	// Help overlay title style (re-added for bubbles/help container)
 	helpTitleStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}).
+			Foreground(lipgloss.AdaptiveColor{Light: "#111111", Dark: "#E5E5E5"}). // Consistent with other titles
 			MarginBottom(1).
-			Underline(true)
+			Align(lipgloss.Center)
 
 	// Help section title style
 	helpSectionStyle = lipgloss.NewStyle().
@@ -137,10 +161,10 @@ var (
 
 	// --- Text Styles for Status Messages within Port Forward Panels ---
 	// These define the foreground color for status messages with higher contrast in both modes
-	statusMsgInitializingStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#000080", Dark: "#B0D8FF"}) // Darker blue / Lighter blue
-	statusMsgRunningStyle      = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#004400", Dark: "#C0FFC0"}) // Darker green / Lighter green
-	statusMsgErrorStyle        = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#880000", Dark: "#FFABAB"}) // Darker red / Lighter red
-	statusMsgExitedStyle       = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#553300", Dark: "#FFE0B0"}) // Darker orange / Lighter orange
+	statusMsgInitializingStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#000080", Dark: "#82B0FF"}) // Adjusted for readability
+	statusMsgRunningStyle      = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#004400", Dark: "#8AE234"}) // Adjusted for readability
+	statusMsgErrorStyle        = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#880000", Dark: "#FF8787"}) // Adjusted for readability
+	statusMsgExitedStyle       = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#553300", Dark: "#FFB86C"}) // Adjusted for readability
 
 	// --- Context Pane Styles (for MC and WC info panes) ---
 	contextPaneStyle = lipgloss.NewStyle().
@@ -169,5 +193,39 @@ var (
 	healthErrorStyle   = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#990000", Dark: "#FF9090"}).Bold(true) // Brighter red in dark mode
 
 	// Quit key style for the quit confirmation message
-	quitKeyStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#990000", Dark: "#FF9090"}).Bold(true) // Red to indicate destructive action
+	quitKeyStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#990000", Dark: "#FF8787"}).Bold(true)
+
+	centeredOverlayContainerStyle = lipgloss.NewStyle().
+					Border(lipgloss.RoundedBorder()).
+					BorderForeground(lipgloss.AdaptiveColor{Light: "#AAAAAA", Dark: "#666666"}).
+		// Background for the container itself. The actual help bubble will have its own bg.
+		// This style is for the box that lipgloss.Place will draw.
+		Background(lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#2A2A2A"}). // Re-enable solid background
+		Padding(1, 2)
+
+	// --- Status Bar Styles ---
+	// Exported color constants for status bar backgrounds
+	StatusBarDefaultBg = lipgloss.AdaptiveColor{Light: "#6B7280", Dark: "#374151"} // Default dark grey/blue
+	StatusBarSuccessBg = lipgloss.AdaptiveColor{Light: "#10B981", Dark: "#059669"} // Green
+	StatusBarErrorBg   = lipgloss.AdaptiveColor{Light: "#EF4444", Dark: "#DC2626"} // Red
+	StatusBarWarningBg = lipgloss.AdaptiveColor{Light: "#F59E0B", Dark: "#D97706"} // Yellow/Amber
+	StatusBarInfoBg    = lipgloss.AdaptiveColor{Light: "#3B82F6", Dark: "#2563EB"} // Blue
+
+	// Exported common style for status bar text
+	StatusBarTextStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#F0F0F0"}).
+				Padding(0, 1) // Ensure padding is within the colored background
+
+	// Exported base style for the status bar container
+	StatusBarBaseStyle = lipgloss.NewStyle().Height(1) // Base only, background set dynamically
+
+	// Exported styles for the message text itself (primarily foreground)
+	StatusMessageInfoStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#E0E0E0"})
+	StatusMessageSuccessStyle = lipgloss.NewStyle().
+					Foreground(lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#E0E0E0"})
+	StatusMessageErrorStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#F0F0F0"}) // Brighter white on red
+	StatusMessageWarningStyle = lipgloss.NewStyle().
+					Foreground(lipgloss.AdaptiveColor{Light: "#1F2937", Dark: "#111827"}) // Darker text on yellow
 )

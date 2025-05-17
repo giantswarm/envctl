@@ -3,6 +3,7 @@ package tui
 import (
 	"envctl/internal/portforwarding"
 	"fmt"
+	"time"
 
 	// "strings" // Likely not needed anymore with simplified handlers
 
@@ -96,6 +97,9 @@ func setupPortForwards(m *model, mcName, wcName string) {
 // handlePortForwardSetupResultMsg processes the message received after the initial call to
 // portforwarding.StartAndManageIndividualPortForward.
 func handlePortForwardSetupResultMsg(m model, msg portForwardSetupResultMsg) (model, tea.Cmd) {
+	m.isLoading = false // Assume this setup result concludes the loading for this specific operation
+	var clearStatusBarCmd tea.Cmd
+
 	if pf, ok := m.portForwards[msg.InstanceKey]; ok {
 		if msg.Err != nil {
 			pf.err = msg.Err
@@ -105,6 +109,7 @@ func handlePortForwardSetupResultMsg(m model, msg portForwardSetupResultMsg) (mo
 			pf.cmd = nil
 			pf.running = false
 			m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[%s ERROR] Port-forward setup failed: %v", msg.InstanceKey, msg.Err))
+			clearStatusBarCmd = m.setStatusMessage(fmt.Sprintf("[%s] PF Setup Failed", msg.InstanceKey), StatusBarError, 5*time.Second)
 		} else {
 			pf.stopChan = msg.StopChan
 			pf.cmd = msg.Cmd
@@ -114,16 +119,18 @@ func handlePortForwardSetupResultMsg(m model, msg portForwardSetupResultMsg) (mo
 			pf.active = true  // Successfully initiated
 			pf.running = true // Assume running until a stop/error core update
 			m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[%s] Port-forward async setup initiated.", msg.InstanceKey))
+			clearStatusBarCmd = m.setStatusMessage(fmt.Sprintf("[%s] PF setup initiated.", msg.InstanceKey), StatusBarInfo, 3*time.Second)
 		}
 	} else {
 		m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[TUI WARNING] No Port-forward found for key['%s'] during SetupResult.", msg.InstanceKey))
+		// Optionally set a status bar message for this warning too
 	}
 
 	// Trim combined output - typically done at end of model.Update
 	if len(m.combinedOutput) > maxCombinedOutputLines+100 {
 		m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
 	}
-	return m, nil
+	return m, clearStatusBarCmd
 }
 
 // handlePortForwardCoreUpdateMsg processes asynchronous status updates from the core portforwarding package.

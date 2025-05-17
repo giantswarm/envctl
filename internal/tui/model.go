@@ -6,10 +6,64 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+)
+
+// AppMode defines the overall state or view of the application.
+type AppMode int
+
+const (
+	// ModeInitializing is the initial state before essential data is loaded or UI is ready.
+	ModeInitializing AppMode = iota
+	// ModeMainDashboard is the primary view showing cluster health, port forwards, MCP servers, and logs.
+	ModeMainDashboard
+	// ModeNewConnectionInput is when the user is inputting MC/WC names for a new connection.
+	ModeNewConnectionInput
+	// ModeHelpOverlay is when the help screen is visible.
+	ModeHelpOverlay
+	// ModeLogOverlay is when the full-screen log viewer is active.
+	ModeLogOverlay
+	// ModeQuitting is when the application is in the process of shutting down.
+	ModeQuitting
+	// ModeError an unrecoverable error state or a significant error message display.
+	ModeError
+)
+
+// String makes AppMode satisfy the fmt.Stringer interface.
+func (a AppMode) String() string {
+	switch a {
+	case ModeInitializing:
+		return "Initializing"
+	case ModeMainDashboard:
+		return "MainDashboard"
+	case ModeNewConnectionInput:
+		return "NewConnectionInput"
+	case ModeHelpOverlay:
+		return "HelpOverlay"
+	case ModeLogOverlay:
+		return "LogOverlay"
+	case ModeQuitting:
+		return "Quitting"
+	case ModeError:
+		return "Error"
+	default:
+		return "Unknown"
+	}
+}
+
+// MessageType defines the type of message for the status bar for styling.
+type MessageType int
+
+const (
+	StatusBarInfo MessageType = iota
+	StatusBarSuccess
+	StatusBarError
+	StatusBarWarning
 )
 
 // newInputStep defines the different stages of the new connection input process.
@@ -74,24 +128,35 @@ type model struct {
 	mcpServers map[string]*mcpServerProcess // Holds the state of multiple MCP server proxy processes.
 
 	// --- UI State & Output ---
-	combinedOutput    []string       // Log of messages and statuses displayed in the TUI.
-	quitting          bool           // Flag indicating if the application is in the process of quitting.
-	ready             bool           // Flag indicating if the TUI has received initial window size and is ready to render.
-	width             int            // Current width of the terminal window.
-	height            int            // Current height of the terminal window.
-	debugMode         bool           // Flag to show or hide debug information
-	colorMode         string         // Current color mode for debugging
-	helpVisible       bool           // Flag to show or hide the help overlay
-	logOverlayVisible bool           // Flag to show or hide the log overlay
-	logViewport       viewport.Model // Viewport for scrollable log overlay
-	mainLogViewport   viewport.Model // Viewport for the main, in-line log panel
+	combinedOutput  []string       // Log of messages and statuses displayed in the TUI.
+	width           int            // Current width of the terminal window.
+	height          int            // Current height of the terminal window.
+	debugMode       bool           // Flag to show or hide debug information
+	colorMode       string         // Current color mode for debugging
+	logViewport     viewport.Model // Viewport for scrollable log overlay
+	mainLogViewport viewport.Model // Viewport for the main, in-line log panel
+
+	// --- Status Bar ---
+	statusBarMessage     string        // Message to display in the status bar
+	statusBarMessageType MessageType   // Type of the status bar message for styling
+	statusBarClearCancel chan struct{} // Channel to cancel timed clearance of status bar message
+
+	// --- Loading State ---
+	isLoading bool          // True when a background operation is in progress
+	spinner   spinner.Model // Spinner model for loading animations
+
+	// --- Application Mode ---
+	currentAppMode AppMode // Defines the current overall state/view of the application
 
 	// --- New Connection Input State ---
-	isConnectingNew    bool               // True if the TUI is in 'new connection input' mode.
 	newConnectionInput textinput.Model    // Bubbletea text input component for new cluster names.
 	currentInputStep   newInputStep       // Current step in the new connection input flow (mcInputStep or wcInputStep).
 	stashedMcName      string             // Temporarily stores the MC name while the WC name is being inputted.
 	clusterInfo        *utils.ClusterInfo // Holds fetched cluster list for autocompletion during new connection input.
+
+	// --- Key Map & Help ---
+	keys KeyMap     // Keybindings
+	help help.Model // Help bubble model
 
 	// TUIChannel is a channel used by asynchronous operations (e.g., port forwarding, Kubernetes API calls)
 	// to send messages (tea.Msg) back to the TUI's main update loop for processing.
@@ -153,6 +218,11 @@ func InitialModel(mcName, wcName, kubeCtx string, tuiDebug bool) model {
 	isDarkBg := true                    // Set this explicitly since we're forcing dark mode
 	colorMode := fmt.Sprintf("%s (Dark: %v)", colorProfile, isDarkBg)
 
+	// Initialize spinner
+	s := spinner.New()
+	s.Spinner = spinner.Dot
+	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+
 	m := model{
 		managementCluster:  mcName,
 		workloadCluster:    wcName,
@@ -162,20 +232,29 @@ func InitialModel(mcName, wcName, kubeCtx string, tuiDebug bool) model {
 		mcpServers:         make(map[string]*mcpServerProcess), // Initialize map for multiple MCP proxies
 		combinedOutput:     make([]string, 0),
 		MCHealth:           clusterHealthInfo{IsLoading: true},
-		isConnectingNew:    false,
+		currentAppMode:     ModeInitializing, // Start in Initializing mode
 		newConnectionInput: ti,
 		currentInputStep:   mcInputStep,
 		TUIChannel:         tuiMsgChannel,      // Assign the channel to the model
 		debugMode:          tuiDebug,           // Set debugMode from parameter
 		colorMode:          colorMode,          // Store the detected color mode
-		helpVisible:        false,              // Start with help overlay hidden
-		logOverlayVisible:  false,              // Initialize log overlay as hidden
 		logViewport:        viewport.New(0, 0), // Initialize viewport (size will be set in View)
 		mainLogViewport:    viewport.New(0, 0), // Initialize main log viewport
+		spinner:            s,                  // Assign spinner
+		isLoading:          true,               // Start in loading state, Init() will perform work
+		keys:               DefaultKeyMap(),    // Initialize keymap
+		help:               help.New(),         // Initialize help model
 	}
-
-	m.logViewport.SetContent("Log overlay initialized...")  // Initial content
-	m.mainLogViewport.SetContent("Main log initialized...") // Initial content for main log
+	m.help.ShowAll = true // Ensure all help sections are shown by default
+	// Customize help styles for better consistency with the app theme
+	m.help.Styles = help.Styles{
+		Ellipsis:       lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#A0A0A0", Dark: "#777777"}),
+		FullDesc:       lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#333333", Dark: "#C0C0C0"}),
+		FullKey:        lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#111111", Dark: "#E0E0E0"}).Bold(true),
+		ShortDesc:      lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#555555", Dark: "#A0A0A0"}),
+		ShortKey:       lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#333333", Dark: "#D0D0D0"}).Bold(true),
+		ShortSeparator: lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#777777", Dark: "#777777"}).SetString(" • "),
+	}
 
 	setupPortForwards(&m, mcName, wcName)
 
@@ -189,7 +268,8 @@ func InitialModel(mcName, wcName, kubeCtx string, tuiDebug bool) model {
 		// Fallback if only MC exists and somehow portForwardOrder is empty (should not happen with current logic)
 		m.focusedPanelKey = mcPaneFocusKey
 	}
-	return m
+
+	return m // Correctly return the model instance
 }
 
 // channelReaderCmd creates a tea.Cmd that continuously listens for messages on the provided TUIChannel.
@@ -252,7 +332,32 @@ func (m model) Init() tea.Cmd {
 	// Add channel reader to process messages from TUIChannel
 	cmds = append(cmds, channelReaderCmd(m.TUIChannel))
 
+	// Start the spinner ticking as part of the initial batch of commands
+	cmds = append(cmds, m.spinner.Tick)
+
 	return tea.Batch(cmds...)
+}
+
+// setStatusMessage updates the status bar message and type, and schedules it to be cleared.
+func (m *model) setStatusMessage(message string, msgType MessageType, clearAfter time.Duration) tea.Cmd {
+	m.statusBarMessage = message
+	m.statusBarMessageType = msgType
+
+	// If a previous clear command was pending, cancel it
+	if m.statusBarClearCancel != nil {
+		close(m.statusBarClearCancel)
+	}
+	m.statusBarClearCancel = make(chan struct{}) // Create a new cancel channel for this message
+	capturedCancelChan := m.statusBarClearCancel
+
+	return tea.Tick(clearAfter, func(t time.Time) tea.Msg {
+		select {
+		case <-capturedCancelChan: // If canceled, do nothing
+			return nil
+		default:
+			return clearStatusBarMsg{}
+		}
+	})
 }
 
 // Update handles incoming messages (tea.Msg) and updates the model accordingly.
@@ -273,7 +378,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q":
 			// Quit immediately without confirmation
-			m.quitting = true
+			m.currentAppMode = ModeQuitting // Use AppMode for quitting state
 			m.quittingMessage = "Shutting down..."
 
 			// Close all active resources
@@ -314,14 +419,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Key messages are handled by functions in handlers.go
 	case tea.KeyMsg:
 		var cmd tea.Cmd
-		if m.isConnectingNew && m.newConnectionInput.Focused() {
+		if m.currentAppMode == ModeNewConnectionInput && m.newConnectionInput.Focused() {
 			m, cmd = handleKeyMsgInputMode(m, msg)
 		} else {
 			// Handle special keys for overlay and mode toggling
 			switch msg.String() {
 			case "h":
 				// Toggle help overlay
-				m.helpVisible = !m.helpVisible
+				if m.currentAppMode == ModeHelpOverlay {
+					m.currentAppMode = ModeMainDashboard // Or the previous mode
+				} else {
+					m.currentAppMode = ModeHelpOverlay
+				}
 				return m, channelReaderCmd(m.TUIChannel)
 			case "D":
 				// Toggle dark mode and update color mode info
@@ -337,20 +446,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, channelReaderCmd(m.TUIChannel)
 			case "esc":
 				// ESC key closes help overlay if it's open
-				if m.helpVisible {
-					m.helpVisible = false
+				if m.currentAppMode == ModeHelpOverlay {
+					m.currentAppMode = ModeMainDashboard // Or the previous mode
 					return m, channelReaderCmd(m.TUIChannel)
 				}
 				// Otherwise fall through to normal handling
 			}
 
 			// Handle log overlay toggle if no other specific key for overlays was pressed
-			if !m.helpVisible && msg.String() == "L" { // Use 'L' for Log overlay
-				m.logOverlayVisible = !m.logOverlayVisible
-				if m.logOverlayVisible {
-					// When opening, set viewport content and move to bottom
-					m.logViewport.SetContent(strings.Join(m.combinedOutput, "\n"))
-					m.logViewport.GotoBottom()
+			if m.currentAppMode != ModeHelpOverlay && msg.String() == "L" { // Use 'L' for Log overlay
+				if m.currentAppMode == ModeLogOverlay {
+					m.currentAppMode = ModeMainDashboard // Or the previous mode
+				} else {
+					m.currentAppMode = ModeLogOverlay
+					if m.currentAppMode == ModeLogOverlay { // Double check to set content only when opening
+						// When opening, set viewport content and move to bottom
+						m.logViewport.SetContent(strings.Join(m.combinedOutput, "\n"))
+						m.logViewport.GotoBottom()
+					}
 				}
 				return m, channelReaderCmd(m.TUIChannel)
 			}
@@ -362,8 +475,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Window size messages are handled by a function in handlers.go
 	case tea.WindowSizeMsg:
 		m, cmd := handleWindowSizeMsg(m, msg)
+		// Also update help model width
+		helpWidth := int(float64(msg.Width) * 0.8)
+		if helpWidth > 100 { // Max width for help, e.g., 100 columns
+			helpWidth = 100
+		}
+		m.help.Width = helpWidth
+
 		// If log overlay is visible, update its size too
-		if m.logOverlayVisible {
+		if m.currentAppMode == ModeLogOverlay {
 			// Example: 80% of screen width, 70% of screen height for the log overlay
 			logOverlayWidth := int(float64(m.width) * 0.8)
 			logOverlayHeight := int(float64(m.height) * 0.7)
@@ -374,7 +494,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// The actual dimensions will be driven by the View() function's layout calculations.
 			// We can recalculate them here briefly or rely on View() to do it before rendering.
 			// For simplicity, we'll let View() manage it, but ensure it has non-zero initial if possible.
-			if m.ready { // only if model is ready and width/height are known
+			if m.width > 0 && m.height > 0 { // only if model is ready and width/height are known
 				contentWidth := m.width - appStyle.GetHorizontalFrameSize()
 				totalAvailableHeight := m.height - appStyle.GetVerticalFrameSize()
 				headerHeight := lipgloss.Height(renderHeader(m, contentWidth)) // Re-calc for current size
@@ -451,6 +571,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m = handleClusterListResultMsg(m, msg) // Modifies model, returns no cmd
 		return m, channelReaderCmd(m.TUIChannel)
 
+	case clearStatusBarMsg: // Handle message to clear status bar
+		m.statusBarMessage = ""
+		if m.statusBarClearCancel != nil { // Should always be non-nil if we got here, but check to be safe
+			close(m.statusBarClearCancel) // Close it as it has served its purpose or was preemptively closed
+			m.statusBarClearCancel = nil
+		}
+		return m, channelReaderCmd(m.TUIChannel)
+
 	// MCP Server Messages (handlers in mcpserver_handlers.go)
 	case mcpServerSetupCompletedMsg:
 		m, cmd = handleMcpServerSetupCompletedMsg(m, msg)
@@ -465,7 +593,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseMsg:
 		var cmd tea.Cmd
 		// If log overlay is visible, pass mouse events to it for scrolling
-		if m.logOverlayVisible {
+		if m.currentAppMode == ModeLogOverlay {
 			m.logViewport, cmd = m.logViewport.Update(msg)
 			return m, tea.Batch(cmd, channelReaderCmd(m.TUIChannel))
 		} else {
@@ -482,14 +610,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Handle text input updates if in new connection mode and input is focused,
 		// but not a key press (which is handled by tea.KeyMsg case above).
 		var finalCmd tea.Cmd
-		if m.isConnectingNew && m.newConnectionInput.Focused() {
+		if m.currentAppMode == ModeNewConnectionInput && m.newConnectionInput.Focused() {
 			var textInputCmd tea.Cmd
 			m.newConnectionInput, textInputCmd = m.newConnectionInput.Update(msg)
 			finalCmd = textInputCmd
-		} else if m.logOverlayVisible { // Pass messages to viewport if log overlay is active
+		} else if m.currentAppMode == ModeLogOverlay { // Pass messages to viewport if log overlay is active
 			var viewportCmd tea.Cmd
 			m.logViewport, viewportCmd = m.logViewport.Update(msg)
 			finalCmd = viewportCmd
+		} else {
+			// If no other specific component handled the message, update the spinner
+			var spinnerCmd tea.Cmd
+			m.spinner, spinnerCmd = m.spinner.Update(msg)
+			finalCmd = spinnerCmd
 		}
 		return m, tea.Batch(finalCmd, channelReaderCmd(m.TUIChannel))
 	}
@@ -513,179 +646,36 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // If the application is quitting or not yet ready, it displays a status message.
 // If in 'new connection input' mode, it renders the input UI.
 func (m model) View() string {
-	if m.quitting {
-		return statusStyle.Render("Shutting down...")
-	}
-	if !m.ready {
+	switch m.currentAppMode {
+	case ModeQuitting:
+		return statusStyle.Render(m.quittingMessage) // Use m.quittingMessage or a generic one
+	case ModeInitializing:
+		// The `handleWindowSizeMsg` sets `m.ready = true` and should transition to ModeMainDashboard.
+		// If width/height are not yet set, this indicates true initialization phase.
+		if m.width == 0 || m.height == 0 {
+			return statusStyle.Render("Initializing... (waiting for window size)")
+		}
+		// If we have size but are still here, it might be a brief state, show generic init.
 		return statusStyle.Render("Initializing...")
-	}
-
-	// If in new connection input mode, render the input UI
-	if m.isConnectingNew {
+	case ModeNewConnectionInput:
 		return renderNewConnectionInputView(m, m.width) // Uses helper from view_helpers.go
-	}
+	case ModeHelpOverlay:
+		// Using the new help bubble with a title and centered overlay placement.
+		titleView := helpTitleStyle.Render("KEYBOARD SHORTCUTS")
+		helpContentView := m.help.View(m.keys)
+		contentWithTitle := lipgloss.JoinVertical(lipgloss.Left, titleView, helpContentView) // Title will be center-aligned by its own style
 
-	// Regular view rendering
-	// Use the full terminal width with no margins for perfect alignment
-	contentWidth := m.width
-	totalAvailableHeight := m.height
+		// Apply the container style to the combined title and help content
+		styledHelpContainer := centeredOverlayContainerStyle.Render(contentWithTitle)
 
-	// For extremely small windows, just show a header
-	if totalAvailableHeight < 5 || contentWidth < 20 {
-		return renderHeader(m, contentWidth)
-	}
-
-	// ----- GLOBAL HEADER SECTION -----
-	headerRenderedView := renderHeader(m, contentWidth) // Uses helper from view_helpers.go
-	headerHeight := lipgloss.Height(headerRenderedView)
-
-	// Adjust layout approach for very small windows
-	if totalAvailableHeight < 15 {
-		// In small windows, just show header and cluster info
-		row1FinalView := renderContextPanesRow(m, contentWidth, totalAvailableHeight-headerHeight-1)
-		return lipgloss.JoinVertical(lipgloss.Left, headerRenderedView, row1FinalView)
-	}
-
-	// ----- Height Allocations -----
-	maxRow1Height := int(float64(totalAvailableHeight-headerHeight) * 0.20) // Adjusted percentage slightly for better balance
-	if maxRow1Height < 5 {
-		maxRow1Height = 5
-	} else if maxRow1Height > 7 {
-		maxRow1Height = 7
-	}
-
-	maxRow2Height := int(float64(totalAvailableHeight-headerHeight) * 0.30) // Adjusted percentage slightly
-	if maxRow2Height < 7 {
-		maxRow2Height = 7
-	} else if maxRow2Height > 9 {
-		maxRow2Height = 9
-	}
-
-	// ----- ROW 1: MC/WC Info -----
-	row1FinalView := renderContextPanesRow(m, contentWidth, maxRow1Height) // Uses helper from view_helpers.go
-	row1Height := lipgloss.Height(row1FinalView)
-
-	// ----- ROW 2: Port Forwarding -----
-	row2FinalView := renderPortForwardingRow(m, contentWidth, maxRow2Height) // Uses helper from view_helpers.go
-	row2Height := lipgloss.Height(row2FinalView)
-
-	// ----- ROW 3: MCP Proxies -----
-	// Allocate similar height as port forwarding row for now
-	maxRow3Height := maxRow2Height // Or define a new specific height, e.g., 7
-	if maxRow3Height < 5 {
-		maxRow3Height = 5
-	} // Min height for some content
-	row3FinalView := renderMcpProxiesRow(m, contentWidth, maxRow3Height)
-	row3Height := lipgloss.Height(row3FinalView)
-
-	// ----- Main Content Assembly -----
-	var finalViewLayout []string
-	currentHeaderView := headerRenderedView
-
-	finalViewLayout = append(finalViewLayout, currentHeaderView)
-	finalViewLayout = append(finalViewLayout, row1FinalView)
-	finalViewLayout = append(finalViewLayout, row2FinalView)
-	finalViewLayout = append(finalViewLayout, row3FinalView) // Add the new MCP proxies row
-
-	if m.height >= minHeightForMainLogView { // minHeightForMainLogView is a constant from styles.go
-		// Calculate log section height to take all remaining space
-		numGaps := 4 // Gaps between header-row1, row1-row2, row2-row3, row3-logPanel
-		heightConsumedByFixedElements := headerHeight + row1Height + row2Height + row3Height + numGaps
-		logSectionHeight := totalAvailableHeight - heightConsumedByFixedElements
-
-		// Add debug info to see what's happening with height calculations, only when debugMode is enabled
-		if m.debugMode {
-			debugHeightInfo := fmt.Sprintf(
-				"DEBUG: total=%d fixed=%d log=%d | header=%d row1=%d row2=%d row3=%d",
-				totalAvailableHeight, heightConsumedByFixedElements, logSectionHeight,
-				headerHeight, row1Height, row2Height, row3Height)
-			m.combinedOutput = append([]string{debugHeightInfo}, m.combinedOutput...)
-		}
-
-		if logSectionHeight < 0 { // Ensure it's not negative if space is very constrained
-			logSectionHeight = 0
-		}
-
-		// IMPORTANT: We need to force the log panel to take all remaining space
-		// Set maximum log height - at least 30% of total height, or all remaining space
-		if logSectionHeight < int(float64(totalAvailableHeight)*0.3) && totalAvailableHeight > 30 {
-			// Ensure log panel takes at least 30% of screen
-			logSectionHeight = int(float64(totalAvailableHeight) * 0.3)
-
-			// Limit other sections if needed to make space
-			if row2Height > 7 {
-				row2Height = 7 // This might conflict if row3 also takes space, consider total budget
-			}
-			if row3Height > 7 { // Add similar for row3
-				row3Height = 7
-			}
-			if row1Height > 5 {
-				row1Height = 5
-			}
-		}
-
-		// Update log viewport size BEFORE rendering - forcing exact dimensions
-		m.mainLogViewport.Width = contentWidth - panelStatusDefaultStyle.GetHorizontalFrameSize()
-
-		// Viewport height must account for panel title and borders
-		// Border top + title + gap + content + border bottom = log height
-		borderAndTitleHeight := panelStatusDefaultStyle.GetVerticalFrameSize() + 1 // +1 for title
-		viewportHeight := logSectionHeight - borderAndTitleHeight
-		if viewportHeight < 0 {
-			viewportHeight = 0
-		}
-
-		// Force viewport height to match the calculated space
-		m.mainLogViewport.Height = viewportHeight
-
-		// Set content AFTER setting dimensions
-		m.mainLogViewport.SetContent(strings.Join(m.combinedOutput, "\n"))
-
-		// Now render log panel with the properly sized viewport
-		combinedLogViewString := renderCombinedLogPanel(&m, contentWidth, logSectionHeight)
-
-		// Debug mode: Check if combined log view string starts with "Log [H=" and fix it
-		if m.debugMode && strings.Contains(combinedLogViewString, "Log [H=") {
-			// Replace the debug prefix with the regular title
-			combinedLogViewString = strings.Replace(
-				combinedLogViewString,
-				"Log [H=",
-				"Combined Activity Log",
-				1)
-		}
-
-		finalViewLayout = append(finalViewLayout, combinedLogViewString)
-
-	} else {
-		// If main log view is hidden, update header to hint 'L' for log overlay
-		if !strings.Contains(currentHeaderView, "L for Logs") {
-			updatedHeaderStr := strings.Replace(currentHeaderView, "h for Help", "h for Help | L for Logs", 1)
-			finalViewLayout[0] = updatedHeaderStr // Update the header in the layout
-		}
-		m.logViewport.SetContent(strings.Join(m.combinedOutput, "\n"))
-	}
-
-	// Join all layout elements vertically
-	joinedView := lipgloss.JoinVertical(lipgloss.Left, finalViewLayout...)
-
-	// Make sure the view fills the entire terminal width and height
-	finalView := lipgloss.Place(
-		m.width,
-		m.height,
-		lipgloss.Left, // Align left horizontally
-		lipgloss.Top,  // Align top vertically
-		joinedView,
-		lipgloss.WithWhitespaceBackground(lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#222222"}), // Match the terminal background
-	)
-
-	// ----- OVERLAYS (Help & Log) -----
-	if m.helpVisible {
-		helpOverlay := renderHelpOverlay(m, m.width, m.height) // Uses helper from view_helpers.go
-		return lipgloss.Place(
-			m.width, m.height, lipgloss.Center, lipgloss.Center, helpOverlay,
+		return lipgloss.Place( // Place the styled container
+			m.width, m.height, // Full terminal dimensions
+			lipgloss.Center, lipgloss.Center, // Center horizontally and vertically
+			styledHelpContainer,
+			// This creates the dimming effect for the area *outside* the styledHelpContainer
 			lipgloss.WithWhitespaceBackground(lipgloss.AdaptiveColor{Light: "rgba(0,0,0,0.1)", Dark: "rgba(0,0,0,0.6)"}),
 		)
-	} else if m.logOverlayVisible {
+	case ModeLogOverlay:
 		overlayWidth := int(float64(m.width) * 0.8)
 		overlayHeight := int(float64(m.height) * 0.7)
 
@@ -698,7 +688,251 @@ func (m model) View() string {
 			m.width, m.height, lipgloss.Center, lipgloss.Center, logOverlay,
 			lipgloss.WithWhitespaceBackground(lipgloss.AdaptiveColor{Light: "rgba(0,0,0,0.1)", Dark: "rgba(0,0,0,0.6)"}),
 		)
+	case ModeMainDashboard, ModeError: // ModeError can also fall through to main dashboard for now
+		// This section is the original content of View() for the main dashboard.
+		if m.width == 0 || m.height == 0 { // A basic check for readiness
+			return statusStyle.Render("Waiting for window size...")
+		}
+
+		// Regular view rendering
+		// Use the full terminal width with no margins for perfect alignment
+		contentWidth := m.width
+		// totalAvailableHeight := m.height // Total height for all elements including status bar
+		// Subtract 1 line for the status bar from the height available for other content rows
+		mainContentHeight := m.height - 1
+		if mainContentHeight < 0 {
+			mainContentHeight = 0
+		}
+
+		// For extremely small windows, just show a header and status bar
+		if m.height < 6 || contentWidth < 20 { // Adjusted m.height condition to account for status bar
+			header := renderHeader(m, contentWidth)
+			statusBar := renderStatusBar(m, contentWidth)
+			return lipgloss.JoinVertical(lipgloss.Left, header, statusBar)
+		}
+
+		// ----- GLOBAL HEADER SECTION -----
+		headerRenderedView := renderHeader(m, contentWidth) // Uses helper from view_helpers.go
+		headerHeight := lipgloss.Height(headerRenderedView)
+
+		// Adjust layout approach for very small windows (considering mainContentHeight now)
+		if mainContentHeight < 15 { // Original was totalAvailableHeight < 15
+			// In small windows, just show header and cluster info
+			row1FinalView := renderContextPanesRow(m, contentWidth, mainContentHeight-headerHeight-1) // Use mainContentHeight
+			dashboardView := lipgloss.JoinVertical(lipgloss.Left, headerRenderedView, row1FinalView)
+			statusBar := renderStatusBar(m, contentWidth)
+			return lipgloss.JoinVertical(lipgloss.Left, dashboardView, statusBar)
+		}
+
+		// ----- Height Allocations (based on mainContentHeight) -----
+		maxRow1Height := int(float64(mainContentHeight-headerHeight) * 0.20) // Adjusted percentage slightly for better balance
+		if maxRow1Height < 5 {
+			maxRow1Height = 5
+		} else if maxRow1Height > 7 {
+			maxRow1Height = 7
+		}
+
+		maxRow2Height := int(float64(mainContentHeight-headerHeight) * 0.30) // Adjusted percentage slightly
+		if maxRow2Height < 7 {
+			maxRow2Height = 7
+		} else if maxRow2Height > 9 {
+			maxRow2Height = 9
+		}
+
+		// ----- ROW 1: MC/WC Info -----
+		row1FinalView := renderContextPanesRow(m, contentWidth, maxRow1Height) // Uses helper from view_helpers.go
+		row1Height := lipgloss.Height(row1FinalView)
+
+		// ----- ROW 2: Port Forwarding -----
+		row2FinalView := renderPortForwardingRow(m, contentWidth, maxRow2Height) // Uses helper from view_helpers.go
+		row2Height := lipgloss.Height(row2FinalView)
+
+		// ----- ROW 3: MCP Proxies -----
+		// Allocate similar height as port forwarding row for now
+		maxRow3Height := maxRow2Height // Or define a new specific height, e.g., 7
+		if maxRow3Height < 5 {
+			maxRow3Height = 5
+		} // Min height for some content
+		row3FinalView := renderMcpProxiesRow(m, contentWidth, maxRow3Height)
+		row3Height := lipgloss.Height(row3FinalView)
+
+		// ----- Main Content Assembly -----
+		var finalViewLayout []string
+		currentHeaderView := headerRenderedView
+
+		finalViewLayout = append(finalViewLayout, currentHeaderView)
+		finalViewLayout = append(finalViewLayout, row1FinalView)
+		finalViewLayout = append(finalViewLayout, row2FinalView)
+		finalViewLayout = append(finalViewLayout, row3FinalView) // Add the new MCP proxies row
+
+		if m.height >= minHeightForMainLogView { // minHeightForMainLogView is a constant from styles.go
+			// Calculate log section height to take all remaining space (from mainContentHeight)
+			numGaps := 4 // Gaps between header-row1, row1-row2, row2-row3, row3-logPanel
+			heightConsumedByFixedElements := headerHeight + row1Height + row2Height + row3Height + numGaps
+			logSectionHeight := mainContentHeight - heightConsumedByFixedElements // Use mainContentHeight
+
+			// Add debug info to see what's happening with height calculations, only when debugMode is enabled
+			if m.debugMode {
+				debugHeightInfo := fmt.Sprintf(
+					"DEBUG: totalH=%d mainContentH=%d logH=%d | header=%d r1=%d r2=%d r3=%d",
+					m.height, mainContentHeight, logSectionHeight,
+					headerHeight, row1Height, row2Height, row3Height)
+				m.combinedOutput = append([]string{debugHeightInfo}, m.combinedOutput...)
+			}
+
+			if logSectionHeight < 0 { // Ensure it's not negative if space is very constrained
+				logSectionHeight = 0
+			}
+
+			// IMPORTANT: We need to force the log panel to take all remaining space
+			// Set maximum log height - at least 30% of total height, or all remaining space
+			if logSectionHeight < int(float64(mainContentHeight)*0.3) && mainContentHeight > 30 { // Use mainContentHeight
+				// Ensure log panel takes at least 30% of screen
+				logSectionHeight = int(float64(mainContentHeight) * 0.3) // Use mainContentHeight
+
+				// Limit other sections if needed to make space
+				if row2Height > 7 {
+					row2Height = 7 // This might conflict if row3 also takes space, consider total budget
+				}
+				if row3Height > 7 { // Add similar for row3
+					row3Height = 7
+				}
+				if row1Height > 5 {
+					row1Height = 5
+				}
+			}
+
+			// Update log viewport size BEFORE rendering - forcing exact dimensions
+			m.mainLogViewport.Width = contentWidth - panelStatusDefaultStyle.GetHorizontalFrameSize()
+
+			// Viewport height must account for panel title and borders
+			// Border top + title + gap + content + border bottom = log height
+			borderAndTitleHeight := panelStatusDefaultStyle.GetVerticalFrameSize() + 1 // +1 for title
+			viewportHeight := logSectionHeight - borderAndTitleHeight
+			if viewportHeight < 0 {
+				viewportHeight = 0
+			}
+
+			// Force viewport height to match the calculated space
+			m.mainLogViewport.Height = viewportHeight
+
+			// Set content AFTER setting dimensions
+			m.mainLogViewport.SetContent(strings.Join(m.combinedOutput, "\n"))
+
+			// Now render log panel with the properly sized viewport
+			combinedLogViewString := renderCombinedLogPanel(&m, contentWidth, logSectionHeight)
+
+			// Debug mode: Check if combined log view string starts with "Log [H=" and fix it
+			if m.debugMode && strings.Contains(combinedLogViewString, "Log [H=") {
+				// Replace the debug prefix with the regular title
+				combinedLogViewString = strings.Replace(
+					combinedLogViewString,
+					"Log [H=",
+					"Combined Activity Log",
+					1)
+			}
+
+			finalViewLayout = append(finalViewLayout, combinedLogViewString)
+
+		} else {
+			// If main log view is hidden, update header to hint 'L' for log overlay
+			if !strings.Contains(currentHeaderView, "L for Logs") {
+				updatedHeaderStr := strings.Replace(currentHeaderView, "h for Help", "h for Help | L for Logs", 1)
+				finalViewLayout[0] = updatedHeaderStr // Update the header in the layout
+			}
+			m.logViewport.SetContent(strings.Join(m.combinedOutput, "\n"))
+		}
+
+		// Join all layout elements vertically
+		mainDashboardView := lipgloss.JoinVertical(lipgloss.Left, finalViewLayout...)
+
+		// Render the status bar
+		statusBarView := renderStatusBar(m, contentWidth)
+
+		// Join the main dashboard content with the status bar
+		fullView := lipgloss.JoinVertical(lipgloss.Left, mainDashboardView, statusBarView)
+
+		// Make sure the view fills the entire terminal width and height
+		finalPlacement := lipgloss.Place(
+			m.width,
+			m.height,
+			lipgloss.Left, // Align left horizontally
+			lipgloss.Top,  // Align top vertically
+			fullView,      // Use the view that includes the status bar
+			lipgloss.WithWhitespaceBackground(lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#222222"}), // Match the terminal background
+		)
+		return finalPlacement
+	default:
+		// This case should ideally not be reached if all modes are handled.
+		// For safety, return a message indicating an unhandled mode.
+		return statusStyle.Render(fmt.Sprintf("Unhandled application mode: %s", m.currentAppMode.String()))
+	}
+}
+
+// calculateOverallStatus determines the high-level application status based on various model fields.
+// It returns the status and a brief diagnostic string if relevant (e.g., for Degraded/Failed).
+func (m *model) calculateOverallStatus() (OverallAppStatus, string) {
+	// Priority 1: Connecting state
+	if m.isLoading { // Global loading flag often set during connection sequences or restarts
+		return AppStatusConnecting, "Ongoing operation..."
+	}
+	if m.currentAppMode == ModeInitializing { // Still in very early init
+		return AppStatusConnecting, "Initializing UI..."
+	}
+	if m.MCHealth.IsLoading {
+		return AppStatusConnecting, "MC Health..."
+	}
+	if m.workloadCluster != "" && m.WCHealth.IsLoading {
+		return AppStatusConnecting, "WC Health..."
+	}
+	// Check if any port forwards or MCP servers are in an initializing/awaiting state
+	for _, pf := range m.portForwards {
+		if strings.Contains(pf.statusMsg, "Initial") || strings.Contains(pf.statusMsg, "Awaiting") || strings.Contains(pf.statusMsg, "Restarting") {
+			return AppStatusConnecting, fmt.Sprintf("%s starting...", pf.label)
+		}
+	}
+	for _, mcp := range m.mcpServers {
+		if strings.Contains(mcp.statusMsg, "Initial") || strings.Contains(mcp.statusMsg, "Restarting") {
+			return AppStatusConnecting, fmt.Sprintf("%s starting...", mcp.label)
+		}
 	}
 
-	return finalView
+	// Priority 2: Failed state (critical failures)
+	// This needs more specific error checking if possible. For now, any error in health is considered.
+	if m.MCHealth.StatusError != nil {
+		// Simplistic check; ideally, we'd differentiate transient vs. unrecoverable connection errors
+		return AppStatusFailed, fmt.Sprintf("MC: %s", m.MCHealth.StatusError.Error())
+	}
+	if m.workloadCluster != "" && m.WCHealth.StatusError != nil {
+		return AppStatusFailed, fmt.Sprintf("WC: %s", m.WCHealth.StatusError.Error())
+	}
+	// Note: Connection flow failures already set m.isLoading=false and a status bar error message.
+	// If a fundamental connection step failed (e.g. no contexts found, initial login impossible),
+	// the app might not even reach a state where this detailed check is meaningful for MC/WC health.
+	// We might need a more persistent error flag in the model for such critical setup failures.
+
+	// Priority 3: Degraded state
+	var degradedReasons []string
+	if m.MCHealth.TotalNodes > 0 && m.MCHealth.ReadyNodes < m.MCHealth.TotalNodes {
+		degradedReasons = append(degradedReasons, fmt.Sprintf("MC nodes: %d/%d", m.MCHealth.ReadyNodes, m.MCHealth.TotalNodes))
+	}
+	if m.workloadCluster != "" && m.WCHealth.TotalNodes > 0 && m.WCHealth.ReadyNodes < m.WCHealth.TotalNodes {
+		degradedReasons = append(degradedReasons, fmt.Sprintf("WC nodes: %d/%d", m.WCHealth.ReadyNodes, m.WCHealth.TotalNodes))
+	}
+	for _, pf := range m.portForwards {
+		if pf.active && (!pf.running || pf.err != nil) && !strings.Contains(pf.statusMsg, "Initial") { // Active but not running/error, and not just initializing
+			degradedReasons = append(degradedReasons, fmt.Sprintf("PF %s error", pf.label))
+		}
+	}
+	for _, mcp := range m.mcpServers {
+		if mcp.active && (mcp.err != nil || (!strings.Contains(mcp.statusMsg, "Running") && !strings.Contains(mcp.statusMsg, "Initial"))) { // Active but not running/error, and not just initializing
+			degradedReasons = append(degradedReasons, fmt.Sprintf("MCP %s error", mcp.label))
+		}
+	}
+	if len(degradedReasons) > 0 {
+		return AppStatusDegraded, strings.Join(degradedReasons, ", ")
+	}
+
+	// If none of the above, assume AppStatusUp
+	return AppStatusUp, "All systems operational"
 }

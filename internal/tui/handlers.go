@@ -14,10 +14,16 @@ import (
 
 // handleWindowSizeMsg updates the model with the new terminal dimensions when the window is resized.
 // It also sets the `ready` flag to true, indicating the TUI can perform its initial full render.
+// It transitions to ModeMainDashboard if the app was in ModeInitializing.
 func handleWindowSizeMsg(m model, msg tea.WindowSizeMsg) (model, tea.Cmd) {
 	m.width = msg.Width
 	m.height = msg.Height
-	m.ready = true
+
+	// If we were initializing, receiving window size means we can move to the main dashboard.
+	if m.currentAppMode == ModeInitializing {
+		m.currentAppMode = ModeMainDashboard
+		m.isLoading = false // Initial loading is considered done when dashboard is ready
+	}
 	return m, nil
 }
 
@@ -43,7 +49,7 @@ func handleKeyMsgInputMode(m model, keyMsg tea.KeyMsg) (model, tea.Cmd) {
 			return m, nil
 		} else if m.currentInputStep == wcInputStep {
 			wcName := m.newConnectionInput.Value()
-			m.isConnectingNew = false
+			m.currentAppMode = ModeMainDashboard
 			m.newConnectionInput.Blur()
 			m.newConnectionInput.Reset()
 			if len(m.portForwardOrder) > 0 {
@@ -66,7 +72,7 @@ func handleKeyMsgInputMode(m model, keyMsg tea.KeyMsg) (model, tea.Cmd) {
 			return m, nil
 		} else if m.currentInputStep == wcInputStep {
 			wcName := m.newConnectionInput.Value()
-			m.isConnectingNew = false
+			m.currentAppMode = ModeMainDashboard
 			m.newConnectionInput.Blur()
 			m.newConnectionInput.Reset()
 			if len(m.portForwardOrder) > 0 {
@@ -76,7 +82,7 @@ func handleKeyMsgInputMode(m model, keyMsg tea.KeyMsg) (model, tea.Cmd) {
 		}
 
 	case "esc": // Cancel new connection input
-		m.isConnectingNew = false
+		m.currentAppMode = ModeMainDashboard
 		m.newConnectionInput.Blur()
 		m.newConnectionInput.Reset()
 		m.currentInputStep = mcInputStep // Reset for next time
@@ -134,10 +140,10 @@ func handleKeyMsgGlobal(m model, keyMsg tea.KeyMsg, existingCmds []tea.Cmd) (mod
 	var cmds = existingCmds // Start with existing commands
 
 	// If log overlay is visible, prioritize its controls
-	if m.logOverlayVisible {
+	if m.currentAppMode == ModeLogOverlay {
 		switch keyMsg.String() {
 		case "L", "esc": // Close log overlay
-			m.logOverlayVisible = false
+			m.currentAppMode = ModeMainDashboard
 			return m, nil
 		case "k", "up", "j", "down", "pgup", "pgdown", "home", "end": // Pass scrolling keys to viewport
 			var viewportCmd tea.Cmd
@@ -149,9 +155,10 @@ func handleKeyMsgGlobal(m model, keyMsg tea.KeyMsg, existingCmds []tea.Cmd) (mod
 	}
 
 	// If help overlay is visible, only Esc or h work (handled in model.Update's KeyMsg block)
-	if m.helpVisible {
+	if m.currentAppMode == ModeHelpOverlay {
 		// Key handling for when help is visible is done in model.Update
 		// We shouldn't process global keys here to avoid conflicts.
+		// Specific keys like Esc or H to close help are handled in model.Update directly.
 		return m, nil
 	}
 
@@ -162,8 +169,8 @@ func handleKeyMsgGlobal(m model, keyMsg tea.KeyMsg, existingCmds []tea.Cmd) (mod
 		return m, nil
 
 	case "n": // Start new connection
-		if !m.isConnectingNew {
-			m.isConnectingNew = true
+		if m.currentAppMode != ModeNewConnectionInput {
+			m.currentAppMode = ModeNewConnectionInput
 			m.currentInputStep = mcInputStep
 			m.newConnectionInput.Prompt = "Enter Management Cluster (Enter/Ctrl+S Submit, Esc Cancel, Tab Complete): "
 			m.newConnectionInput.Focus()
@@ -261,6 +268,7 @@ func handleKeyMsgGlobal(m model, keyMsg tea.KeyMsg, existingCmds []tea.Cmd) (mod
 				pf.pid = 0         // Reset PID
 				pf.cmd = nil       // Reset command reference
 
+				m.isLoading = true // Set loading before dispatching restart command
 				m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[%s] Attempting restart...", pf.label))
 				// Trim log directly if needed, or rely on model.Update
 
@@ -373,6 +381,11 @@ func handleRequestClusterHealthUpdate(m model) (model, tea.Cmd) {
 			cmds = append(cmds, fetchNodeStatusCmd(wcIdentifier, false, m.workloadCluster))
 		}
 	}
+	// Set global loading state if any health check is active
+	if m.MCHealth.IsLoading || m.WCHealth.IsLoading { // Check after they are set true above
+		m.isLoading = true
+	}
+
 	// Re-tick for next update
 	cmds = append(cmds, tea.Tick(healthUpdateInterval, func(t time.Time) tea.Msg {
 		return requestClusterHealthUpdate{}
@@ -417,6 +430,10 @@ func handleNodeStatusMsg(m model, msg nodeStatusMsg) model {
 	if len(m.combinedOutput) > maxCombinedOutputLines {
 		m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
 	}
+	// After updating health, check if all health loading is done
+	if !m.MCHealth.IsLoading && (m.workloadCluster == "" || !m.WCHealth.IsLoading) { // WCHealth.IsLoading only matters if WC exists
+		m.isLoading = false
+	}
 	return m
 }
 
@@ -438,10 +455,14 @@ func handleClusterListResultMsg(m model, msg clusterListResultMsg) model {
 // If failed, it logs the error.
 func handleKubeContextSwitchedMsg(m model, msg kubeContextSwitchedMsg) (model, tea.Cmd) {
 	var cmds []tea.Cmd
+	var clearStatusBarCmd tea.Cmd
 	if msg.err != nil {
 		m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Failed to switch Kubernetes context to '%s': %s", msg.TargetContext, msg.err.Error()))
+		clearStatusBarCmd = m.setStatusMessage(fmt.Sprintf("Failed to switch context: %s", msg.TargetContext), StatusBarError, 5*time.Second)
 	} else {
 		m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Successfully switched Kubernetes context. Target was: %s", msg.TargetContext))
+		clearStatusBarCmd = m.setStatusMessage(fmt.Sprintf("Context switched to: %s", msg.TargetContext), StatusBarSuccess, 3*time.Second)
+
 		cmds = append(cmds, getCurrentKubeContextCmd())
 		if m.managementCluster != "" {
 			m.MCHealth.IsLoading = true
@@ -461,7 +482,7 @@ func handleKubeContextSwitchedMsg(m model, msg kubeContextSwitchedMsg) (model, t
 	if len(m.combinedOutput) > maxCombinedOutputLines {
 		m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
 	}
-	return m, tea.Batch(cmds...)
+	return m, tea.Batch(append(cmds, clearStatusBarCmd)...)
 }
 
 // MCP Server Message Handlers are now in mcpserver_handlers.go

@@ -19,6 +19,7 @@ import (
 // - existingCmds: A slice of commands that might have been accumulated (though typically not used here as this starts a new flow).
 // Returns the updated model and a command to begin the login sequence or nil if validation fails.
 func handleSubmitNewConnectionMsg(m model, msg submitNewConnectionMsg, existingCmds []tea.Cmd) (model, tea.Cmd) {
+	m.isLoading = true // Start loading for new connection sequence
 	m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Initiating new connection to MC: %s, WC: %s", msg.mc, msg.wc))
 	m.combinedOutput = append(m.combinedOutput, "[SYSTEM] Step 0: Stopping all existing port-forwarding processes...")
 
@@ -59,15 +60,22 @@ func handleSubmitNewConnectionMsg(m model, msg submitNewConnectionMsg, existingC
 			m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
 		}
 		// Reset input mode
-		m.isConnectingNew = false
+		m.currentAppMode = ModeMainDashboard
 		m.newConnectionInput.Blur()
 		m.newConnectionInput.Reset()
 		m.currentInputStep = mcInputStep
 		if len(m.portForwardOrder) > 0 {
 			m.focusedPanelKey = m.portForwardOrder[0]
 		}
-		return m, nil // No command, user needs to try 'n' again or quit.
+		m.isLoading = false // Failed validation, stop loading
+		clearCmd := m.setStatusMessage("MC name cannot be empty.", StatusBarError, 5*time.Second)
+		return m, clearCmd
 	}
+
+	// Set a status message for starting the login process
+	// This message might be quickly overwritten by login results, but good for feedback.
+	// No need to batch a clear command here as the next message will likely set its own.
+	m.setStatusMessage(fmt.Sprintf("Login to %s...", msg.mc), StatusBarInfo, 2*time.Second)
 
 	m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Step 1: Logging into Management Cluster: %s...", msg.mc))
 	if len(m.combinedOutput) > maxCombinedOutputLines {
@@ -105,9 +113,12 @@ func handleKubeLoginResultMsg(m model, msg kubeLoginResultMsg, cmds []tea.Cmd) (
 		m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM ERROR] Login failed for %s: %v", msg.clusterName, msg.err))
 		// Potentially reset isConnectingNew = false here or offer retry to user?
 		// For now, just log and return.
-		return m, nil
+		m.isLoading = false // Login failed, stop loading
+		clearCmd := m.setStatusMessage(fmt.Sprintf("Login failed for %s", msg.clusterName), StatusBarError, 5*time.Second)
+		return m, clearCmd
 	}
 	m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Login successful for: %s", msg.clusterName))
+	clearStatusCmd := m.setStatusMessage(fmt.Sprintf("Login OK: %s", msg.clusterName), StatusBarSuccess, 3*time.Second)
 
 	var nextCmds []tea.Cmd
 	if msg.isMC {
@@ -158,7 +169,9 @@ func handleKubeLoginResultMsg(m model, msg kubeLoginResultMsg, cmds []tea.Cmd) (
 		targetKubeContext := "teleport.giantswarm.io-" + msg.clusterName
 		nextCmds = append(nextCmds, performPostLoginOperationsCmd(targetKubeContext, finalMcName, shortWcName))
 	}
-	return m, tea.Batch(append(cmds, nextCmds...)...)
+	finalCmds := append(cmds, nextCmds...)
+	finalCmds = append(finalCmds, clearStatusCmd)
+	return m, tea.Batch(finalCmds...)
 }
 
 // handleContextSwitchAndReinitializeResultMsg processes the result of the performPostLoginOperationsCmd.
@@ -189,7 +202,9 @@ func handleContextSwitchAndReinitializeResultMsg(m model, msg contextSwitchAndRe
 	}
 	if msg.err != nil {
 		m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM ERROR] Context switch/re-init failed: %v. MCP PROXIES WILL NOT START.", msg.err))
-		return m, nil // No command, MCP proxies won't start
+		m.isLoading = false // Context switch/re-init failed, stop loading
+		clearCmd := m.setStatusMessage("Context switch/re-init failed.", StatusBarError, 5*time.Second)
+		return m, clearCmd
 	}
 
 	if m.debugMode {
@@ -197,6 +212,7 @@ func handleContextSwitchAndReinitializeResultMsg(m model, msg contextSwitchAndRe
 	}
 
 	m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Successfully switched context to: %s. Re-initializing TUI.", msg.switchedContext))
+	clearStatusCmd := m.setStatusMessage(fmt.Sprintf("Context: %s. Re-initializing...", msg.switchedContext), StatusBarSuccess, 3*time.Second)
 
 	// Apply new cluster names to the model
 	m.managementCluster = msg.desiredMcName
@@ -266,5 +282,7 @@ func handleContextSwitchAndReinitializeResultMsg(m model, msg contextSwitchAndRe
 	})
 	newInitCmds = append(newInitCmds, tickCmd)
 
-	return m, tea.Batch(append(existingCmds, newInitCmds...)...)
+	finalCmdsToBatch := append(existingCmds, newInitCmds...)
+	finalCmdsToBatch = append(finalCmdsToBatch, clearStatusCmd)
+	return m, tea.Batch(finalCmdsToBatch...)
 }

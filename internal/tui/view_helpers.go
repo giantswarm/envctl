@@ -38,23 +38,25 @@ func renderMcPane(m model, paneWidth int) string {
 
 	// Compact version with abbreviated context
 	shortContext := strings.TrimPrefix(mcFullContext, "teleport.giantswarm.io-")
-	mcPaneContent := fmt.Sprintf("MC: %s%s\nCtx: %s", mcFullNameString, mcActiveString, shortContext)
+	mcPaneContent := fmt.Sprintf("%sMC: %s%s\nCtx: %s", SafeIcon(IconKubernetes), mcFullNameString, mcActiveString, shortContext)
 
 	var healthStatusText string
 	var healthStyle lipgloss.Style
 
 	if m.MCHealth.IsLoading {
-		healthStatusText = "Nodes: Loading..."
+		healthStatusText = RenderIconWithMessage(IconHourglass, "Nodes: Loading...")
 		healthStyle = healthLoadingStyle
 	} else if m.MCHealth.StatusError != nil {
-		healthStatusText = fmt.Sprintf("Nodes: Error (%s)", m.MCHealth.LastUpdated.Format("15:04:05"))
+		healthStatusText = RenderIconWithMessage(IconCross, fmt.Sprintf("Nodes: Error (%s)", m.MCHealth.LastUpdated.Format("15:04:05")))
 		healthStyle = healthErrorStyle
 	} else {
-		healthStatusText = fmt.Sprintf("Nodes: %d/%d", m.MCHealth.ReadyNodes, m.MCHealth.TotalNodes)
+		healthIcon := IconCheck
 		if m.MCHealth.ReadyNodes < m.MCHealth.TotalNodes {
-			healthStatusText = "[WARN] " + healthStatusText
+			healthIcon = IconWarning
+			healthStatusText = RenderIconWithNodes(healthIcon, m.MCHealth.ReadyNodes, m.MCHealth.TotalNodes, "[WARN]")
 			healthStyle = healthWarnStyle
 		} else {
+			healthStatusText = RenderIconWithNodes(healthIcon, m.MCHealth.ReadyNodes, m.MCHealth.TotalNodes, "")
 			healthStyle = healthGoodStyle
 		}
 	}
@@ -112,23 +114,25 @@ func renderWcPane(m model, paneWidth int) string {
 	if wcFullContext == "N/A" {         // if identifier was empty
 		shortContext = "N/A"
 	}
-	wcPaneContent := fmt.Sprintf("WC: %s%s\nCtx: %s", wcNameString, wcActiveString, shortContext)
+	wcPaneContent := fmt.Sprintf("%sWC: %s%s\nCtx: %s", SafeIcon(IconKubernetes), wcNameString, wcActiveString, shortContext)
 
 	var healthStatusText string
 	var healthStyle lipgloss.Style
 
 	if m.WCHealth.IsLoading {
-		healthStatusText = "Nodes: Loading..."
+		healthStatusText = RenderIconWithMessage(IconHourglass, "Nodes: Loading...")
 		healthStyle = healthLoadingStyle
 	} else if m.WCHealth.StatusError != nil {
-		healthStatusText = fmt.Sprintf("Nodes: Error")
+		healthStatusText = RenderIconWithMessage(IconCross, "Nodes: Error")
 		healthStyle = healthErrorStyle
 	} else {
-		healthStatusText = fmt.Sprintf("Nodes: %d/%d", m.WCHealth.ReadyNodes, m.WCHealth.TotalNodes)
+		healthIcon := IconCheck
 		if m.WCHealth.ReadyNodes < m.WCHealth.TotalNodes {
-			healthStatusText = "[WARN] " + healthStatusText
+			healthIcon = IconWarning
+			healthStatusText = RenderIconWithNodes(healthIcon, m.WCHealth.ReadyNodes, m.WCHealth.TotalNodes, "[WARN]")
 			healthStyle = healthWarnStyle
 		} else {
+			healthStatusText = RenderIconWithNodes(healthIcon, m.WCHealth.ReadyNodes, m.WCHealth.TotalNodes, "")
 			healthStyle = healthGoodStyle
 		}
 	}
@@ -179,7 +183,9 @@ func renderPortForwardPanel(pf *portForwardProcess, m model, targetOuterWidth in
 	// --- 1. Determine panel style based on status and focus ---
 	// Selects base and focused styles (border, background) according to the port forward's current state (error, running, exited, initializing).
 	var baseStyleForPanel, focusedBaseStyleForPanel lipgloss.Style
-	statusToCheck := strings.ToLower(pf.statusMsg)
+	// Trim status message from data source before further processing
+	trimmedStatusFromSource := strings.TrimSpace(pf.statusMsg)
+	statusToCheck := strings.ToLower(trimmedStatusFromSource)
 
 	if pf.err != nil || strings.HasPrefix(statusToCheck, "failed") || strings.HasPrefix(statusToCheck, "error") || strings.HasPrefix(statusToCheck, "restart failed") {
 		baseStyleForPanel = panelStatusErrorStyle
@@ -226,7 +232,7 @@ func renderPortForwardPanel(pf *portForwardProcess, m model, targetOuterWidth in
 	var pfContentBuilder strings.Builder
 
 	// Title: Uses a specific bold style but inherits the foreground color from finalPanelStyle.
-	pfContentBuilder.WriteString(portTitleStyle.Render(pf.label))
+	pfContentBuilder.WriteString(portTitleStyle.Render(SafeIcon(IconLink) + pf.label))
 	pfContentBuilder.WriteString("\n")
 
 	// Info lines: Inherit foreground from finalPanelStyle.
@@ -241,8 +247,19 @@ func renderPortForwardPanel(pf *portForwardProcess, m model, targetOuterWidth in
 	pfContentBuilder.WriteString("\n")
 
 	// Compact status line
+	statusIcon := ""
+	if pf.running && pf.err == nil {
+		statusIcon = SafeIcon(IconPlay)
+	} else if pf.err != nil || strings.HasPrefix(statusToCheck, "failed") || strings.HasPrefix(statusToCheck, "error") {
+		statusIcon = SafeIcon(IconCross)
+	} else if strings.HasPrefix(statusToCheck, "exited") || strings.HasPrefix(statusToCheck, "killed") {
+		statusIcon = SafeIcon(IconStop)
+	} else {
+		statusIcon = SafeIcon(IconHourglass) // Initializing, Starting, Restarting, Awaiting Setup
+	}
+
 	pfContentBuilder.WriteString(contentFgTextStyle.Render(
-		fmt.Sprintf("Status: %s", trimStatusMessage(pf.statusMsg)),
+		fmt.Sprintf("Status: %s%s", statusIcon, trimStatusMessage(trimmedStatusFromSource)),
 	))
 
 	textForPanel := pfContentBuilder.String()
@@ -301,7 +318,7 @@ func renderCombinedLogPanel(m *model, availableWidth int, logSectionHeight int) 
 	}
 
 	// Always use the original title for the log panel
-	title := "Combined Activity Log"
+	title := SafeIcon(IconScroll) + "Combined Activity Log"
 
 	// Debug information will be added to the log content instead of the title
 
@@ -357,74 +374,6 @@ func renderCombinedLogPanel(m *model, availableWidth int, logSectionHeight int) 
 	return renderedPanel
 }
 
-// renderHelpOverlay renders a help overlay with all keyboard shortcuts and their descriptions.
-// The overlay is positioned in the center of the screen.
-// - m: The current TUI model.
-// - width: The target width for the overlay.
-// - height: The target height for the overlay.
-func renderHelpOverlay(m model, width, height int) string {
-	var helpContent strings.Builder
-
-	// Add title
-	helpContent.WriteString(helpTitleStyle.Render("Keyboard Shortcuts Help"))
-	helpContent.WriteString("\n\n")
-
-	// Function to format a shortcut line with key and description
-	formatShortcut := func(key, description string) string {
-		return fmt.Sprintf("%s %s", helpKeyStyle.Render(key), description)
-	}
-
-	// Navigation section
-	helpContent.WriteString(helpSectionStyle.Render("Navigation"))
-	helpContent.WriteString("\n")
-	helpContent.WriteString(formatShortcut("Tab", "Next panel"))
-	helpContent.WriteString("\n")
-	helpContent.WriteString(formatShortcut("Shift+Tab", "Previous panel"))
-	helpContent.WriteString("\n")
-
-	// Operations section
-	helpContent.WriteString(helpSectionStyle.Render("Operations"))
-	helpContent.WriteString("\n")
-	helpContent.WriteString(formatShortcut("q/Ctrl+C", "Quit the application"))
-	helpContent.WriteString("\n")
-	helpContent.WriteString(formatShortcut("r", "Restart port forwarding for focused panel"))
-	helpContent.WriteString("\n")
-	helpContent.WriteString(formatShortcut("s", "Switch Kubernetes context"))
-	helpContent.WriteString("\n")
-	helpContent.WriteString(formatShortcut("N", "Start new connection"))
-	helpContent.WriteString("\n")
-
-	// UI Controls section
-	helpContent.WriteString(helpSectionStyle.Render("UI Controls"))
-	helpContent.WriteString("\n")
-	helpContent.WriteString(formatShortcut("h", "Toggle this help overlay"))
-	helpContent.WriteString("\n")
-	helpContent.WriteString(formatShortcut("D", "Toggle dark/light mode"))
-	helpContent.WriteString("\n")
-	helpContent.WriteString(formatShortcut("z", "Toggle debug information"))
-	helpContent.WriteString("\n")
-	helpContent.WriteString(formatShortcut("Esc", "Close this help overlay"))
-
-	// Calculate overlay dimensions to fit within the screen
-	overlayWidth := width * 2 / 3
-	if overlayWidth > 80 {
-		overlayWidth = 80 // Cap at 80 columns wide
-	} else if overlayWidth < 50 {
-		overlayWidth = 50 // Min 50 columns
-	}
-
-	// Account for border and padding in the content width
-	contentWidth := overlayWidth - helpOverlayStyle.GetHorizontalFrameSize()
-	if contentWidth < 0 {
-		contentWidth = 0
-	}
-
-	// Create the final overlay with border and styling
-	return helpOverlayStyle.Copy().
-		Width(contentWidth).
-		Render(helpContent.String())
-}
-
 // renderNewConnectionInputView renders the UI when the application is in new connection input mode.
 func renderNewConnectionInputView(m model, width int) string {
 	var inputPrompt strings.Builder
@@ -444,6 +393,9 @@ func renderHeader(m model, contentWidth int) string {
 	// Use a simplified header when width is very small
 	if contentWidth < 40 {
 		headerTitleString := "envctl TUI"
+		if m.isLoading {
+			headerTitleString = m.spinner.View() + " envctl TUI"
+		}
 
 		// Ensure there's no possible negative width when applying style
 		headerStyle := headerStyle.Copy().Width(contentWidth)
@@ -452,6 +404,11 @@ func renderHeader(m model, contentWidth int) string {
 
 	// Regular header with more information
 	headerTitleString := "envctl TUI - Press h for Help | Tab to Navigate | q to Quit"
+
+	// Add spinner if loading
+	if m.isLoading {
+		headerTitleString = m.spinner.View() + " " + headerTitleString
+	}
 
 	// Add color mode debug info if debugMode is enabled
 	if m.debugMode {
@@ -621,15 +578,15 @@ func renderPortForwardingRow(m model, contentWidth int, maxRowHeight int) string
 func renderMcpProxyPanel(serverName string, predefinedData mcpserver.PredefinedMcpServer, proc *mcpServerProcess, m model, targetOuterWidth int) string {
 	var baseStyleForPanel lipgloss.Style // Focused style not used yet, so no focusedBaseStyleForPanel
 	var contentFgTextStyle lipgloss.Style
-	statusMsg := "Not Started"
+	statusMsgData := "Not Started"
 	pidStr := "PID: N/A"
 
 	if proc != nil {
-		statusMsg = proc.statusMsg
+		statusMsgData = strings.TrimSpace(proc.statusMsg) // Trim status message from data source
 		if proc.pid > 0 {
 			pidStr = fmt.Sprintf("PID: %d", proc.pid)
 		}
-		statusToCheck := strings.ToLower(statusMsg)
+		statusToCheck := strings.ToLower(statusMsgData)
 
 		if proc.err != nil || strings.Contains(statusToCheck, "error") || strings.Contains(statusToCheck, "failed") {
 			baseStyleForPanel = panelStatusErrorStyle // Reuse port-forward styles for now
@@ -652,13 +609,30 @@ func renderMcpProxyPanel(serverName string, predefinedData mcpserver.PredefinedM
 	finalPanelStyle = finalPanelStyle.Copy().Foreground(contentFgTextStyle.GetForeground())
 
 	var contentBuilder strings.Builder
-	contentBuilder.WriteString(portTitleStyle.Render(predefinedData.Name + " Proxy")) // e.g. "Kubernetes Proxy"
+	trimmedName := strings.TrimSpace(predefinedData.Name) // Trim MCP name from data source
+	contentBuilder.WriteString(portTitleStyle.Render(SafeIcon(IconGear) + trimmedName + " MCP")) // e.g. "Kubernetes MCP"
 	contentBuilder.WriteString("\n")
 	contentBuilder.WriteString(fmt.Sprintf("Port: %d (SSE)", predefinedData.ProxyPort))
 	contentBuilder.WriteString("\n")
 	contentBuilder.WriteString(pidStr)
 	contentBuilder.WriteString("\n")
-	contentBuilder.WriteString(contentFgTextStyle.Render(fmt.Sprintf("Status: %s", trimStatusMessage(statusMsg))))
+
+	statusIcon := ""
+	if proc != nil { // Determine icon based on actual proc state
+		if proc.err != nil || strings.Contains(strings.ToLower(proc.statusMsg), "error") || strings.Contains(strings.ToLower(proc.statusMsg), "failed") {
+			statusIcon = SafeIcon(IconCross)
+		} else if strings.Contains(strings.ToLower(proc.statusMsg), "running") {
+			statusIcon = SafeIcon(IconPlay)
+		} else if strings.Contains(strings.ToLower(proc.statusMsg), "stopped") {
+			statusIcon = SafeIcon(IconStop)
+		} else {
+			statusIcon = SafeIcon(IconHourglass) // Initializing, Starting, Restarting
+		}
+	} else { // No proc, means not started or issue
+		statusIcon = SafeIcon(IconWarning) // Or IconCross if considered an error not to find it
+	}
+
+	contentBuilder.WriteString(contentFgTextStyle.Render(fmt.Sprintf("Status: %s%s", statusIcon, trimStatusMessage(statusMsgData))))
 
 	textForPanel := contentBuilder.String()
 	actualFrameSize := finalPanelStyle.GetHorizontalFrameSize()
@@ -758,4 +732,118 @@ func renderMcpProxiesRow(m model, contentWidth int, maxRowHeight int) string {
 		Align(lipgloss.Left).
 		MaxHeight(maxRowHeight).
 		Render(joinedPanels)
+}
+
+// renderStatusBar constructs the status bar string.
+// It includes loading spinner, app status, cluster info, and temporary messages.
+func renderStatusBar(m model, width int) string {
+	// Determine overall status bar background based on OverallAppStatus
+	overallStatus, _ := m.calculateOverallStatus()
+	var currentStatusBarBg lipgloss.AdaptiveColor
+	switch overallStatus {
+	case AppStatusUp:
+		currentStatusBarBg = StatusBarSuccessBg
+	case AppStatusConnecting:
+		currentStatusBarBg = StatusBarInfoBg
+	case AppStatusDegraded:
+		currentStatusBarBg = StatusBarWarningBg
+	case AppStatusFailed:
+		currentStatusBarBg = StatusBarErrorBg
+	default:
+		currentStatusBarBg = StatusBarDefaultBg
+	}
+
+	// --- Define Column Widths ---
+	// Let's try more fixed proportions for stability, ensuring they sum to width.
+	leftColW := int(float64(width) * 0.25)  // Max width for left status/spinner
+	rightColW := int(float64(width) * 0.35) // Max width for right MC/WC info
+	centerColW := width - leftColW - rightColW
+	if centerColW < 0 { // Should not happen if width is reasonable
+		centerColW = 0
+		// Adjust others if center is squeezed out, e.g. take from widest of left/right
+		if leftColW + rightColW > width {
+			if rightColW > leftColW {
+				rightColW = width - leftColW
+			} else {
+				leftColW = width - rightColW
+			}
+		}
+	}
+	// Ensure sum is exact, giving remainder to largest flexible part (center)
+	if leftColW + rightColW + centerColW != width {
+		centerColW = width - leftColW - rightColW
+	}
+
+	// --- Left Part: Spinner or Overall App Status ---
+	var leftFinalStr string
+	if m.isLoading {
+		// Spinner view. It should ideally be shorter than leftColW.
+		// We render it inside a block of leftColW.
+		leftFinalStr = lipgloss.NewStyle().Background(currentStatusBarBg).Width(leftColW).Align(lipgloss.Left).Render(m.spinner.View())
+	} else {
+		icon := ""
+		switch overallStatus {
+		case AppStatusUp:
+			icon = SafeIcon(IconCheck)
+		case AppStatusConnecting:
+			icon = SafeIcon(IconHourglass)
+		case AppStatusDegraded:
+			icon = SafeIcon(IconWarning)
+		case AppStatusFailed:
+			icon = SafeIcon(IconCross)
+		case AppStatusUnknown:
+			icon = SafeIcon(IconInfo)
+		}
+		leftContent := icon + overallStatus.String()
+		// StatusBarTextStyle has Padding(0,1). The Width(leftColW) will truncate content if too long for the column.
+		leftFinalStr = StatusBarTextStyle.Copy().Background(currentStatusBarBg).Width(leftColW).Align(lipgloss.Left).Render(leftContent)
+	}
+
+	// --- Right Part: MC/WC Info ---
+	mcWcText := fmt.Sprintf("%s MC: %s", SafeIcon(IconKubernetes), m.managementCluster)
+	if m.workloadCluster != "" {
+		mcWcText += fmt.Sprintf(" / %s WC: %s", SafeIcon(IconKubernetes), m.workloadCluster)
+	}
+	rightFinalStr := StatusBarTextStyle.Copy().Background(currentStatusBarBg).Width(rightColW).Align(lipgloss.Right).Render(mcWcText)
+
+	// --- Center Part: Transient Status Message ---
+	var centerFinalStr string
+	rawTransientMessage := m.statusBarMessage
+	if rawTransientMessage != "" {
+		var msgStyle lipgloss.Style
+		var msgIcon string
+		switch m.statusBarMessageType {
+		case StatusBarSuccess:
+			msgStyle = StatusMessageSuccessStyle.Copy()
+			msgIcon = SafeIcon(IconSparkles)
+		case StatusBarError:
+			msgStyle = StatusMessageErrorStyle.Copy()
+			msgIcon = SafeIcon(IconCross)
+		case StatusBarWarning:
+			msgStyle = StatusMessageWarningStyle.Copy()
+			msgIcon = SafeIcon(IconLightbulb)
+		case StatusBarInfo:
+			msgStyle = StatusMessageInfoStyle.Copy()
+			msgIcon = SafeIcon(IconInfo)
+		default:
+			msgStyle = StatusMessageInfoStyle.Copy()
+			msgIcon = SafeIcon(IconInfo) // Fallback for any other case
+		}
+		centerContent := msgIcon + rawTransientMessage
+		// Apply background from currentStatusBarBg, width from centerColW, specific text color from msgStyle
+		centerFinalStr = msgStyle.Copy().Background(currentStatusBarBg).Width(centerColW).Align(lipgloss.Center).Render(centerContent)
+	} else {
+		// Render an empty block with the correct background and width to maintain column structure
+		centerFinalStr = lipgloss.NewStyle().Background(currentStatusBarBg).Width(centerColW).Render("")
+	}
+
+	finalStatusContent := lipgloss.JoinHorizontal(lipgloss.Bottom,
+		leftFinalStr,
+		centerFinalStr,
+		rightFinalStr,
+	)
+
+	// The outer style now mainly ensures height and applies an overall width for final clipping if JoinHorizontal misbehaved.
+	// Background is effectively handled by the parts.
+	return StatusBarBaseStyle.Copy().Width(width).Render(finalStatusContent)
 }

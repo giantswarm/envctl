@@ -21,6 +21,9 @@ type restartMcpServerMsg struct {
 // of the MCP server setup attempt (startMcpServerCmd) is finished.
 // It updates the model based on whether the initial setup was successful or encountered an error.
 func handleMcpServerSetupCompletedMsg(m model, msg mcpServerSetupCompletedMsg) (model, tea.Cmd) {
+	m.isLoading = false // Assuming this setup result (even if error) concludes loading for this specific proxy setup/restart
+	var clearStatusBarCmd tea.Cmd
+
 	if msg.Label == "kubernetes" && m.debugMode { // Specific debug only when debug mode is enabled
 		m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[DEBUG KubeProxy] Handler: SetupCompletedMsg received for %s. Error: %v. Status: %s", msg.Label, msg.err, msg.status))
 	}
@@ -38,6 +41,7 @@ func handleMcpServerSetupCompletedMsg(m model, msg mcpServerSetupCompletedMsg) (
 		serverProc.err = msg.err
 		serverProc.active = false
 		m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[%s MCP Proxy] Setup failed: %v", msg.Label, msg.err))
+		clearStatusBarCmd = m.setStatusMessage(fmt.Sprintf("[%s] MCP Setup Failed", msg.Label), StatusBarError, 5*time.Second)
 	} else {
 		serverProc.stopChan = msg.stopChan
 		serverProc.statusMsg = msg.status // e.g., "Initializing proxy..."
@@ -45,6 +49,7 @@ func handleMcpServerSetupCompletedMsg(m model, msg mcpServerSetupCompletedMsg) (
 		serverProc.active = true
 		serverProc.err = nil
 		m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[%s MCP Proxy] %s", msg.Label, msg.status))
+		clearStatusBarCmd = m.setStatusMessage(fmt.Sprintf("[%s] MCP %s", msg.Label, msg.status), StatusBarInfo, 3*time.Second)
 		if msg.pid > 0 { // PID might still be sent via setup if available early
 			m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[%s MCP Proxy] Early PID: %d", msg.Label, msg.pid))
 		}
@@ -52,7 +57,7 @@ func handleMcpServerSetupCompletedMsg(m model, msg mcpServerSetupCompletedMsg) (
 			m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[DEBUG KubeProxy] Handler: Set m.mcpServers[%s].active = %t, statusMsg = %s, pid = %d", msg.Label, serverProc.active, serverProc.statusMsg, serverProc.pid))
 		}
 	}
-	return m, nil
+	return m, clearStatusBarCmd
 }
 
 // handleMcpServerStatusUpdateMsg processes asynchronous updates from the MCP server process.
@@ -98,25 +103,37 @@ func handleMcpServerStatusUpdateMsg(m model, msg mcpServerStatusUpdateMsg) (mode
 		serverProc.statusMsg = msg.status
 	}
 
+	var cmds []tea.Cmd // Slice to hold commands, including status bar clear command
+
 	if msg.err != nil {
 		serverProc.err = msg.err
 		m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[%s MCP Proxy ERROR] %v", msg.Label, msg.err))
+		cmds = append(cmds, m.setStatusMessage(fmt.Sprintf("[%s] MCP Error", msg.Label), StatusBarError, 5*time.Second))
 
 		// Check if this is a critical error that needs recovery
 		if shouldAttemptRecovery(msg.status, msg.err) {
 			serverProc.statusMsg = "Recovery attempt..."
 
 			// Create command for recovery attempt
-			return m, func() tea.Msg {
+			recoveryCmd := func() tea.Msg {
 				// Wait a bit before retry
 				time.Sleep(3 * time.Second)
 				return restartMcpServerMsg{Label: msg.Label}
 			}
+			cmds = append(cmds, recoveryCmd)
 		}
 	}
 
-	if strings.Contains(strings.ToLower(msg.status), "stopped") || strings.Contains(strings.ToLower(msg.status), "error") {
+	if strings.Contains(strings.ToLower(msg.status), "stopped") {
 		serverProc.active = false
+		// Set status bar message for stopped state, unless an error message was already set
+		if serverProc.err == nil { // Only show 'Stopped' if not already showing an error for this server
+			cmds = append(cmds, m.setStatusMessage(fmt.Sprintf("[%s] MCP Stopped", msg.Label), StatusBarInfo, 3*time.Second))
+		}
+	} else if strings.Contains(strings.ToLower(msg.status), "running") { // Added for running status
+		if serverProc.err == nil { // Only show 'Running' if no error
+			cmds = append(cmds, m.setStatusMessage(fmt.Sprintf("[%s] MCP Running", msg.Label), StatusBarSuccess, 3*time.Second))
+		}
 	}
 
 	if msg.Label == "kubernetes" && m.debugMode { // Specific debug only when debug mode is enabled
@@ -124,7 +141,7 @@ func handleMcpServerStatusUpdateMsg(m model, msg mcpServerStatusUpdateMsg) (mode
 		updatedStatus := serverProc.statusMsg // statusMsg might have been updated from msg.status
 		m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[DEBUG KubeProxy] Handler: Updated m.mcpServers[%s].statusMsg = %s, pid = %d", msg.Label, updatedStatus, updatedPid))
 	}
-	return m, nil
+	return m, tea.Batch(cmds...) // Batch any accumulated commands
 }
 
 // shouldAttemptRecovery determines if the MCP server process should be restarted based on the error
@@ -152,6 +169,8 @@ func shouldAttemptRecovery(status string, err error) bool {
 
 // handleRestartMcpServerMsg handles the restart of an MCP server
 func handleRestartMcpServerMsg(m model, msg restartMcpServerMsg) (model, tea.Cmd) {
+	m.isLoading = true // Set loading before dispatching restart command
+	clearStatusCmd := m.setStatusMessage(fmt.Sprintf("[%s] MCP Restarting...", msg.Label), StatusBarInfo, 3*time.Second)
 	m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[%s MCP Proxy] Attempting auto-recovery...", msg.Label))
 
 	// Find the configuration for this server
@@ -170,9 +189,10 @@ func handleRestartMcpServerMsg(m model, msg restartMcpServerMsg) (model, tea.Cmd
 	}
 
 	// Start a new instance of the MCP server
-	return m, func() tea.Msg {
+	restartProxyCmd := func() tea.Msg {
 		return startMcpProxyCmdForServer(serverConfig, m.TUIChannel)()
 	}
+	return m, tea.Batch(clearStatusCmd, restartProxyCmd)
 }
 
 // startMcpProxyCmdForServer creates a tea.Cmd function for a specific MCP server

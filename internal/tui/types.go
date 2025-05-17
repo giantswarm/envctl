@@ -133,3 +133,28 @@ type clusterListResultMsg struct {
 	info *utils.ClusterInfo // Pointer to the struct containing cluster lists.
 	err  error              // Error encountered while fetching the cluster list, if any.
 }
+
+// clearStatusBarMsg is sent to clear the status bar message after a delay.
+// It uses a channel for cancellation to prevent clearing a new message too soon.
+type clearStatusBarMsg struct{}
+
+// OverallAppStatus defines the high-level operational status of the application.
+type OverallAppStatus int
+
+const (
+	AppStatusUnknown OverallAppStatus = iota // Or AppStatusInitializing
+	AppStatusUp
+	AppStatusConnecting
+	AppStatusDegraded
+	AppStatusFailed
+)
+
+// String provides a human-readable representation of the OverallAppStatus.
+func (s OverallAppStatus) String() string {
+	// Make sure this slice is ordered consistently with the const definitions.
+	statuses := []string{"Initializing", "Up", "Connecting", "Degraded", "Failed", "Unknown"}
+	if s < 0 || int(s) >= len(statuses)-1 { // -1 because Unknown is an extra fallback
+		return statuses[len(statuses)-1] // Return "Unknown" for out-of-bounds
+	}
+	return statuses[s]
+}

@@ -176,7 +176,8 @@ if key == "r" {
 
 ## Layout & Styling
 
-The layout is calculated dynamically based on terminal dimensions:
+The layout is calculated dynamically based on terminal dimensions.
+For a detailed breakdown of colors, component styles, and visual guidelines, please refer to the [TUI Style Guide](./tui-styleguide.md).
 
 ### Vertical Layout
 
