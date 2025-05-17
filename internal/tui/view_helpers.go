@@ -184,7 +184,7 @@ func renderPortForwardPanel(pf *portForwardProcess, m model, targetOuterWidth in
 	if pf.err != nil || strings.HasPrefix(statusToCheck, "failed") || strings.HasPrefix(statusToCheck, "error") || strings.HasPrefix(statusToCheck, "restart failed") {
 		baseStyleForPanel = panelStatusErrorStyle
 		focusedBaseStyleForPanel = focusedPanelStatusErrorStyle
-	} else if pf.forwardingEstablished {
+	} else if pf.running && pf.err == nil {
 		baseStyleForPanel = panelStatusRunningStyle
 		focusedBaseStyleForPanel = focusedPanelStatusRunningStyle
 	} else if strings.HasPrefix(statusToCheck, "running (pid:") {
@@ -208,7 +208,7 @@ func renderPortForwardPanel(pf *portForwardProcess, m model, targetOuterWidth in
 	var contentFgTextStyle lipgloss.Style
 	if pf.err != nil || strings.HasPrefix(statusToCheck, "failed") || strings.HasPrefix(statusToCheck, "error") || strings.HasPrefix(statusToCheck, "restart failed") {
 		contentFgTextStyle = statusMsgErrorStyle
-	} else if pf.forwardingEstablished {
+	} else if pf.running && pf.err == nil {
 		contentFgTextStyle = statusMsgRunningStyle
 	} else if strings.HasPrefix(statusToCheck, "exited") || strings.HasPrefix(statusToCheck, "killed") {
 		contentFgTextStyle = statusMsgExitedStyle
@@ -230,11 +230,13 @@ func renderPortForwardPanel(pf *portForwardProcess, m model, targetOuterWidth in
 	pfContentBuilder.WriteString("\n")
 
 	// Info lines: Inherit foreground from finalPanelStyle.
-	pfContentBuilder.WriteString(fmt.Sprintf("Port: %s", pf.port))
+	// Construct port string from config
+	portString := fmt.Sprintf("%s:%s", pf.config.LocalPort, pf.config.RemotePort)
+	pfContentBuilder.WriteString(fmt.Sprintf("Port: %s", portString))
 	pfContentBuilder.WriteString("\n")
 
-	// Add Service information
-	serviceName := strings.TrimPrefix(pf.service, "service/")
+	// Add Service information from config
+	serviceName := strings.TrimPrefix(pf.config.ServiceName, "service/")
 	pfContentBuilder.WriteString(fmt.Sprintf("Svc: %s", serviceName))
 	pfContentBuilder.WriteString("\n")
 
@@ -533,7 +535,7 @@ func renderPortForwardingRow(m model, contentWidth int, maxRowHeight int) string
 			var borderStyle lipgloss.Style
 			if pf.err != nil || strings.HasPrefix(strings.ToLower(pf.statusMsg), "failed") {
 				borderStyle = panelStatusErrorStyle
-			} else if pf.forwardingEstablished {
+			} else if pf.running && pf.err == nil {
 				borderStyle = panelStatusRunningStyle
 			} else {
 				borderStyle = panelStatusInitializingStyle
@@ -577,7 +579,7 @@ func renderPortForwardingRow(m model, contentWidth int, maxRowHeight int) string
 			var borderStyle lipgloss.Style
 			if pf.err != nil || strings.HasPrefix(strings.ToLower(pf.statusMsg), "failed") {
 				borderStyle = panelStatusErrorStyle
-			} else if pf.forwardingEstablished {
+			} else if pf.running && pf.err == nil {
 				borderStyle = panelStatusRunningStyle
 			} else {
 				borderStyle = panelStatusInitializingStyle

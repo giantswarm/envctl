@@ -160,50 +160,6 @@ func fetchClusterListCmd() tea.Cmd {
 	}
 }
 
-// startPortForwardCmd creates a tea.Cmd to initiate a port-forwarding process using the client-go library.
-// The actual port-forwarding is handled in a separate goroutine (launched by utils.StartPortForwardClientGo).
-// This command function itself returns a portForwardSetupCompletedMsg once the synchronous part of the setup is done.
-// Ongoing status updates from the port-forwarding goroutine are sent to the TUI via the provided tuiChan.
-// - label: A user-friendly label for this port-forward (e.g., "Prometheus (MC)").
-// - context: The Kubernetes context to use for this port-forward.
-// - namespace: The Kubernetes namespace of the target service.
-// - service: The name of the Kubernetes service to connect to.
-// - port: The port mapping string (e.g., "localPort:remotePort").
-// - tuiChan: The channel used by the port-forwarding goroutine to send portForwardStatusUpdateMsg messages back to the TUI.
-// Returns a tea.Cmd that, when run, calls utils.StartPortForwardClientGo and then sends a portForwardSetupCompletedMsg.
-func startPortForwardCmd(label, context, namespace, service, port string, tuiChan chan tea.Msg) tea.Cmd {
-	return func() tea.Msg {
-		sendUpdateFunc := func(status, outputLog string, isError, isReady bool) {
-			// The fmt.Printf debug logs previously here were for console debugging.
-			// We are now focusing on TUI-based logging for handler behavior.
-			if tuiChan == nil {
-				// This case should ideally not be reached if TUI is initialized correctly.
-				// If it does, a console log is still valuable for critical failure.
-				fmt.Printf("[CRITICAL ERROR] tuiChan is nil in sendUpdateFunc for label: %s. This is a bug.\n", label)
-				return // Avoid panic
-			}
-			tuiChan <- portForwardStatusUpdateMsg{
-				label:     label,
-				status:    status,
-				outputLog: outputLog,
-				isError:   isError,
-				isReady:   isReady,
-			}
-		}
-
-		// utils.StartPortForwardClientGo now returns (chan struct{}, string, error)
-		// The string is the initial status message if synchronous setup was successful.
-		stopChan, initialStatus, initialError := utils.StartPortForwardClientGo(context, namespace, service, port, label, sendUpdateFunc)
-
-		return portForwardSetupCompletedMsg{
-			label:    label,
-			stopChan: stopChan,
-			status:   initialStatus, // Pass status from the setup function
-			err:      initialError,
-		}
-	}
-}
-
 // PredefinedMcpServer struct, PredefinedMcpServers variable, and StartAndManageMcpProcess, StartAllMcpServersNonTUI
 // have been moved to the internal/mcpserver package.
 

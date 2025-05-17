@@ -24,6 +24,9 @@ const (
 	// This prevents the log from growing indefinitely and consuming too much memory.
 	maxCombinedOutputLines = 200
 
+	// maxPanelLogLines defines the maximum number of lines to keep in individual port-forward panel logs.
+	maxPanelLogLines = 100 // Added constant
+
 	// mcpServerPanelKey can be used for focusing or identifying UI elements related to the MCP server.
 	// mcpServerPanelKey = "mcpServer" // Commented out as we'll manage multiple, not a single panel key for now
 )
@@ -411,12 +414,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmd, channelReaderCmd(m.TUIChannel))
 
 	// Port Forwarding Messages (handlers in portforward_handlers.go)
-	case portForwardSetupCompletedMsg:
-		m, cmd := handlePortForwardSetupCompletedMsg(m, msg)
+	case portForwardSetupResultMsg: // New message type
+		m, cmd = handlePortForwardSetupResultMsg(m, msg) // New handler
 		return m, tea.Batch(cmd, channelReaderCmd(m.TUIChannel))
-	case portForwardStatusUpdateMsg:
-		// Pass directly to the handler without extra debugging output
-		m, cmd := handlePortForwardStatusUpdateMsg(m, msg)
+	case portForwardCoreUpdateMsg: // New message type
+		m, cmd = handlePortForwardCoreUpdateMsg(m, msg) // New handler
 		return m, tea.Batch(cmd, channelReaderCmd(m.TUIChannel))
 
 	// New Connection Flow Messages (handlers in connection_flow.go)

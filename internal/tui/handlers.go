@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"envctl/internal/portforwarding"
 	"fmt"
 	"strings"
 	"time"
@@ -251,28 +252,53 @@ func handleKeyMsgGlobal(m model, keyMsg tea.KeyMsg, existingCmds []tea.Cmd) (mod
 					pf.stopChan = nil
 				}
 
-				// Update UI immediately to reflect that a restart is in progress
+				// Update TUI state for restart
 				pf.statusMsg = "Restarting..."
-				pf.output = []string{} // Clear old specific output for this PF
+				pf.output = []string{} // Clear old specific output
 				pf.err = nil
-				pf.active = true // It is attempting to become active
-				pf.forwardingEstablished = false
-				// Fields like cmd, stdout, stderr, stdoutClosed, stderrClosed are removed from portForwardProcess
+				pf.active = true   // Mark as attempting to be active
+				pf.running = false // It's not running yet
+				pf.pid = 0         // Reset PID
+				pf.cmd = nil       // Reset command reference
 
 				m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[%s] Attempting restart...", pf.label))
-				if len(m.combinedOutput) > maxCombinedOutputLines {
-					m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
-				}
+				// Trim log directly if needed, or rely on model.Update
 
-				// Start the new port-forward using startPortForwardCmd
+				// Create a new command to start this port forward
 				if m.TUIChannel != nil {
-					restartCmd := startPortForwardCmd(pf.label, pf.context, pf.namespace, pf.service, pf.port, m.TUIChannel)
-					cmds = append(cmds, restartCmd)
+					currentPfConfig := pf.config // Get the config from the TUI process state
+
+					restartCmdFunc := func() tea.Msg {
+						// Define the update callback function for the core package
+						tuiUpdateFn := func(update portforwarding.PortForwardProcessUpdate) {
+							m.TUIChannel <- portForwardCoreUpdateMsg{update: update}
+						}
+
+						// Call the core function to start and manage the port forward
+						cmd, stopChan, err := portforwarding.StartAndManageIndividualPortForward(currentPfConfig, tuiUpdateFn, nil)
+
+						initialPID := 0
+						if cmd != nil && cmd.Process != nil {
+							initialPID = cmd.Process.Pid
+						}
+
+						return portForwardSetupResultMsg{
+							InstanceKey: currentPfConfig.InstanceKey,
+							Cmd:         cmd,
+							StopChan:    stopChan,
+							InitialPID:  initialPID,
+							Err:         err,
+						}
+					}
+					cmds = append(cmds, restartCmdFunc)
 				} else {
 					m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[%s ERROR] TUIChannel is nil. Cannot restart.", pf.label))
 					pf.statusMsg = "Restart Failed (Internal Error)"
 					pf.active = false
 				}
+			} else {
+				// Focused key does not correspond to a known port-forward (e.g. MC/WC pane)
+				m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Panel '%s' is not a restartable port-forward.", m.focusedPanelKey))
 			}
 		}
 

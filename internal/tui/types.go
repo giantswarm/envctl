@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"envctl/internal/portforwarding"
 	"envctl/internal/utils"
+	"os/exec"
 	"time"
 )
 
@@ -16,81 +18,37 @@ type clusterHealthInfo struct {
 	LastUpdated time.Time // Timestamp of the last successful health update.
 }
 
-// portForwardProcess represents the state and configuration of a single port-forwarding operation.
-// It is designed for use with client-go based port forwarding and holds necessary details
-// like the target service, ports, Kubernetes context, and its current operational status.
+// portForwardProcess represents the TUI-specific state for a port-forwarding operation.
+// The core process management is handled by the `portforwarding` package.
 type portForwardProcess struct {
-	label                 string        // User-friendly label for the port-forward (e.g., "Prometheus (MC)").
-	pid                   int           // PID of the process, mainly for informational/logging purposes if available (less critical with client-go).
-	stopChan              chan struct{} // Channel used to signal the port-forwarding goroutine to stop.
-	output                []string      // Stores general output or log messages specific to this port-forward.
-	err                   error         // Any error encountered by this port-forwarding process.
-	port                  string        // Port mapping string (e.g., "8080:8080").
-	isWC                  bool          // True if this port-forward targets a workload cluster service.
-	context               string        // The Kubernetes context name this port-forward targets.
-	namespace             string        // Kubernetes namespace of the target service.
-	service               string        // Name of the Kubernetes service to port-forward to.
-	active                bool          // Whether this port-forward is configured to be active (i.e., should be running).
-	statusMsg             string        // Detailed status message for display in the TUI (e.g., "Running", "Error").
-	forwardingEstablished bool          // True if the client-go port-forwarder has successfully established the connection.
+	label     string                           // User-friendly label (e.g., "Prometheus (MC)"). Used as an InstanceKey.
+	config    portforwarding.PortForwardConfig // Core configuration
+	stopChan  chan struct{}                    // Channel to signal the port-forwarding goroutine to stop.
+	cmd       *exec.Cmd                        // Reference to the running command
+	output    []string                         // Stores general output or log messages specific to this port-forward for display
+	err       error                            // Any error encountered by this port-forwarding process.
+	active    bool                             // Whether this port-forward is configured to be active (i.e., should be running).
+	statusMsg string                           // Detailed status message for display in the TUI (e.g., "Running", "Error").
+	pid       int                              // PID for display
+	running   bool                             // Reflects the 'Running' field from PortForwardProcessUpdate
 }
 
 // Define messages for Bubble Tea
 
-// portForwardStatusUpdateMsg is sent by an active port-forwarding goroutine to update the TUI
-// about its status, provide log output, or signal readiness/errors.
-type portForwardStatusUpdateMsg struct {
-	label     string // Identifies which port-forward this update is for.
-	status    string // Current status text (e.g., "Forwarding from 127.0.0.1:8080 -> 8080").
-	outputLog string // An optional single line of log output from the port-forward process.
-	isError   bool   // True if this update indicates an error state.
-	isReady   bool   // True if this update indicates the port-forward is established and ready.
+// portForwardCoreUpdateMsg is sent by the TUI's adapter callback to the main TUI channel.
+// It wraps the core PortForwardProcessUpdate.
+type portForwardCoreUpdateMsg struct {
+	update portforwarding.PortForwardProcessUpdate
 }
 
-// portForwardOutputMsg might be used for verbose logging from the PF wrapper if needed.
-// Its direct relevance decreases as client-go might log differently.
-type portForwardOutputMsg struct {
-	label      string
-	streamType string // "stdout" or "stderr" (less direct, more for wrapper logs)
-	line       string
-}
-
-// portForwardErrorMsg for critical errors from the port-forwarding goroutine itself (not just stream errors)
-// This can be consolidated with portForwardStatusUpdateMsg by using its isError field.
-type portForwardErrorMsg struct {
-	label string
-	err   error
-}
-
-// portForwardStreamEndedMsg is less relevant with client-go, which manages its own streams.
-// We might have a general "portForwardStoppedMsg" instead.
-type portForwardStreamEndedMsg struct {
-	label      string
-	streamType string // "stdout" or "stderr"
-}
-
-// portForwardStartedMsg could signal that the client-go ForwardPorts() is up and listening.
-// This can be consolidated with portForwardStatusUpdateMsg by using its isReady field.
-type portForwardStartedMsg struct {
-	label     string
-	localPort string // The actual local port it's listening on
-}
-
-// portForwardRestartCompletedMsg carries the result of an async restart attempt with client-go.
-type portForwardRestartCompletedMsg struct {
-	label       string
-	newStopChan chan struct{} // The stop channel for the newly started port-forward
-	localPort   string        // Actual local port if successfully (re)started
-	err         error
-}
-
-// portForwardSetupCompletedMsg is sent after the initial synchronous setup of a client-go port-forward completes.
-// It informs the TUI whether the setup was successful (providing a stopChan) or if an immediate error occurred.
-type portForwardSetupCompletedMsg struct {
-	label    string        // Identifies the port-forward.
-	stopChan chan struct{} // Channel to stop the port-forward if setup was successful; nil otherwise.
-	status   string        // Initial status message (e.g., "Initializing...").
-	err      error         // Error encountered during the synchronous setup phase, if any.
+// portForwardSetupResultMsg is sent after the initial call to portforwarding.StartAndManageIndividualPortForward.
+// It informs the TUI whether the setup was successful (providing a stopChan and cmd) or if an immediate error occurred.
+type portForwardSetupResultMsg struct {
+	InstanceKey string        // Identifies the port-forward (matches PortForwardConfig.InstanceKey).
+	Cmd         *exec.Cmd     // The command object if successfully initiated.
+	StopChan    chan struct{} // Channel to stop the port-forward if setup was successful; nil otherwise.
+	InitialPID  int           // PID if available at startup
+	Err         error         // Error encountered during the synchronous setup phase, if any.
 }
 
 // mcpServerSetupCompletedMsg is sent after the initial synchronous setup of the MCP server process completes.
