@@ -96,6 +96,16 @@ type portForwardSetupCompletedMsg struct {
 	err      error         // Error encountered during the synchronous setup phase, if any.
 }
 
+// mcpServerSetupCompletedMsg is sent after the initial synchronous setup of the MCP server process completes.
+// It informs the TUI whether the setup was successful (providing a stopChan and PID) or if an immediate error occurred.
+type mcpServerSetupCompletedMsg struct {
+	Label    string        // Identifies which MCP proxy/server this message is for.
+	stopChan chan struct{} // Channel to stop the MCP server process if setup was successful; nil otherwise.
+	pid      int           // PID of the MCP server process if successfully started.
+	status   string        // Initial status message (e.g., "Starting...").
+	err      error         // Error encountered during the synchronous setup phase, if any.
+}
+
 type kubeContextResultMsg struct {
 	context string // The current Kubernetes context name.
 	err     error  // Error encountered while fetching the context, if any.

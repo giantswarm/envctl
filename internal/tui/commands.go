@@ -1,10 +1,17 @@
 package tui
 
 import (
+	// "bufio" // No longer used directly here
+	"envctl/internal/mcpserver"
 	"envctl/internal/utils"
 	"fmt"
-	"os/exec"
-	"strings"
+
+	// "io" // No longer used directly here
+	// "os" // No longer used directly here
+	"os/exec" // Keep for kubectl config get-contexts in performPostLoginOperationsCmd
+	"strings" // Keep for performPostLoginOperationsCmd and potentially others
+
+	// "syscall" // No longer used directly here
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -192,4 +199,67 @@ func startPortForwardCmd(label, context, namespace, service, port string, tuiCha
 			err:      initialError,
 		}
 	}
+}
+
+// PredefinedMcpServer struct, PredefinedMcpServers variable, and StartAndManageMcpProcess, StartAllMcpServersNonTUI
+// have been moved to the internal/mcpserver package.
+
+// startMcpProxiesCmd creates a slice of tea.Cmds, one for each predefined MCP proxy.
+func startMcpProxiesCmd(tuiChan chan tea.Msg) []tea.Cmd {
+	var commandsToBatch []tea.Cmd
+
+	if len(mcpserver.PredefinedMcpServers) == 0 {
+		cmd := func() tea.Msg {
+			return mcpServerStatusUpdateMsg{Label: "MCP Proxies", status: "Info", outputLog: "No predefined MCP servers configured."}
+		}
+		commandsToBatch = append(commandsToBatch, cmd)
+		return commandsToBatch
+	}
+
+	for _, serverCfg := range mcpserver.PredefinedMcpServers {
+		// Capture range variable for the closure
+		capturedServerCfg := serverCfg
+
+		proxyStartCmd := func() tea.Msg {
+			label := capturedServerCfg.Name
+
+			// Define the McpUpdateFunc for TUI mode
+			tuiUpdateFn := func(update mcpserver.McpProcessUpdate) {
+				if tuiChan != nil {
+					tuiChan <- mcpServerStatusUpdateMsg{
+						Label:     update.Label,
+						pid:       update.PID,
+						status:    update.Status,
+						outputLog: update.OutputLog,
+						err:       update.Err,
+					}
+				}
+			}
+
+			// mcpserver.StartAndManageIndividualMcpServer prepares and starts the exec.Cmd.
+			// For TUI mode, WaitGroup is not used, so pass nil.
+			pid, stopChan, startErr := mcpserver.StartAndManageIndividualMcpServer(capturedServerCfg, tuiUpdateFn, nil)
+
+			initialStatusMsg := fmt.Sprintf("Initializing proxy for %s...", label)
+			if startErr != nil {
+				initialStatusMsg = fmt.Sprintf("Failed to start %s: %s", label, startErr.Error())
+			}
+
+			return mcpServerSetupCompletedMsg{
+				Label:    label,
+				stopChan: stopChan,
+				pid:      pid,
+				status:   initialStatusMsg,
+				err:      startErr,
+			}
+		}
+		commandsToBatch = append(commandsToBatch, proxyStartCmd)
+	}
+
+	if len(commandsToBatch) == 0 {
+		// This case should not be hit if PredefinedMcpServers is not empty,
+		// as a cmd is created for each.
+		return nil
+	}
+	return commandsToBatch
 }

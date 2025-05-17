@@ -23,7 +23,30 @@ const (
 	// maxCombinedOutputLines defines the maximum number of lines to keep in the combinedOutput log.
 	// This prevents the log from growing indefinitely and consuming too much memory.
 	maxCombinedOutputLines = 200
+
+	// mcpServerPanelKey can be used for focusing or identifying UI elements related to the MCP server.
+	// mcpServerPanelKey = "mcpServer" // Commented out as we'll manage multiple, not a single panel key for now
 )
+
+// mcpServerProcess holds the state for the MCP server process.
+type mcpServerProcess struct {
+	label     string        // User-friendly label (e.g., "MCP Servers").
+	pid       int           // PID of the process.
+	stopChan  chan struct{} // Channel to signal the process to stop.
+	output    []string      // Stores output or log messages.
+	err       error         // Any error encountered by the process.
+	active    bool          // Whether the server is configured to be active.
+	statusMsg string        // Detailed status message for display.
+}
+
+// mcpServerStatusUpdateMsg is sent by the MCP server goroutine to update the TUI.
+type mcpServerStatusUpdateMsg struct {
+	Label     string // Identifies which MCP proxy/server this update is for (e.g., "kubernetes", "prometheus")
+	pid       int    // PID of the mcp-proxy process, sent when it starts
+	status    string // e.g., "Running", "Error", "Stopped"
+	outputLog string // Log line from the MCP server
+	err       error  // Error if any
+}
 
 // model represents the state of the TUI application.
 // It holds all the data necessary to render the UI and manage its behavior.
@@ -33,6 +56,7 @@ type model struct {
 	workloadCluster    string // Name of the workload cluster (can be empty).
 	kubeContext        string // Target Kubernetes context specified by the user (usually WC or MC if no WC).
 	currentKubeContext string // Actual current Kubernetes context reported by `kubectl config current-context`.
+	quittingMessage    string // Message to display when quitting.
 
 	// --- Health Information ---
 	MCHealth clusterHealthInfo // Health status of the management cluster.
@@ -42,6 +66,9 @@ type model struct {
 	portForwards     map[string]*portForwardProcess // Map of active port-forwarding processes, keyed by label.
 	portForwardOrder []string                       // Order in which port-forwarding panels (and MC/WC info panes) are displayed and navigated.
 	focusedPanelKey  string                         // Key of the currently focused panel or pane for navigation.
+
+	// --- MCP Server Process ---
+	mcpServers map[string]*mcpServerProcess // Holds the state of multiple MCP server proxy processes.
 
 	// --- UI State & Output ---
 	combinedOutput    []string       // Log of messages and statuses displayed in the TUI.
@@ -107,7 +134,8 @@ func (m *model) getWorkloadClusterContextIdentifier() string {
 // and the initial Kubernetes context as input.
 // It sets up the initial port-forwarding configurations, text input for new connections,
 // and initializes the TUI message channel.
-func InitialModel(mcName, wcName, kubeCtx string) model {
+// Takes an additional tuiDebug bool to enable debug mode from start.
+func InitialModel(mcName, wcName, kubeCtx string, tuiDebug bool) model {
 	ti := textinput.New()
 	ti.Placeholder = "Management Cluster"
 	ti.CharLimit = 156 // Arbitrary limit
@@ -128,13 +156,14 @@ func InitialModel(mcName, wcName, kubeCtx string) model {
 		kubeContext:        kubeCtx,
 		portForwards:       make(map[string]*portForwardProcess),
 		portForwardOrder:   make([]string, 0),
+		mcpServers:         make(map[string]*mcpServerProcess), // Initialize map for multiple MCP proxies
 		combinedOutput:     make([]string, 0),
 		MCHealth:           clusterHealthInfo{IsLoading: true},
 		isConnectingNew:    false,
 		newConnectionInput: ti,
 		currentInputStep:   mcInputStep,
 		TUIChannel:         tuiMsgChannel,      // Assign the channel to the model
-		debugMode:          false,              // Start with debug mode disabled by default
+		debugMode:          tuiDebug,           // Set debugMode from parameter
 		colorMode:          colorMode,          // Store the detected color mode
 		helpVisible:        false,              // Start with help overlay hidden
 		logOverlayVisible:  false,              // Initialize log overlay as hidden
@@ -205,6 +234,12 @@ func (m model) Init() tea.Cmd {
 	initialPfCmds := getInitialPortForwardCmds(&m) // Pass model as a pointer
 	cmds = append(cmds, initialPfCmds...)
 
+	// Start MCP proxy processes
+	mcpProxyStartupCmds := startMcpProxiesCmd(m.TUIChannel)
+	if mcpProxyStartupCmds != nil && len(mcpProxyStartupCmds) > 0 {
+		cmds = append(cmds, mcpProxyStartupCmds...)
+	}
+
 	// Add a ticker for periodic health updates
 	tickCmd := tea.Tick(healthUpdateInterval, func(t time.Time) tea.Msg {
 		return requestClusterHealthUpdate{}
@@ -226,7 +261,51 @@ func (m model) Init() tea.Cmd {
 // Crucially, after every message processing step, it re-subscribes to the TUIChannel via channelReaderCmd
 // to ensure continuous processing of asynchronous messages.
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmds []tea.Cmd // Holds commands to be batched IF NOT handled by a specific case returning a cmd.
+	var cmds []tea.Cmd
+	var cmd tea.Cmd
+
+	// Handle quit keys
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "q":
+			// Quit immediately without confirmation
+			m.quitting = true
+			m.quittingMessage = "Shutting down..."
+
+			// Close all active resources
+			var quitCmds []tea.Cmd
+
+			// Stop port forwards
+			for _, pf := range m.portForwards {
+				if pf.stopChan != nil {
+					close(pf.stopChan)
+					pf.stopChan = nil
+					pf.statusMsg = "Stopping..."
+				}
+			}
+
+			// Stop MCP server proxies if active
+			if m.mcpServers != nil {
+				for serverName, mcpProc := range m.mcpServers {
+					if mcpProc.active && mcpProc.stopChan != nil {
+						m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[%s MCP Proxy] Sending stop signal...", serverName))
+						close(mcpProc.stopChan)
+						mcpProc.stopChan = nil
+						mcpProc.statusMsg = "Stopping..."
+						mcpProc.active = false
+					}
+				}
+			}
+
+			quitCmds = append(quitCmds, tea.Quit)
+			return m, tea.Batch(quitCmds...)
+
+		case "ctrl+c":
+			// Force quit immediately
+			return m, tea.Quit
+		}
+	}
 
 	switch msg := msg.(type) {
 	// Key messages are handled by functions in handlers.go
@@ -370,6 +449,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m = handleClusterListResultMsg(m, msg) // Modifies model, returns no cmd
 		return m, channelReaderCmd(m.TUIChannel)
 
+	// MCP Server Messages (handlers in mcpserver_handlers.go)
+	case mcpServerSetupCompletedMsg:
+		m, cmd = handleMcpServerSetupCompletedMsg(m, msg)
+		return m, tea.Batch(cmd, channelReaderCmd(m.TUIChannel))
+	case mcpServerStatusUpdateMsg:
+		m, cmd = handleMcpServerStatusUpdateMsg(m, msg)
+		return m, tea.Batch(cmd, channelReaderCmd(m.TUIChannel))
+	case restartMcpServerMsg:
+		m, cmd = handleRestartMcpServerMsg(m, msg)
+		return m, tea.Batch(cmd, channelReaderCmd(m.TUIChannel))
+
 	case tea.MouseMsg:
 		var cmd tea.Cmd
 		// If log overlay is visible, pass mouse events to it for scrolling
@@ -422,7 +512,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // If in 'new connection input' mode, it renders the input UI.
 func (m model) View() string {
 	if m.quitting {
-		return statusStyle.Render("Cleaning up and quitting...")
+		return statusStyle.Render("Shutting down...")
 	}
 	if !m.ready {
 		return statusStyle.Render("Initializing...")
@@ -477,6 +567,15 @@ func (m model) View() string {
 	row2FinalView := renderPortForwardingRow(m, contentWidth, maxRow2Height) // Uses helper from view_helpers.go
 	row2Height := lipgloss.Height(row2FinalView)
 
+	// ----- ROW 3: MCP Proxies -----
+	// Allocate similar height as port forwarding row for now
+	maxRow3Height := maxRow2Height // Or define a new specific height, e.g., 7
+	if maxRow3Height < 5 {
+		maxRow3Height = 5
+	} // Min height for some content
+	row3FinalView := renderMcpProxiesRow(m, contentWidth, maxRow3Height)
+	row3Height := lipgloss.Height(row3FinalView)
+
 	// ----- Main Content Assembly -----
 	var finalViewLayout []string
 	currentHeaderView := headerRenderedView
@@ -484,19 +583,22 @@ func (m model) View() string {
 	finalViewLayout = append(finalViewLayout, currentHeaderView)
 	finalViewLayout = append(finalViewLayout, row1FinalView)
 	finalViewLayout = append(finalViewLayout, row2FinalView)
+	finalViewLayout = append(finalViewLayout, row3FinalView) // Add the new MCP proxies row
 
 	if m.height >= minHeightForMainLogView { // minHeightForMainLogView is a constant from styles.go
 		// Calculate log section height to take all remaining space
-		numGaps := 3 // Gaps between header-row1, row1-row2, row2-logPanel
-		heightConsumedByFixedElements := headerHeight + row1Height + row2Height + numGaps
+		numGaps := 4 // Gaps between header-row1, row1-row2, row2-row3, row3-logPanel
+		heightConsumedByFixedElements := headerHeight + row1Height + row2Height + row3Height + numGaps
 		logSectionHeight := totalAvailableHeight - heightConsumedByFixedElements
 
-		// Add debug info to see what's happening with height calculations
-		debugHeightInfo := fmt.Sprintf(
-			"DEBUG: total=%d fixed=%d log=%d | header=%d row1=%d row2=%d",
-			totalAvailableHeight, heightConsumedByFixedElements, logSectionHeight,
-			headerHeight, row1Height, row2Height)
-		m.combinedOutput = append([]string{debugHeightInfo}, m.combinedOutput...)
+		// Add debug info to see what's happening with height calculations, only when debugMode is enabled
+		if m.debugMode {
+			debugHeightInfo := fmt.Sprintf(
+				"DEBUG: total=%d fixed=%d log=%d | header=%d row1=%d row2=%d row3=%d",
+				totalAvailableHeight, heightConsumedByFixedElements, logSectionHeight,
+				headerHeight, row1Height, row2Height, row3Height)
+			m.combinedOutput = append([]string{debugHeightInfo}, m.combinedOutput...)
+		}
 
 		if logSectionHeight < 0 { // Ensure it's not negative if space is very constrained
 			logSectionHeight = 0
@@ -510,7 +612,10 @@ func (m model) View() string {
 
 			// Limit other sections if needed to make space
 			if row2Height > 7 {
-				row2Height = 7
+				row2Height = 7 // This might conflict if row3 also takes space, consider total budget
+			}
+			if row3Height > 7 { // Add similar for row3
+				row3Height = 7
 			}
 			if row1Height > 5 {
 				row1Height = 5

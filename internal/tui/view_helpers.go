@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"envctl/internal/mcpserver" // Added for mcpserver types
 	"fmt"
 	"strings"
 
@@ -605,6 +606,151 @@ func renderPortForwardingRow(m model, contentWidth int, maxRowHeight int) string
 	joinedPanels := lipgloss.JoinHorizontal(lipgloss.Top, cellsRendered...)
 
 	// Ensure row is exactly contentWidth wide
+	return lipgloss.NewStyle().
+		Width(contentWidth).
+		Align(lipgloss.Left).
+		MaxHeight(maxRowHeight).
+		Render(joinedPanels)
+}
+
+// renderMcpProxyPanel renders a single panel for an MCP proxy process.
+// It styles the panel based on status (running, error, initializing) and focus (not implemented yet for MCP proxies).
+// Displays proxy name, listening port, status message, and PID.
+func renderMcpProxyPanel(serverName string, predefinedData mcpserver.PredefinedMcpServer, proc *mcpServerProcess, m model, targetOuterWidth int) string {
+	var baseStyleForPanel lipgloss.Style // Focused style not used yet, so no focusedBaseStyleForPanel
+	var contentFgTextStyle lipgloss.Style
+	statusMsg := "Not Started"
+	pidStr := "PID: N/A"
+
+	if proc != nil {
+		statusMsg = proc.statusMsg
+		if proc.pid > 0 {
+			pidStr = fmt.Sprintf("PID: %d", proc.pid)
+		}
+		statusToCheck := strings.ToLower(statusMsg)
+
+		if proc.err != nil || strings.Contains(statusToCheck, "error") || strings.Contains(statusToCheck, "failed") {
+			baseStyleForPanel = panelStatusErrorStyle // Reuse port-forward styles for now
+			contentFgTextStyle = statusMsgErrorStyle
+		} else if strings.Contains(statusToCheck, "running") {
+			baseStyleForPanel = panelStatusRunningStyle
+			contentFgTextStyle = statusMsgRunningStyle
+		} else { // Covers "Initializing...", "Starting...", "Stopped", etc.
+			baseStyleForPanel = panelStatusInitializingStyle
+			contentFgTextStyle = statusMsgInitializingStyle
+		}
+	} else { // Process not found in model, treat as not started or an issue
+		baseStyleForPanel = panelStatusExitedStyle // Or a new "unknown/not found" style
+		contentFgTextStyle = statusMsgExitedStyle
+	}
+
+	finalPanelStyle := baseStyleForPanel
+	// TODO: Add focus logic if MCP panels become focusable: if m.focusedPanelKey == serverName (or a new key format) ...
+
+	finalPanelStyle = finalPanelStyle.Copy().Foreground(contentFgTextStyle.GetForeground())
+
+	var contentBuilder strings.Builder
+	contentBuilder.WriteString(portTitleStyle.Render(predefinedData.Name + " Proxy")) // e.g. "Kubernetes Proxy"
+	contentBuilder.WriteString("\n")
+	contentBuilder.WriteString(fmt.Sprintf("Port: %d (SSE)", predefinedData.ProxyPort))
+	contentBuilder.WriteString("\n")
+	contentBuilder.WriteString(pidStr)
+	contentBuilder.WriteString("\n")
+	contentBuilder.WriteString(contentFgTextStyle.Render(fmt.Sprintf("Status: %s", trimStatusMessage(statusMsg))))
+
+	textForPanel := contentBuilder.String()
+	actualFrameSize := finalPanelStyle.GetHorizontalFrameSize()
+	actualContentWidth := targetOuterWidth - actualFrameSize
+	if actualContentWidth < 0 {
+		actualContentWidth = 0
+	}
+	return finalPanelStyle.Copy().Width(actualContentWidth).Render(textForPanel)
+}
+
+// renderMcpProxiesRow renders the row containing MCP proxy status panels.
+func renderMcpProxiesRow(m model, contentWidth int, maxRowHeight int) string {
+	numFixedColumns := 3 // Display up to 3 MCP proxies per row, similar to port forwards
+	var cellsRendered []string
+
+	if len(mcpserver.PredefinedMcpServers) == 0 { // Use mcpserver.PredefinedMcpServers
+		return lipgloss.NewStyle().Width(contentWidth).Align(lipgloss.Center).Render("No MCP Proxies Defined")
+	}
+
+	// Calculate total border size and distribute width (similar to renderPortForwardingRow)
+	totalBorderSize := 0
+	panelStyles := make([]lipgloss.Style, len(mcpserver.PredefinedMcpServers)) // Use mcpserver.PredefinedMcpServers
+
+	for i, serverDef := range mcpserver.PredefinedMcpServers { // Use mcpserver.PredefinedMcpServers
+		proc := m.mcpServers[serverDef.Name]
+		statusToCheck := "not started"
+		if proc != nil {
+			statusToCheck = strings.ToLower(proc.statusMsg)
+		}
+
+		var currentStyle lipgloss.Style
+		if proc != nil && (proc.err != nil || strings.Contains(statusToCheck, "error") || strings.Contains(statusToCheck, "failed")) {
+			currentStyle = panelStatusErrorStyle
+		} else if proc != nil && strings.Contains(statusToCheck, "running") {
+			currentStyle = panelStatusRunningStyle
+		} else {
+			currentStyle = panelStatusInitializingStyle // Default/Exited/Initializing
+		}
+		panelStyles[i] = currentStyle
+		if i < numFixedColumns { // Only count borders for panels that will be in the first row if more than numFixedColumns
+			totalBorderSize += currentStyle.GetHorizontalFrameSize()
+		}
+	}
+
+	// Calculate distributable inner width for the displayable columns
+	displayableColumnCount := len(mcpserver.PredefinedMcpServers) // Use mcpserver.PredefinedMcpServers
+	if displayableColumnCount > numFixedColumns {
+		displayableColumnCount = numFixedColumns
+		// Recalculate totalBorderSize for only the displayable columns
+		totalBorderSize = 0
+		for i := 0; i < numFixedColumns; i++ {
+			totalBorderSize += panelStyles[i].GetHorizontalFrameSize()
+		}
+	}
+
+	innerWidth := contentWidth - totalBorderSize
+	if innerWidth < 0 {
+		innerWidth = 0
+	}
+
+	innerPanelBaseWidth := 0
+	if displayableColumnCount > 0 {
+		innerPanelBaseWidth = innerWidth / displayableColumnCount
+	}
+	innerRemainder := 0
+	if displayableColumnCount > 0 {
+		innerRemainder = innerWidth % displayableColumnCount
+	}
+
+	for i := 0; i < displayableColumnCount; i++ {
+		serverDef := mcpserver.PredefinedMcpServers[i] // Use mcpserver.PredefinedMcpServers
+		proc, _ := m.mcpServers[serverDef.Name]        // Ok is false if not found, proc will be nil
+
+		innerPanelWidth := innerPanelBaseWidth
+		if i < innerRemainder {
+			innerPanelWidth++
+		}
+
+		renderedPanel := renderMcpProxyPanel(serverDef.Name, serverDef, proc, m, innerPanelWidth+panelStyles[i].GetHorizontalFrameSize())
+		cellsRendered = append(cellsRendered, renderedPanel)
+	}
+
+	// If there are fewer predefined servers than columns, fill with empty panels
+	for i := len(mcpserver.PredefinedMcpServers); i < numFixedColumns; i++ { // Use mcpserver.PredefinedMcpServers
+		innerPanelWidth := innerPanelBaseWidth
+		if i < innerRemainder { // This applies if numFixedColumns > len(PredefinedMcpServers)
+			innerPanelWidth++
+		}
+		emptyCell := panelStyle.Copy().Width(innerPanelWidth).Render("")
+		cellsRendered = append(cellsRendered, emptyCell)
+	}
+
+	joinedPanels := lipgloss.JoinHorizontal(lipgloss.Top, cellsRendered...)
+
 	return lipgloss.NewStyle().
 		Width(contentWidth).
 		Align(lipgloss.Left).

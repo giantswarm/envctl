@@ -156,20 +156,9 @@ func handleKeyMsgGlobal(m model, keyMsg tea.KeyMsg, existingCmds []tea.Cmd) (mod
 
 	switch keyMsg.String() {
 	case "ctrl+c", "q":
-		m.quitting = true
-		var quitCmds []tea.Cmd
-		for _, pf := range m.portForwards {
-			if pf.stopChan != nil {
-				// Safely close the stopChan
-				// The goroutine managing the port-forward is expected to handle this signal
-				// and perform cleanup.
-				close(pf.stopChan)
-				pf.stopChan = nil // Avoid reusing a closed channel
-				pf.statusMsg = "Stopping..."
-			}
-		}
-		quitCmds = append(quitCmds, tea.Quit)
-		return m, tea.Batch(quitCmds...)
+		// Don't do anything here - quitting is handled in model.Update
+		// Just return to allow model.Update to handle the quit sequence
+		return m, nil
 
 	case "n": // Start new connection
 		if !m.isConnectingNew {
@@ -448,3 +437,5 @@ func handleKubeContextSwitchedMsg(m model, msg kubeContextSwitchedMsg) (model, t
 	}
 	return m, tea.Batch(cmds...)
 }
+
+// MCP Server Message Handlers are now in mcpserver_handlers.go

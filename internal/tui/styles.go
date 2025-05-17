@@ -167,4 +167,7 @@ var (
 	healthGoodStyle    = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#005500", Dark: "#90FF90"}).Bold(true) // Brighter green in dark mode
 	healthWarnStyle    = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#703000", Dark: "#FFFF00"}).Bold(true) // Bright yellow in dark mode
 	healthErrorStyle   = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#990000", Dark: "#FF9090"}).Bold(true) // Brighter red in dark mode
+
+	// Quit key style for the quit confirmation message
+	quitKeyStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#990000", Dark: "#FF9090"}).Bold(true) // Red to indicate destructive action
 )

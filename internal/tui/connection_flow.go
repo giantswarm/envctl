@@ -181,15 +181,19 @@ func handleKubeLoginResultMsg(m model, msg kubeLoginResultMsg, cmds []tea.Cmd) (
 // - existingCmds: A slice of commands that might have been accumulated.
 // Returns the updated model and a batch of commands to re-initialize the TUI or nil if an error occurred.
 func handleContextSwitchAndReinitializeResultMsg(m model, msg contextSwitchAndReinitializeResultMsg, existingCmds []tea.Cmd) (model, tea.Cmd) {
+	// Log moved after the error check to see if error is the cause of no further logs
 	if msg.diagnosticLog != "" {
 		m.combinedOutput = append(m.combinedOutput, "--- Diagnostic Log (Context Switch Phase) ---")
 		m.combinedOutput = append(m.combinedOutput, strings.Split(strings.TrimSpace(msg.diagnosticLog), "\n")...)
 		m.combinedOutput = append(m.combinedOutput, "--- End Diagnostic Log ---")
 	}
 	if msg.err != nil {
-		m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM ERROR] Context switch/re-init failed: %v", msg.err))
-		// Consider how to provide feedback or allow user to retry/cancel
-		return m, nil
+		m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM ERROR] Context switch/re-init failed: %v. MCP PROXIES WILL NOT START.", msg.err))
+		return m, nil // No command, MCP proxies won't start
+	}
+
+	if m.debugMode {
+		m.combinedOutput = append(m.combinedOutput, "[SYSTEM DEBUG] Entered handleContextSwitchAndReinitializeResultMsg (after error check).")
 	}
 
 	m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Successfully switched context to: %s. Re-initializing TUI.", msg.switchedContext))
@@ -239,6 +243,22 @@ func handleContextSwitchAndReinitializeResultMsg(m model, msg contextSwitchAndRe
 	// Start port-forwarding processes for the new setup using the centralized function
 	initialPfCmds := getInitialPortForwardCmds(&m)
 	newInitCmds = append(newInitCmds, initialPfCmds...)
+
+	// Start MCP proxy processes
+	m.combinedOutput = append(m.combinedOutput, "[SYSTEM] Initializing predefined MCP proxies (kubernetes, prometheus, grafana)...")
+	mcpProxyStartupCmds := startMcpProxiesCmd(m.TUIChannel)
+	if mcpProxyStartupCmds == nil {
+		if m.debugMode {
+			m.combinedOutput = append(m.combinedOutput, "[SYSTEM DEBUG] startMcpProxiesCmd returned nil. No MCP commands generated.")
+		}
+	} else {
+		if m.debugMode {
+			m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM DEBUG] Generated %d MCP proxy startup commands.", len(mcpProxyStartupCmds)))
+		}
+		if len(mcpProxyStartupCmds) > 0 {
+			newInitCmds = append(newInitCmds, mcpProxyStartupCmds...)
+		}
+	}
 
 	// Re-add ticker for periodic health updates
 	tickCmd := tea.Tick(healthUpdateInterval, func(t time.Time) tea.Msg {
