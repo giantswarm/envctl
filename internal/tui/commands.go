@@ -8,12 +8,12 @@ import (
 
 	// "io" // No longer used directly here
 	// "os" // No longer used directly here
-	"os/exec" // Keep for kubectl config get-contexts in performPostLoginOperationsCmd
 	"strings" // Keep for performPostLoginOperationsCmd and potentially others
 
 	// "syscall" // No longer used directly here
 
 	tea "github.com/charmbracelet/bubbletea"
+	"k8s.io/client-go/tools/clientcmd" // Added for kubeconfig handling
 )
 
 // fetchNodeStatusCmd creates a tea.Cmd to asynchronously fetch the node status.
@@ -128,13 +128,16 @@ func performPostLoginOperationsCmd(targetKubeContext, desiredMc, desiredWc strin
 		}
 		diagnosticLog.WriteString(fmt.Sprintf("GetCurrentKubeContext successful: %s\n", actualCurrentContext))
 
-		// This kubectl call would also ideally use client-go
-		contextsListCmd := exec.Command("kubectl", "config", "get-contexts", "-o", "name")
-		contextsListOutput, contextsListErr := contextsListCmd.Output()
-		if contextsListErr != nil {
-			diagnosticLog.WriteString(fmt.Sprintf("kubectl config get-contexts error: %v\nOutput: %s\n", contextsListErr, string(contextsListOutput)))
+		// Get all contexts using client-go
+		pathOptions := clientcmd.NewDefaultPathOptions()
+		config, err := pathOptions.GetStartingConfig()
+		if err != nil {
+			diagnosticLog.WriteString(fmt.Sprintf("Failed to load kubeconfig for getting all contexts: %v\n", err))
 		} else {
-			diagnosticLog.WriteString(fmt.Sprintf("kubectl config get-contexts output:\n%s\n", string(contextsListOutput)))
+			diagnosticLog.WriteString("Available Kubernetes contexts (from client-go):\n")
+			for contextName := range config.Contexts {
+				diagnosticLog.WriteString(fmt.Sprintf("- %s\n", contextName))
+			}
 		}
 
 		return contextSwitchAndReinitializeResultMsg{

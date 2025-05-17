@@ -353,9 +353,8 @@ func GetNodeStatusClientGo(kubeContext string) (readyNodes int, totalNodes int, 
 	return readyNodes, totalNodes, nil
 }
 
-// Note: Other utility functions within this package (e.g., GetCurrentKubeContext, SwitchKubeContext,
-// GetNodeStatus, LoginToKubeCluster, GetClusterInfo) are also essential for the application's functionality.
-// They primarily interact with external commands (`kubectl`, `tsh`) or system configurations.
-// While `StartPortForwardClientGo` has been refactored to use client-go directly, these other functions
-// currently retain their exec-based implementation. Future enhancements could involve migrating more of these
-// to use client-go for more robust and integrated Kubernetes interactions where applicable.
+// Note: Utility functions in the `utils` package, such as `LoginToKubeCluster` (which interacts with `tsh`)
+// and `GetClusterInfo` (for shell completion), are essential for the application's functionality.
+// While many Kubernetes-specific operations like port forwarding, context management (GetCurrentKubeContext, SwitchKubeContext),
+// and node status fetching (GetNodeStatusClientGo, DetermineClusterProvider) have been migrated to use the Kubernetes Go client directly,
+// some utilities may still interact with external commands or system configurations where appropriate.

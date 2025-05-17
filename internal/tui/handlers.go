@@ -276,7 +276,7 @@ func handleKeyMsgGlobal(m model, keyMsg tea.KeyMsg, existingCmds []tea.Cmd) (mod
 			}
 		}
 
-	case "s": // Switch kubectl context to focused MC/WC pane
+	case "s": // Switch Kubernetes context to focused MC/WC pane
 		var targetContextToSwitch string
 		var clusterIdentifier string // Renamed from clusterShortNameForContext
 		var paneNameForLog string
@@ -294,7 +294,7 @@ func handleKeyMsgGlobal(m model, keyMsg tea.KeyMsg, existingCmds []tea.Cmd) (mod
 			// the part of the context name *after* "teleport.giantswarm.io-".
 			// So, we always prepend the prefix here.
 			targetContextToSwitch = "teleport.giantswarm.io-" + clusterIdentifier
-			m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Attempting to switch kubectl context to: %s (Pane: %s)", targetContextToSwitch, paneNameForLog))
+			m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Attempting to switch Kubernetes context to: %s (Pane: %s)", targetContextToSwitch, paneNameForLog))
 			cmds = append(cmds, performSwitchKubeContextCmd(targetContextToSwitch))
 		} else {
 			m.combinedOutput = append(m.combinedOutput, "[SYSTEM] Cannot switch context: Focus a valid MC/WC pane with a defined cluster name.")
@@ -311,10 +311,10 @@ func handleKeyMsgGlobal(m model, keyMsg tea.KeyMsg, existingCmds []tea.Cmd) (mod
 func handleKubeContextResultMsg(m model, msg kubeContextResultMsg) model {
 	if msg.err != nil {
 		m.currentKubeContext = "Error fetching context"
-		m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Error getting current kube context: %s", msg.err.Error()))
+		m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Error getting current Kubernetes context: %s", msg.err.Error()))
 	} else {
 		m.currentKubeContext = msg.context
-		m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Current kubectl context: %s", msg.context))
+		m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Current Kubernetes context: %s", msg.context))
 	}
 	if len(m.combinedOutput) > maxCombinedOutputLines {
 		m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
@@ -413,9 +413,9 @@ func handleClusterListResultMsg(m model, msg clusterListResultMsg) model {
 func handleKubeContextSwitchedMsg(m model, msg kubeContextSwitchedMsg) (model, tea.Cmd) {
 	var cmds []tea.Cmd
 	if msg.err != nil {
-		m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Failed to switch kubectl context to '%s': %s", msg.TargetContext, msg.err.Error()))
+		m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Failed to switch Kubernetes context to '%s': %s", msg.TargetContext, msg.err.Error()))
 	} else {
-		m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Successfully switched kubectl context. Target was: %s", msg.TargetContext))
+		m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Successfully switched Kubernetes context. Target was: %s", msg.TargetContext))
 		cmds = append(cmds, getCurrentKubeContextCmd())
 		if m.managementCluster != "" {
 			m.MCHealth.IsLoading = true

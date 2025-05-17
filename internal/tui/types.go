@@ -70,7 +70,6 @@ type portForwardStreamEndedMsg struct {
 }
 
 // portForwardStartedMsg could signal that the client-go ForwardPorts() is up and listening.
-// The PID might not be relevant anymore.
 // This can be consolidated with portForwardStatusUpdateMsg by using its isReady field.
 type portForwardStartedMsg struct {
 	label     string
@@ -78,8 +77,6 @@ type portForwardStartedMsg struct {
 }
 
 // portForwardRestartCompletedMsg carries the result of an async restart attempt with client-go.
-// The PID of the kubectl command is no longer relevant.
-// The command, stdout, stderr are also not relevant as client-go handles this internally.
 type portForwardRestartCompletedMsg struct {
 	label       string
 	newStopChan chan struct{} // The stop channel for the newly started port-forward

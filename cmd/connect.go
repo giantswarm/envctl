@@ -27,13 +27,13 @@ var tuiDebugMode bool // Variable to store the value of the --debug-tui flag for
 var connectCmdDef = &cobra.Command{
 	Use:   "connect <management-cluster> [workload-cluster-shortname]",
 	Short: "Connect to Giant Swarm K8s and managed services with an interactive TUI or CLI mode.",
-	Long: `Connects to Giant Swarm Kubernetes clusters, sets the kubectl context, and manages port-forwarding for essential services.
+	Long: `Connects to Giant Swarm Kubernetes clusters, sets the Kubernetes context, and manages port-forwarding for essential services.
 It can run in two modes:
 
 1. Interactive TUI Mode (default):
    - Launches a terminal user interface to monitor connections, cluster health, and manage port-forwards.
    - Logs into the specified Management Cluster (MC) and, if provided, the Workload Cluster (WC).
-   - Sets the kubectl context (to WC if specified, otherwise MC).
+   - Sets the Kubernetes context (to WC if specified, otherwise MC).
    - Automatically starts and manages port-forwarding for:
      - Prometheus (MC) on localhost:8080
      - Grafana (MC) on localhost:3000

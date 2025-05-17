@@ -9,7 +9,7 @@ It automates the process of logging into clusters via Teleport (`tsh`) and setti
 ## Features ✨
 
 *   **Simplified Connection:** Connect to management and workload clusters with a single command.
-*   **Automatic Context Switching:** Sets your `kubectl` context correctly.
+*   **Automatic Context Switching:** Sets your Kubernetes context correctly.
 *   **Port-Forwarding Management:** 
     *   Prometheus and Grafana services (always from the Management Cluster)
     *   Alloy Metrics (from the Workload Cluster if specified, otherwise from the Management Cluster)
@@ -31,9 +31,8 @@ Before using `envctl`, ensure you have the following installed and configured:
 
 1.  **Go:** Version 1.21 or later ([Installation Guide](https://go.dev/doc/install)).
 2.  **Teleport Client (`tsh`):** You need `tsh` installed and logged into your Giant Swarm Teleport proxy.
-3.  **`kubectl`:** The Kubernetes command-line tool.
-4.  **`mcp-proxy`:** This tool is used by `envctl` to proxy your actual MCP servers. ([Installation Guide](https://github.com/sparfenyuk/mcp-proxy#installation)).
-5.  **Underlying MCP Server Executables:** `envctl` expects specific MCP server commands to be available in your PATH, as it will invoke them via `mcp-proxy`. These are typically:
+3.  **`mcp-proxy`:** This tool is used by `envctl` to proxy your actual MCP servers. ([Installation Guide](https://github.com/sparfenyuk/mcp-proxy#installation)).
+4.  **Underlying MCP Server Executables:** `envctl` expects specific MCP server commands to be available in your PATH, as it will invoke them via `mcp-proxy`. These are typically:
     *   For Kubernetes: `npx mcp-server-kubernetes` (requires Node.js and `npx`)
     *   For Prometheus: `uvx mcp-server-prometheus` (requires `uv` and the Python-based `mcp-server-prometheus`)
     *   For Grafana: `uvx mcp-server-grafana` (requires `uv` and the Python-based `mcp-server-grafana` - if you use a Grafana MCP).
@@ -96,7 +95,7 @@ envctl self-update
 # Use the CLI mode without TUI (for scripts or CI environments)
 # This mode will:
 # - Log into the specified cluster(s) via tsh.
-# - Set the kubectl context.
+# - Sets the Kubernetes context.
 # - Start port-forwarding for:
 #   - Prometheus (MC) on localhost:8080
 #   - Grafana (MC) on localhost:3000
@@ -122,7 +121,7 @@ envctl connect <management-cluster> [workload-cluster-shortname] --no-tui
 
     *   Launches an interactive terminal UI
     *   Logs into `myinstallation` via `tsh kube login myinstallation`.
-    *   Sets the current `kubectl` context to `teleport.giantswarm.io-myinstallation`.
+    *   Sets the current Kubernetes context to `teleport.giantswarm.io-myinstallation`.
     *   Starts port-forwarding for Prometheus (MC) on `localhost:8080`, Grafana (MC) on `localhost:3000`, and Alloy Metrics (MC) on `localhost:12345`.
     *   Displays cluster health and connection status
     *   Allows management of port-forwards and contexts
@@ -135,7 +134,7 @@ envctl connect <management-cluster> [workload-cluster-shortname] --no-tui
 
     *   Logs into `myinstallation` via `tsh kube login myinstallation`.
     *   Logs into the *full* workload cluster name (`myinstallation-myworkloadcluster`) via `tsh`.
-    *   Sets the current `kubectl` context to the *full* workload cluster name (`teleport.giantswarm.io-myinstallation-myworkloadcluster`).
+    *   Sets the current Kubernetes context to the *full* workload cluster name (`teleport.giantswarm.io-myinstallation-myworkloadcluster`).
     *   Starts port-forwarding for Prometheus using the *management cluster* context (`teleport.giantswarm.io-myinstallation`) to `localhost:8080`.
     *   Starts port-forwarding for Grafana using the *management cluster* context (`teleport.giantswarm.io-myinstallation`) to `localhost:3000`.
     *   Starts port-forwarding for Alloy metrics using the *workload cluster* context (`teleport.giantswarm.io-myinstallation-myworkloadcluster`) to `localhost:12345`.

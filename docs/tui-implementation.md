@@ -154,7 +154,7 @@ type portForwardProcess struct {
 ### Starting Port Forwards
 
 Port forwards are started using the `startPortForward` function, which:
-1. Creates a new process with the appropriate kubectl command
+1. Initiates the port forwarding using the Kubernetes Go client.
 2. Sets up pipes for stdout/stderr
 3. Starts the process in a goroutine
 4. Monitors its output and status

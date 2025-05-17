@@ -55,7 +55,7 @@ type model struct {
 	managementCluster  string // Name of the management cluster.
 	workloadCluster    string // Name of the workload cluster (can be empty).
 	kubeContext        string // Target Kubernetes context specified by the user (usually WC or MC if no WC).
-	currentKubeContext string // Actual current Kubernetes context reported by `kubectl config current-context`.
+	currentKubeContext string // Actual current Kubernetes context, typically fetched via the Kubernetes API.
 	quittingMessage    string // Message to display when quitting.
 
 	// --- Health Information ---
