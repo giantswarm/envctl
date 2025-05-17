@@ -1,12 +1,19 @@
 package tui
 
 import (
+	// "bufio" // No longer used directly here
+	"envctl/internal/mcpserver"
 	"envctl/internal/utils"
 	"fmt"
-	"os/exec"
-	"strings"
+
+	// "io" // No longer used directly here
+	// "os" // No longer used directly here
+	"strings" // Keep for performPostLoginOperationsCmd and potentially others
+
+	// "syscall" // No longer used directly here
 
 	tea "github.com/charmbracelet/bubbletea"
+	"k8s.io/client-go/tools/clientcmd" // Added for kubeconfig handling
 )
 
 // fetchNodeStatusCmd creates a tea.Cmd to asynchronously fetch the node status.
@@ -121,13 +128,16 @@ func performPostLoginOperationsCmd(targetKubeContext, desiredMc, desiredWc strin
 		}
 		diagnosticLog.WriteString(fmt.Sprintf("GetCurrentKubeContext successful: %s\n", actualCurrentContext))
 
-		// This kubectl call would also ideally use client-go
-		contextsListCmd := exec.Command("kubectl", "config", "get-contexts", "-o", "name")
-		contextsListOutput, contextsListErr := contextsListCmd.Output()
-		if contextsListErr != nil {
-			diagnosticLog.WriteString(fmt.Sprintf("kubectl config get-contexts error: %v\nOutput: %s\n", contextsListErr, string(contextsListOutput)))
+		// Get all contexts using client-go
+		pathOptions := clientcmd.NewDefaultPathOptions()
+		config, err := pathOptions.GetStartingConfig()
+		if err != nil {
+			diagnosticLog.WriteString(fmt.Sprintf("Failed to load kubeconfig for getting all contexts: %v\n", err))
 		} else {
-			diagnosticLog.WriteString(fmt.Sprintf("kubectl config get-contexts output:\n%s\n", string(contextsListOutput)))
+			diagnosticLog.WriteString("Available Kubernetes contexts (from client-go):\n")
+			for contextName := range config.Contexts {
+				diagnosticLog.WriteString(fmt.Sprintf("- %s\n", contextName))
+			}
 		}
 
 		return contextSwitchAndReinitializeResultMsg{
@@ -150,46 +160,65 @@ func fetchClusterListCmd() tea.Cmd {
 	}
 }
 
-// startPortForwardCmd creates a tea.Cmd to initiate a port-forwarding process using the client-go library.
-// The actual port-forwarding is handled in a separate goroutine (launched by utils.StartPortForwardClientGo).
-// This command function itself returns a portForwardSetupCompletedMsg once the synchronous part of the setup is done.
-// Ongoing status updates from the port-forwarding goroutine are sent to the TUI via the provided tuiChan.
-// - label: A user-friendly label for this port-forward (e.g., "Prometheus (MC)").
-// - context: The Kubernetes context to use for this port-forward.
-// - namespace: The Kubernetes namespace of the target service.
-// - service: The name of the Kubernetes service to connect to.
-// - port: The port mapping string (e.g., "localPort:remotePort").
-// - tuiChan: The channel used by the port-forwarding goroutine to send portForwardStatusUpdateMsg messages back to the TUI.
-// Returns a tea.Cmd that, when run, calls utils.StartPortForwardClientGo and then sends a portForwardSetupCompletedMsg.
-func startPortForwardCmd(label, context, namespace, service, port string, tuiChan chan tea.Msg) tea.Cmd {
-	return func() tea.Msg {
-		sendUpdateFunc := func(status, outputLog string, isError, isReady bool) {
-			// The fmt.Printf debug logs previously here were for console debugging.
-			// We are now focusing on TUI-based logging for handler behavior.
-			if tuiChan == nil {
-				// This case should ideally not be reached if TUI is initialized correctly.
-				// If it does, a console log is still valuable for critical failure.
-				fmt.Printf("[CRITICAL ERROR] tuiChan is nil in sendUpdateFunc for label: %s. This is a bug.\n", label)
-				return // Avoid panic
-			}
-			tuiChan <- portForwardStatusUpdateMsg{
-				label:     label,
-				status:    status,
-				outputLog: outputLog,
-				isError:   isError,
-				isReady:   isReady,
-			}
-		}
+// PredefinedMcpServer struct, PredefinedMcpServers variable, and StartAndManageMcpProcess, StartAllMcpServersNonTUI
+// have been moved to the internal/mcpserver package.
 
-		// utils.StartPortForwardClientGo now returns (chan struct{}, string, error)
-		// The string is the initial status message if synchronous setup was successful.
-		stopChan, initialStatus, initialError := utils.StartPortForwardClientGo(context, namespace, service, port, label, sendUpdateFunc)
+// startMcpProxiesCmd creates a slice of tea.Cmds, one for each predefined MCP proxy.
+func startMcpProxiesCmd(tuiChan chan tea.Msg) []tea.Cmd {
+	var commandsToBatch []tea.Cmd
 
-		return portForwardSetupCompletedMsg{
-			label:    label,
-			stopChan: stopChan,
-			status:   initialStatus, // Pass status from the setup function
-			err:      initialError,
+	if len(mcpserver.PredefinedMcpServers) == 0 {
+		cmd := func() tea.Msg {
+			return mcpServerStatusUpdateMsg{Label: "MCP Proxies", status: "Info", outputLog: "No predefined MCP servers configured."}
 		}
+		commandsToBatch = append(commandsToBatch, cmd)
+		return commandsToBatch
 	}
+
+	for _, serverCfg := range mcpserver.PredefinedMcpServers {
+		// Capture range variable for the closure
+		capturedServerCfg := serverCfg
+
+		proxyStartCmd := func() tea.Msg {
+			label := capturedServerCfg.Name
+
+			// Define the McpUpdateFunc for TUI mode
+			tuiUpdateFn := func(update mcpserver.McpProcessUpdate) {
+				if tuiChan != nil {
+					tuiChan <- mcpServerStatusUpdateMsg{
+						Label:     update.Label,
+						pid:       update.PID,
+						status:    update.Status,
+						outputLog: update.OutputLog,
+						err:       update.Err,
+					}
+				}
+			}
+
+			// mcpserver.StartAndManageIndividualMcpServer prepares and starts the exec.Cmd.
+			// For TUI mode, WaitGroup is not used, so pass nil.
+			pid, stopChan, startErr := mcpserver.StartAndManageIndividualMcpServer(capturedServerCfg, tuiUpdateFn, nil)
+
+			initialStatusMsg := fmt.Sprintf("Initializing proxy for %s...", label)
+			if startErr != nil {
+				initialStatusMsg = fmt.Sprintf("Failed to start %s: %s", label, startErr.Error())
+			}
+
+			return mcpServerSetupCompletedMsg{
+				Label:    label,
+				stopChan: stopChan,
+				pid:      pid,
+				status:   initialStatusMsg,
+				err:      startErr,
+			}
+		}
+		commandsToBatch = append(commandsToBatch, proxyStartCmd)
+	}
+
+	if len(commandsToBatch) == 0 {
+		// This case should not be hit if PredefinedMcpServers is not empty,
+		// as a cmd is created for each.
+		return nil
+	}
+	return commandsToBatch
 }

@@ -120,3 +120,53 @@ The version number follows Semantic Versioning (MAJOR.MINOR.PATCH).
   1. Create and push the desired tag manually (e.g., `git tag v1.0.0`, `git push origin v1.0.0`).
   2. Manually trigger the `auto-release.yaml` workflow via the GitHub Actions UI, selecting the `main` branch and providing the manually created tag.
   *Alternatively, adjust the `Determine Next Version` step in `auto-release.yaml` temporarily before merging the PR that should trigger the bump, or create a separate release PR.*
+
+## TUI Implementation Details
+
+For detailed information about the TUI (Terminal User Interface) architecture, components, and how it interacts with core logic, please refer to the [TUI Implementation Notes](./tui-implementation.md).
+
+## Package Design for Shared Core Logic (Example: MCP Server Management)
+
+When implementing features that need to operate in both TUI (Terminal User Interface) mode and non-TUI/CLI mode, or that manage external processes, a clean separation of concerns is crucial. The management of Management Cluster Proxy (MCP) servers serves as a good example of this approach in `envctl`.
+
+**Core Principles:**
+
+1.  **Dedicated Core Package:** Logic that is fundamental to the feature itself, independent of its presentation (TUI or CLI), should reside in its own internal package. For MCP servers, this is `internal/mcpserver`.
+2.  **Agnostic Core:** This core package should be agnostic to its consumers. It should not contain TUI-specific code (e.g., `tea.Msg` types) or CLI-specific code (e.g., direct `fmt.Println` for primary output).
+3.  **Static Configuration:** Default configurations for entities managed by the core package (like the list of predefined MCP servers) should reside within the core package, ideally as static data (`internal/mcpserver/config.go`). This makes the core package the single source of truth for these definitions.
+4.  **Callback/Interface for Updates:** To communicate status, logs, or errors from managed processes, the core package should use generic callbacks or interfaces. For MCP servers, `mcpserver.McpUpdateFunc` (a function type taking `mcpserver.McpProcessUpdate`) is used. The core process manager (`mcpserver.StartAndManageIndividualMcpServer`) calls this function with updates.
+5.  **Consumer Responsibility:** The consumers (TUI mode logic or non-TUI mode logic) are responsible for:
+    *   Deciding *when* and *which* core functionalities to invoke (e.g., which MCP servers to start).
+    *   Providing a mode-specific implementation of the callback (`McpUpdateFunc`). The TUI's implementation translates `McpProcessUpdate` into `tea.Msg`s for its event loop, while the non-TUI mode's implementation prints to the console.
+
+**MCP Server Implementation Example (`internal/mcpserver`):**
+
+*   **`types.go`:** Defines `PredefinedMcpServer` (structure for server config), `McpProcessUpdate` (generic update bundle), and `McpUpdateFunc` (callback signature).
+*   **`config.go`:** Contains the static `PredefinedMcpServers` list.
+*   **`process.go`:** Houses `StartAndManageIndividualMcpServer`. This function:
+    *   Takes a `PredefinedMcpServer` configuration.
+    *   Internally prepares the `exec.Cmd` to run `mcp-proxy` with the correct arguments for the specified underlying server.
+    *   Manages the lifecycle of this process (start, stop signal, log streaming).
+    *   Uses the provided `McpUpdateFunc` to report all events (initial "Running" status, logs, errors, final "Stopped" status).
+    *   Returns a `stopChan` to allow the caller to signal termination, and any initial startup error.
+*   **`startup.go`:** Contains `StartAllPredefinedMcpServers`. This is a helper function primarily for the non-TUI mode:
+    *   It iterates `PredefinedMcpServers`.
+    *   For each server, it calls `StartAndManageIndividualMcpServer`.
+    *   It provides the `McpUpdateFunc` (which will be a console-printing one when called by `cmd/connect.go`).
+    *   It returns a channel of `ManagedMcpServerInfo` (containing label, PID, stopChan, initial error) allowing the caller to get details for each server as it's being initiated.
+
+**Consumption by TUI (`internal/tui/commands.go`):**
+
+*   The TUI's `startMcpProxiesCmd` iterates `mcpserver.PredefinedMcpServers`.
+*   For each server, it creates a `tea.Cmd`. This command, when executed:
+    *   Defines an `McpUpdateFunc` that converts `mcpserver.McpProcessUpdate` into a TUI-specific `tea.Msg` (e.g., `tui.mcpServerStatusUpdateMsg`) and sends it to the TUI's main event channel.
+    *   Calls `mcpserver.StartAndManageIndividualMcpServer` with the server's config and this TUI-specific update function.
+    *   Returns an initial `tui.mcpServerSetupCompletedMsg` to the TUI model, including the `stopChan` and any immediate startup error.
+
+**Consumption by Non-TUI (`cmd/connect.go`):**
+
+*   The non-TUI mode in `cmd/connect.go` calls `mcpserver.StartAllPredefinedMcpServers`.
+*   It provides an `McpUpdateFunc` that directly prints the `OutputLog` from `McpProcessUpdate` to `os.Stdout` or `os.Stderr`.
+*   It ranges over the channel returned by `StartAllPredefinedMcpServers` to collect `stopChan`s for each successfully initiated server, which are used for graceful shutdown on Ctrl+C.
+
+This layered approach ensures that `internal/mcpserver` is a reusable, independent engine, while the TUI and non-TUI modes adapt its usage to their specific operational and UI/output requirements.

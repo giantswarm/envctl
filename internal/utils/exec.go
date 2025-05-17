@@ -2,10 +2,15 @@ package utils
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 // LoginToKubeCluster executes `tsh kube login <clusterName>` to authenticate with a Teleport Kubernetes cluster.
@@ -39,114 +44,142 @@ func LoginToKubeCluster(clusterName string) (stdout string, stderr string, err e
 	return stdoutStr, stderrStr, nil
 }
 
-// DetermineClusterProvider attempts to identify the cloud provider (e.g., AWS, Azure, GCP)
-// of a Kubernetes cluster by inspecting the `providerID` of the first node.
-// It uses `kubectl get nodes -o jsonpath={.items[0].spec.providerID}`.
-// If `providerID` is not available, it falls back to `determineProviderFromLabels`.
+// DetermineClusterProvider attempts to identify the cloud provider of a Kubernetes cluster
+// by inspecting the `providerID` of the first node, then falling back to labels.
+// It uses the Kubernetes Go client.
 // - contextName: The Kubernetes context to use. If empty, the current context is used.
-// Returns the determined provider name (e.g., "aws") or "unknown", and an error if `kubectl` fails.
+// Returns the determined provider name (e.g., "aws") or "unknown", and an error if API calls fail.
 func DetermineClusterProvider(contextName string) (string, error) {
-	fmt.Println("Determining cluster provider...")
+	fmt.Println("Determining cluster provider using Go client...")
 
-	// Apply Teleport prefix to context name if it doesn't already have it
-	kubectlContextName := contextName
+	// Use Teleport prefix for context name if not already prefixed and contextName is provided.
+	k8sContextName := contextName
 	if contextName != "" && !strings.HasPrefix(contextName, "teleport.giantswarm.io-") {
-		kubectlContextName = "teleport.giantswarm.io-" + contextName
+		k8sContextName = "teleport.giantswarm.io-" + contextName
 	}
 
-	// Command to get node information in JSON format
-	args := []string{"get", "nodes", "-o", "jsonpath={.items[0].spec.providerID}"}
-	if kubectlContextName != "" {
-		args = append([]string{"--context", kubectlContextName}, args...)
+	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	configOverrides := &clientcmd.ConfigOverrides{}
+	// If a specific context name is provided, use it.
+	// Otherwise (k8sContextName is empty), it will use the current context from kubeconfig.
+	if k8sContextName != "" {
+		configOverrides.CurrentContext = k8sContextName
 	}
 
-	cmd := exec.Command("kubectl", args...)
-	output, err := cmd.Output()
+	kubeConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
+	config, err := kubeConfig.ClientConfig()
 	if err != nil {
-		return "", fmt.Errorf("failed to get node provider information: %w", err)
+		return "", fmt.Errorf("failed to get Kubernetes client config for context '%s': %w", k8sContextName, err)
 	}
 
-	providerID := string(output)
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return "", fmt.Errorf("failed to create Kubernetes clientset for context '%s': %w", k8sContextName, err)
+	}
+
+	nodes, err := clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{Limit: 1})
+	if err != nil {
+		return "", fmt.Errorf("failed to list nodes in context '%s': %w", k8sContextName, err)
+	}
+
+	if len(nodes.Items) == 0 {
+		return "unknown", fmt.Errorf("no nodes found in cluster with context '%s'", k8sContextName)
+	}
+
+	node := nodes.Items[0]
+	providerID := node.Spec.ProviderID
 
 	// The providerID is typically in the format: <provider>://<provider-specific-info>
-	// Example: aws://us-west-2/i-0123456789abcdef0
-	if strings.HasPrefix(providerID, "aws://") {
-		return "aws", nil
-	} else if strings.HasPrefix(providerID, "azure://") {
-		return "azure", nil
-	} else if strings.HasPrefix(providerID, "gce://") {
-		return "gcp", nil
-	} else if strings.Contains(providerID, "vsphere") {
-		return "vsphere", nil
-	} else if strings.Contains(providerID, "openstack") {
-		return "openstack", nil
-	} else if len(providerID) == 0 {
-		// If no providerID is returned, attempt to check labels
-		return determineProviderFromLabels(kubectlContextName)
+	if providerID != "" {
+		if strings.HasPrefix(providerID, "aws://") {
+			return "aws", nil
+		} else if strings.HasPrefix(providerID, "azure://") {
+			return "azure", nil
+		} else if strings.HasPrefix(providerID, "gce://") {
+			return "gcp", nil
+		} else if strings.Contains(providerID, "vsphere") { // vsphere might not have a URI prefix
+			return "vsphere", nil
+		} else if strings.Contains(providerID, "openstack") { // openstack might not have a URI prefix
+			return "openstack", nil
+		}
+		// If providerID is present but not matched, try labels next
 	}
 
-	// If we can't determine the provider from the ID, return unknown
+	// Fallback to checking labels if providerID is empty or not recognized
+	labels := node.GetLabels()
+	if len(labels) > 0 {
+		// Look for known provider-specific labels
+		for k := range labels {
+			if strings.Contains(k, "eks.amazonaws.com") || strings.Contains(k, "amazonaws.com/compute") {
+				return "aws", nil
+			} else if strings.Contains(k, "kubernetes.azure.com") || strings.Contains(k, "cloud-provider-azure") {
+				return "azure", nil
+			} else if strings.Contains(k, "cloud.google.com/gke") || strings.Contains(k, "instancegroup.gke.io") {
+				return "gcp", nil
+			}
+		}
+	}
+
+	// If we can't determine the provider from providerID or labels, return unknown.
+	// It could also be a bare metal cluster or a less common provider.
 	return "unknown", nil
 }
 
-// determineProviderFromLabels is a fallback mechanism for `DetermineClusterProvider`.
-// It inspects node labels for known provider-specific labels using
-// `kubectl get nodes -o jsonpath={.items[0].metadata.labels}`
-// - contextName: The Kubernetes context to use.
-// Returns the provider name or "unknown", and an error if `kubectl` fails.
-func determineProviderFromLabels(contextName string) (string, error) {
-	args := []string{"get", "nodes", "-o", "jsonpath={.items[0].metadata.labels}"}
-	if contextName != "" {
-		args = append([]string{"--context", contextName}, args...)
-	}
-
-	cmd := exec.Command("kubectl", args...)
-	output, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("failed to get node labels: %w", err)
-	}
-
-	labels := string(output)
-
-	// Look for known provider-specific labels
-	if strings.Contains(labels, "eks.amazonaws.com") || strings.Contains(labels, "aws") {
-		return "aws", nil
-	} else if strings.Contains(labels, "azure") || strings.Contains(labels, "aks") {
-		return "azure", nil
-	} else if strings.Contains(labels, "gke") || strings.Contains(labels, "cloud.google.com") {
-		return "gcp", nil
-	}
-
-	// If we can't determine the provider from labels either, return unknown
-	return "unknown", nil
-}
-
-// GetCurrentKubeContext retrieves the name of the currently active Kubernetes context using
-// `kubectl config current-context`.
-// Returns the context name (trimmed of whitespace) and an error if the command fails.
+// GetCurrentKubeContext retrieves the name of the currently active Kubernetes context
+// using the Kubernetes Go client.
+// Returns the context name and an error if it fails.
 func GetCurrentKubeContext() (string, error) {
-	cmd := exec.Command("kubectl", "config", "current-context")
-	output, err := cmd.Output()
-	if err != nil {
-		// If there's an error (e.g., kubectl not configured, no current context), return it.
-		// The error from cmd.Output() for exec.Command includes stderr, which is useful.
-		return "", fmt.Errorf("failed to get current kubectl context: %w", err)
+	pathOptions := clientcmd.NewDefaultPathOptions()
+	if pathOptions == nil {
+		return "", fmt.Errorf("failed to get default kubeconfig path options")
 	}
-	// The output includes a newline character, so trim it.
-	return strings.TrimSpace(string(output)), nil
+
+	config, err := pathOptions.GetStartingConfig()
+	if err != nil {
+		return "", fmt.Errorf("failed to get starting kubeconfig: %w", err)
+	}
+
+	if config.CurrentContext == "" {
+		return "", fmt.Errorf("current kubeconfig context is not set")
+	}
+	return config.CurrentContext, nil
 }
 
 // SwitchKubeContext changes the active Kubernetes context to the specified context name
-// using `kubectl config use-context <contextName>`.
+// using the Kubernetes Go client, ensuring the full config is preserved.
 // - contextName: The name of the Kubernetes context to switch to.
-// Returns an error if the command fails, including the command's output in the error message.
+// Returns an error if the command fails.
 func SwitchKubeContext(contextName string) error {
-	cmd := exec.Command("kubectl", "config", "use-context", contextName)
-	// We don't want to inherit os.Stdout/Stderr directly for this one,
-	// as successful output is minimal and errors will be captured.
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("failed to switch kubectl context to '%s': %w\\nOutput: %s", contextName, err, string(output))
+	pathOptions := clientcmd.NewDefaultPathOptions()
+	if pathOptions == nil {
+		return fmt.Errorf("failed to get default kubeconfig path options for switching context")
 	}
+
+	// Load the raw config, which preserves all existing data.
+	config, err := pathOptions.GetStartingConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load kubeconfig: %w", err)
+	}
+
+	// Check if the target context exists.
+	if _, exists := config.Contexts[contextName]; !exists {
+		return fmt.Errorf("context '%s' does not exist in kubeconfig", contextName)
+	}
+
+	// Modify only the CurrentContext field.
+	config.CurrentContext = contextName
+
+	// Get the primary kubeconfig file path.
+	// If ExplicitPath is set in pathOptions, it will be used, otherwise the default.
+	kubeconfigFilePath := pathOptions.GetDefaultFilename()
+	if pathOptions.IsExplicitFile() {
+		kubeconfigFilePath = pathOptions.GetExplicitFile()
+	}
+
+	// Write the entire modified config back to the file.
+	if err := clientcmd.WriteToFile(*config, kubeconfigFilePath); err != nil {
+		return fmt.Errorf("failed to write updated kubeconfig to '%s': %w", kubeconfigFilePath, err)
+	}
+
 	return nil
 }
