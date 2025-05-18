@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	// Assuming utils is in "envctl/internal/utils" based on model.go
@@ -153,6 +154,14 @@ func handleKeyMsgGlobal(m model, keyMsg tea.KeyMsg, existingCmds []tea.Cmd) (mod
 		case "L", "esc": // Close log overlay
 			m.currentAppMode = ModeMainDashboard
 			return m, nil
+		case "y": // Copy logs to clipboard
+			logText := strings.Join(m.combinedOutput, "\n")
+			if err := clipboard.WriteAll(logText); err != nil {
+				// Log error and set status bar
+				m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Failed to copy logs: %v", err))
+				return m, m.setStatusMessage("Copy logs failed", StatusBarError, 3*time.Second)
+			}
+			return m, m.setStatusMessage("Logs copied to clipboard", StatusBarSuccess, 3*time.Second)
 		case "k", "up", "j", "down", "pgup", "pgdown", "home", "end": // Pass scrolling keys to viewport
 			var viewportCmd tea.Cmd
 			m.logViewport, viewportCmd = m.logViewport.Update(keyMsg)

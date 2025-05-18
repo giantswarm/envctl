@@ -7,6 +7,7 @@ import (
 
 	// For time.Format
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 )
 
 // Will likely be needed for formatting LastUpdated times
@@ -159,17 +160,16 @@ func renderWcPane(m model, paneWidth int) string {
 // - width: The target width for the overlay (e.g., 80% of screen).
 // - height: The target height for the overlay (e.g., 70% of screen).
 func renderLogOverlay(m model, width, height int) string {
-	// Ensure viewport has latest content, sized correctly (already done in Update for WindowSizeMsg)
-	// Viewport.View() will render its current content within its set dimensions.
-	viewportView := m.logViewport.View()
+	// Build a title with key hints
+	title := logPanelTitleStyle.Render(SafeIcon(IconScroll) + " Activity Log  (↑/↓ scroll  •  y copy  •  Esc close)")
 
-	// Apply the overlay style to the viewport's rendered content.
-	// The viewport itself doesn't have a border/padding, so logOverlayStyle provides that.
-	// We use the raw width and height passed, assuming they are the desired *outer* dimensions for the overlay box.
+	viewportView := m.logViewport.View()
+	content := lipgloss.JoinVertical(lipgloss.Left, title, viewportView)
+
 	return logOverlayStyle.Copy().
 		Width(width - logOverlayStyle.GetHorizontalFrameSize()).
 		Height(height - logOverlayStyle.GetVerticalFrameSize()).
-		Render(viewportView)
+		Render(content)
 }
 
 // renderPortForwardPanel renders a single panel for a port-forwarding process.
@@ -851,4 +851,25 @@ func renderStatusBar(m model, width int) string {
 	// The outer style now mainly ensures height and applies an overall width for final clipping if JoinHorizontal misbehaved.
 	// Background is effectively handled by the parts.
 	return StatusBarBaseStyle.Copy().Width(width).Render(finalStatusContent)
+}
+
+// prepareLogContent ensures each log line fits within the given width.
+// Lines longer than maxWidth are truncated and suffixed with an ellipsis to
+// avoid unwanted line wrapping inside viewports, which previously caused the
+// overlay height to "jump" while scrolling.
+func prepareLogContent(lines []string, maxWidth int) string {
+	if maxWidth <= 0 {
+		return strings.Join(lines, "\n")
+	}
+	out := make([]string, len(lines))
+	for i, l := range lines {
+		if runewidth.StringWidth(l) > maxWidth {
+			// Reserve 1 column for the ellipsis so we don't exceed maxWidth.
+			truncated := runewidth.Truncate(l, maxWidth-1, "")
+			out[i] = truncated + "…" // Add ellipsis rune
+		} else {
+			out[i] = l
+		}
+	}
+	return strings.Join(out, "\n")
 }

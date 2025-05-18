@@ -19,6 +19,7 @@ type KeyMap struct {
 	ToggleDark    key.Binding
 	ToggleDebug   key.Binding
 	ToggleLog     key.Binding
+	CopyLogs      key.Binding
 	// Add other bindings as needed, e.g., for input mode
 }
 
@@ -77,6 +78,10 @@ func DefaultKeyMap() KeyMap {
 			key.WithKeys("z"),
 			key.WithHelp("z", "toggle debug info"),
 		),
+		CopyLogs: key.NewBinding(
+			key.WithKeys("y"),
+			key.WithHelp("y", "copy logs"),
+		),
 		ToggleLog: key.NewBinding(
 			key.WithKeys("L"),
 			key.WithHelp("L", "toggle log overlay"),
@@ -89,7 +94,7 @@ func DefaultKeyMap() KeyMap {
 func (k KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down, k.Tab, k.ShiftTab},                          // Navigation column
-		{k.NewCollection, k.Restart, k.SwitchContext},              // Operations column
+		{k.NewCollection, k.Restart, k.SwitchContext, k.CopyLogs},  // Operations column
 		{k.Help, k.ToggleLog, k.ToggleDark, k.ToggleDebug, k.Quit}, // UI/General column
 	}
 }

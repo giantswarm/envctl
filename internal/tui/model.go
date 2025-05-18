@@ -476,10 +476,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.currentAppMode = ModeMainDashboard // Or the previous mode
 				} else {
 					m.currentAppMode = ModeLogOverlay
-					if m.currentAppMode == ModeLogOverlay { // Double check to set content only when opening
-						// When opening, set viewport content and move to bottom
-						m.logViewport.SetContent(strings.Join(m.combinedOutput, "\n"))
-						m.logViewport.GotoBottom()
+					if m.currentAppMode == ModeLogOverlay {
+						// Determine initial overlay dimensions based on current terminal size.
+						overlayW := int(float64(m.width) * 0.8)
+						overlayH := int(float64(m.height) * 0.7)
+						m.logViewport.Width = overlayW - logOverlayStyle.GetHorizontalFrameSize()
+						m.logViewport.Height = overlayH - logOverlayStyle.GetVerticalFrameSize()
+
+						// Prepare and apply content after sizing to avoid zero-width issues.
+						trunc := prepareLogContent(m.combinedOutput, m.logViewport.Width)
+						m.logViewport.SetContent(trunc)
 					}
 				}
 				return m, channelReaderCmd(m.TUIChannel)
@@ -682,6 +688,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
 	}
 
+	// Ensure the active log viewport always reflects latest log lines.
+	if m.currentAppMode == ModeLogOverlay {
+		trunc := prepareLogContent(m.combinedOutput, m.logViewport.Width)
+		m.logViewport.SetContent(trunc)
+		// Keep viewport at bottom unless user has scrolled away
+		if m.logViewport.YOffset == 0 {
+			m.logViewport.GotoBottom()
+		}
+	} else {
+		// Keep the background log viewport in sync as well so that when the user opens it again
+		// it's already up-to-date.
+		trunc := prepareLogContent(m.combinedOutput, m.logViewport.Width)
+		m.logViewport.SetContent(trunc)
+	}
+
 	// Always listen for channel messages
 	cmds = append(cmds, channelReaderCmd(m.TUIChannel))
 	return m, tea.Batch(cmds...)
@@ -731,11 +752,16 @@ func (m model) View() string {
 		m.logViewport.Width = overlayWidth - logOverlayStyle.GetHorizontalFrameSize()
 		m.logViewport.Height = overlayHeight - logOverlayStyle.GetVerticalFrameSize()
 
-		logOverlay := renderLogOverlay(m, overlayWidth, overlayHeight) // Uses helper from view_helpers.go
-		return lipgloss.Place(
-			m.width, m.height, lipgloss.Center, lipgloss.Center, logOverlay,
+		logOverlay := renderLogOverlay(m, overlayWidth, overlayHeight)
+
+		// Reserve one line at bottom for status bar
+		overlayCanvas := lipgloss.Place(
+			m.width, m.height-1, lipgloss.Center, lipgloss.Center, logOverlay,
 			lipgloss.WithWhitespaceBackground(lipgloss.AdaptiveColor{Light: "rgba(0,0,0,0.1)", Dark: "rgba(0,0,0,0.6)"}),
 		)
+
+		statusBar := renderStatusBar(m, m.width)
+		return lipgloss.JoinVertical(lipgloss.Left, overlayCanvas, statusBar)
 	case ModeMainDashboard, ModeError: // ModeError can also fall through to main dashboard for now
 		// This section is the original content of View() for the main dashboard.
 		if m.width == 0 || m.height == 0 { // A basic check for readiness
@@ -865,7 +891,8 @@ func (m model) View() string {
 			m.mainLogViewport.Height = viewportHeight
 
 			// Set content AFTER setting dimensions
-			m.mainLogViewport.SetContent(strings.Join(m.combinedOutput, "\n"))
+			truncMain := prepareLogContent(m.combinedOutput, m.mainLogViewport.Width)
+			m.mainLogViewport.SetContent(truncMain)
 
 			// Now render log panel with the properly sized viewport
 			combinedLogViewString := renderCombinedLogPanel(&m, contentWidth, logSectionHeight)
@@ -888,7 +915,8 @@ func (m model) View() string {
 				updatedHeaderStr := strings.Replace(currentHeaderView, "h for Help", "h for Help | L for Logs", 1)
 				finalViewLayout[0] = updatedHeaderStr // Update the header in the layout
 			}
-			m.logViewport.SetContent(strings.Join(m.combinedOutput, "\n"))
+			truncLog := prepareLogContent(m.combinedOutput, m.logViewport.Width)
+			m.logViewport.SetContent(truncLog)
 		}
 
 		// Join all layout elements vertically
