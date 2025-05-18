@@ -193,7 +193,7 @@ func getInitialPortForwardCmds(m *model) []tea.Cmd {
 				}
 
 				// Call the core function to start and manage the port forward
-				cmd, stopChan, err := portforwarding.StartAndManageIndividualPortForward(currentPfConfig, tuiUpdateFn, nil)
+				cmd, stopChan, err := portforwarding.StartAndManageIndividualPortForward(currentPfConfig, tuiUpdateFn)
 
 				initialPID := 0
 				if cmd != nil && cmd.Process != nil {
@@ -212,4 +212,49 @@ func getInitialPortForwardCmds(m *model) []tea.Cmd {
 		}
 	}
 	return pfCmds
+}
+
+// createRestartPortForwardCmd generates a tea.Cmd that restarts a single existing
+// port-forward process.  It is used by the MCP restart handler to ensure that
+// dependent port-forwards are up before the MCP proxy comes back online.
+func createRestartPortForwardCmd(m *model, pfProcess *portForwardProcess) tea.Cmd {
+	if pfProcess == nil {
+		return nil
+	}
+
+	// Close existing stopChan if running
+	if pfProcess.stopChan != nil {
+		safeCloseChan(pfProcess.stopChan)
+		pfProcess.stopChan = nil
+	}
+
+	pfProcess.statusMsg = "Restarting..."
+	pfProcess.output = nil
+	pfProcess.err = nil
+	pfProcess.running = false
+	pfProcess.pid = 0
+
+	currentPfConfig := pfProcess.config
+
+	return func() tea.Msg {
+		// Define the update callback function for the core package
+		tuiUpdateFn := func(update portforwarding.PortForwardProcessUpdate) {
+			m.TUIChannel <- portForwardCoreUpdateMsg{update: update}
+		}
+
+		cmd, stopChan, err := portforwarding.StartAndManageIndividualPortForward(currentPfConfig, tuiUpdateFn)
+
+		initialPID := 0
+		if cmd != nil && cmd.Process != nil {
+			initialPID = cmd.Process.Pid
+		}
+
+		return portForwardSetupResultMsg{
+			InstanceKey: currentPfConfig.InstanceKey,
+			Cmd:         cmd,
+			StopChan:    stopChan,
+			InitialPID:  initialPID,
+			Err:         err,
+		}
+	}
 }

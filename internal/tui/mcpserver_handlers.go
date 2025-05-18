@@ -2,6 +2,7 @@ package tui
 
 import (
 	"bufio"
+	"envctl/internal/dependency"
 	"envctl/internal/mcpserver"
 	"fmt"
 	"os/exec"
@@ -173,12 +174,21 @@ func handleRestartMcpServerMsg(m model, msg restartMcpServerMsg) (model, tea.Cmd
 	clearStatusCmd := m.setStatusMessage(fmt.Sprintf("[%s] MCP Restarting...", msg.Label), StatusBarInfo, 3*time.Second)
 	m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[%s MCP Proxy] Attempting auto-recovery...", msg.Label))
 
-	// Find the configuration for this server
-	var serverConfig mcpserver.PredefinedMcpServer
-	for _, cfg := range mcpserver.PredefinedMcpServers {
-		if cfg.Name == msg.Label {
-			serverConfig = cfg
-			break
+	// First, determine dependencies and create restart commands for them (e.g. port-forwards)
+	var dependencyRestartCmds []tea.Cmd
+	if m.dependencyGraph != nil {
+		deps := m.dependencyGraph.Dependencies(dependency.NodeID("mcp:" + msg.Label))
+		for _, depID := range deps {
+			depStr := string(depID)
+			if strings.HasPrefix(depStr, "pf:") {
+				pfLabel := strings.TrimPrefix(depStr, "pf:")
+				if pfProc, ok := m.portForwards[pfLabel]; ok {
+					restartCmd := createRestartPortForwardCmd(&m, pfProc)
+					if restartCmd != nil {
+						dependencyRestartCmds = append(dependencyRestartCmds, restartCmd)
+					}
+				}
+			}
 		}
 	}
 
@@ -188,11 +198,34 @@ func handleRestartMcpServerMsg(m model, msg restartMcpServerMsg) (model, tea.Cmd
 		proc.statusMsg = "Restarting..."
 	}
 
+	// Stop existing MCP process if running to free the port
+	if proc, ok := m.mcpServers[msg.Label]; ok {
+		if proc.stopChan != nil {
+			m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[%s MCP Proxy] Sending stop signal before restart...", msg.Label))
+			safeCloseChan(proc.stopChan)
+			proc.stopChan = nil
+			proc.active = false
+			proc.statusMsg = "Stopping..."
+		}
+	}
+
+	// Find the configuration for this server
+	var serverConfig mcpserver.PredefinedMcpServer
+	for _, cfg := range mcpserver.PredefinedMcpServers {
+		if cfg.Name == msg.Label {
+			serverConfig = cfg
+			break
+		}
+	}
+
 	// Start a new instance of the MCP server
 	restartProxyCmd := func() tea.Msg {
 		return startMcpProxyCmdForServer(serverConfig, m.TUIChannel)()
 	}
-	return m, tea.Batch(clearStatusCmd, restartProxyCmd)
+
+	allCmds := append([]tea.Cmd{clearStatusCmd}, dependencyRestartCmds...)
+	allCmds = append(allCmds, restartProxyCmd)
+	return m, tea.Batch(allCmds...)
 }
 
 // startMcpProxyCmdForServer creates a tea.Cmd function for a specific MCP server
@@ -259,6 +292,15 @@ func startMcpProxyCmdForServer(serverCfg mcpserver.PredefinedMcpServer, tuiChan 
 
 		// Create stop channel for signaling termination
 		stopChan := make(chan struct{})
+
+		// Listener for external stop requests (via stopChan)
+		go func() {
+			<-stopChan
+			if cmd.Process != nil {
+				// Kill the whole process group (mcp-proxy and underlying server)
+				_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			}
+		}()
 
 		// Start goroutines for handling output
 		go func() {

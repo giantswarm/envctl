@@ -41,4 +41,4 @@ func RenderIconWithNodes(icon string, readyNodes, totalNodes int, warningSuffix 
 // RenderIconWithMessage formats a standard message with icon
 func RenderIconWithMessage(icon string, message string) string {
 	return fmt.Sprintf("%s%s", SafeIcon(icon), message)
-} 
+}

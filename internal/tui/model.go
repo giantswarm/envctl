@@ -1,10 +1,13 @@
 package tui
 
 import (
+	"envctl/internal/mcpserver"
 	"envctl/internal/utils"
 	"fmt" // Import os for stderr
 	"strings"
 	"time"
+
+	"envctl/internal/dependency"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -124,6 +127,9 @@ type model struct {
 	portForwardOrder []string                       // Order in which port-forwarding panels (and MC/WC info panes) are displayed and navigated.
 	focusedPanelKey  string                         // Key of the currently focused panel or pane for navigation.
 
+	// --- MCP Proxies ---
+	mcpProxyOrder []string // Focus/navigation order for MCP proxy panels (uses PredefinedMcpServer names)
+
 	// --- MCP Server Process ---
 	mcpServers map[string]*mcpServerProcess // Holds the state of multiple MCP server proxy processes.
 
@@ -147,6 +153,9 @@ type model struct {
 
 	// --- Application Mode ---
 	currentAppMode AppMode // Defines the current overall state/view of the application
+
+	// --- Dependency Graph ---
+	dependencyGraph *dependency.Graph // Tracks semantic dependencies between MCPs, port-forwards, etc.
 
 	// --- New Connection Input State ---
 	newConnectionInput textinput.Model    // Bubbletea text input component for new cluster names.
@@ -258,6 +267,9 @@ func InitialModel(mcName, wcName, kubeCtx string, tuiDebug bool) model {
 
 	setupPortForwards(&m, mcName, wcName)
 
+	// Build initial dependency graph (MCPs <-> Port-forwards)
+	m.dependencyGraph = buildDependencyGraph(&m)
+
 	if wcName != "" {
 		m.WCHealth = clusterHealthInfo{IsLoading: true}
 	}
@@ -267,6 +279,11 @@ func InitialModel(mcName, wcName, kubeCtx string, tuiDebug bool) model {
 	} else if mcName != "" {
 		// Fallback if only MC exists and somehow portForwardOrder is empty (should not happen with current logic)
 		m.focusedPanelKey = mcPaneFocusKey
+	}
+
+	// Build MCP proxy order from predefined list
+	for _, cfg := range mcpserver.PredefinedMcpServers {
+		m.mcpProxyOrder = append(m.mcpProxyOrder, cfg.Name)
 	}
 
 	return m // Correctly return the model instance
@@ -470,11 +487,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			m, cmd = handleKeyMsgGlobal(m, msg, []tea.Cmd{})
 		}
-		return m, tea.Batch(cmd, channelReaderCmd(m.TUIChannel))
+		cmds = append(cmds, cmd)
+		// continue after switch to common return path
+		// (no early return here to keep code reachable)
 
 	// Window size messages are handled by a function in handlers.go
 	case tea.WindowSizeMsg:
-		m, cmd := handleWindowSizeMsg(m, msg)
+		m, cmd = handleWindowSizeMsg(m, msg)
 		// Also update help model width
 		helpWidth := int(float64(msg.Width) * 0.8)
 		if helpWidth > 100 { // Max width for help, e.g., 100 columns
@@ -531,45 +550,62 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
-		return m, tea.Batch(cmd, channelReaderCmd(m.TUIChannel))
+		cmds = append(cmds, cmd)
+		// continue after switch to common return path
+		// (no early return here to keep code reachable)
 
 	// Port Forwarding Messages (handlers in portforward_handlers.go)
 	case portForwardSetupResultMsg: // New message type
 		m, cmd = handlePortForwardSetupResultMsg(m, msg) // New handler
-		return m, tea.Batch(cmd, channelReaderCmd(m.TUIChannel))
+		cmds = append(cmds, cmd)
+		// continue after switch to common return path
+		// (no early return here to keep code reachable)
 	case portForwardCoreUpdateMsg: // New message type
 		m, cmd = handlePortForwardCoreUpdateMsg(m, msg) // New handler
-		return m, tea.Batch(cmd, channelReaderCmd(m.TUIChannel))
+		cmds = append(cmds, cmd)
+		// continue after switch to common return path
+		// (no early return here to keep code reachable)
 
 	// New Connection Flow Messages (handlers in connection_flow.go)
 	case submitNewConnectionMsg:
-		m, cmd := handleSubmitNewConnectionMsg(m, msg, cmds)
-		return m, tea.Batch(cmd, channelReaderCmd(m.TUIChannel))
+		m, cmd = handleSubmitNewConnectionMsg(m, msg, cmds)
+		// continue after switch to common return path
+		// (no early return here to keep code reachable)
 	case kubeLoginResultMsg:
-		m, cmd := handleKubeLoginResultMsg(m, msg, cmds)
-		return m, tea.Batch(cmd, channelReaderCmd(m.TUIChannel))
+		m, cmd = handleKubeLoginResultMsg(m, msg, cmds)
+		// continue after switch to common return path
+		// (no early return here to keep code reachable)
 	case contextSwitchAndReinitializeResultMsg:
-		m, cmd := handleContextSwitchAndReinitializeResultMsg(m, msg, cmds)
-		return m, tea.Batch(cmd, channelReaderCmd(m.TUIChannel))
+		m, cmd = handleContextSwitchAndReinitializeResultMsg(m, msg, cmds)
+		// continue after switch to common return path
+		// (no early return here to keep code reachable)
 
 	// Other System/Async Messages (handlers in handlers.go)
 	case kubeContextResultMsg:
 		m = handleKubeContextResultMsg(m, msg) // Modifies model, returns no cmd
-		return m, channelReaderCmd(m.TUIChannel)
+		cmds = append(cmds, channelReaderCmd(m.TUIChannel))
+		// continue after switch to common return path
+		// (no early return here to keep code reachable)
 	case requestClusterHealthUpdate:
 		// This handler returns (model, tea.Cmd)
-		m, cmd := handleRequestClusterHealthUpdate(m)
-		return m, tea.Batch(cmd, channelReaderCmd(m.TUIChannel))
+		m, cmd = handleRequestClusterHealthUpdate(m)
+		// continue after switch to common return path
+		// (no early return here to keep code reachable)
 	case kubeContextSwitchedMsg:
 		// This handler returns (model, tea.Cmd)
-		m, cmd := handleKubeContextSwitchedMsg(m, msg)
-		return m, tea.Batch(cmd, channelReaderCmd(m.TUIChannel))
+		m, cmd = handleKubeContextSwitchedMsg(m, msg)
+		// continue after switch to common return path
+		// (no early return here to keep code reachable)
 	case nodeStatusMsg:
 		m = handleNodeStatusMsg(m, msg) // Modifies model, returns no cmd
-		return m, channelReaderCmd(m.TUIChannel)
+		cmds = append(cmds, channelReaderCmd(m.TUIChannel))
+		// continue after switch to common return path
+		// (no early return here to keep code reachable)
 	case clusterListResultMsg:
 		m = handleClusterListResultMsg(m, msg) // Modifies model, returns no cmd
-		return m, channelReaderCmd(m.TUIChannel)
+		cmds = append(cmds, channelReaderCmd(m.TUIChannel))
+		// continue after switch to common return path
+		// (no early return here to keep code reachable)
 
 	case clearStatusBarMsg: // Handle message to clear status bar
 		m.statusBarMessage = ""
@@ -577,34 +613,46 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			close(m.statusBarClearCancel) // Close it as it has served its purpose or was preemptively closed
 			m.statusBarClearCancel = nil
 		}
-		return m, channelReaderCmd(m.TUIChannel)
+		cmds = append(cmds, channelReaderCmd(m.TUIChannel))
+		// continue after switch to common return path
+		// (no early return here to keep code reachable)
 
 	// MCP Server Messages (handlers in mcpserver_handlers.go)
 	case mcpServerSetupCompletedMsg:
 		m, cmd = handleMcpServerSetupCompletedMsg(m, msg)
-		return m, tea.Batch(cmd, channelReaderCmd(m.TUIChannel))
+		cmds = append(cmds, cmd)
+		// continue after switch to common return path
+		// (no early return here to keep code reachable)
 	case mcpServerStatusUpdateMsg:
 		m, cmd = handleMcpServerStatusUpdateMsg(m, msg)
-		return m, tea.Batch(cmd, channelReaderCmd(m.TUIChannel))
+		cmds = append(cmds, cmd)
+		// continue after switch to common return path
+		// (no early return here to keep code reachable)
 	case restartMcpServerMsg:
 		m, cmd = handleRestartMcpServerMsg(m, msg)
-		return m, tea.Batch(cmd, channelReaderCmd(m.TUIChannel))
+		cmds = append(cmds, cmd)
+		// continue after switch to common return path
+		// (no early return here to keep code reachable)
 
 	case tea.MouseMsg:
 		var cmd tea.Cmd
 		// If log overlay is visible, pass mouse events to it for scrolling
 		if m.currentAppMode == ModeLogOverlay {
 			m.logViewport, cmd = m.logViewport.Update(msg)
-			return m, tea.Batch(cmd, channelReaderCmd(m.TUIChannel))
+			cmds = append(cmds, cmd)
+			// continue after switch to common return path
+			// (no early return here to keep code reachable)
 		} else {
 			// If log overlay is NOT visible, pass mouse events to the main log viewport
 			// (Assuming no other mouse-interactive components are active)
 			m.mainLogViewport, cmd = m.mainLogViewport.Update(msg)
-			return m, tea.Batch(cmd, channelReaderCmd(m.TUIChannel))
+			cmds = append(cmds, cmd)
+			// continue after switch to common return path
+			// (no early return here to keep code reachable)
 		}
 		// If other mouse-interactive components are added later, handle them here.
-		// For now, if not the log overlay, ignore other mouse events.
-		return m, channelReaderCmd(m.TUIChannel) // Ensure channel reader continues
+		// For now, if the event wasn't handled above, just continue processing other messages.
+		// (No extra return here ‑ previous branches already returned.)
 
 	default:
 		// Handle text input updates if in new connection mode and input is focused,
@@ -624,7 +672,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.spinner, spinnerCmd = m.spinner.Update(msg)
 			finalCmd = spinnerCmd
 		}
-		return m, tea.Batch(finalCmd, channelReaderCmd(m.TUIChannel))
+		cmds = append(cmds, finalCmd)
+		// continue after switch to common return path
+		// (no early return here to keep code reachable)
 	}
 
 	// Trim combinedOutput (general operation after message processing)
@@ -632,9 +682,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
 	}
 
-	// If the switch statement fell through without returning a specific command,
-	// batch any commands that might have been accumulated in the `cmds` slice.
-	// Most cases now return directly, so `cmds` will often be empty here.
+	// Always listen for channel messages
 	cmds = append(cmds, channelReaderCmd(m.TUIChannel))
 	return m, tea.Batch(cmds...)
 }

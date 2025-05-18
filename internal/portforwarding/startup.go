@@ -38,7 +38,7 @@ func StartAllConfiguredPortForwards(
 			// cmd, returnedStopChan, err := StartAndManageIndividualPortForward(cfg, updateFn, nil)
 			// The StartAndManageIndividualPortForward already returns its own stopChan that it listens to.
 			// We need to respect that and use it.
-			cmd, processSpecificStopChan, err := StartAndManageIndividualPortForward(cfg, updateFn, nil)
+			cmd, processSpecificStopChan, err := StartAndManageIndividualPortForward(cfg, updateFn)
 
 			pid := 0
 			if cmd != nil && cmd.Process != nil {

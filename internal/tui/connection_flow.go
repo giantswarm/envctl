@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"envctl/internal/mcpserver"
 	"fmt"
 	"strings"
 	"time"
@@ -42,10 +43,37 @@ func handleSubmitNewConnectionMsg(m model, msg submitNewConnectionMsg, existingC
 		}
 	}
 
+	// Summarize port-forward shutdown
 	if stoppedCount > 0 {
 		m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Finished stopping %d port-forwards.", stoppedCount))
 	} else {
 		m.combinedOutput = append(m.combinedOutput, "[SYSTEM] No active port-forwards to stop.")
+	}
+
+	// --- Stop existing MCP proxy processes to free their ports ---
+	mcpStopped := 0
+	if m.mcpServers != nil {
+		for srvKey, srv := range m.mcpServers {
+			if srv.stopChan != nil {
+				m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[%s MCP Proxy] Sending stop signal...", srv.label))
+				safeCloseChan(srv.stopChan)
+				srv.stopChan = nil
+				srv.statusMsg = "Stopped (new conn)"
+				srv.active = false
+				m.mcpServers[srvKey] = srv
+				mcpStopped++
+			} else if srv.active {
+				srv.statusMsg = "Stopped (new conn)"
+				srv.active = false
+				m.mcpServers[srvKey] = srv
+			}
+		}
+	}
+
+	if mcpStopped > 0 {
+		m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Finished stopping %d MCP proxies.", mcpStopped))
+	} else {
+		m.combinedOutput = append(m.combinedOutput, "[SYSTEM] No active MCP proxies to stop.")
 	}
 	if len(m.combinedOutput) > maxCombinedOutputLines {
 		m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
@@ -230,6 +258,9 @@ func handleContextSwitchAndReinitializeResultMsg(m model, msg contextSwitchAndRe
 	// Reset and set up new port forwards
 	setupPortForwards(&m, m.managementCluster, m.workloadCluster) // This clears and rebuilds portForwards map and order
 
+	// Rebuild dependency graph because the set of port forwards may have changed
+	m.dependencyGraph = buildDependencyGraph(&m)
+
 	// Reset focus
 	if len(m.portForwardOrder) > 0 {
 		m.focusedPanelKey = m.portForwardOrder[0]
@@ -237,6 +268,12 @@ func handleContextSwitchAndReinitializeResultMsg(m model, msg contextSwitchAndRe
 		m.focusedPanelKey = mcPaneFocusKey
 	} else {
 		m.focusedPanelKey = "" // No items to focus
+	}
+
+	// Rebuild MCP proxy order (predefined list is static)
+	m.mcpProxyOrder = nil
+	for _, cfg := range mcpserver.PredefinedMcpServers {
+		m.mcpProxyOrder = append(m.mcpProxyOrder, cfg.Name)
 	}
 
 	// --- Re-initialize essential parts of the TUI (similar to Init, but after connection change) ---

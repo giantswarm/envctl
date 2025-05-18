@@ -608,8 +608,13 @@ func renderMcpProxyPanel(serverName string, predefinedData mcpserver.PredefinedM
 
 	finalPanelStyle = finalPanelStyle.Copy().Foreground(contentFgTextStyle.GetForeground())
 
+	// Highlight border if this panel is focused
+	if m.focusedPanelKey == serverName {
+		finalPanelStyle = finalPanelStyle.Copy().Border(lipgloss.DoubleBorder()).Bold(true)
+	}
+
 	var contentBuilder strings.Builder
-	trimmedName := strings.TrimSpace(predefinedData.Name) // Trim MCP name from data source
+	trimmedName := strings.TrimSpace(predefinedData.Name)                                        // Trim MCP name from data source
 	contentBuilder.WriteString(portTitleStyle.Render(SafeIcon(IconGear) + trimmedName + " MCP")) // e.g. "Kubernetes MCP"
 	contentBuilder.WriteString("\n")
 	contentBuilder.WriteString(fmt.Sprintf("Port: %d (SSE)", predefinedData.ProxyPort))
@@ -761,7 +766,7 @@ func renderStatusBar(m model, width int) string {
 	if centerColW < 0 { // Should not happen if width is reasonable
 		centerColW = 0
 		// Adjust others if center is squeezed out, e.g. take from widest of left/right
-		if leftColW + rightColW > width {
+		if leftColW+rightColW > width {
 			if rightColW > leftColW {
 				rightColW = width - leftColW
 			} else {
@@ -770,7 +775,7 @@ func renderStatusBar(m model, width int) string {
 		}
 	}
 	// Ensure sum is exact, giving remainder to largest flexible part (center)
-	if leftColW + rightColW + centerColW != width {
+	if leftColW+rightColW+centerColW != width {
 		centerColW = width - leftColW - rightColW
 	}
 

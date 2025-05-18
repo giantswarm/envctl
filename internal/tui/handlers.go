@@ -139,6 +139,14 @@ func handleKeyMsgInputMode(m model, keyMsg tea.KeyMsg) (model, tea.Cmd) {
 func handleKeyMsgGlobal(m model, keyMsg tea.KeyMsg, existingCmds []tea.Cmd) (model, tea.Cmd) {
 	var cmds = existingCmds // Start with existing commands
 
+	// Helper closure to produce ordered list of focusable panel keys (MC, WC, port-forwards, MCPs)
+	getFocusOrder := func() []string {
+		var order []string
+		order = append(order, m.portForwardOrder...)
+		order = append(order, m.mcpProxyOrder...)
+		return order
+	}
+
 	// If log overlay is visible, prioritize its controls
 	if m.currentAppMode == ModeLogOverlay {
 		switch keyMsg.String() {
@@ -177,74 +185,74 @@ func handleKeyMsgGlobal(m model, keyMsg tea.KeyMsg, existingCmds []tea.Cmd) (mod
 			return m, textinput.Blink
 		}
 
-	case "tab": // Panel focus
-		if len(m.portForwardOrder) > 0 {
+	case "tab": // Panel focus next
+		order := getFocusOrder()
+		if len(order) > 0 {
 			currentIndex := -1
-			for i, key := range m.portForwardOrder {
+			for i, key := range order {
 				if key == m.focusedPanelKey {
 					currentIndex = i
 					break
 				}
 			}
 			if currentIndex != -1 {
-				nextIndex := (currentIndex + 1) % len(m.portForwardOrder)
-				m.focusedPanelKey = m.portForwardOrder[nextIndex]
+				m.focusedPanelKey = order[(currentIndex+1)%len(order)]
 			} else {
-				m.focusedPanelKey = m.portForwardOrder[0]
+				m.focusedPanelKey = order[0]
 			}
 		}
 		return m, nil
 
-	case "shift+tab": // Panel focus (reverse)
-		if len(m.portForwardOrder) > 0 {
+	case "shift+tab": // Previous focus
+		order := getFocusOrder()
+		if len(order) > 0 {
 			currentIndex := -1
-			for i, key := range m.portForwardOrder {
+			for i, key := range order {
 				if key == m.focusedPanelKey {
 					currentIndex = i
 					break
 				}
 			}
 			if currentIndex != -1 {
-				nextIndex := (currentIndex - 1 + len(m.portForwardOrder)) % len(m.portForwardOrder)
-				m.focusedPanelKey = m.portForwardOrder[nextIndex]
+				m.focusedPanelKey = order[(currentIndex-1+len(order))%len(order)]
 			} else {
-				m.focusedPanelKey = m.portForwardOrder[len(m.portForwardOrder)-1]
+				m.focusedPanelKey = order[len(order)-1]
 			}
 		}
 		return m, nil
 
 	case "k", "up":
-		if len(m.portForwardOrder) > 0 {
+		order := getFocusOrder()
+		if len(order) > 0 {
 			currentIndex := -1
-			for i, key := range m.portForwardOrder {
+			for i, key := range order {
 				if key == m.focusedPanelKey {
 					currentIndex = i
 					break
 				}
 			}
 			if currentIndex != -1 {
-				nextIndex := (currentIndex - 1 + len(m.portForwardOrder)) % len(m.portForwardOrder)
-				m.focusedPanelKey = m.portForwardOrder[nextIndex]
-			} else if len(m.portForwardOrder) > 0 {
-				m.focusedPanelKey = m.portForwardOrder[len(m.portForwardOrder)-1]
+				m.focusedPanelKey = order[(currentIndex-1+len(order))%len(order)]
+			} else {
+				m.focusedPanelKey = order[len(order)-1]
 			}
 		}
 		return m, nil
 
 	case "j", "down":
-		if len(m.portForwardOrder) > 0 {
+		order := getFocusOrder()
+		if len(order) > 0 {
 			currentIndex := -1
-			for i, key := range m.portForwardOrder {
+			for i, key := range order {
 				if key == m.focusedPanelKey {
 					currentIndex = i
 					break
 				}
 			}
 			if currentIndex != -1 {
-				nextIndex := (currentIndex + 1) % len(m.portForwardOrder)
-				m.focusedPanelKey = m.portForwardOrder[nextIndex]
-			} else if len(m.portForwardOrder) > 0 {
-				m.focusedPanelKey = m.portForwardOrder[0]
+				m.focusedPanelKey = order[(currentIndex+1)%len(order)]
+			} else {
+				m.focusedPanelKey = order[0]
 			}
 		}
 		return m, nil
@@ -283,7 +291,7 @@ func handleKeyMsgGlobal(m model, keyMsg tea.KeyMsg, existingCmds []tea.Cmd) (mod
 						}
 
 						// Call the core function to start and manage the port forward
-						cmd, stopChan, err := portforwarding.StartAndManageIndividualPortForward(currentPfConfig, tuiUpdateFn, nil)
+						cmd, stopChan, err := portforwarding.StartAndManageIndividualPortForward(currentPfConfig, tuiUpdateFn)
 
 						initialPID := 0
 						if cmd != nil && cmd.Process != nil {
@@ -304,9 +312,13 @@ func handleKeyMsgGlobal(m model, keyMsg tea.KeyMsg, existingCmds []tea.Cmd) (mod
 					pf.statusMsg = "Restart Failed (Internal Error)"
 					pf.active = false
 				}
+			} else if _, ok := m.mcpServers[m.focusedPanelKey]; ok {
+				// It's an MCP proxy panel
+				m.isLoading = true
+				m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[%s MCP Proxy] Manual restart requested via key.", m.focusedPanelKey))
+				cmds = append(cmds, func() tea.Msg { return restartMcpServerMsg{Label: m.focusedPanelKey} })
 			} else {
-				// Focused key does not correspond to a known port-forward (e.g. MC/WC pane)
-				m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Panel '%s' is not a restartable port-forward.", m.focusedPanelKey))
+				m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Panel '%s' is not restartable.", m.focusedPanelKey))
 			}
 		}
 
@@ -486,3 +498,16 @@ func handleKubeContextSwitchedMsg(m model, msg kubeContextSwitchedMsg) (model, t
 }
 
 // MCP Server Message Handlers are now in mcpserver_handlers.go
+
+// safeCloseChan closes a channel if it is not already closed.
+func safeCloseChan(ch chan struct{}) {
+	if ch == nil {
+		return
+	}
+	select {
+	case <-ch:
+		// already closed
+	default:
+		close(ch)
+	}
+}
