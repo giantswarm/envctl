@@ -99,7 +99,8 @@ var (
 	// Help overlay title style (re-added for bubbles/help container)
 	helpTitleStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.AdaptiveColor{Light: "#111111", Dark: "#E5E5E5"}). // Consistent with other titles
+			Foreground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}).
+			Background(lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#1E1E1E"}).
 			MarginBottom(1).
 			Align(lipgloss.Center)
 
@@ -112,7 +113,7 @@ var (
 
 	// Help key style for keyboard shortcut keys
 	helpKeyStyle = lipgloss.NewStyle().
-			Background(lipgloss.AdaptiveColor{Light: "#D0D0D0", Dark: "#505050"}).
+			Background(lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#1E1E1E"}).
 			Foreground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}).
 			Padding(0, 1).
 			Margin(0, 1, 0, 0)
@@ -122,6 +123,14 @@ var (
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}).
 			Background(lipgloss.AdaptiveColor{Light: "#F8F8F8", Dark: "#2A2A3A"}). // Similar to combinedLogPanel background
+			Foreground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}).
+			Padding(1, 2)
+
+	// --- MCP Config Overlay Style ---
+	mcpConfigOverlayStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}).
+			Background(lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#1E1E1E"}).
 			Foreground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}).
 			Padding(1, 2)
 
@@ -228,4 +237,11 @@ var (
 				Foreground(lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#F0F0F0"}) // Brighter white on red
 	StatusMessageWarningStyle = lipgloss.NewStyle().
 					Foreground(lipgloss.AdaptiveColor{Light: "#1F2937", Dark: "#111827"}) // Darker text on yellow
+
+	// Shared overlay colour palette (Help & MCP Config)
+	HelpOverlayBg = lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#1E1E1E"}
+	HelpOverlayDescFg = lipgloss.Color("#C0C0C0")
+	HelpOverlayEllipsisFg = lipgloss.Color("#777777")
+	HelpOverlaySeparatorFg = lipgloss.Color("#777777")
+	HelpOverlayKeyFg = lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}
 )
