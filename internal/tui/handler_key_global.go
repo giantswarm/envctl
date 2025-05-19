@@ -2,7 +2,6 @@ package tui
 
 import (
 	"envctl/internal/portforwarding"
-	"fmt"
 	"strings"
 	"time"
 
@@ -32,7 +31,7 @@ func handleKeyMsgGlobal(m model, keyMsg tea.KeyMsg, existingCmds []tea.Cmd) (mod
             return m, nil
         case "y":
             if err := clipboard.WriteAll(generateMcpConfigJson()); err != nil {
-                m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Failed to copy MCP config: %v", err))
+                m.LogError("Failed to copy MCP config: %v", err)
                 return m, m.setStatusMessage("Copy MCP config failed", StatusBarError, 3*time.Second)
             }
             return m, m.setStatusMessage("MCP config copied", StatusBarSuccess, 3*time.Second)
@@ -52,7 +51,7 @@ func handleKeyMsgGlobal(m model, keyMsg tea.KeyMsg, existingCmds []tea.Cmd) (mod
             return m, nil
         case "y":
             if err := clipboard.WriteAll(strings.Join(m.combinedOutput, "\n")); err != nil {
-                m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Failed to copy logs: %v", err))
+                m.LogError("Failed to copy logs: %v", err)
                 return m, m.setStatusMessage("Copy logs failed", StatusBarError, 3*time.Second)
             }
             return m, m.setStatusMessage("Logs copied to clipboard", StatusBarSuccess, 3*time.Second)
@@ -116,7 +115,7 @@ func handleKeyMsgGlobal(m model, keyMsg tea.KeyMsg, existingCmds []tea.Cmd) (mod
             pf.active = true
 
             m.isLoading = true
-            m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[%s] Attempting restart...", pf.label))
+            m.LogInfo("[%s] Attempting restart...", pf.label)
 
             if m.TUIChannel != nil {
                 currentCfg := pf.config
@@ -134,7 +133,7 @@ func handleKeyMsgGlobal(m model, keyMsg tea.KeyMsg, existingCmds []tea.Cmd) (mod
             }
         } else if _, ok := m.mcpServers[m.focusedPanelKey]; ok {
             m.isLoading = true
-            m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[%s MCP Proxy] Manual restart requested via key.", m.focusedPanelKey))
+            m.LogInfo("[%s MCP Proxy] Manual restart requested via key.", m.focusedPanelKey)
             cmds = append(cmds, func() tea.Msg { return restartMcpServerMsg{Label: m.focusedPanelKey} })
         }
 
@@ -147,13 +146,10 @@ func handleKeyMsgGlobal(m model, keyMsg tea.KeyMsg, existingCmds []tea.Cmd) (mod
         }
         if identifier != "" {
             target := "teleport.giantswarm.io-" + identifier
-            m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Attempting to switch Kubernetes context to: %s (Pane: %s)", target, pane))
+            m.LogInfo("Attempting to switch Kubernetes context to: %s (Pane: %s)", target, pane)
             cmds = append(cmds, performSwitchKubeContextCmd(target))
         } else {
-            m.combinedOutput = append(m.combinedOutput, "[SYSTEM] Cannot switch context: Focus a valid MC/WC pane with a defined cluster name.")
-        }
-        if len(m.combinedOutput) > maxCombinedOutputLines {
-            m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
+            m.LogWarn("Cannot switch context: Focus a valid MC/WC pane with a defined cluster name.")
         }
     }
 

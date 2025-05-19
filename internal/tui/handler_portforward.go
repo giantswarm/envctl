@@ -88,9 +88,6 @@ func handlePortForwardSetupResultMsg(m model, msg portForwardSetupResultMsg) (mo
         }
     }
 
-    if len(m.combinedOutput) > maxCombinedOutputLines+100 {
-        m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
-    }
     return m, status
 }
 
@@ -107,7 +104,7 @@ func handlePortForwardCoreUpdateMsg(m model, msg portForwardCoreUpdateMsg) (mode
             if len(pf.output) > maxPanelLogLines {
                 pf.output = pf.output[len(pf.output)-maxPanelLogLines:]
             }
-            m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[%s] %s", up.InstanceKey, up.OutputLog))
+            m.appendLogLine(fmt.Sprintf("[%s] %s", up.InstanceKey, up.OutputLog))
         }
         if up.Error != nil {
             pf.active = false
@@ -115,9 +112,6 @@ func handlePortForwardCoreUpdateMsg(m model, msg portForwardCoreUpdateMsg) (mode
         if !up.Running {
             pf.active = false
         }
-    }
-    if len(m.combinedOutput) > maxCombinedOutputLines+100 {
-        m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
     }
     return m, nil
 }

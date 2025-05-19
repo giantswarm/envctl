@@ -23,6 +23,14 @@ import (
 // Returns a tea.Cmd that, when run, will call utils.GetNodeStatusClientGo and send a nodeStatusMsg.
 func fetchNodeStatusCmd(clusterIdentifier string, isMC bool, originalClusterShortName string) tea.Cmd {
 	return func() tea.Msg {
+		// Recover from any panic to prevent silent failures that leave UI stuck in Loading state.
+		defer func() {
+			if r := recover(); r != nil {
+				debugStr := fmt.Sprintf("PANIC occurred while fetching status for '%s': %v", clusterIdentifier, r)
+				tea.Println("[DEBUG] ", debugStr)
+			}
+		}()
+
 		if clusterIdentifier == "" {
 			return nodeStatusMsg{clusterShortName: originalClusterShortName, forMC: isMC, err: fmt.Errorf("cluster identifier for health check is empty")}
 		}
@@ -42,8 +50,41 @@ func fetchNodeStatusCmd(clusterIdentifier string, isMC bool, originalClusterShor
 			return nodeStatusMsg{clusterShortName: originalClusterShortName, forMC: isMC, err: fmt.Errorf("malformed full context name (prefix only from empty identifier)")}
 		}
 
+		// Fallback: if the generated context does not exist in the kubeconfig, use the current context instead.
+		// This prevents immediate health-check failures after the user switched to a freshly created context
+		// that may not yet exist in the kubeconfig (e.g. contexts created by `tsh kube login`).
+		{
+			loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+			cfg, err := loadingRules.Load()
+			if err == nil {
+				if _, ok := cfg.Contexts[fullContextName]; !ok {
+					// Context missing – fall back to the currently active context so that at least
+					// the health check runs against *some* cluster instead of failing immediately.
+					// This mirrors the behaviour users expect after a successful context switch.
+					fullContextName = cfg.CurrentContext
+				}
+			}
+		}
+
 		ready, total, err := utils.GetNodeStatusClientGo(fullContextName)
-		return nodeStatusMsg{clusterShortName: originalClusterShortName, forMC: isMC, readyNodes: ready, totalNodes: total, err: err}
+		debugStr := fmt.Sprintf("fetchNodeStatusCmd: clusterIdentifier=%s fullContextName=%s ready=%d total=%d err=%v", clusterIdentifier, fullContextName, ready, total, err)
+
+		// If the context is missing in kubeconfig despite earlier checks, retry with current context
+		if err != nil && strings.Contains(err.Error(), "does not exist in kubeconfig") {
+			// Attempt a single retry with the kubeconfig's current context
+			if cfg, cfgErr := clientcmd.NewDefaultClientConfigLoadingRules().Load(); cfgErr == nil {
+				if cfg.CurrentContext != "" && cfg.CurrentContext != fullContextName {
+					altReady, altTotal, altErr := utils.GetNodeStatusClientGo(cfg.CurrentContext)
+					// Only override the results if the retry succeeded
+					if altErr == nil {
+						ready, total, err = altReady, altTotal, nil
+						debugStr += fmt.Sprintf(" | RETRY currentContext=%s altReady=%d altTotal=%d", cfg.CurrentContext, altReady, altTotal)
+					}
+				}
+			}
+		}
+
+		return nodeStatusMsg{clusterShortName: originalClusterShortName, forMC: isMC, readyNodes: ready, totalNodes: total, err: err, debugInfo: debugStr}
 	}
 }
 

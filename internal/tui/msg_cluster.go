@@ -13,6 +13,7 @@ type nodeStatusMsg struct {
     readyNodes       int
     totalNodes       int
     err              error
+    debugInfo        string
 }
 
-type requestClusterHealthUpdate struct{} 
+type requestClusterHealthUpdate struct{}

@@ -11,13 +11,10 @@ import (
 func handleKubeContextResultMsg(m model, msg kubeContextResultMsg) model {
     if msg.err != nil {
         m.currentKubeContext = "Error fetching context"
-        m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Error getting current Kubernetes context: %s", msg.err.Error()))
+        m.LogError("Error getting current Kubernetes context: %s", msg.err.Error())
     } else {
         m.currentKubeContext = msg.context
-        m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Current Kubernetes context: %s", msg.context))
-    }
-    if len(m.combinedOutput) > maxCombinedOutputLines {
-        m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
+        m.LogInfo("Current Kubernetes context: %s", msg.context)
     }
     return m
 }
@@ -25,20 +22,19 @@ func handleKubeContextResultMsg(m model, msg kubeContextResultMsg) model {
 // handleRequestClusterHealthUpdate schedules node-status fetches for MC and WC clusters.
 func handleRequestClusterHealthUpdate(m model) (model, tea.Cmd) {
     var cmds []tea.Cmd
-    m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Requesting cluster health updates at %s", time.Now().Format("15:04:05")))
-    if len(m.combinedOutput) > maxCombinedOutputLines {
-        m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
-    }
+    m.LogInfo("Requesting cluster health updates at %s", time.Now().Format("15:04:05"))
 
     if m.managementCluster != "" {
         m.MCHealth.IsLoading = true
         if id := m.getManagementClusterContextIdentifier(); id != "" {
+            m.LogDebug("Scheduling MC health fetch for id=%s", id)
             cmds = append(cmds, fetchNodeStatusCmd(id, true, m.managementCluster))
         }
     }
     if m.workloadCluster != "" {
         m.WCHealth.IsLoading = true
         if id := m.getWorkloadClusterContextIdentifier(); id != "" {
+            m.LogDebug("Scheduling WC health fetch for id=%s", id)
             cmds = append(cmds, fetchNodeStatusCmd(id, false, m.workloadCluster))
         }
     }
@@ -60,11 +56,12 @@ func handleNodeStatusMsg(m model, msg nodeStatusMsg) model {
     } else if !msg.forMC && msg.clusterShortName == m.workloadCluster {
         target, name = &m.WCHealth, m.workloadCluster
     } else {
-        m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[HEALTH STALE/MISMATCH] Received status for '%s' (isMC:%v) current MC:'%s' WC:'%s'. Discarding.", msg.clusterShortName, msg.forMC, m.managementCluster, m.workloadCluster))
-        if len(m.combinedOutput) > maxCombinedOutputLines {
-            m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
-        }
+        m.appendLogLine(fmt.Sprintf("[HEALTH STALE/MISMATCH] Received status for '%s' (isMC:%v) current MC:'%s' WC:'%s'. Discarding.", msg.clusterShortName, msg.forMC, m.managementCluster, m.workloadCluster))
         return m
+    }
+
+    if m.debugMode && msg.debugInfo != "" {
+        m.LogDebug("%s", msg.debugInfo)
     }
 
     target.IsLoading = false
@@ -73,15 +70,12 @@ func handleNodeStatusMsg(m model, msg nodeStatusMsg) model {
         target.StatusError = msg.err
         target.ReadyNodes = 0
         target.TotalNodes = 0
-        m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[HEALTH %s] Error: %s", name, msg.err.Error()))
+        m.appendLogLine(fmt.Sprintf("[HEALTH %s] Error: %s", name, msg.err.Error()))
     } else {
         target.StatusError = nil
         target.ReadyNodes = msg.readyNodes
         target.TotalNodes = msg.totalNodes
-        m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[HEALTH %s] Nodes: %d/%d", name, msg.readyNodes, msg.totalNodes))
-    }
-    if len(m.combinedOutput) > maxCombinedOutputLines {
-        m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
+        m.appendLogLine(fmt.Sprintf("[HEALTH %s] Nodes: %d/%d", name, msg.readyNodes, msg.totalNodes))
     }
     if !m.MCHealth.IsLoading && (m.workloadCluster == "" || !m.WCHealth.IsLoading) {
         m.isLoading = false
@@ -92,7 +86,7 @@ func handleNodeStatusMsg(m model, msg nodeStatusMsg) model {
 // handleClusterListResultMsg stores fetched cluster lists for autocomplete.
 func handleClusterListResultMsg(m model, msg clusterListResultMsg) model {
     if msg.err != nil {
-        m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM ERROR] Failed to fetch cluster list: %v", msg.err))
+        m.LogError("Failed to fetch cluster list: %v", msg.err)
     } else {
         m.clusterInfo = msg.info
     }
@@ -104,10 +98,10 @@ func handleKubeContextSwitchedMsg(m model, msg kubeContextSwitchedMsg) (model, t
     var cmds []tea.Cmd
     var status tea.Cmd
     if msg.err != nil {
-        m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Failed to switch Kubernetes context to '%s': %s", msg.TargetContext, msg.err.Error()))
+        m.LogError("Failed to switch Kubernetes context to '%s': %s", msg.TargetContext, msg.err.Error())
         status = m.setStatusMessage(fmt.Sprintf("Failed to switch context: %s", msg.TargetContext), StatusBarError, 5*time.Second)
     } else {
-        m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Successfully switched Kubernetes context. Target was: %s", msg.TargetContext))
+        m.LogInfo("Successfully switched Kubernetes context. Target was: %s", msg.TargetContext)
         status = m.setStatusMessage(fmt.Sprintf("Context switched to: %s", msg.TargetContext), StatusBarSuccess, 3*time.Second)
 
         cmds = append(cmds, getCurrentKubeContextCmd())
@@ -123,9 +117,6 @@ func handleKubeContextSwitchedMsg(m model, msg kubeContextSwitchedMsg) (model, t
                 cmds = append(cmds, fetchNodeStatusCmd(id, false, m.workloadCluster))
             }
         }
-    }
-    if len(m.combinedOutput) > maxCombinedOutputLines {
-        m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
     }
     return m, tea.Batch(append(cmds, status)...)
 } 

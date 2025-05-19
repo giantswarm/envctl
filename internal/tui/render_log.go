@@ -47,17 +47,59 @@ func renderCombinedLogPanel(m *model, availableWidth int, logSectionHeight int) 
     return rendered
 }
 
-// prepareLogContent truncates long lines to avoid viewport wrapping.
+// prepareLogContent truncates long lines to avoid viewport wrapping and applies
+// color styles based on log level keywords.
 func prepareLogContent(lines []string, maxWidth int) string {
-    if maxWidth <= 0 { return strings.Join(lines, "\n") }
+    if maxWidth <= 0 {
+        return strings.Join(applyStyling(lines), "\n")
+    }
     out := make([]string, len(lines))
-    for i, l := range lines {
-        if runewidth.StringWidth(l) > maxWidth {
-            truncated := runewidth.Truncate(l, maxWidth-1, "")
-            out[i] = truncated + "…"
-        } else { out[i] = l }
+    for i, raw := range lines {
+        line := raw
+        if runewidth.StringWidth(line) > maxWidth {
+            truncated := runewidth.Truncate(line, maxWidth-1, "")
+            line = truncated + "…"
+        }
+        out[i] = styleLogLine(line)
     }
     return strings.Join(out, "\n")
+}
+
+// styleLogLine returns the line wrapped in appropriate lipgloss style depending
+// on markers contained in the text. The check order is from more specific to
+// more general to avoid false positives.
+func styleLogLine(l string) string {
+    switch {
+    case strings.Contains(l, "[SYSTEM ERROR]") || strings.Contains(l, "[ERROR]"):
+        return logErrorStyle.Render(l)
+    case strings.Contains(l, "[SYSTEM WARNING]") || strings.Contains(l, "[WARN]"):
+        return logWarnStyle.Render(l)
+    case strings.Contains(l, "[DEBUG]"):
+        return logDebugStyle.Render(l)
+    case strings.Contains(l, "[HEALTH"):
+        // Further classify health lines
+        switch {
+        case strings.Contains(l, "Error"):
+            return logHealthErrStyle.Render(l)
+        case strings.Contains(l, "Nodes"):
+            return logHealthGoodStyle.Render(l)
+        default:
+            return logHealthWarnStyle.Render(l)
+        }
+    case strings.Contains(l, "[INFO]"):
+        return logInfoStyle.Render(l)
+    default:
+        return logInfoStyle.Render(l)
+    }
+}
+
+// applyStyling is a helper to map all lines through styleLogLine.
+func applyStyling(lines []string) []string {
+    styled := make([]string, len(lines))
+    for i, l := range lines {
+        styled[i] = styleLogLine(l)
+    }
+    return styled
 }
 
 // generateMcpConfigJson & renderMcpConfigOverlay moved as-is.

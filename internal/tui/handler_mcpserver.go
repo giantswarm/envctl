@@ -29,11 +29,7 @@ func handleMcpServerSetupCompletedMsg(m model, msg mcpServerSetupCompletedMsg) (
     if msg.err != nil {
         logLine += fmt.Sprintf(" – error: %v", msg.err)
     }
-    m.combinedOutput = append(m.combinedOutput, logLine)
-
-    if len(m.combinedOutput) > maxCombinedOutputLines {
-        m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
-    }
+    m.appendLogLine(logLine)
 
     var status tea.Cmd
     if msg.err != nil {
@@ -69,10 +65,7 @@ func handleMcpServerStatusUpdateMsg(m model, msg mcpServerStatusUpdateMsg) (mode
         if len(proc.output) > maxPanelLogLines {
             proc.output = proc.output[len(proc.output)-maxPanelLogLines:]
         }
-        m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[%s MCP] %s", msg.Label, msg.outputLog))
-    }
-    if len(m.combinedOutput) > maxCombinedOutputLines {
-        m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
+        m.appendLogLine(fmt.Sprintf("[%s MCP] %s", msg.Label, msg.outputLog))
     }
     return m, nil
 }
@@ -89,7 +82,7 @@ func handleRestartMcpServerMsg(m model, msg restartMcpServerMsg) (model, tea.Cmd
     }
 
     m.isLoading = true
-    m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[%s MCP Proxy] Restart requested at %s", serverName, time.Now().Format("15:04:05")))
+    m.LogInfo("[%s MCP Proxy] Restart requested at %s", serverName, time.Now().Format("15:04:05"))
 
     // Introduce a small delay to give the underlying process time to
     // shut down and release its listening socket (e.g. :8001) before we

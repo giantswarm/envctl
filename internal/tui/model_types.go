@@ -71,7 +71,7 @@ const (
 
 // newInputStep defines the different stages of the new connection input process.
 // This helps manage the UI flow when a user initiates a new connection.
-// These constants are used by the connection flow logic (see connection_flow.go).
+// These constants are used by the connection flow logic (see handler_connection.go).
 type newInputStep int
 
 const (

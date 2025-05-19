@@ -80,6 +80,18 @@ var (
 	// logLineStyle is for individual lines in the activity log - increased contrast for both modes
 	logLineStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"})
 
+	// New log level specific styles for the activity log. These will be applied on a per-line basis in
+	// prepareLogContent() (see render_log.go).
+	logInfoStyle  = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#E0E0E0"})
+	logWarnStyle  = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#A07000", Dark: "#FFD066"}).Bold(true)
+	logErrorStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#B30000", Dark: "#FF6B6B"}).Bold(true)
+	logDebugStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#606060", Dark: "#909090"}).Italic(true)
+
+	// Health related styles for the activity log
+	logHealthGoodStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#006600", Dark: "#8AE234"}).Bold(true)
+	logHealthWarnStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#A07000", Dark: "#FFD066"}).Bold(true)
+	logHealthErrStyle  = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#B30000", Dark: "#FF6B6B"}).Bold(true)
+
 	// errorStyle is a general style for error messages with high contrast in both modes
 	errorStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#B30000", Dark: "#FF6B6B"})
 

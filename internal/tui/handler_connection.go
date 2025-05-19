@@ -21,13 +21,13 @@ import (
 // Returns the updated model and a command to begin the login sequence or nil if validation fails.
 func handleSubmitNewConnectionMsg(m model, msg submitNewConnectionMsg, existingCmds []tea.Cmd) (model, tea.Cmd) {
 	m.isLoading = true // Start loading for new connection sequence
-	m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Initiating new connection to MC: %s, WC: %s", msg.mc, msg.wc))
-	m.combinedOutput = append(m.combinedOutput, "[SYSTEM] Step 0: Stopping all existing port-forwarding processes...")
+	m.LogInfo("Initiating new connection to MC: %s, WC: %s", msg.mc, msg.wc)
+	m.LogInfo("Step 0: Stopping all existing port-forwarding processes...")
 
 	stoppedCount := 0
 	for pfKey, pf := range m.portForwards {
 		if pf.stopChan != nil {
-			m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[%s] Sending stop signal...", pf.label))
+			m.LogInfo("[%s] Sending stop signal...", pf.label)
 			close(pf.stopChan)
 			pf.stopChan = nil
 			pf.statusMsg = "Stopped (new conn)"
@@ -45,9 +45,9 @@ func handleSubmitNewConnectionMsg(m model, msg submitNewConnectionMsg, existingC
 
 	// Summarize port-forward shutdown
 	if stoppedCount > 0 {
-		m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Finished stopping %d port-forwards.", stoppedCount))
+		m.LogInfo("Finished stopping %d port-forwards.", stoppedCount)
 	} else {
-		m.combinedOutput = append(m.combinedOutput, "[SYSTEM] No active port-forwards to stop.")
+		m.LogInfo("No active port-forwards to stop.")
 	}
 
 	// --- Stop existing MCP proxy processes to free their ports ---
@@ -55,7 +55,7 @@ func handleSubmitNewConnectionMsg(m model, msg submitNewConnectionMsg, existingC
 	if m.mcpServers != nil {
 		for srvKey, srv := range m.mcpServers {
 			if srv.stopChan != nil {
-				m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[%s MCP Proxy] Sending stop signal...", srv.label))
+				m.LogInfo("[%s MCP Proxy] Sending stop signal...", srv.label)
 				safeCloseChan(srv.stopChan)
 				srv.stopChan = nil
 				srv.statusMsg = "Stopped (new conn)"
@@ -71,9 +71,9 @@ func handleSubmitNewConnectionMsg(m model, msg submitNewConnectionMsg, existingC
 	}
 
 	if mcpStopped > 0 {
-		m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Finished stopping %d MCP proxies.", mcpStopped))
+		m.LogInfo("Finished stopping %d MCP proxies.", mcpStopped)
 	} else {
-		m.combinedOutput = append(m.combinedOutput, "[SYSTEM] No active MCP proxies to stop.")
+		m.LogInfo("No active MCP proxies to stop.")
 	}
 	if len(m.combinedOutput) > maxCombinedOutputLines {
 		m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
@@ -83,7 +83,7 @@ func handleSubmitNewConnectionMsg(m model, msg submitNewConnectionMsg, existingC
 	m.stashedMcName = msg.mc // Used to reconstruct WC name if needed later
 
 	if msg.mc == "" {
-		m.combinedOutput = append(m.combinedOutput, "[SYSTEM ERROR] Management Cluster name cannot be empty.")
+		m.LogError("Management Cluster name cannot be empty.")
 		if len(m.combinedOutput) > maxCombinedOutputLines {
 			m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
 		}
@@ -105,10 +105,7 @@ func handleSubmitNewConnectionMsg(m model, msg submitNewConnectionMsg, existingC
 	// No need to batch a clear command here as the next message will likely set its own.
 	m.setStatusMessage(fmt.Sprintf("Login to %s...", msg.mc), StatusBarInfo, 2*time.Second)
 
-	m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Step 1: Logging into Management Cluster: %s...", msg.mc))
-	if len(m.combinedOutput) > maxCombinedOutputLines {
-		m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
-	}
+	m.LogInfo("Step 1: Logging into Management Cluster: %s...", msg.mc)
 	// Return a new command to start the login process.
 	// We are not batching with existingCmds here as this handler starts a new logical flow.
 	return m, performKubeLoginCmd(msg.mc, true, msg.wc)
@@ -128,24 +125,20 @@ func handleSubmitNewConnectionMsg(m model, msg submitNewConnectionMsg, existingC
 // Returns the updated model and a command for the next step in the connection flow or nil if login failed or no next step is taken from here.
 func handleKubeLoginResultMsg(m model, msg kubeLoginResultMsg, cmds []tea.Cmd) (model, tea.Cmd) {
 	// Append login output to the combined log first, regardless of error
-	if strings.TrimSpace(msg.loginStdout) != "" {
-		m.combinedOutput = append(m.combinedOutput, strings.Split(strings.TrimRight(msg.loginStdout, "\n"), "\n")...)
-	}
+	m.AppendLogLines(strings.Split(strings.TrimRight(msg.loginStdout, "\n"), "\n"))
 	if strings.TrimSpace(msg.loginStderr) != "" {
 		for _, line := range strings.Split(strings.TrimRight(msg.loginStderr, "\n"), "\n") {
-			m.combinedOutput = append(m.combinedOutput, "[tsh stderr] "+line)
+			m.AppendLogLines([]string{"[tsh stderr] " + line})
 		}
 	}
 
 	if msg.err != nil {
-		m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM ERROR] Login failed for %s: %v", msg.clusterName, msg.err))
-		// Potentially reset isConnectingNew = false here or offer retry to user?
-		// For now, just log and return.
+		m.LogError("Login failed for %s: %v", msg.clusterName, msg.err)
 		m.isLoading = false // Login failed, stop loading
 		clearCmd := m.setStatusMessage(fmt.Sprintf("Login failed for %s", msg.clusterName), StatusBarError, 5*time.Second)
 		return m, clearCmd
 	}
-	m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Login successful for: %s", msg.clusterName))
+	m.LogInfo("Login successful for: %s", msg.clusterName)
 	clearStatusCmd := m.setStatusMessage(fmt.Sprintf("Login OK: %s", msg.clusterName), StatusBarSuccess, 3*time.Second)
 
 	var nextCmds []tea.Cmd
@@ -163,11 +156,11 @@ func handleKubeLoginResultMsg(m model, msg kubeLoginResultMsg, cmds []tea.Cmd) (
 			} else {
 				wcIdentifierForLogin = desiredMcForNextStep + "-" + desiredWcForNextStep
 			}
-			m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Step 2: Logging into Workload Cluster: %s...", wcIdentifierForLogin))
+			m.LogInfo("Step 2: Logging into Workload Cluster: %s...", wcIdentifierForLogin)
 			nextCmds = append(nextCmds, performKubeLoginCmd(wcIdentifierForLogin, false, "")) // For WC login, desiredWcShortNameToCarry is ""
 		} else {
 			// No WC specified, proceed to context switch and re-initialize for MC only.
-			m.combinedOutput = append(m.combinedOutput, "[SYSTEM] Step 2: No Workload Cluster specified. Proceeding to context switch for MC.")
+			m.LogInfo("Step 2: No Workload Cluster specified. Proceeding to context switch for MC.")
 			// desiredMcForNextStep is the MC identifier (e.g., "myinstallation")
 			targetKubeContext := "teleport.giantswarm.io-" + desiredMcForNextStep
 			nextCmds = append(nextCmds, performPostLoginOperationsCmd(targetKubeContext, desiredMcForNextStep, ""))
@@ -191,7 +184,7 @@ func handleKubeLoginResultMsg(m model, msg kubeLoginResultMsg, cmds []tea.Cmd) (
 			shortWcName = msg.clusterName // This might be problematic if msg.clusterName is complex and not just short WC
 		}
 
-		m.combinedOutput = append(m.combinedOutput, "[SYSTEM] Step 3: Workload Cluster login successful. Proceeding to context switch for WC.")
+		m.LogInfo("Step 3: Workload Cluster login successful. Proceeding to context switch for WC.")
 		// msg.clusterName is the WC identifier (e.g., "myinstallation-mycluster") that was successfully logged into.
 		// This is the correct identifier to form the targetKubeContext.
 		targetKubeContext := "teleport.giantswarm.io-" + msg.clusterName
@@ -224,22 +217,22 @@ func handleKubeLoginResultMsg(m model, msg kubeLoginResultMsg, cmds []tea.Cmd) (
 func handleContextSwitchAndReinitializeResultMsg(m model, msg contextSwitchAndReinitializeResultMsg, existingCmds []tea.Cmd) (model, tea.Cmd) {
 	// Log moved after the error check to see if error is the cause of no further logs
 	if msg.diagnosticLog != "" {
-		m.combinedOutput = append(m.combinedOutput, "--- Diagnostic Log (Context Switch Phase) ---")
-		m.combinedOutput = append(m.combinedOutput, strings.Split(strings.TrimSpace(msg.diagnosticLog), "\n")...)
-		m.combinedOutput = append(m.combinedOutput, "--- End Diagnostic Log ---")
+		m.AppendLogLines([]string{"--- Diagnostic Log (Context Switch Phase) ---"})
+		m.AppendLogLines(strings.Split(strings.TrimSpace(msg.diagnosticLog), "\n"))
+		m.AppendLogLines([]string{"--- End Diagnostic Log ---"})
 	}
 	if msg.err != nil {
-		m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM ERROR] Context switch/re-init failed: %v. MCP PROXIES WILL NOT START.", msg.err))
+		m.LogError("Context switch/re-init failed: %v. MCP PROXIES WILL NOT START.", msg.err)
 		m.isLoading = false // Context switch/re-init failed, stop loading
 		clearCmd := m.setStatusMessage("Context switch/re-init failed.", StatusBarError, 5*time.Second)
 		return m, clearCmd
 	}
 
 	if m.debugMode {
-		m.combinedOutput = append(m.combinedOutput, "[SYSTEM DEBUG] Entered handleContextSwitchAndReinitializeResultMsg (after error check).")
+		m.LogDebug("Entered handleContextSwitchAndReinitializeResultMsg (after error check).")
 	}
 
-	m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM] Successfully switched context to: %s. Re-initializing TUI.", msg.switchedContext))
+	m.LogInfo("Successfully switched context to: %s. Re-initializing TUI.", msg.switchedContext)
 	clearStatusCmd := m.setStatusMessage(fmt.Sprintf("Context: %s. Re-initializing...", msg.switchedContext), StatusBarSuccess, 3*time.Second)
 
 	// Apply new cluster names to the model
@@ -298,15 +291,15 @@ func handleContextSwitchAndReinitializeResultMsg(m model, msg contextSwitchAndRe
 	newInitCmds = append(newInitCmds, initialPfCmds...)
 
 	// Start MCP proxy processes
-	m.combinedOutput = append(m.combinedOutput, "[SYSTEM] Initializing predefined MCP proxies (kubernetes, prometheus, grafana)...")
+	m.LogInfo("Initializing predefined MCP proxies (kubernetes, prometheus, grafana)...")
 	mcpProxyStartupCmds := startMcpProxiesCmd(m.TUIChannel)
 	if mcpProxyStartupCmds == nil {
 		if m.debugMode {
-			m.combinedOutput = append(m.combinedOutput, "[SYSTEM DEBUG] startMcpProxiesCmd returned nil. No MCP commands generated.")
+			m.LogDebug("startMcpProxiesCmd returned nil. No MCP commands generated.")
 		}
 	} else {
 		if m.debugMode {
-			m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[SYSTEM DEBUG] Generated %d MCP proxy startup commands.", len(mcpProxyStartupCmds)))
+			m.LogDebug("Generated %d MCP proxy startup commands.", len(mcpProxyStartupCmds))
 		}
 		if len(mcpProxyStartupCmds) > 0 {
 			newInitCmds = append(newInitCmds, mcpProxyStartupCmds...)

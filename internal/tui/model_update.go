@@ -54,7 +54,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
             if m.mcpServers != nil {
                 for name, proc := range m.mcpServers {
                     if proc.active && proc.stopChan != nil {
-                        m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[%s MCP Proxy] Sending stop signal...", name))
+                        m.LogInfo("[%s MCP Proxy] Sending stop signal...", name)
                         close(proc.stopChan)
                         proc.stopChan = nil
                         proc.statusMsg = "Stopping..."
@@ -265,11 +265,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
             m.spinner, cmd = m.spinner.Update(msg)
         }
         cmds = append(cmds, cmd)
-    }
-
-    // Trim log slice to avoid unbounded growth.
-    if len(m.combinedOutput) > maxCombinedOutputLines+50 {
-        m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
     }
 
     // Keep overlay viewport content in-sync.
