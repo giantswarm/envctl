@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"time"
 
+	"envctl/internal/mcpserver"
+
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -89,16 +91,56 @@ func handleRestartMcpServerMsg(m model, msg restartMcpServerMsg) (model, tea.Cmd
     m.isLoading = true
     m.combinedOutput = append(m.combinedOutput, fmt.Sprintf("[%s MCP Proxy] Restart requested at %s", serverName, time.Now().Format("15:04:05")))
 
-    // Return a command that triggers startMcpProxiesCmd again but only for this server.
+    // Introduce a small delay to give the underlying process time to
+    // shut down and release its listening socket (e.g. :8001) before we
+    // attempt to start the replacement. This avoids the race where the
+    // new instance fails with "address already in use".
+    const restartDelay = 2 * time.Second
+
     startCmd := func() tea.Msg {
-        // Reuse generic logic in commands.go by calling startMcpProxiesCmd and filtering
-        cmds := startMcpProxiesCmd(m.TUIChannel)
-        // Find the command for this label
-        for _, cmd := range cmds {
-            // Execute to inspect? Instead wrap.
-            return cmd()
+        // Allow the previous process some time to shut down.
+        time.Sleep(restartDelay)
+
+        // Lookup the configuration for the requested MCP proxy.
+        var cfg *mcpserver.PredefinedMcpServer
+        for i := range mcpserver.PredefinedMcpServers {
+            if mcpserver.PredefinedMcpServers[i].Name == serverName {
+                cfg = &mcpserver.PredefinedMcpServers[i]
+                break
+            }
         }
-        return mcpServerStatusUpdateMsg{Label: serverName, status: "Error", outputLog: "Restart command not found"}
+
+        if cfg == nil {
+            return mcpServerStatusUpdateMsg{Label: serverName, status: "Error", outputLog: "Unknown MCP proxy"}
+        }
+
+        // Bridge updates back into the TUI via the existing channel.
+        tuiUpdateFn := func(update mcpserver.McpProcessUpdate) {
+            if m.TUIChannel != nil {
+                m.TUIChannel <- mcpServerStatusUpdateMsg{
+                    Label:     update.Label,
+                    pid:       update.PID,
+                    status:    update.Status,
+                    outputLog: update.OutputLog,
+                    err:       update.Err,
+                }
+            }
+        }
+
+        pid, stopChan, startErr := mcpserver.StartAndManageIndividualMcpServer(*cfg, tuiUpdateFn, nil)
+
+        initialStatusMsg := fmt.Sprintf("Initializing proxy for %s...", cfg.Name)
+        if startErr != nil {
+            initialStatusMsg = fmt.Sprintf("Failed to start %s: %s", cfg.Name, startErr.Error())
+        }
+
+        return mcpServerSetupCompletedMsg{
+            Label:    cfg.Name,
+            stopChan: stopChan,
+            pid:      pid,
+            status:   initialStatusMsg,
+            err:      startErr,
+        }
     }
 
     return m, startCmd
