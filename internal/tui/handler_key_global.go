@@ -84,59 +84,19 @@ func handleKeyMsgGlobal(m model, keyMsg tea.KeyMsg, existingCmds []tea.Cmd) (mod
         }
 
     case "tab":
-        order := getFocusOrder()
-        if len(order) > 0 {
-            idx := 0
-            for i, k := range order {
-                if k == m.focusedPanelKey {
-                    idx = (i + 1) % len(order)
-                    break
-                }
-            }
-            m.focusedPanelKey = order[idx]
-        }
+        m.focusedPanelKey = nextFocus(getFocusOrder(), m.focusedPanelKey, 1)
         return m, nil
 
     case "shift+tab":
-        order := getFocusOrder()
-        if len(order) > 0 {
-            idx := len(order) - 1
-            for i, k := range order {
-                if k == m.focusedPanelKey {
-                    idx = (i - 1 + len(order)) % len(order)
-                    break
-                }
-            }
-            m.focusedPanelKey = order[idx]
-        }
+        m.focusedPanelKey = nextFocus(getFocusOrder(), m.focusedPanelKey, -1)
         return m, nil
 
     case "k", "up":
-        order := getFocusOrder()
-        if len(order) > 0 {
-            idx := 0
-            for i, k := range order {
-                if k == m.focusedPanelKey {
-                    idx = (i - 1 + len(order)) % len(order)
-                    break
-                }
-            }
-            m.focusedPanelKey = order[idx]
-        }
+        m.focusedPanelKey = nextFocus(getFocusOrder(), m.focusedPanelKey, -1)
         return m, nil
 
     case "j", "down":
-        order := getFocusOrder()
-        if len(order) > 0 {
-            idx := 0
-            for i, k := range order {
-                if k == m.focusedPanelKey {
-                    idx = (i + 1) % len(order)
-                    break
-                }
-            }
-            m.focusedPanelKey = order[idx]
-        }
+        m.focusedPanelKey = nextFocus(getFocusOrder(), m.focusedPanelKey, 1)
         return m, nil
 
     case "r": // restart PF or MCP depending on focus
@@ -198,4 +158,43 @@ func handleKeyMsgGlobal(m model, keyMsg tea.KeyMsg, existingCmds []tea.Cmd) (mod
     }
 
     return m, tea.Batch(cmds...)
+}
+
+// nextFocus returns the next element from order based on the current element
+// and a delta (+1 for forward, -1 for backward). It safely handles edge cases:
+//   * If order is empty it returns current unchanged.
+//   * If current is not found it returns the first (delta>0) or last (delta<0) element.
+//   * It wraps around when reaching either end of the slice.
+func nextFocus(order []string, current string, delta int) string {
+    if len(order) == 0 {
+        return current
+    }
+
+    // Clamp delta to +/-1 so that unexpected values do not lead to panics.
+    if delta > 0 {
+        delta = 1
+    } else if delta < 0 {
+        delta = -1
+    }
+
+    // Locate current index.
+    idx := -1
+    for i, v := range order {
+        if v == current {
+            idx = i
+            break
+        }
+    }
+
+    if idx == -1 {
+        // Current not found – pick start/end based on direction.
+        if delta >= 0 {
+            return order[0]
+        }
+        return order[len(order)-1]
+    }
+
+    n := len(order)
+    idx = (idx + delta + n) % n
+    return order[idx]
 } 
