@@ -10,10 +10,8 @@ import (
 
 // renderMcPane renders the Management Cluster (MC) information panel.
 func renderMcPane(m model, paneWidth int) string {
-	if m.debugMode {
-		m.LogDebug("[renderMcPane] Comparing for Active: currentKubeContext ('%s') vs built MC context ('%s') for mcName ('%s')", 
-			m.currentKubeContext, utils.BuildMcContext(m.managementClusterName), m.managementClusterName)
-	}
+	m.LogDebug("[renderMcPane] Comparing for Active: currentKubeContext ('%s') vs built MC context ('%s') for mcName ('%s')", 
+		m.currentKubeContext, utils.BuildMcContext(m.managementClusterName), m.managementClusterName)
 
 	mcName := m.managementClusterName
 	if mcName == "" {
@@ -77,10 +75,8 @@ func renderWcPane(m model, paneWidth int) string {
 		return "" 
 	}
 
-	if m.debugMode {
-		m.LogDebug("[renderWcPane] Comparing for Active: currentKubeContext ('%s') vs built WC context ('%s') for mcName ('%s'), wcName ('%s')",
-			m.currentKubeContext, utils.BuildWcContext(m.managementClusterName, m.workloadClusterName), m.managementClusterName, m.workloadClusterName)
-	}
+	m.LogDebug("[renderWcPane] Comparing for Active: currentKubeContext ('%s') vs built WC context ('%s') for mcName ('%s'), wcName ('%s')",
+		m.currentKubeContext, utils.BuildWcContext(m.managementClusterName, m.workloadClusterName), m.managementClusterName, m.workloadClusterName)
 	
 	wcName := m.workloadClusterName 
 	isWcActive := false

@@ -11,11 +11,9 @@ import (
 
 // handleKubeContextResultMsg updates the model with the detected current kube-context.
 func handleKubeContextResultMsg(m model, msg kubeContextResultMsg) model {
-    if m.debugMode {
-        m.LogDebug("----------------------------------------------------------------")
-        m.LogDebug("[handleKubeContextResultMsg] ENTERED. Msg context: '%s', Msg err: %v", msg.context, msg.err)
-        m.LogDebug("----------------------------------------------------------------")
-    }
+    m.LogDebug("----------------------------------------------------------------")
+    m.LogDebug("[handleKubeContextResultMsg] ENTERED. Msg context: '%s', Msg err: %v", msg.context, msg.err)
+    m.LogDebug("----------------------------------------------------------------")
 
     if msg.err != nil {
         m.currentKubeContext = "Error fetching context"
@@ -33,15 +31,13 @@ func handleKubeContextResultMsg(m model, msg kubeContextResultMsg) model {
         m.LogDebug("Context update: currentKubeContext=%s, MCName=%s, WCName=%s", 
             msg.context, m.managementClusterName, m.workloadClusterName)
             
-        if m.debugMode {
-            if config, err := clientcmd.NewDefaultClientConfigLoadingRules().Load(); err == nil {
-                m.LogDebug("All available contexts in kubeconfig:")
-                for ctx := range config.Contexts {
-                    if ctx == msg.context {
-                        m.LogDebug("  - %s (CURRENT)", ctx)
-                    } else {
-                        m.LogDebug("  - %s", ctx)
-                    }
+        if config, err := clientcmd.NewDefaultClientConfigLoadingRules().Load(); err == nil {
+            m.LogDebug("All available contexts in kubeconfig:")
+            for ctx := range config.Contexts {
+                if ctx == msg.context {
+                    m.LogDebug("  - %s (CURRENT)", ctx)
+                } else {
+                    m.LogDebug("  - %s", ctx)
                 }
             }
         }
@@ -175,10 +171,8 @@ func handleKubeContextSwitchedMsg(m model, msg kubeContextSwitchedMsg) (model, t
         // The model's managementClusterName and workloadClusterName are NOT changed by a manual switch.
         // Only the currentKubeContext is updated by fetching it again.
         cmdToGetCurrentCtx := getCurrentKubeContextCmd()
-        if m.debugMode {
-            m.LogDebug("[handleKubeContextSwitchedMsg] Dispatching getCurrentKubeContextCmd(). Command: %T", cmdToGetCurrentCtx)
-        }
-        if cmdToGetCurrentCtx == nil && m.debugMode {
+        m.LogDebug("[handleKubeContextSwitchedMsg] Dispatching getCurrentKubeContextCmd(). Command: %T", cmdToGetCurrentCtx)
+        if cmdToGetCurrentCtx == nil {
              m.LogWarn("[handleKubeContextSwitchedMsg] getCurrentKubeContextCmd() returned nil!")
         }
         cmds = append(cmds, cmdToGetCurrentCtx) 

@@ -224,9 +224,7 @@ func handleContextSwitchAndReinitializeResultMsg(m model, msg contextSwitchAndRe
 		return m, clearCmd
 	}
 
-	if m.debugMode {
-		m.LogDebug("Entered handleContextSwitchAndReinitializeResultMsg (after error check).")
-	}
+	m.LogDebug("Entered handleContextSwitchAndReinitializeResultMsg (after error check).")
 
 	m.LogInfo("Successfully switched context. Target was: %s. Re-initializing TUI.", msg.switchedContext)
 	clearStatusCmd := m.setStatusMessage(fmt.Sprintf("Target: %s. Re-initializing...", msg.switchedContext), StatusBarSuccess, 3*time.Second)
@@ -280,13 +278,9 @@ func handleContextSwitchAndReinitializeResultMsg(m model, msg contextSwitchAndRe
 	m.LogInfo("Initializing predefined MCP proxies (kubernetes, prometheus, grafana)...")
 	mcpProxyStartupCmds := startMcpProxiesCmd(m.TUIChannel)
 	if mcpProxyStartupCmds == nil {
-		if m.debugMode {
-			m.LogDebug("startMcpProxiesCmd returned nil. No MCP commands generated.")
-		}
+		m.LogDebug("startMcpProxiesCmd returned nil. No MCP commands generated.")
 	} else {
-		if m.debugMode {
-			m.LogDebug("Generated %d MCP proxy startup commands.", len(mcpProxyStartupCmds))
-		}
+		m.LogDebug("Generated %d MCP proxy startup commands.", len(mcpProxyStartupCmds))
 		if len(mcpProxyStartupCmds) > 0 {
 			newInitCmds = append(newInitCmds, mcpProxyStartupCmds...)
 		}
