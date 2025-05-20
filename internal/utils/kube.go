@@ -334,8 +334,11 @@ func GetNodeStatusClientGo(kubeContext string) (readyNodes int, totalNodes int, 
 		return 0, 0, fmt.Errorf("failed to create Kubernetes clientset for context %q: %w", kubeContext, err)
 	}
 
-	// 3. List Nodes
-	nodeList, err := clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+	// 3. List Nodes with an explicit context timeout to ensure the call cannot hang indefinitely.
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	nodeList, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return 0, 0, fmt.Errorf("failed to list nodes in context %q: %w", kubeContext, err)
 	}

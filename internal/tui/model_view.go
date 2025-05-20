@@ -65,8 +65,14 @@ func (m model) View() string {
                 m.mainLogViewport.Height = 0
             }
 
-            trunc := prepareLogContent(m.activityLog, m.mainLogViewport.Width)
-            m.mainLogViewport.SetContent(trunc)
+            // Refresh content only when new lines arrived or width changed.
+            mlvWidthChanged := m.mainLogViewportLastWidth != m.mainLogViewport.Width
+            if m.activityLogDirty || mlvWidthChanged {
+                trunc := prepareLogContent(m.activityLog, m.mainLogViewport.Width)
+                m.mainLogViewport.SetContent(trunc)
+                m.activityLogDirty = false
+                m.mainLogViewportLastWidth = m.mainLogViewport.Width
+            }
 
             logPanelView = renderCombinedLogPanel(&m, contentWidth, logSectionHeight)
         }

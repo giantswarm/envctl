@@ -127,6 +127,9 @@ type model struct {
 
     // --- UI State & Output ---
     activityLog     []string       // Global application activity log.
+    activityLogDirty bool          // True when new log lines added or width changed.
+    logViewportLastWidth int       // Cache of last log viewport width used for content preparation.
+    mainLogViewportLastWidth int   // Cache of last width used for main log viewport.
     width, height      int            // Terminal dimensions.
     debugMode          bool           // Show/hide debug info.
     colorMode          string         // Current color profile description.

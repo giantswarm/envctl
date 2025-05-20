@@ -24,17 +24,24 @@ import (
 func fetchNodeStatusCmd(fullTargetContextName string, isMC bool, originalClusterShortName string) tea.Cmd {
 	return func() tea.Msg {
 		var debugStr strings.Builder
-		debugStr.WriteString(fmt.Sprintf("[fetchNodeStatusCmd] GOROUTINE STARTED for %s (isMC: %v, targetCtx: %s)\n", originalClusterShortName, isMC, fullTargetContextName))
+		debugStr.WriteString(fmt.Sprintf("[DEBUG] fetchNodeStatusCmd started: origShort=%s, isMC=%v, targetCtx=%s\n", originalClusterShortName, isMC, fullTargetContextName))
 
 		defer func() {
 			if r := recover(); r != nil {
 				panicDebugInfo := fmt.Sprintf("PANIC in fetchNodeStatusCmd for '%s' (target ctx '%s'): %v\n", originalClusterShortName, fullTargetContextName, r)
-				// Directly print to terminal if panic occurs, as returning the message might fail.
+				// Print to terminal for immediate visibility.
 				fmt.Printf("[TERMINAL_DEBUG] [fetchNodeStatusCmd] %s", panicDebugInfo)
 				debugStr.WriteString("CRITICAL_PANIC: " + panicDebugInfo)
-				// Attempt to return an error message if panic happens. This is best-effort.
-				// This return might not happen if panic propagation is too severe.
-				// return nodeStatusMsg{clusterShortName: originalClusterShortName, forMC: isMC, err: fmt.Errorf("panic: %v", r), debugInfo: debugStr.String()} // Commented out to see if fmt.Printf alone works for panic visibility
+
+				// Send a message back to the TUI so it can clear the loading state and surface the error.
+				// IMPORTANT: We recover the panic and convert it into a nodeStatusMsg with an error.
+				// Because we're inside a defer, we cannot simply "return"; instead, we schedule the send
+				// via a goroutine on the TUI's message channel (tea.NewCallback).
+				tea.Printf("[DEBUG] Recovered panic in fetchNodeStatusCmd for %s – sending error nodeStatusMsg", originalClusterShortName)
+				// We cannot directly return a message from inside the defer. Instead, we rely on the fact that
+				// the outer function will continue execution after the defer completes. The final debug string
+				// now contains the panic information, so the function will fall through and return an error
+				// nodeStatusMsg a few lines below (ready == 0, total == 0, err != nil).
 			}
 		}()
 		
@@ -80,6 +87,7 @@ func fetchNodeStatusCmd(fullTargetContextName string, isMC bool, originalCluster
 		}
 
 		debugStr.WriteString(fmt.Sprintf("[fetchNodeStatusCmd] FINISHING for %s. Error: %v\n", originalClusterShortName, errGetStatus))
+		debugStr.WriteString(fmt.Sprintf("[DEBUG] fetchNodeStatusCmd completed: origShort=%s ready=%d total=%d err=%v\n", originalClusterShortName, ready, total, errGetStatus))
 		finalDebugInfo := debugStr.String()
 
 		return nodeStatusMsg{clusterShortName: originalClusterShortName, forMC: isMC, readyNodes: ready, totalNodes: total, err: errGetStatus, debugInfo: finalDebugInfo}

@@ -45,6 +45,9 @@ func (m *model) appendLogLine(line string) {
     if len(m.activityLog) > maxActivityLogLines {
         m.activityLog = m.activityLog[len(m.activityLog)-maxActivityLogLines:]
     }
+
+    // Mark log content dirty so viewports can refresh lazily.
+    m.activityLogDirty = true
 }
 
 // LogStdout logs multiple lines from a process's stdout as INFO level logs.

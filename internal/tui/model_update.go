@@ -39,6 +39,8 @@ func (m *model) setStatusMessage(message string, msgType MessageType, clearAfter
 
 // Update is the heart of the Bubbletea program – handling all incoming messages.
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+    // Record message type sampling for realistic workload generation (no-op unless built with the msgsample tag).
+    recordMsgSample(msg)
     var cmds []tea.Cmd
     var cmd tea.Cmd
 
@@ -47,8 +49,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
     case spinner.TickMsg, tea.MouseMsg:
         // Do nothing, just let these common/noisy messages pass through without generic logging.
     default:
-        // Log all other messages.
-        m.LogDebug("[Main Update] Received msg: %T -- Value: %v", msg, msg)
+        // Only perform expensive formatting when debug mode is enabled.
+        if m.debugMode {
+            m.LogDebug("[Main Update] Received msg: %T -- Value: %v", msg, msg)
+        }
     }
 
     // --- Global quit shortcuts ------------------------------------------------
@@ -79,9 +83,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
                 }
             }
 
+            finalizeMsgSampling()
             cmds = append(cmds, tea.Quit)
             return m, tea.Batch(cmds...)
         case "ctrl+c":
+            finalizeMsgSampling()
             return m, tea.Quit
         }
     }
@@ -155,6 +161,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
         cmds = append(cmds, cmd)
 
     case tea.WindowSizeMsg:
+        // Skip expensive layout recalculations when the dimensions haven't actually changed.
+        if msg.Width == m.width && msg.Height == m.height {
+            // No-op size event – ignore.
+            return m, nil
+        }
+
         m, cmd = handleWindowSizeMsg(m, msg)
         // Help width update.
         helpWidth := int(float64(msg.Width) * 0.8)
@@ -296,16 +308,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
         cmds = append(cmds, cmd)
     }
 
-    // Keep overlay viewport content in-sync.
-    if m.currentAppMode == ModeLogOverlay {
-        trunc := prepareLogContent(m.activityLog, m.logViewport.Width)
-        m.logViewport.SetContent(trunc)
-        if m.logViewport.YOffset == 0 {
+    // Lazily refresh the log viewport only when new lines were added or the
+    // viewport width changed (i.e. after a resize). This avoids redundant
+    // O(n) work on every single Update cycle.
+    widthChanged := m.logViewportLastWidth != m.logViewport.Width
+    if m.activityLogDirty || widthChanged {
+        prepared := prepareLogContent(m.activityLog, m.logViewport.Width)
+        m.logViewport.SetContent(prepared)
+        if m.currentAppMode == ModeLogOverlay && m.logViewport.YOffset == 0 {
             m.logViewport.GotoBottom()
         }
-    } else {
-        trunc := prepareLogContent(m.activityLog, m.logViewport.Width)
-        m.logViewport.SetContent(trunc)
+        m.activityLogDirty = false
+        m.logViewportLastWidth = m.logViewport.Width
     }
 
     // cmds = append(cmds, channelReaderCmd(m.TUIChannel)) // Also consider commenting out the one at the very end if the problem persists
