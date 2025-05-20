@@ -48,4 +48,4 @@ func BenchmarkModelUpdateProduction(b *testing.B) {
 			tm, _ = tm.Update(msg)
 		}
 	}
-} 
+}

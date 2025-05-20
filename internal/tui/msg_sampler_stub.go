@@ -13,4 +13,4 @@ import tea "github.com/charmbracelet/bubbletea"
 func recordMsgSample(msg tea.Msg) {}
 
 // finalizeMsgSampling is a no-op when msg sampling is disabled.
-func finalizeMsgSampling() {} 
+func finalizeMsgSampling() {}

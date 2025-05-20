@@ -10,7 +10,7 @@ import (
 
 // renderMcPane renders the Management Cluster (MC) information panel.
 func renderMcPane(m model, paneWidth int) string {
-	m.LogDebug("[renderMcPane] Comparing for Active: currentKubeContext ('%s') vs built MC context ('%s') for mcName ('%s')", 
+	m.LogDebug("[renderMcPane] Comparing for Active: currentKubeContext ('%s') vs built MC context ('%s') for mcName ('%s')",
 		m.currentKubeContext, utils.BuildMcContext(m.managementClusterName), m.managementClusterName)
 
 	mcName := m.managementClusterName
@@ -27,7 +27,7 @@ func renderMcPane(m model, paneWidth int) string {
 	if isMcActive {
 		mcActiveString = " (Active)"
 	}
-	
+
 	// Removed "Ctx:" line
 	mcPaneContent := fmt.Sprintf("%sMC: %s%s", SafeIcon(IconKubernetes), mcName, mcActiveString)
 
@@ -71,17 +71,17 @@ func renderMcPane(m model, paneWidth int) string {
 
 // renderWcPane renders the Workload Cluster (WC) information panel.
 func renderWcPane(m model, paneWidth int) string {
-	if m.workloadClusterName == "" { 
-		return "" 
+	if m.workloadClusterName == "" {
+		return ""
 	}
 
 	m.LogDebug("[renderWcPane] Comparing for Active: currentKubeContext ('%s') vs built WC context ('%s') for mcName ('%s'), wcName ('%s')",
 		m.currentKubeContext, utils.BuildWcContext(m.managementClusterName, m.workloadClusterName), m.managementClusterName, m.workloadClusterName)
-	
-	wcName := m.workloadClusterName 
+
+	wcName := m.workloadClusterName
 	isWcActive := false
-	if m.managementClusterName != "" && m.workloadClusterName != "" && 
-	   m.currentKubeContext == utils.BuildWcContext(m.managementClusterName, m.workloadClusterName) {
+	if m.managementClusterName != "" && m.workloadClusterName != "" &&
+		m.currentKubeContext == utils.BuildWcContext(m.managementClusterName, m.workloadClusterName) {
 		isWcActive = true
 	}
 
@@ -152,4 +152,4 @@ func renderContextPanesRow(m model, contentWidth int, maxRowHeight int) string {
 		Align(lipgloss.Left).
 		MaxHeight(maxRowHeight).
 		Render(rowView)
-} 
+}

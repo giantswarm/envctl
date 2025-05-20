@@ -11,7 +11,7 @@ import (
 // portForwardCoreUpdateMsg wraps an update coming from the core port-forwarding
 // package and is routed through the main Bubble-Tea update loop.
 type portForwardCoreUpdateMsg struct {
-    update portforwarding.PortForwardProcessUpdate
+	update portforwarding.PortForwardProcessUpdate
 }
 
 // portForwardSetupResultMsg reports the synchronous result of attempting to
@@ -22,9 +22,9 @@ type portForwardCoreUpdateMsg struct {
 // InstanceKey always matches PortForwardConfig.InstanceKey and thus the
 // key used in model.portForwards.
 type portForwardSetupResultMsg struct {
-    InstanceKey string        // port-forward identifier
-    Cmd         *exec.Cmd     // running command (if any)
-    StopChan    chan struct{} // channel to stop the PF (nil on failure)
-    InitialPID  int           // PID of Cmd if available
-    Err         error         // immediate startup error
-} 
+	InstanceKey string        // port-forward identifier
+	Cmd         *exec.Cmd     // running command (if any)
+	StopChan    chan struct{} // channel to stop the PF (nil on failure)
+	InitialPID  int           // PID of Cmd if available
+	Err         error         // immediate startup error
+}

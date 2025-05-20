@@ -329,24 +329,24 @@ func getPortForwardConfigs(mcShortName, wcFullIdentifier string, alloyMetricsTar
 	alloyLabel := "Alloy Metrics"
 	// alloyMetricsTargetContext is already determined: WC context if WC specified, else MC context.
 	if wcFullIdentifier != "" { // wcFullIdentifier is like "mc-wc" or empty
-		alloyLabel += " (WC)" 
-	} else if mcShortName != ""{
+		alloyLabel += " (WC)"
+	} else if mcShortName != "" {
 		alloyLabel += " (MC)"
-    } else {
-        // No MC or WC specified for Alloy, skip? Or handle error?
-        // For now, if alloyMetricsTargetContext is empty, this PF might not be added or might fail.
-    }
+	} else {
+		// No MC or WC specified for Alloy, skip? Or handle error?
+		// For now, if alloyMetricsTargetContext is empty, this PF might not be added or might fail.
+	}
 
-    if alloyMetricsTargetContext != "" { // Only add if we have a context for it
-        configs = append(configs, portForwardConfig{
-            label:       alloyLabel,
-            localPort:   "12345",
-            remotePort:  "12345",
-            kubeContext: alloyMetricsTargetContext,
-            namespace:   "kube-system",
-            service:     "service/alloy-metrics-cluster",
-        })
-    }
+	if alloyMetricsTargetContext != "" { // Only add if we have a context for it
+		configs = append(configs, portForwardConfig{
+			label:       alloyLabel,
+			localPort:   "12345",
+			remotePort:  "12345",
+			kubeContext: alloyMetricsTargetContext,
+			namespace:   "kube-system",
+			service:     "service/alloy-metrics-cluster",
+		})
+	}
 	return configs
 }
 

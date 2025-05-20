@@ -16,4 +16,4 @@ func trimStatusMessage(status string) string {
 		return status[:12] + "..."
 	}
 	return status
-} 
+}

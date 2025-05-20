@@ -140,11 +140,11 @@ var (
 
 	// --- MCP Config Overlay Style ---
 	mcpConfigOverlayStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}).
-			Background(lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#1E1E1E"}).
-			Foreground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}).
-			Padding(1, 2)
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}).
+				Background(lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#1E1E1E"}).
+				Foreground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}).
+				Padding(1, 2)
 
 	// --- Panel Background Styles based on Status ---
 	// These define the background color of port-forward panels based on their operational status.
@@ -251,9 +251,9 @@ var (
 					Foreground(lipgloss.AdaptiveColor{Light: "#1F2937", Dark: "#111827"}) // Darker text on yellow
 
 	// Shared overlay colour palette (Help & MCP Config)
-	HelpOverlayBg = lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#1E1E1E"}
-	HelpOverlayDescFg = lipgloss.Color("#C0C0C0")
-	HelpOverlayEllipsisFg = lipgloss.Color("#777777")
+	HelpOverlayBg          = lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#1E1E1E"}
+	HelpOverlayDescFg      = lipgloss.Color("#C0C0C0")
+	HelpOverlayEllipsisFg  = lipgloss.Color("#777777")
 	HelpOverlaySeparatorFg = lipgloss.Color("#777777")
-	HelpOverlayKeyFg = lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}
+	HelpOverlayKeyFg       = lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}
 )

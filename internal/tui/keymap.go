@@ -5,21 +5,21 @@ import "github.com/charmbracelet/bubbles/key"
 // KeyMap defines the keybindings for the application.
 // It helps in managing and displaying help information.
 type KeyMap struct {
-	Up            key.Binding
-	Down          key.Binding
-	Tab           key.Binding
-	ShiftTab      key.Binding
-	Enter         key.Binding // Context-dependent help
-	Esc           key.Binding // Context-dependent help
-	Quit          key.Binding
-	Help          key.Binding
-	NewCollection key.Binding
-	Restart       key.Binding
-	SwitchContext key.Binding
-	ToggleDark    key.Binding
-	ToggleDebug   key.Binding
-	ToggleLog     key.Binding
-	CopyLogs      key.Binding
+	Up              key.Binding
+	Down            key.Binding
+	Tab             key.Binding
+	ShiftTab        key.Binding
+	Enter           key.Binding // Context-dependent help
+	Esc             key.Binding // Context-dependent help
+	Quit            key.Binding
+	Help            key.Binding
+	NewCollection   key.Binding
+	Restart         key.Binding
+	SwitchContext   key.Binding
+	ToggleDark      key.Binding
+	ToggleDebug     key.Binding
+	ToggleLog       key.Binding
+	CopyLogs        key.Binding
 	ToggleMcpConfig key.Binding
 	// Add other bindings as needed, e.g., for input mode
 }
@@ -98,8 +98,8 @@ func DefaultKeyMap() KeyMap {
 // It's a slice of slices, where each inner slice is a column in the help view.
 func (k KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
-		{k.Up, k.Down, k.Tab, k.ShiftTab},                          // Navigation column
-		{k.NewCollection, k.Restart, k.SwitchContext, k.CopyLogs},  // Operations column
+		{k.Up, k.Down, k.Tab, k.ShiftTab},                                             // Navigation column
+		{k.NewCollection, k.Restart, k.SwitchContext, k.CopyLogs},                     // Operations column
 		{k.Help, k.ToggleLog, k.ToggleMcpConfig, k.ToggleDark, k.ToggleDebug, k.Quit}, // UI/General column
 	}
 }

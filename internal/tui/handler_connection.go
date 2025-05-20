@@ -140,8 +140,8 @@ func handleKubeLoginResultMsg(m model, msg kubeLoginResultMsg, cmds []tea.Cmd) (
 		// MC Login was successful. msg.clusterName is the MC short name.
 		// m.stashedMcName should have been set to this MC short name from the input UI.
 		// For consistency, ensure desiredMcName is updated if it wasn't already.
-		m.managementClusterName = msg.clusterName 
-		
+		m.managementClusterName = msg.clusterName
+
 		desiredMcForNextStep := m.managementClusterName
 		desiredWcForNextStep := msg.desiredWcShortName // This comes from the initial UI input, carried by msg
 
@@ -153,7 +153,7 @@ func handleKubeLoginResultMsg(m model, msg kubeLoginResultMsg, cmds []tea.Cmd) (
 				wcIdentifierForLogin = desiredMcForNextStep + "-" + desiredWcForNextStep
 			}
 			m.LogInfo("Step 2: Logging into Workload Cluster: %s...", wcIdentifierForLogin)
-			nextCmds = append(nextCmds, performKubeLoginCmd(wcIdentifierForLogin, false, "")) 
+			nextCmds = append(nextCmds, performKubeLoginCmd(wcIdentifierForLogin, false, ""))
 		} else {
 			m.LogInfo("Step 2: No Workload Cluster specified. Proceeding to context switch for MC.")
 			targetKubeContext := utils.BuildMcContext(desiredMcForNextStep)
@@ -163,7 +163,7 @@ func handleKubeLoginResultMsg(m model, msg kubeLoginResultMsg, cmds []tea.Cmd) (
 	} else {
 		// WC Login was successful. msg.clusterName is the WC identifier (e.g., "myinstallation-mycluster").
 		// m.managementClusterName should hold the MC short name from the previous step or initial UI.
-		finalMcName := m.managementClusterName 
+		finalMcName := m.managementClusterName
 
 		// Determine the short WC name from the logged-in WC identifier (msg.clusterName)
 		// and the known MC name (m.managementClusterName).
@@ -171,13 +171,13 @@ func handleKubeLoginResultMsg(m model, msg kubeLoginResultMsg, cmds []tea.Cmd) (
 		if finalMcName != "" && strings.HasPrefix(msg.clusterName, finalMcName+"-") {
 			shortWcName = strings.TrimPrefix(msg.clusterName, finalMcName+"-")
 		} else {
-			// This case implies that msg.clusterName might be just the short WC name itself, 
+			// This case implies that msg.clusterName might be just the short WC name itself,
 			// or the MC prefix part was not as expected. This should be less common if logins use full identifiers.
 			// Or, if finalMcName was somehow empty at this stage.
-			shortWcName = msg.clusterName 
+			shortWcName = msg.clusterName
 			m.LogWarn("WC login name '%s' for MC '%s' did not have expected MC prefix; using '%s' as short WC name.", msg.clusterName, finalMcName, shortWcName)
 		}
-		
+
 		// Update the model's workloadClusterName based on successful WC login.
 		m.workloadClusterName = shortWcName
 
@@ -219,7 +219,7 @@ func handleContextSwitchAndReinitializeResultMsg(m model, msg contextSwitchAndRe
 	}
 	if msg.err != nil {
 		m.LogError("Context switch/re-init failed: %v. MCP PROXIES WILL NOT START.", msg.err)
-		m.isLoading = false 
+		m.isLoading = false
 		clearCmd := m.setStatusMessage("Context switch/re-init failed.", StatusBarError, 5*time.Second)
 		return m, clearCmd
 	}
@@ -232,7 +232,7 @@ func handleContextSwitchAndReinitializeResultMsg(m model, msg contextSwitchAndRe
 	// Apply new cluster names to the model from the successful operation
 	m.managementClusterName = msg.desiredMcName
 	m.workloadClusterName = msg.desiredWcName
-	
+
 	// m.currentKubeContext will be updated by the getCurrentKubeContextCmd called below.
 	// No parsing logic needed here anymore.
 
@@ -241,7 +241,7 @@ func handleContextSwitchAndReinitializeResultMsg(m model, msg contextSwitchAndRe
 	if m.workloadClusterName != "" {
 		m.WCHealth = clusterHealthInfo{IsLoading: true}
 	} else {
-		m.WCHealth = clusterHealthInfo{} 
+		m.WCHealth = clusterHealthInfo{}
 	}
 
 	setupPortForwards(&m, m.managementClusterName, m.workloadClusterName)
@@ -252,7 +252,7 @@ func handleContextSwitchAndReinitializeResultMsg(m model, msg contextSwitchAndRe
 	} else if m.managementClusterName != "" {
 		m.focusedPanelKey = mcPaneFocusKey
 	} else {
-		m.focusedPanelKey = "" 
+		m.focusedPanelKey = ""
 	}
 
 	m.mcpProxyOrder = nil
@@ -261,7 +261,7 @@ func handleContextSwitchAndReinitializeResultMsg(m model, msg contextSwitchAndRe
 	}
 
 	var newInitCmds []tea.Cmd
-	newInitCmds = append(newInitCmds, getCurrentKubeContextCmd()) 
+	newInitCmds = append(newInitCmds, getCurrentKubeContextCmd())
 
 	if m.managementClusterName != "" {
 		mcTargetContext := utils.BuildMcContext(m.managementClusterName)
