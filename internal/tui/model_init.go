@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"envctl/internal/service"
 	"envctl/internal/utils"
 
 	"github.com/charmbracelet/bubbles/help"
@@ -79,6 +80,7 @@ func InitialModel(mcName, wcName, kubeContext string, tuiDebug bool) model {
 		keys:                     DefaultKeyMap(),
 		help:                     help.New(),
 		mcpConfigViewport:        viewport.New(0, 0),
+		services:                 service.Default(),
 	}
 
 	m.help.ShowAll = true

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"envctl/internal/dependency"
+	"envctl/internal/service"
 	"envctl/internal/utils"
 
 	"github.com/charmbracelet/bubbles/help"
@@ -164,6 +165,9 @@ type model struct {
 
 	// TUIChannel is used by background goroutines to send messages back to the Bubbletea update loop.
 	TUIChannel chan tea.Msg
+
+	// --- Services (Dependency Injection) ---
+	services service.Services
 }
 
 // -----------------------------------------------------------------------------
