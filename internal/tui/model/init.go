@@ -116,8 +116,8 @@ func InitialModel(mcName, wcName, kubeContext string, tuiDebug bool) *Model {
 
 	// Force dark background for lipgloss; helps with colour-consistency.
 	colorProfile := lipgloss.ColorProfile().String()
-	lipgloss.SetHasDarkBackground(true)
-	colorMode := fmt.Sprintf("%s (Dark: %v)", colorProfile, true)
+	// lipgloss.SetHasDarkBackground(true) // MOVED to internal/color/Initialize
+	colorMode := fmt.Sprintf("%s (Dark: %v)", colorProfile, true) // This might need adjustment based on how dark mode is determined globally
 
 	// Spinner setup.
 	s := spinner.New()

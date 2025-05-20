@@ -2,6 +2,8 @@ package controller
 
 import (
 	// "bufio" // No longer used directly here
+
+	"envctl/internal/kube"
 	"envctl/internal/mcpserver"
 	"envctl/internal/service"
 	"envctl/internal/tui/model"
@@ -14,7 +16,10 @@ import (
 
 	// "syscall" // No longer used directly here
 
+	"time"
+
 	tea "github.com/charmbracelet/bubbletea"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd" // Added for kubeconfig handling
 )
 
@@ -22,7 +27,7 @@ import (
 // - fullTargetContextName: The fully constructed Kubernetes context name to use for the API call.
 // - isMC: Boolean indicating if the status is for a Management Cluster.
 // - originalClusterShortName: The original short name of the cluster (e.g., "myinstallation" or "myworkloadcluster"), used for tagging the result message.
-// Returns a tea.Cmd that, when run, will call utils.GetNodeStatusClientGo and send a nodeStatusMsg.
+// Returns a tea.Cmd that, when run, will create a clientset, call kube.GetNodeStatusClientGo, and send a model.NodeStatusMsg.
 func FetchNodeStatusCmd(fullTargetContextName string, isMC bool, originalClusterShortName string) tea.Cmd {
 	return func() tea.Msg {
 		var debugStr strings.Builder
@@ -63,7 +68,7 @@ func FetchNodeStatusCmd(fullTargetContextName string, isMC bool, originalCluster
 			if errLoad != nil {
 				ds := fmt.Sprintf("Health check for %s (target ctx %s): Failed to load kubeconfig: %v\n", originalClusterShortName, fullTargetContextName, errLoad)
 				debugStr.WriteString("Kubeconfig load error: " + ds)
-				return model.NodeStatusMsg{ClusterShortName: originalClusterShortName, ForMC: isMC, Err: fmt.Errorf("kubeconfig error: %w", errLoad), DebugInfo: debugStr.String()}
+				return model.NodeStatusMsg{ClusterShortName: originalClusterShortName, ForMC: isMC, Err: fmt.Errorf("kubeconfig error: %v", errLoad), DebugInfo: debugStr.String()}
 			}
 			debugStr.WriteString(fmt.Sprintf("Checking health for cluster %s (isMC: %v)\n", originalClusterShortName, isMC))
 			debugStr.WriteString(fmt.Sprintf("Target context: %s (will use this context explicitly)\n", fullTargetContextName))
@@ -78,8 +83,24 @@ func FetchNodeStatusCmd(fullTargetContextName string, isMC bool, originalCluster
 			}
 		}
 
+		// Create clientset here
+		loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+		configOverrides := &clientcmd.ConfigOverrides{CurrentContext: fullTargetContextName}
+		kubeConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
+		restConfig, err := kubeConfig.ClientConfig()
+		if err != nil {
+			debugStr.WriteString(fmt.Sprintf("Failed to get REST config for context %q: %v\n", fullTargetContextName, err))
+			return model.NodeStatusMsg{ClusterShortName: originalClusterShortName, ForMC: isMC, Err: fmt.Errorf("REST config error: %v", err), DebugInfo: debugStr.String()}
+		}
+		restConfig.Timeout = 15 * time.Second
+		clientset, err := kubernetes.NewForConfig(restConfig)
+		if err != nil {
+			debugStr.WriteString(fmt.Sprintf("Failed to create Kubernetes clientset for context %q: %v\n", fullTargetContextName, err))
+			return model.NodeStatusMsg{ClusterShortName: originalClusterShortName, ForMC: isMC, Err: fmt.Errorf("clientset error: %v", err), DebugInfo: debugStr.String()}
+		}
+
 		debugStr.WriteString(fmt.Sprintf("\nAttempting to fetch node status for %s using context: %s\n", originalClusterShortName, fullTargetContextName))
-		ready, total, errGetStatus := utils.GetNodeStatusClientGo(fullTargetContextName)
+		ready, total, errGetStatus := kube.GetNodeStatusClientGo(clientset)
 		debugStr.WriteString(fmt.Sprintf("Node status result for %s: targetContext=%s, ready=%d, total=%d, err=%v\n",
 			originalClusterShortName, fullTargetContextName, ready, total, errGetStatus))
 
@@ -97,7 +118,7 @@ func FetchNodeStatusCmd(fullTargetContextName string, isMC bool, originalCluster
 }
 
 // getCurrentKubeContextCmd creates a tea.Cmd to asynchronously fetch the current active Kubernetes context.
-// Returns a tea.Cmd that, when run, will call utils.GetCurrentKubeContext and send a kubeContextResultMsg.
+// Returns a tea.Cmd that, when run, will call kube.GetCurrentKubeContext and send a kubeContextResultMsg.
 func GetCurrentKubeContextCmd(clusterSvc service.ClusterService) tea.Cmd {
 	return func() tea.Msg {
 		currentCtx, err := clusterSvc.CurrentContext()
@@ -107,7 +128,7 @@ func GetCurrentKubeContextCmd(clusterSvc service.ClusterService) tea.Cmd {
 
 // performSwitchKubeContextCmd creates a tea.Cmd to attempt switching the active Kubernetes context.
 // - targetContextName: The full name of the Kubernetes context to switch to.
-// Returns a tea.Cmd that, when run, will call utils.SwitchKubeContext and send a kubeContextSwitchedMsg.
+// Returns a tea.Cmd that, when run, will call kube.SwitchKubeContext and send a kubeContextSwitchedMsg.
 func PerformSwitchKubeContextCmd(clusterSvc service.ClusterService, targetContextName string) tea.Cmd {
 	return func() tea.Msg {
 		oldCtx, _ := clusterSvc.CurrentContext()
@@ -157,7 +178,7 @@ func PerformPostLoginOperationsCmd(targetKubeContext, desiredMc, desiredWc strin
 		var diagnosticLog strings.Builder
 
 		// Get initial context for better debug info
-		initialContext, initialErr := utils.GetCurrentKubeContext()
+		initialContext, initialErr := kube.GetCurrentKubeContext()
 		if initialErr != nil {
 			diagnosticLog.WriteString(fmt.Sprintf("Initial GetCurrentKubeContext error: %v\n", initialErr))
 		} else {
@@ -167,8 +188,7 @@ func PerformPostLoginOperationsCmd(targetKubeContext, desiredMc, desiredWc strin
 		diagnosticLog.WriteString(fmt.Sprintf("Attempting to switch context to: %s\n", targetKubeContext))
 		diagnosticLog.WriteString(fmt.Sprintf("Desired MC: %s, Desired WC: %s\n", desiredMc, desiredWc))
 
-		// utils.SwitchKubeContext would eventually use client-go
-		err := utils.SwitchKubeContext(targetKubeContext)
+		err := kube.SwitchKubeContext(targetKubeContext)
 		if err != nil {
 			diagnosticLog.WriteString(fmt.Sprintf("SwitchKubeContext error: %v\n", err))
 			// Try to get more diagnostic information about kubeconfig state
@@ -181,7 +201,7 @@ func PerformPostLoginOperationsCmd(targetKubeContext, desiredMc, desiredWc strin
 			}
 
 			return model.ContextSwitchAndReinitializeResultMsg{
-				Err:           fmt.Errorf("failed to switch context to %s: %w", targetKubeContext, err),
+				Err:           fmt.Errorf("failed to switch context to %s: %v", targetKubeContext, err),
 				DesiredMCName: desiredMc,
 				DesiredWCName: desiredWc,
 				DiagnosticLog: diagnosticLog.String(),
@@ -189,13 +209,12 @@ func PerformPostLoginOperationsCmd(targetKubeContext, desiredMc, desiredWc strin
 		}
 		diagnosticLog.WriteString("SwitchKubeContext successful.\n")
 
-		// utils.GetCurrentKubeContext would eventually use client-go
-		actualCurrentContext, err := utils.GetCurrentKubeContext()
+		actualCurrentContext, err := kube.GetCurrentKubeContext()
 		if err != nil {
 			diagnosticLog.WriteString(fmt.Sprintf("GetCurrentKubeContext error: %v\n", err))
 			return model.ContextSwitchAndReinitializeResultMsg{
-				Err:             fmt.Errorf("failed to get current context after switch: %w", err),
-				SwitchedContext: targetKubeContext,
+				Err:             fmt.Errorf("failed to get current context after switch: %v", err),
+				SwitchedContext: actualCurrentContext,
 				DesiredMCName:   desiredMc,
 				DesiredWCName:   desiredWc,
 				DiagnosticLog:   diagnosticLog.String(),
@@ -292,7 +311,7 @@ func StartMcpProxiesCmd(proxySvc service.MCPProxyService, tuiChan chan tea.Msg) 
 
 			initialStatusMsg := fmt.Sprintf("Initializing proxy for %s...", label)
 			if startErr != nil {
-				initialStatusMsg = fmt.Sprintf("Failed to start %s: %s", label, startErr.Error())
+				initialStatusMsg = fmt.Sprintf("Failed to start %s: %v", label, startErr)
 			}
 
 			return model.McpServerSetupCompletedMsg{

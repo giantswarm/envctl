@@ -1,11 +1,10 @@
 package portforwarding
 
 import (
+	"envctl/internal/kube"
 	"fmt"
 	"os/exec"
 	"strings"
-
-	"envctl/internal/utils"
 )
 
 // StartAndManageIndividualPortForward starts a single port-forward using the Kubernetes Go
@@ -51,12 +50,12 @@ func StartAndManageIndividualPortForward(
 
 	portMap := fmt.Sprintf("%s:%s", cfg.LocalPort, cfg.RemotePort)
 
-	stop, initialStatus, err := utils.StartPortForwardClientGo(
+	stop, initialStatus, err := kube.StartPortForwardClientGo(
 		cfg.KubeContext,
 		cfg.Namespace,
 		cfg.ServiceName,
 		portMap,
-		cfg.InstanceKey,
+		cfg.Label,
 		bridge,
 	)
 

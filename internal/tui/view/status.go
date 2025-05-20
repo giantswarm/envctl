@@ -1,6 +1,7 @@
 package view
 
 import (
+	"envctl/internal/color"
 	"envctl/internal/tui/model"
 	"fmt"
 
@@ -12,15 +13,15 @@ func renderStatusBar(m *model.Model, width int) string {
 	var bg lipgloss.AdaptiveColor
 	switch overallStatus {
 	case model.AppStatusUp:
-		bg = StatusBarSuccessBg
+		bg = color.StatusBarSuccessBg
 	case model.AppStatusConnecting:
-		bg = StatusBarInfoBg
+		bg = color.StatusBarInfoBg
 	case model.AppStatusDegraded:
-		bg = StatusBarWarningBg
+		bg = color.StatusBarWarningBg
 	case model.AppStatusFailed:
-		bg = StatusBarErrorBg
+		bg = color.StatusBarErrorBg
 	default:
-		bg = StatusBarDefaultBg
+		bg = color.StatusBarDefaultBg
 	}
 
 	leftW := int(float64(width) * 0.25)
@@ -48,7 +49,7 @@ func renderStatusBar(m *model.Model, width int) string {
 		default:
 			icon = SafeIcon(IconInfo)
 		}
-		leftStr = StatusBarTextStyle.Copy().Background(bg).Width(leftW).Render(icon + overallStatus.String())
+		leftStr = color.StatusBarTextStyle.Copy().Background(bg).Width(leftW).Render(icon + overallStatus.String())
 	}
 
 	// right
@@ -62,7 +63,7 @@ func renderStatusBar(m *model.Model, width int) string {
 		wcDisplay := m.WorkloadClusterName
 		mcWc += fmt.Sprintf(" / %s WC: %s", SafeIcon(IconKubernetes), wcDisplay)
 	}
-	rightStr := StatusBarTextStyle.Copy().Background(bg).Width(rightW).Align(lipgloss.Right).Render(mcWc)
+	rightStr := color.StatusBarTextStyle.Copy().Background(bg).Width(rightW).Align(lipgloss.Right).Render(mcWc)
 
 	// center transient
 	var centerStr string
@@ -71,16 +72,16 @@ func renderStatusBar(m *model.Model, width int) string {
 		var icon string
 		switch m.StatusBarMessageType {
 		case model.StatusBarSuccess:
-			msgStyle = StatusMessageSuccessStyle.Copy()
+			msgStyle = color.StatusMessageSuccessStyle.Copy()
 			icon = SafeIcon(IconSparkles)
 		case model.StatusBarError:
-			msgStyle = StatusMessageErrorStyle.Copy()
+			msgStyle = color.StatusMessageErrorStyle.Copy()
 			icon = SafeIcon(IconCross)
 		case model.StatusBarWarning:
-			msgStyle = StatusMessageWarningStyle.Copy()
+			msgStyle = color.StatusMessageWarningStyle.Copy()
 			icon = SafeIcon(IconLightbulb)
 		default:
-			msgStyle = StatusMessageInfoStyle.Copy()
+			msgStyle = color.StatusMessageInfoStyle.Copy()
 			icon = SafeIcon(IconInfo)
 		}
 		centerStr = msgStyle.Background(bg).Width(centerW).Align(lipgloss.Center).Render(icon + m.StatusBarMessage)
@@ -89,5 +90,5 @@ func renderStatusBar(m *model.Model, width int) string {
 	}
 
 	final := lipgloss.JoinHorizontal(lipgloss.Bottom, leftStr, centerStr, rightStr)
-	return StatusBarBaseStyle.Copy().Width(width).Render(final)
+	return color.StatusBarBaseStyle.Copy().Width(width).Render(final)
 }

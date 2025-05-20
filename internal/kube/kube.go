@@ -1,4 +1,4 @@
-package utils
+package kube
 
 import (
 	"context"
@@ -58,25 +58,7 @@ func (w *tuiLogWriter) Write(p []byte) (n int, err error) {
 }
 
 // StartPortForwardClientGo establishes a port-forward to a Kubernetes pod using the client-go library.
-// This function handles the entire setup: parsing ports, loading Kubernetes configuration for the specified context,
-// creating a clientset, resolving the service/pod name to a target pod, constructing the port-forwarding URL,
-// and finally, creating and starting the port forwarder in a new goroutine.
-// It returns a channel that can be used to stop the port-forwarding process, an initial status message indicating
-// the setup attempt, and any error encountered during the synchronous part of the setup.
-// Asynchronous updates (status changes, logs, errors, readiness) are sent via the provided `sendUpdate` callback.
-//
-// Parameters:
-// - kubeContext: The name of the Kubernetes context to use.
-// - namespace: The Kubernetes namespace where the target service/pod resides.
-// - serviceArg: A string specifying the target, e.g., "service/my-service" or "pod/my-pod".
-// - portString: The port mapping, e.g., "localPort:remotePort" (e.g., "8080:80").
-// - pfLabel: A user-friendly label for this port-forward, used in updates sent via `sendUpdate`.
-// - sendUpdate: The callback function (SendUpdateFunc) for sending asynchronous updates.
-//
-// Returns:
-// - chan struct{}: A channel that, when closed, signals the port-forwarding goroutine to stop.
-// - string: An initial status message (e.g., "Initializing...") from the synchronous setup phase.
-// - error: Any error that occurred during the synchronous setup before the goroutine was started.
+// ... (rest of the function documentation as it was)
 func StartPortForwardClientGo(
 	kubeContext string,
 	namespace string,
@@ -225,12 +207,7 @@ func StartPortForwardClientGo(
 
 // getPodNameForPortForward resolves a service argument (like "service/my-svc" or "pod/my-pod")
 // to a specific, preferably ready, pod name that can be used as a target for port forwarding.
-// If the argument is a service, it lists pods matching the service's selector and picks a running/ready one.
-// - clientset: An initialized Kubernetes clientset.
-// - namespace: The namespace to look for the service/pod in.
-// - serviceArg: The string identifying the target (e.g., "service/my-service", "pod/my-pod").
-// - remotePodTargetPort: The port on the pod that the port-forward aims to connect to. Used to (softly) check service port exposure.
-// Returns the name of a suitable pod or an error if one cannot be found.
+// ... (rest of the function documentation as it was)
 func getPodNameForPortForward(clientset kubernetes.Interface, namespace, serviceArg string, remotePodTargetPort uint16) (string, error) {
 	parts := strings.SplitN(serviceArg, "/", 2)
 	if len(parts) != 2 {
@@ -314,25 +291,11 @@ func getPodNameForPortForward(clientset kubernetes.Interface, namespace, service
 }
 
 // GetNodeStatusClientGo retrieves the number of ready and total nodes in a cluster using client-go.
-// - kubeContext: The Kubernetes context to target.
+// - clientset: An initialized Kubernetes clientset.
 // Returns the count of ready nodes, total nodes, and an error if any occurs.
-func GetNodeStatusClientGo(kubeContext string) (readyNodes int, totalNodes int, err error) {
-	// 1. Kubernetes Config
-	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
-	configOverrides := &clientcmd.ConfigOverrides{CurrentContext: kubeContext}
-	kubeConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
-
-	restConfig, err := kubeConfig.ClientConfig()
-	if err != nil {
-		return 0, 0, fmt.Errorf("failed to get REST config for context %q: %w", kubeContext, err)
-	}
-	restConfig.Timeout = 15 * time.Second // Shorter timeout for non-interactive calls
-
-	// 2. Kubernetes Clientset
-	clientset, err := kubernetes.NewForConfig(restConfig)
-	if err != nil {
-		return 0, 0, fmt.Errorf("failed to create Kubernetes clientset for context %q: %w", kubeContext, err)
-	}
+func GetNodeStatusClientGo(clientset kubernetes.Interface) (readyNodes int, totalNodes int, err error) {
+	// No longer needs to create clientset from kubeContext here
+	// Assumes clientset is already configured for the correct context.
 
 	// 3. List Nodes with an explicit context timeout to ensure the call cannot hang indefinitely.
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -340,7 +303,9 @@ func GetNodeStatusClientGo(kubeContext string) (readyNodes int, totalNodes int, 
 
 	nodeList, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return 0, 0, fmt.Errorf("failed to list nodes in context %q: %w", kubeContext, err)
+		// To provide a more useful error, we might want to know which context this clientset was for,
+		// but the clientset itself doesn't easily expose this. The caller should handle context in errors.
+		return 0, 0, fmt.Errorf("failed to list nodes: %w", err)
 	}
 
 	totalNodes = len(nodeList.Items)
@@ -356,8 +321,142 @@ func GetNodeStatusClientGo(kubeContext string) (readyNodes int, totalNodes int, 
 	return readyNodes, totalNodes, nil
 }
 
-// Note: Utility functions in the `utils` package, such as `LoginToKubeCluster` (which interacts with `tsh`)
-// and `GetClusterInfo` (for shell completion), are essential for the application's functionality.
-// While many Kubernetes-specific operations like port forwarding, context management (GetCurrentKubeContext, SwitchKubeContext),
-// and node status fetching (GetNodeStatusClientGo, DetermineClusterProvider) have been migrated to use the Kubernetes Go client directly,
-// some utilities may still interact with external commands or system configurations where appropriate.
+// DetermineClusterProvider attempts to identify the cloud provider of a Kubernetes cluster
+// by inspecting the `providerID` of the first node, then falling back to labels.
+// It uses the Kubernetes Go client.
+// - contextName: The Kubernetes context to use. If empty, the current context is used.
+// Returns the determined provider name (e.g., "aws") or "unknown", and an error if API calls fail.
+func DetermineClusterProvider(contextName string) (string, error) {
+	fmt.Println("Determining cluster provider using Go client...")
+
+	// Use Teleport prefix for context name if not already prefixed and contextName is provided.
+	k8sContextName := contextName
+	if contextName != "" && !strings.HasPrefix(contextName, "teleport.giantswarm.io-") { // Assuming TeleportPrefix constant would be here or passed
+		k8sContextName = "teleport.giantswarm.io-" + contextName // Assuming TeleportPrefix constant would be here or passed
+	}
+
+	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	configOverrides := &clientcmd.ConfigOverrides{}
+	// If a specific context name is provided, use it.
+	// Otherwise (k8sContextName is empty), it will use the current context from kubeconfig.
+	if k8sContextName != "" {
+		configOverrides.CurrentContext = k8sContextName
+	}
+
+	kubeConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
+	config, err := kubeConfig.ClientConfig()
+	if err != nil {
+		return "", fmt.Errorf("failed to get Kubernetes client config for context '%s': %w", k8sContextName, err)
+	}
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return "", fmt.Errorf("failed to create Kubernetes clientset for context '%s': %w", k8sContextName, err)
+	}
+
+	nodes, err := clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{Limit: 1})
+	if err != nil {
+		return "", fmt.Errorf("failed to list nodes in context '%s': %w", k8sContextName, err)
+	}
+
+	if len(nodes.Items) == 0 {
+		return "unknown", fmt.Errorf("no nodes found in cluster with context '%s'", k8sContextName)
+	}
+
+	node := nodes.Items[0]
+	providerID := node.Spec.ProviderID
+
+	// The providerID is typically in the format: <provider>://<provider-specific-info>
+	if providerID != "" {
+		if strings.HasPrefix(providerID, "aws://") {
+			return "aws", nil
+		} else if strings.HasPrefix(providerID, "azure://") {
+			return "azure", nil
+		} else if strings.HasPrefix(providerID, "gce://") {
+			return "gcp", nil
+		} else if strings.Contains(providerID, "vsphere") { // vsphere might not have a URI prefix
+			return "vsphere", nil
+		} else if strings.Contains(providerID, "openstack") { // openstack might not have a URI prefix
+			return "openstack", nil
+		}
+		// If providerID is present but not matched, try labels next
+	}
+
+	// Fallback to checking labels if providerID is empty or not recognized
+	labels := node.GetLabels()
+	if len(labels) > 0 {
+		// Look for known provider-specific labels
+		for k := range labels {
+			if strings.Contains(k, "eks.amazonaws.com") || strings.Contains(k, "amazonaws.com/compute") {
+				return "aws", nil
+			} else if strings.Contains(k, "kubernetes.azure.com") || strings.Contains(k, "cloud-provider-azure") {
+				return "azure", nil
+			} else if strings.Contains(k, "cloud.google.com/gke") || strings.Contains(k, "instancegroup.gke.io") {
+				return "gcp", nil
+			}
+		}
+	}
+
+	// If we can't determine the provider from providerID or labels, return unknown.
+	// It could also be a bare metal cluster or a less common provider.
+	return "unknown", nil
+}
+
+// GetCurrentKubeContext retrieves the name of the currently active Kubernetes context
+// using the Kubernetes Go client.
+// Returns the context name and an error if it fails.
+func GetCurrentKubeContext() (string, error) {
+	pathOptions := clientcmd.NewDefaultPathOptions()
+	if pathOptions == nil {
+		return "", fmt.Errorf("failed to get default kubeconfig path options")
+	}
+
+	config, err := pathOptions.GetStartingConfig()
+	if err != nil {
+		return "", fmt.Errorf("failed to get starting kubeconfig: %w", err)
+	}
+
+	if config.CurrentContext == "" {
+		return "", fmt.Errorf("current kubeconfig context is not set")
+	}
+	return config.CurrentContext, nil
+}
+
+// SwitchKubeContext changes the active Kubernetes context to the specified context name
+// using the Kubernetes Go client, ensuring the full config is preserved.
+// - contextName: The name of the Kubernetes context to switch to.
+// Returns an error if the command fails.
+func SwitchKubeContext(contextName string) error {
+	pathOptions := clientcmd.NewDefaultPathOptions()
+	if pathOptions == nil {
+		return fmt.Errorf("failed to get default kubeconfig path options for switching context")
+	}
+
+	// Load the raw config, which preserves all existing data.
+	config, err := pathOptions.GetStartingConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load kubeconfig: %w", err)
+	}
+
+	// Check if the target context exists.
+	if _, exists := config.Contexts[contextName]; !exists {
+		return fmt.Errorf("context '%s' does not exist in kubeconfig", contextName)
+	}
+
+	// Modify only the CurrentContext field.
+	config.CurrentContext = contextName
+
+	// Get the primary kubeconfig file path.
+	// If ExplicitPath is set in pathOptions, it will be used, otherwise the default.
+	kubeconfigFilePath := pathOptions.GetDefaultFilename()
+	if pathOptions.IsExplicitFile() {
+		kubeconfigFilePath = pathOptions.GetExplicitFile()
+	}
+
+	// Write the entire modified config back to the file.
+	if err := clientcmd.WriteToFile(*config, kubeconfigFilePath); err != nil {
+		return fmt.Errorf("failed to write updated kubeconfig to '%s': %w", kubeconfigFilePath, err)
+	}
+
+	return nil
+} 

@@ -1,6 +1,7 @@
 package view
 
 import (
+	"envctl/internal/color"
 	"envctl/internal/tui/model"
 	"fmt"
 	"strings"
@@ -26,7 +27,7 @@ func renderHeader(m *model.Model, contentWidth int) string {
 		if m.IsLoading {
 			title = m.Spinner.View() + " " + title
 		}
-		return headerStyle.Copy().Width(contentWidth).Render(title)
+		return color.HeaderStyle.Copy().Width(contentWidth).Render(title)
 	}
 	title := "envctl TUI - Press h for Help | Tab to Navigate | q to Quit"
 	if m.IsLoading {
@@ -35,9 +36,9 @@ func renderHeader(m *model.Model, contentWidth int) string {
 	if m.DebugMode {
 		title += fmt.Sprintf(" | Mode: %s | Toggle Dark: D | Debug: z", m.ColorMode)
 	}
-	frame := headerStyle.GetHorizontalFrameSize()
+	frame := color.HeaderStyle.GetHorizontalFrameSize()
 	if contentWidth <= frame {
 		return "envctl TUI"
 	}
-	return headerStyle.Copy().Width(contentWidth - frame).Render(title)
+	return color.HeaderStyle.Copy().Width(contentWidth - frame).Render(title)
 }

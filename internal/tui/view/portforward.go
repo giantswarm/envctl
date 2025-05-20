@@ -1,6 +1,7 @@
 package view
 
 import (
+	"envctl/internal/color"
 	"envctl/internal/tui/model"
 	"fmt"
 	"strings"
@@ -16,20 +17,20 @@ func renderPortForwardPanel(pf *model.PortForwardProcess, m *model.Model, target
 
 	switch {
 	case pf.Err != nil || strings.HasPrefix(statusToCheck, "failed") || strings.HasPrefix(statusToCheck, "error") || strings.HasPrefix(statusToCheck, "restart failed"):
-		baseStyleForPanel = panelStatusErrorStyle
-		focusedBaseStyleForPanel = focusedPanelStatusErrorStyle
+		baseStyleForPanel = color.PanelStatusErrorStyle
+		focusedBaseStyleForPanel = color.FocusedPanelStatusErrorStyle
 	case pf.Running && pf.Err == nil:
-		baseStyleForPanel = panelStatusRunningStyle
-		focusedBaseStyleForPanel = focusedPanelStatusRunningStyle
+		baseStyleForPanel = color.PanelStatusRunningStyle
+		focusedBaseStyleForPanel = color.FocusedPanelStatusRunningStyle
 	case strings.HasPrefix(statusToCheck, "running (pid:"):
-		baseStyleForPanel = panelStatusAttemptingStyle
-		focusedBaseStyleForPanel = focusedPanelStatusAttemptingStyle
+		baseStyleForPanel = color.PanelStatusAttemptingStyle
+		focusedBaseStyleForPanel = color.FocusedPanelStatusAttemptingStyle
 	case strings.HasPrefix(statusToCheck, "exited") || strings.HasPrefix(statusToCheck, "killed"):
-		baseStyleForPanel = panelStatusExitedStyle
-		focusedBaseStyleForPanel = focusedPanelStatusExitedStyle
+		baseStyleForPanel = color.PanelStatusExitedStyle
+		focusedBaseStyleForPanel = color.FocusedPanelStatusExitedStyle
 	default:
-		baseStyleForPanel = panelStatusInitializingStyle
-		focusedBaseStyleForPanel = focusedPanelStatusInitializingStyle
+		baseStyleForPanel = color.PanelStatusInitializingStyle
+		focusedBaseStyleForPanel = color.FocusedPanelStatusInitializingStyle
 	}
 
 	finalPanelStyle := baseStyleForPanel
@@ -40,19 +41,19 @@ func renderPortForwardPanel(pf *model.PortForwardProcess, m *model.Model, target
 	var contentFg lipgloss.Style
 	switch {
 	case pf.Err != nil || strings.HasPrefix(statusToCheck, "failed") || strings.HasPrefix(statusToCheck, "error") || strings.HasPrefix(statusToCheck, "restart failed"):
-		contentFg = statusMsgErrorStyle
+		contentFg = color.StatusMsgErrorStyle
 	case pf.Running && pf.Err == nil:
-		contentFg = statusMsgRunningStyle
+		contentFg = color.StatusMsgRunningStyle
 	case strings.HasPrefix(statusToCheck, "exited") || strings.HasPrefix(statusToCheck, "killed"):
-		contentFg = statusMsgExitedStyle
+		contentFg = color.StatusMsgExitedStyle
 	default:
-		contentFg = statusMsgInitializingStyle
+		contentFg = color.StatusMsgInitializingStyle
 	}
 
 	finalPanelStyle = finalPanelStyle.Copy().Foreground(contentFg.GetForeground())
 
 	var b strings.Builder
-	b.WriteString(portTitleStyle.Render(SafeIcon(IconLink) + pf.Label))
+	b.WriteString(color.PortTitleStyle.Render(SafeIcon(IconLink) + pf.Label))
 	b.WriteString("\n")
 	b.WriteString(fmt.Sprintf("Port: %s:%s", pf.Config.LocalPort, pf.Config.RemotePort))
 	b.WriteString("\n")
@@ -97,16 +98,16 @@ func renderPortForwardingRow(m *model.Model, contentWidth int, maxRowHeight int)
 		if i < len(keys) {
 			pf := m.PortForwards[keys[i]]
 			if pf == nil {
-				style = panelStyle
+				style = color.PanelStyle
 			} else if pf.Err != nil || strings.HasPrefix(strings.ToLower(pf.StatusMsg), "failed") {
-				style = panelStatusErrorStyle
+				style = color.PanelStatusErrorStyle
 			} else if pf.Running && pf.Err == nil {
-				style = panelStatusRunningStyle
+				style = color.PanelStatusRunningStyle
 			} else {
-				style = panelStatusInitializingStyle
+				style = color.PanelStatusInitializingStyle
 			}
 		} else {
-			style = panelStyle
+			style = color.PanelStyle
 		}
 		totalBorder += style.GetHorizontalFrameSize()
 	}
@@ -130,17 +131,17 @@ func renderPortForwardingRow(m *model.Model, contentWidth int, maxRowHeight int)
 			pf := m.PortForwards[keys[i]]
 			var bs lipgloss.Style
 			if pf.Err != nil || strings.HasPrefix(strings.ToLower(pf.StatusMsg), "failed") {
-				bs = panelStatusErrorStyle
+				bs = color.PanelStatusErrorStyle
 			} else if pf.Running && pf.Err == nil {
-				bs = panelStatusRunningStyle
+				bs = color.PanelStatusRunningStyle
 			} else {
-				bs = panelStatusInitializingStyle
+				bs = color.PanelStatusInitializingStyle
 			}
 			borderSize = bs.GetHorizontalFrameSize()
 			rendered = renderPortForwardPanel(pf, m, inner+borderSize)
 		} else {
-			borderSize = panelStyle.GetHorizontalFrameSize()
-			rendered = panelStyle.Copy().Width(inner).Render("")
+			borderSize = color.PanelStyle.GetHorizontalFrameSize()
+			rendered = color.PanelStyle.Copy().Width(inner).Render("")
 		}
 		cells[i] = rendered
 	}

@@ -1,6 +1,7 @@
 package view
 
 import (
+	"envctl/internal/color"
 	"envctl/internal/mcpserver"
 	"envctl/internal/tui/model"
 	"fmt"
@@ -24,18 +25,18 @@ func renderMcpProxyPanel(serverName string, predefinedData mcpserver.PredefinedM
 		st := strings.ToLower(statusMsg)
 		switch {
 		case proc.Err != nil || strings.Contains(st, "error") || strings.Contains(st, "failed"):
-			baseStyle = panelStatusErrorStyle
-			contentFg = statusMsgErrorStyle
+			baseStyle = color.PanelStatusErrorStyle
+			contentFg = color.StatusMsgErrorStyle
 		case strings.Contains(st, "running"):
-			baseStyle = panelStatusRunningStyle
-			contentFg = statusMsgRunningStyle
+			baseStyle = color.PanelStatusRunningStyle
+			contentFg = color.StatusMsgRunningStyle
 		default:
-			baseStyle = panelStatusInitializingStyle
-			contentFg = statusMsgInitializingStyle
+			baseStyle = color.PanelStatusInitializingStyle
+			contentFg = color.StatusMsgInitializingStyle
 		}
 	} else {
-		baseStyle = panelStatusExitedStyle
-		contentFg = statusMsgExitedStyle
+		baseStyle = color.PanelStatusExitedStyle
+		contentFg = color.StatusMsgExitedStyle
 	}
 
 	final := baseStyle.Copy().Foreground(contentFg.GetForeground())
@@ -44,7 +45,7 @@ func renderMcpProxyPanel(serverName string, predefinedData mcpserver.PredefinedM
 	}
 
 	var b strings.Builder
-	b.WriteString(portTitleStyle.Render(SafeIcon(IconGear) + strings.TrimSpace(predefinedData.Name) + " MCP"))
+	b.WriteString(color.PortTitleStyle.Render(SafeIcon(IconGear) + strings.TrimSpace(predefinedData.Name) + " MCP"))
 	b.WriteString("\n")
 	b.WriteString(fmt.Sprintf("Port: %d (SSE)", predefinedData.ProxyPort))
 	b.WriteString("\n")
@@ -92,11 +93,11 @@ func renderMcpProxiesRow(m *model.Model, contentWidth int, maxRowHeight int) str
 		var s lipgloss.Style
 		switch {
 		case proc != nil && (proc.Err != nil || strings.Contains(st, "error") || strings.Contains(st, "failed")):
-			s = panelStatusErrorStyle
+			s = color.PanelStatusErrorStyle
 		case proc != nil && strings.Contains(st, "running"):
-			s = panelStatusRunningStyle
+			s = color.PanelStatusRunningStyle
 		default:
-			s = panelStatusInitializingStyle
+			s = color.PanelStatusInitializingStyle
 		}
 		styles[i] = s
 		if i < cols {
@@ -137,7 +138,7 @@ func renderMcpProxiesRow(m *model.Model, contentWidth int, maxRowHeight int) str
 		if i < remainder {
 			w++
 		}
-		cells = append(cells, panelStyle.Copy().Width(w).Render(""))
+		cells = append(cells, color.PanelStyle.Copy().Width(w).Render(""))
 	}
 
 	row := lipgloss.JoinHorizontal(lipgloss.Top, cells...)

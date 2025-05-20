@@ -1,19 +1,19 @@
 package cmd
 
 import (
-	// "bufio" // No longer needed here for MCP server logs
-	"envctl/internal/mcpserver" // Changed from tui to mcpserver
+	"envctl/internal/color"
+	"envctl/internal/kube"
+	"envctl/internal/mcpserver"
 	"envctl/internal/tui/controller"
 	"envctl/internal/utils"
 	"fmt"
-	"os" // Though not directly used for MCP, utils.StartPortForwardClientGo might need it, or other parts.
+	"os"
 	"os/signal"
-	"strings" // Needed for consoleMcpUpdateFn
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 )
 
@@ -65,18 +65,24 @@ Arguments:
 
 		fmt.Println("--- Kubernetes Login ---")
 
-		mcLoginStdout, mcLoginStderr, err := utils.LoginToKubeCluster(managementClusterArg)
-		if mcLoginStdout != "" {
-			fmt.Print(mcLoginStdout)
-		}
-		if mcLoginStderr != "" {
-			fmt.Fprint(os.Stderr, mcLoginStderr)
-		}
-		if err != nil {
-			return fmt.Errorf("failed to log into management cluster '%s': %w", managementClusterArg, err)
+		// Login to Management Cluster if specified
+		if managementClusterArg != "" {
+			fmt.Printf("Attempting to login to Management Cluster: %s\n", managementClusterArg)
+			mcLoginStdout, mcLoginStderr, err := utils.LoginToKubeCluster(managementClusterArg)
+			if mcLoginStdout != "" {
+				fmt.Print(mcLoginStdout)
+			}
+			if mcLoginStderr != "" {
+				fmt.Fprint(os.Stderr, mcLoginStderr)
+			}
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to log into management cluster '%s': %v\n", managementClusterArg, err)
+			}
 		}
 
+		// Login to Workload Cluster if specified
 		if fullWorkloadClusterIdentifier != "" {
+			fmt.Printf("Attempting to login to Workload Cluster: %s\n", fullWorkloadClusterIdentifier)
 			wcLoginStdout, wcLoginStderr, wcErr := utils.LoginToKubeCluster(fullWorkloadClusterIdentifier)
 			if wcLoginStdout != "" {
 				fmt.Print(wcLoginStdout)
@@ -85,11 +91,11 @@ Arguments:
 				fmt.Fprint(os.Stderr, wcLoginStderr)
 			}
 			if wcErr != nil {
-				return fmt.Errorf("failed to log into workload cluster '%s' (short name '%s'): %w", fullWorkloadClusterIdentifier, shortWorkloadClusterArg, wcErr)
+				fmt.Fprintf(os.Stderr, "Warning: tsh kube login for %s failed: %v. Stderr: %s\n", fullWorkloadClusterIdentifier, wcErr, wcLoginStderr)
 			}
 		}
 
-		currentKubeContextAfterLogin, ctxErr := utils.GetCurrentKubeContext()
+		currentKubeContextAfterLogin, ctxErr := kube.GetCurrentKubeContext()
 		if ctxErr != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to get current Kubernetes context after login: %v\n", ctxErr)
 			currentKubeContextAfterLogin = ""
@@ -138,7 +144,7 @@ Arguments:
 						}
 
 						portSpec := fmt.Sprintf("%s:%s", config.localPort, config.remotePort)
-						individualStopChan, initialStatus, initialErr := utils.StartPortForwardClientGo(
+						individualStopChan, initialStatus, initialErr := kube.StartPortForwardClientGo(
 							config.kubeContext,
 							config.namespace,
 							config.service,
@@ -251,7 +257,9 @@ Arguments:
 		} else {
 			fmt.Println("Setup complete. Starting TUI...")
 
-			_ = lipgloss.HasDarkBackground()
+			// Initialize color profile for TUI (force dark mode for now)
+			color.Initialize(true)
+			// _ = lipgloss.HasDarkBackground() // Old no-op call, replaced by Initialize
 
 			p := controller.NewProgram(managementClusterArg, shortWorkloadClusterArg, currentKubeContextAfterLogin, tuiDebugMode)
 			if _, err := p.Run(); err != nil {

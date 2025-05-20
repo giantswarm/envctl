@@ -5,12 +5,15 @@ import (
 	"envctl/internal/tui/model"
 	"envctl/internal/tui/view"
 	"envctl/internal/utils"
+	"fmt"
 	"strings"
 	"time"
 
 	"github.com/atotto/clipboard"
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // handleKeyMsgGlobal processes global key presses when not in a specific input mode.
@@ -70,6 +73,43 @@ func handleKeyMsgGlobal(m *model.Model, keyMsg tea.KeyMsg, existingCmds []tea.Cm
 
 	if m.CurrentAppMode == model.ModeHelpOverlay {
 		return m, nil // Help overlay handled elsewhere
+	}
+
+	// --- Check against m.Keys for bubbletea/keys standard handling ---
+	switch {
+	case key.Matches(keyMsg, m.Keys.Help):
+		if m.CurrentAppMode == model.ModeHelpOverlay {
+			m.CurrentAppMode = model.ModeMainDashboard
+		} else {
+			m.CurrentAppMode = model.ModeHelpOverlay
+		}
+		return m, nil
+	case key.Matches(keyMsg, m.Keys.ToggleDark):
+		// This should ideally call a service or the color package to toggle
+		// and then lipgloss will re-render. For now, direct manipulation for simplicity.
+		currentIsDark := lipgloss.HasDarkBackground()
+		lipgloss.SetHasDarkBackground(!currentIsDark)
+		// Update ColorMode string in model for display purposes
+		colorProfile := lipgloss.ColorProfile().String()
+		m.ColorMode = fmt.Sprintf("%s (Dark: %v)", colorProfile, !currentIsDark)
+		return m, nil
+	case key.Matches(keyMsg, m.Keys.ToggleDebug):
+		m.DebugMode = !m.DebugMode
+		return m, nil
+	case key.Matches(keyMsg, m.Keys.ToggleLog):
+		if m.CurrentAppMode == model.ModeLogOverlay {
+			m.CurrentAppMode = model.ModeMainDashboard
+		} else {
+			m.CurrentAppMode = model.ModeLogOverlay
+		}
+		return m, nil // tea.Batch(cmds...) if LogViewport.GotoBottom() cmd is added
+	case key.Matches(keyMsg, m.Keys.ToggleMcpConfig):
+		if m.CurrentAppMode == model.ModeMcpConfigOverlay {
+			m.CurrentAppMode = model.ModeMainDashboard
+		} else {
+			m.CurrentAppMode = model.ModeMcpConfigOverlay
+		}
+		return m, nil
 	}
 
 	// --- Normal global shortcuts -------------------------------------------

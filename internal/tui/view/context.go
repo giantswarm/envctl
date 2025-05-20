@@ -1,6 +1,7 @@
 package view
 
 import (
+	"envctl/internal/color"
 	"envctl/internal/tui/model"
 	"envctl/internal/utils"
 	"fmt"
@@ -36,35 +37,35 @@ func renderMcPane(m *model.Model, paneWidth int) string {
 
 	if m.MCHealth.IsLoading {
 		healthStatusText = RenderIconWithMessage(IconHourglass, "Nodes: Loading...")
-		healthStyle = healthLoadingStyle
+		healthStyle = color.HealthLoadingStyle
 	} else if m.MCHealth.StatusError != nil {
 		// Ensure m.MCHealth.LastUpdated is accessible and exported from model.ClusterHealthInfo
 		healthStatusText = RenderIconWithMessage(IconCross, fmt.Sprintf("Nodes: Error (%s)", m.MCHealth.LastUpdated.Format("15:04:05")))
-		healthStyle = healthErrorStyle
+		healthStyle = color.HealthErrorStyle
 	} else {
 		healthIcon := IconCheck
 		if m.MCHealth.ReadyNodes < m.MCHealth.TotalNodes {
 			healthIcon = IconWarning
 			healthStatusText = RenderIconWithNodes(healthIcon, m.MCHealth.ReadyNodes, m.MCHealth.TotalNodes, "[WARN]")
-			healthStyle = healthWarnStyle
+			healthStyle = color.HealthWarnStyle
 		} else {
 			healthStatusText = RenderIconWithNodes(healthIcon, m.MCHealth.ReadyNodes, m.MCHealth.TotalNodes, "")
-			healthStyle = healthGoodStyle
+			healthStyle = color.HealthGoodStyle
 		}
 	}
 
 	renderedHealthText := healthStyle.Render(healthStatusText)
 	mcPaneContent += "\n" + renderedHealthText
 
-	mcPaneStyleToUse := contextPaneStyle
+	mcPaneStyleToUse := color.ContextPaneStyle
 	if isMcActive {
-		mcPaneStyleToUse = activeContextPaneStyle
+		mcPaneStyleToUse = color.ActiveContextPaneStyle
 	}
 	if m.FocusedPanelKey == model.McPaneFocusKey { // Use model.McPaneFocusKey
 		if isMcActive {
-			mcPaneStyleToUse = focusedAndActiveContextPaneStyle
+			mcPaneStyleToUse = color.FocusedAndActiveContextPaneStyle
 		} else {
-			mcPaneStyleToUse = focusedContextPaneStyle
+			mcPaneStyleToUse = color.FocusedContextPaneStyle
 		}
 	}
 	return mcPaneStyleToUse.Copy().Width(paneWidth - mcPaneStyleToUse.GetHorizontalFrameSize()).Render(mcPaneContent)
@@ -98,34 +99,34 @@ func renderWcPane(m *model.Model, paneWidth int) string {
 
 	if m.WCHealth.IsLoading {
 		healthStatusText = RenderIconWithMessage(IconHourglass, "Nodes: Loading...")
-		healthStyle = healthLoadingStyle
+		healthStyle = color.HealthLoadingStyle
 	} else if m.WCHealth.StatusError != nil {
 		healthStatusText = RenderIconWithMessage(IconCross, "Nodes: Error")
-		healthStyle = healthErrorStyle
+		healthStyle = color.HealthErrorStyle
 	} else {
 		healthIcon := IconCheck
 		if m.WCHealth.ReadyNodes < m.WCHealth.TotalNodes {
 			healthIcon = IconWarning
 			healthStatusText = RenderIconWithNodes(healthIcon, m.WCHealth.ReadyNodes, m.WCHealth.TotalNodes, "[WARN]")
-			healthStyle = healthWarnStyle
+			healthStyle = color.HealthWarnStyle
 		} else {
 			healthStatusText = RenderIconWithNodes(healthIcon, m.WCHealth.ReadyNodes, m.WCHealth.TotalNodes, "")
-			healthStyle = healthGoodStyle
+			healthStyle = color.HealthGoodStyle
 		}
 	}
 
 	renderedHealthText := healthStyle.Render(healthStatusText)
 	wcPaneContent += "\n" + renderedHealthText
 
-	wcPaneStyleToRender := contextPaneStyle
+	wcPaneStyleToRender := color.ContextPaneStyle
 	if isWcActive {
-		wcPaneStyleToRender = activeContextPaneStyle
+		wcPaneStyleToRender = color.ActiveContextPaneStyle
 	}
 	if m.FocusedPanelKey == model.WcPaneFocusKey { // Use model.WcPaneFocusKey
 		if isWcActive {
-			wcPaneStyleToRender = focusedAndActiveContextPaneStyle
+			wcPaneStyleToRender = color.FocusedAndActiveContextPaneStyle
 		} else {
-			wcPaneStyleToRender = focusedContextPaneStyle
+			wcPaneStyleToRender = color.FocusedContextPaneStyle
 		}
 	}
 	return wcPaneStyleToRender.Copy().Width(paneWidth - wcPaneStyleToRender.GetHorizontalFrameSize()).Render(wcPaneContent)
@@ -135,8 +136,8 @@ func renderWcPane(m *model.Model, paneWidth int) string {
 func renderContextPanesRow(m *model.Model, contentWidth int, maxRowHeight int) string {
 	var rowView string
 	if m.WorkloadClusterName != "" {
-		mcBorder := contextPaneStyle.GetHorizontalFrameSize()
-		wcBorder := contextPaneStyle.GetHorizontalFrameSize()
+		mcBorder := color.ContextPaneStyle.GetHorizontalFrameSize()
+		wcBorder := color.ContextPaneStyle.GetHorizontalFrameSize()
 		innerWidth := contentWidth - mcBorder - wcBorder
 		mcInner := innerWidth / 2
 		wcInner := innerWidth - mcInner

@@ -2,6 +2,7 @@ package view
 
 import (
 	"encoding/json"
+	"envctl/internal/color"
 	"envctl/internal/mcpserver"
 	"envctl/internal/tui/model"
 	"fmt"
@@ -13,12 +14,12 @@ import (
 
 // renderLogOverlay (moved from view_helpers.go)
 func renderLogOverlay(m *model.Model, width, height int) string {
-	title := logPanelTitleStyle.Render(SafeIcon(IconScroll) + " Activity Log  (↑/↓ scroll  •  y copy  •  Esc close)")
+	title := color.LogPanelTitleStyle.Render(SafeIcon(IconScroll) + " Activity Log  (↑/↓ scroll  •  y copy  •  Esc close)")
 	viewportView := m.LogViewport.View()
 	content := lipgloss.JoinVertical(lipgloss.Left, title, viewportView)
-	return logOverlayStyle.Copy().
-		Width(width - logOverlayStyle.GetHorizontalFrameSize()).
-		Height(height - logOverlayStyle.GetVerticalFrameSize()).
+	return color.LogOverlayStyle.Copy().
+		Width(width - color.LogOverlayStyle.GetHorizontalFrameSize()).
+		Height(height - color.LogOverlayStyle.GetVerticalFrameSize()).
 		Render(content)
 }
 
@@ -28,17 +29,17 @@ func renderCombinedLogPanel(m *model.Model, availableWidth int, logSectionHeight
 		return ""
 	}
 
-	border := panelStatusDefaultStyle.GetHorizontalFrameSize()
+	border := color.PanelStatusDefaultStyle.GetHorizontalFrameSize()
 	innerWidth := availableWidth - border
 	if innerWidth < 0 {
 		innerWidth = 0
 	}
 
-	titleView := logPanelTitleStyle.Render(SafeIcon(IconScroll) + "Combined Activity Log")
+	titleView := color.LogPanelTitleStyle.Render(SafeIcon(IconScroll) + "Combined Activity Log")
 	viewportView := m.MainLogViewport.View()
 	panelContent := lipgloss.JoinVertical(lipgloss.Left, titleView, viewportView)
 
-	base := panelStatusDefaultStyle.Copy().
+	base := color.PanelStatusDefaultStyle.Copy().
 		Width(innerWidth).
 		MaxHeight(0).
 		BorderForeground(lipgloss.AdaptiveColor{Light: "#606060", Dark: "#A0A0A0"}).
@@ -76,25 +77,25 @@ func prepareLogContent(lines []string, maxWidth int) string {
 func styleLogLine(l string) string {
 	switch {
 	case strings.Contains(l, "[SYSTEM ERROR]") || strings.Contains(l, "[ERROR]"):
-		return logErrorStyle.Render(l)
+		return color.LogErrorStyle.Render(l)
 	case strings.Contains(l, "[SYSTEM WARNING]") || strings.Contains(l, "[WARN]"):
-		return logWarnStyle.Render(l)
+		return color.LogWarnStyle.Render(l)
 	case strings.Contains(l, "[DEBUG]"):
-		return logDebugStyle.Render(l)
+		return color.LogDebugStyle.Render(l)
 	case strings.Contains(l, "[HEALTH"):
 		// Further classify health lines
 		switch {
 		case strings.Contains(l, "Error"):
-			return logHealthErrStyle.Render(l)
+			return color.LogHealthErrStyle.Render(l)
 		case strings.Contains(l, "Nodes"):
-			return logHealthGoodStyle.Render(l)
+			return color.LogHealthGoodStyle.Render(l)
 		default:
-			return logHealthWarnStyle.Render(l)
+			return color.LogHealthWarnStyle.Render(l)
 		}
 	case strings.Contains(l, "[INFO]"):
-		return logInfoStyle.Render(l)
+		return color.LogInfoStyle.Render(l)
 	default:
-		return logInfoStyle.Render(l)
+		return color.LogInfoStyle.Render(l)
 	}
 }
 
@@ -126,11 +127,11 @@ func GenerateMcpConfigJson() string {
 }
 
 func renderMcpConfigOverlay(m *model.Model, width, height int) string {
-	title := logPanelTitleStyle.Render(SafeIcon(IconGear) + " MCP Configuration  (↑/↓ scroll  •  y copy  •  Esc close)")
+	title := color.LogPanelTitleStyle.Render(SafeIcon(IconGear) + " MCP Configuration  (↑/↓ scroll  •  y copy  •  Esc close)")
 	viewportView := m.McpConfigViewport.View()
 	content := lipgloss.JoinVertical(lipgloss.Left, title, viewportView)
-	return mcpConfigOverlayStyle.Copy().
-		Width(width - mcpConfigOverlayStyle.GetHorizontalFrameSize()).
-		Height(height - mcpConfigOverlayStyle.GetVerticalFrameSize()).
+	return color.McpConfigOverlayStyle.Copy().
+		Width(width - color.McpConfigOverlayStyle.GetHorizontalFrameSize()).
+		Height(height - color.McpConfigOverlayStyle.GetVerticalFrameSize()).
 		Render(content)
 }
