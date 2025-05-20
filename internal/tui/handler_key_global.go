@@ -5,6 +5,8 @@ import (
 	"strings"
 	"time"
 
+	"envctl/internal/utils"
+
 	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -50,7 +52,7 @@ func handleKeyMsgGlobal(m model, keyMsg tea.KeyMsg, existingCmds []tea.Cmd) (mod
             m.currentAppMode = ModeMainDashboard
             return m, nil
         case "y":
-            if err := clipboard.WriteAll(strings.Join(m.combinedOutput, "\n")); err != nil {
+            if err := clipboard.WriteAll(strings.Join(m.activityLog, "\n")); err != nil {
                 m.LogError("Failed to copy logs: %v", err)
                 return m, m.setStatusMessage("Copy logs failed", StatusBarError, 3*time.Second)
             }
@@ -138,18 +140,16 @@ func handleKeyMsgGlobal(m model, keyMsg tea.KeyMsg, existingCmds []tea.Cmd) (mod
         }
 
     case "s": // Context switch
-        var identifier, pane string
-        if m.focusedPanelKey == mcPaneFocusKey && m.managementCluster != "" {
-            identifier, pane = m.getManagementClusterContextIdentifier(), "MC"
-        } else if m.focusedPanelKey == wcPaneFocusKey && m.workloadCluster != "" {
-            identifier, pane = m.getWorkloadClusterContextIdentifier(), "WC"
-        }
-        if identifier != "" {
-            target := "teleport.giantswarm.io-" + identifier
-            m.LogInfo("Attempting to switch Kubernetes context to: %s (Pane: %s)", target, pane)
+        if m.focusedPanelKey == mcPaneFocusKey && m.managementClusterName != "" {
+            target := utils.BuildMcContext(m.managementClusterName)
+            m.LogInfo("Attempting to switch Kubernetes context to: %s (Pane: MC, Target: %s)", target, m.managementClusterName)
+            cmds = append(cmds, performSwitchKubeContextCmd(target)) 
+        } else if m.focusedPanelKey == wcPaneFocusKey && m.workloadClusterName != "" && m.managementClusterName != "" {
+            target := utils.BuildWcContext(m.managementClusterName, m.workloadClusterName)
+            m.LogInfo("Attempting to switch Kubernetes context to: %s (Pane: WC, Target: %s-%s)", target, m.managementClusterName, m.workloadClusterName)
             cmds = append(cmds, performSwitchKubeContextCmd(target))
         } else {
-            m.LogWarn("Cannot switch context: Focus a valid MC/WC pane with a defined cluster name.")
+            m.LogWarn("Cannot switch context: Focus a valid MC/WC pane with defined cluster names or ensure clusters are set via (n)ew connection.")
         }
     }
 

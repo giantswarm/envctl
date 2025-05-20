@@ -17,74 +17,72 @@ import (
 )
 
 // fetchNodeStatusCmd creates a tea.Cmd to asynchronously fetch the node status.
-// - clusterIdentifier: The canonical cluster identifier part of the context name (e.g., "myinstallation" for MC, "myinstallation-myworkloadcluster" for WC).
+// - fullTargetContextName: The fully constructed Kubernetes context name to use for the API call.
 // - isMC: Boolean indicating if the status is for a Management Cluster.
 // - originalClusterShortName: The original short name of the cluster (e.g., "myinstallation" or "myworkloadcluster"), used for tagging the result message.
 // Returns a tea.Cmd that, when run, will call utils.GetNodeStatusClientGo and send a nodeStatusMsg.
-func fetchNodeStatusCmd(clusterIdentifier string, isMC bool, originalClusterShortName string) tea.Cmd {
+func fetchNodeStatusCmd(fullTargetContextName string, isMC bool, originalClusterShortName string) tea.Cmd {
 	return func() tea.Msg {
-		// Recover from any panic to prevent silent failures that leave UI stuck in Loading state.
+		var debugStr strings.Builder
+		debugStr.WriteString(fmt.Sprintf("[fetchNodeStatusCmd] GOROUTINE STARTED for %s (isMC: %v, targetCtx: %s)\n", originalClusterShortName, isMC, fullTargetContextName))
+
 		defer func() {
 			if r := recover(); r != nil {
-				debugStr := fmt.Sprintf("PANIC occurred while fetching status for '%s': %v", clusterIdentifier, r)
-				tea.Println("[DEBUG] ", debugStr)
+				panicDebugInfo := fmt.Sprintf("PANIC in fetchNodeStatusCmd for '%s' (target ctx '%s'): %v\n", originalClusterShortName, fullTargetContextName, r)
+				// Directly print to terminal if panic occurs, as returning the message might fail.
+				fmt.Printf("[TERMINAL_DEBUG] [fetchNodeStatusCmd] %s", panicDebugInfo)
+				debugStr.WriteString("CRITICAL_PANIC: " + panicDebugInfo)
+				// Attempt to return an error message if panic happens. This is best-effort.
+				// This return might not happen if panic propagation is too severe.
+				// return nodeStatusMsg{clusterShortName: originalClusterShortName, forMC: isMC, err: fmt.Errorf("panic: %v", r), debugInfo: debugStr.String()} // Commented out to see if fmt.Printf alone works for panic visibility
 			}
 		}()
-
-		if clusterIdentifier == "" {
-			return nodeStatusMsg{clusterShortName: originalClusterShortName, forMC: isMC, err: fmt.Errorf("cluster identifier for health check is empty")}
+		
+		if originalClusterShortName == "" { 
+			debugStr.WriteString(fmt.Sprintf("Health check failed: Empty originalClusterShortName (isMC: %v, targetCtx: %s)\n", isMC, fullTargetContextName))
+			return nodeStatusMsg{clusterShortName: originalClusterShortName, forMC: isMC, err: fmt.Errorf("originalClusterShortName for health check is empty"), debugInfo: debugStr.String()}
 		}
 
-		// clusterIdentifier is already the correct part, e.g., "myinstallation" or "myinstallation-myworkloadcluster".
-		// We just need to prepend the teleport prefix if it's not already a full context name (though it shouldn't be).
-		fullContextName := clusterIdentifier
-		if !strings.HasPrefix(clusterIdentifier, "teleport.giantswarm.io-") {
-			fullContextName = "teleport.giantswarm.io-" + clusterIdentifier
-		} else {
-			// If it somehow already has the prefix, ensure it doesn't get double prefixed by a mistake upstream.
-			// However, the expectation is clusterIdentifier is just the cluster part.
+		if strings.TrimSpace(fullTargetContextName) == "" {
+			debugStr.WriteString(fmt.Sprintf("Health check failed: Empty fullTargetContextName for %s (isMC: %v)\n", originalClusterShortName, isMC))
+			return nodeStatusMsg{clusterShortName: originalClusterShortName, forMC: isMC, err: fmt.Errorf("fullTargetContextName for health check is empty"), debugInfo: debugStr.String()}
 		}
 
-		// Ensure fullContextName is not just the prefix if clusterIdentifier was somehow empty and skipped previous checks.
-		if fullContextName == "teleport.giantswarm.io-" && clusterIdentifier == "" { // defensive check
-			return nodeStatusMsg{clusterShortName: originalClusterShortName, forMC: isMC, err: fmt.Errorf("malformed full context name (prefix only from empty identifier)")}
-		}
-
-		// Fallback: if the generated context does not exist in the kubeconfig, use the current context instead.
-		// This prevents immediate health-check failures after the user switched to a freshly created context
-		// that may not yet exist in the kubeconfig (e.g. contexts created by `tsh kube login`).
 		{
 			loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
 			cfg, err := loadingRules.Load()
-			if err == nil {
-				if _, ok := cfg.Contexts[fullContextName]; !ok {
-					// Context missing – fall back to the currently active context so that at least
-					// the health check runs against *some* cluster instead of failing immediately.
-					// This mirrors the behaviour users expect after a successful context switch.
-					fullContextName = cfg.CurrentContext
-				}
+			if err != nil {
+				ds := fmt.Sprintf("Health check for %s (target ctx %s): Failed to load kubeconfig: %v\n", originalClusterShortName, fullTargetContextName, err)
+				debugStr.WriteString("Kubeconfig load error: " + ds) 
+				return nodeStatusMsg{clusterShortName: originalClusterShortName, forMC: isMC, err: fmt.Errorf("kubeconfig error: %w", err), debugInfo: debugStr.String()}
+			}
+			debugStr.WriteString(fmt.Sprintf("Checking health for cluster %s (isMC: %v)\n", originalClusterShortName, isMC))
+			debugStr.WriteString(fmt.Sprintf("Target context: %s (will use this context explicitly)\n", fullTargetContextName))
+			debugStr.WriteString(fmt.Sprintf("Actual current context in kubeconfig: %s (will NOT use this for health check)\n", cfg.CurrentContext))
+			debugStr.WriteString("Available contexts in kubeconfig:\n")
+			for ctxName := range cfg.Contexts { 
+				debugStr.WriteString(fmt.Sprintf("- %s\n", ctxName))
+			}
+			if _, ok := cfg.Contexts[fullTargetContextName]; !ok {
+				debugStr.WriteString(fmt.Sprintf("WARNING: Target context %s not found in kubeconfig. Health check may fail.\n", 
+					fullTargetContextName))
 			}
 		}
 
-		ready, total, err := utils.GetNodeStatusClientGo(fullContextName)
-		debugStr := fmt.Sprintf("fetchNodeStatusCmd: clusterIdentifier=%s fullContextName=%s ready=%d total=%d err=%v", clusterIdentifier, fullContextName, ready, total, err)
+		debugStr.WriteString(fmt.Sprintf("\nAttempting to fetch node status for %s using context: %s\n", originalClusterShortName, fullTargetContextName))
+		ready, total, errGetStatus := utils.GetNodeStatusClientGo(fullTargetContextName) 
+		debugStr.WriteString(fmt.Sprintf("Node status result for %s: targetContext=%s, ready=%d, total=%d, err=%v\n", 
+			originalClusterShortName, fullTargetContextName, ready, total, errGetStatus))
 
-		// If the context is missing in kubeconfig despite earlier checks, retry with current context
-		if err != nil && strings.Contains(err.Error(), "does not exist in kubeconfig") {
-			// Attempt a single retry with the kubeconfig's current context
-			if cfg, cfgErr := clientcmd.NewDefaultClientConfigLoadingRules().Load(); cfgErr == nil {
-				if cfg.CurrentContext != "" && cfg.CurrentContext != fullContextName {
-					altReady, altTotal, altErr := utils.GetNodeStatusClientGo(cfg.CurrentContext)
-					// Only override the results if the retry succeeded
-					if altErr == nil {
-						ready, total, err = altReady, altTotal, nil
-						debugStr += fmt.Sprintf(" | RETRY currentContext=%s altReady=%d altTotal=%d", cfg.CurrentContext, altReady, altTotal)
-					}
-				}
-			}
+		if errGetStatus != nil && strings.Contains(errGetStatus.Error(), "does not exist in kubeconfig") {
+			debugStr.WriteString(fmt.Sprintf("Context %s (for cluster %s) does not exist in kubeconfig. This is expected if you haven't logged in to this cluster yet.\n", fullTargetContextName, originalClusterShortName))
+			debugStr.WriteString(fmt.Sprintf("Health check will continue to show 'loading' until a valid login to %s is completed.\n", originalClusterShortName))
 		}
 
-		return nodeStatusMsg{clusterShortName: originalClusterShortName, forMC: isMC, readyNodes: ready, totalNodes: total, err: err, debugInfo: debugStr}
+		debugStr.WriteString(fmt.Sprintf("[fetchNodeStatusCmd] FINISHING for %s. Error: %v\n", originalClusterShortName, errGetStatus))
+		finalDebugInfo := debugStr.String()
+
+		return nodeStatusMsg{clusterShortName: originalClusterShortName, forMC: isMC, readyNodes: ready, totalNodes: total, err: errGetStatus, debugInfo: finalDebugInfo}
 	}
 }
 
@@ -92,7 +90,6 @@ func fetchNodeStatusCmd(clusterIdentifier string, isMC bool, originalClusterShor
 // Returns a tea.Cmd that, when run, will call utils.GetCurrentKubeContext and send a kubeContextResultMsg.
 func getCurrentKubeContextCmd() tea.Cmd {
 	return func() tea.Msg {
-		// utils.GetCurrentKubeContext would eventually use client-go
 		currentCtx, err := utils.GetCurrentKubeContext()
 		return kubeContextResultMsg{context: currentCtx, err: err}
 	}
@@ -103,9 +100,18 @@ func getCurrentKubeContextCmd() tea.Cmd {
 // Returns a tea.Cmd that, when run, will call utils.SwitchKubeContext and send a kubeContextSwitchedMsg.
 func performSwitchKubeContextCmd(targetContextName string) tea.Cmd {
 	return func() tea.Msg {
-		// utils.SwitchKubeContext would eventually use client-go
+		oldCtx, _ := utils.GetCurrentKubeContext()
+		
 		err := utils.SwitchKubeContext(targetContextName)
-		return kubeContextSwitchedMsg{TargetContext: targetContextName, err: err}
+		
+		result := kubeContextSwitchedMsg{
+			TargetContext: targetContextName, 
+			err: err,
+			DebugInfo: fmt.Sprintf("Context switch: %s -> %s, Result: %v", 
+				oldCtx, targetContextName, err == nil),
+			// Removed ForDesiredMcShortName and ForDesiredWcShortName fields
+		}
+		return result
 	}
 }
 
@@ -140,12 +146,31 @@ func performKubeLoginCmd(clusterName string, isMC bool, desiredWcShortNameToCarr
 func performPostLoginOperationsCmd(targetKubeContext, desiredMc, desiredWc string) tea.Cmd {
 	return func() tea.Msg {
 		var diagnosticLog strings.Builder
+		
+		// Get initial context for better debug info
+		initialContext, initialErr := utils.GetCurrentKubeContext()
+		if initialErr != nil {
+			diagnosticLog.WriteString(fmt.Sprintf("Initial GetCurrentKubeContext error: %v\n", initialErr))
+		} else {
+			diagnosticLog.WriteString(fmt.Sprintf("Initial context before switch: %s\n", initialContext))
+		}
+		
 		diagnosticLog.WriteString(fmt.Sprintf("Attempting to switch context to: %s\n", targetKubeContext))
+		diagnosticLog.WriteString(fmt.Sprintf("Desired MC: %s, Desired WC: %s\n", desiredMc, desiredWc))
 
 		// utils.SwitchKubeContext would eventually use client-go
 		err := utils.SwitchKubeContext(targetKubeContext)
 		if err != nil {
 			diagnosticLog.WriteString(fmt.Sprintf("SwitchKubeContext error: %v\n", err))
+			// Try to get more diagnostic information about kubeconfig state
+			pathOptions := clientcmd.NewDefaultPathOptions()
+			if config, configErr := pathOptions.GetStartingConfig(); configErr == nil {
+				diagnosticLog.WriteString(fmt.Sprintf("Current context after failed switch: %s\n", config.CurrentContext))
+				if _, exists := config.Contexts[targetKubeContext]; !exists {
+					diagnosticLog.WriteString(fmt.Sprintf("Target context '%s' does not exist in kubeconfig\n", targetKubeContext))
+				}
+			}
+			
 			return contextSwitchAndReinitializeResultMsg{
 				err:           fmt.Errorf("failed to switch context to %s: %w", targetKubeContext, err),
 				desiredMcName: desiredMc,
@@ -177,7 +202,23 @@ func performPostLoginOperationsCmd(targetKubeContext, desiredMc, desiredWc strin
 		} else {
 			diagnosticLog.WriteString("Available Kubernetes contexts (from client-go):\n")
 			for contextName := range config.Contexts {
-				diagnosticLog.WriteString(fmt.Sprintf("- %s\n", contextName))
+				if contextName == actualCurrentContext {
+					diagnosticLog.WriteString(fmt.Sprintf("- %s (CURRENT)\n", contextName))
+				} else {
+					diagnosticLog.WriteString(fmt.Sprintf("- %s\n", contextName))
+				}
+			}
+			
+			// Add additional diagnostic info about expected contexts
+			mcContextName := utils.BuildMcContext(desiredMc)
+			diagnosticLog.WriteString(fmt.Sprintf("\nDiagnostic Information:\n"))
+			diagnosticLog.WriteString(fmt.Sprintf("- Expected MC context: %s (exists: %v)\n", 
+				mcContextName, config.Contexts[mcContextName] != nil))
+			
+			if desiredWc != "" {
+				wcContextName := utils.BuildWcContext(desiredMc, desiredWc)
+				diagnosticLog.WriteString(fmt.Sprintf("- Expected WC context: %s (exists: %v)\n", 
+					wcContextName, config.Contexts[wcContextName] != nil))
 			}
 		}
 

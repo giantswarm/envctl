@@ -24,12 +24,12 @@ func handleMcpServerSetupCompletedMsg(m model, msg mcpServerSetupCompletedMsg) (
     }
     m.mcpServers[msg.Label] = proc
 
-    // Append to combined output for diagnostics
-    logLine := fmt.Sprintf("[MCP %s] %s", msg.Label, msg.status)
+    // Log the MCP setup status
     if msg.err != nil {
-        logLine += fmt.Sprintf(" – error: %v", msg.err)
+        m.LogError("[MCP %s] %s – error: %v", msg.Label, msg.status, msg.err)
+    } else {
+        m.LogInfo("[MCP %s] %s", msg.Label, msg.status)
     }
-    m.appendLogLine(logLine)
 
     var status tea.Cmd
     if msg.err != nil {
@@ -65,7 +65,9 @@ func handleMcpServerStatusUpdateMsg(m model, msg mcpServerStatusUpdateMsg) (mode
         if len(proc.output) > maxPanelLogLines {
             proc.output = proc.output[len(proc.output)-maxPanelLogLines:]
         }
-        m.appendLogLine(fmt.Sprintf("[%s MCP] %s", msg.Label, msg.outputLog))
+        
+        // Log MCP output
+        m.LogInfo("[%s MCP] %s", msg.Label, msg.outputLog)
     }
     return m, nil
 }

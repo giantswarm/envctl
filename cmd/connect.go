@@ -55,19 +55,18 @@ Arguments:
   [workload-cluster-shortname]: (Optional) The *short* name of the workload cluster (e.g., "myworkloadcluster" for "myinstallation-myworkloadcluster", "customerprod" for "mycluster-customerprod").`,
 	Args: cobra.RangeArgs(1, 2), // Accepts 1 or 2 arguments
 	RunE: func(cmd *cobra.Command, args []string) error {
-		managementCluster := args[0]
-		shortWorkloadClusterName := ""
-		fullWorkloadClusterName := ""
+		managementClusterArg := args[0]
+		shortWorkloadClusterArg := ""
+		fullWorkloadClusterIdentifier := ""
 
 		if len(args) == 2 {
-			shortWorkloadClusterName = args[1]
-			fullWorkloadClusterName = managementCluster + "-" + shortWorkloadClusterName
+			shortWorkloadClusterArg = args[1]
+			fullWorkloadClusterIdentifier = managementClusterArg + "-" + shortWorkloadClusterArg
 		}
 
-		// --- Login Logic ---
 		fmt.Println("--- Kubernetes Login ---")
 
-		mcLoginStdout, mcLoginStderr, err := utils.LoginToKubeCluster(managementCluster)
+		mcLoginStdout, mcLoginStderr, err := utils.LoginToKubeCluster(managementClusterArg)
 		if mcLoginStdout != "" {
 			fmt.Print(mcLoginStdout)
 		}
@@ -75,13 +74,11 @@ Arguments:
 			fmt.Fprint(os.Stderr, mcLoginStderr)
 		}
 		if err != nil {
-			return fmt.Errorf("failed to log into management cluster '%s': %w", managementCluster, err)
+			return fmt.Errorf("failed to log into management cluster '%s': %w", managementClusterArg, err)
 		}
 
-		teleportContextToUse := "teleport.giantswarm.io-" + managementCluster
-
-		if fullWorkloadClusterName != "" {
-			wcLoginStdout, wcLoginStderr, wcErr := utils.LoginToKubeCluster(fullWorkloadClusterName)
+		if fullWorkloadClusterIdentifier != "" {
+			wcLoginStdout, wcLoginStderr, wcErr := utils.LoginToKubeCluster(fullWorkloadClusterIdentifier)
 			if wcLoginStdout != "" {
 				fmt.Print(wcLoginStdout)
 			}
@@ -89,18 +86,28 @@ Arguments:
 				fmt.Fprint(os.Stderr, wcLoginStderr)
 			}
 			if wcErr != nil {
-				return fmt.Errorf("failed to log into workload cluster '%s' (short name '%s'): %w", fullWorkloadClusterName, shortWorkloadClusterName, wcErr)
+				return fmt.Errorf("failed to log into workload cluster '%s' (short name '%s'): %w", fullWorkloadClusterIdentifier, shortWorkloadClusterArg, wcErr)
 			}
-			teleportContextToUse = "teleport.giantswarm.io-" + fullWorkloadClusterName
 		}
 
-		fmt.Printf("Current Kubernetes context set to: %s\n", teleportContextToUse)
+		currentKubeContextAfterLogin, ctxErr := utils.GetCurrentKubeContext()
+		if ctxErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to get current Kubernetes context after login: %v\n", ctxErr)
+			currentKubeContextAfterLogin = ""
+		}
+		fmt.Printf("Actual Kubernetes context after login: %s\n", currentKubeContextAfterLogin)
 		fmt.Println("--------------------------")
 
 		if noTUI {
 			fmt.Println("Skipping TUI. Setting up port forwarding and MCP proxies in the background...")
 
-			portForwardConfigs := getPortForwardConfigs(managementCluster, fullWorkloadClusterName, teleportContextToUse)
+			var targetCtxForAlloy string
+			if shortWorkloadClusterArg != "" {
+				targetCtxForAlloy = utils.BuildWcContext(managementClusterArg, shortWorkloadClusterArg)
+			} else {
+				targetCtxForAlloy = utils.BuildMcContext(managementClusterArg)
+			}
+			portForwardConfigs := getPortForwardConfigs(managementClusterArg, fullWorkloadClusterIdentifier, targetCtxForAlloy)
 
 			var wg sync.WaitGroup
 			allPortForwardsStopChan := make(chan struct{})
@@ -247,7 +254,7 @@ Arguments:
 
 			_ = lipgloss.HasDarkBackground()
 
-			initialModel := tui.InitialModel(managementCluster, fullWorkloadClusterName, teleportContextToUse, tuiDebugMode)
+			initialModel := tui.InitialModel(managementClusterArg, shortWorkloadClusterArg, currentKubeContextAfterLogin, tuiDebugMode)
 			p := tea.NewProgram(initialModel, tea.WithAltScreen(), tea.WithMouseAllMotion())
 			if _, err := p.Run(); err != nil {
 				fmt.Fprintf(os.Stderr, "Error running TUI: %v\n", err)
@@ -295,19 +302,17 @@ type portForwardConfig struct {
 	service     string
 }
 
-func getPortForwardConfigs(mcName, wcName, baseKubeContext string) []portForwardConfig {
+func getPortForwardConfigs(mcShortName, wcFullIdentifier string, alloyMetricsTargetContext string) []portForwardConfig {
 	configs := make([]portForwardConfig, 0)
-	mcKubeContext := "teleport.giantswarm.io-" + mcName
-	var wcKubeContext string
-	if wcName != "" {
-		wcKubeContext = "teleport.giantswarm.io-" + wcName
-	}
-	if mcName != "" {
+	mcKubeContext := utils.BuildMcContext(mcShortName)
+	// var wcKubeContext string // Not directly used for individual PFs other than Alloy
+
+	if mcShortName != "" {
 		configs = append(configs, portForwardConfig{
 			label:       "Prometheus (MC)",
 			localPort:   "8080",
 			remotePort:  "8080",
-			kubeContext: mcKubeContext,
+			kubeContext: mcKubeContext, // Prometheus always on MC context
 			namespace:   "mimir",
 			service:     "service/mimir-query-frontend",
 		})
@@ -315,27 +320,33 @@ func getPortForwardConfigs(mcName, wcName, baseKubeContext string) []portForward
 			label:       "Grafana (MC)",
 			localPort:   "3000",
 			remotePort:  "3000",
-			kubeContext: mcKubeContext,
+			kubeContext: mcKubeContext, // Grafana always on MC context
 			namespace:   "monitoring",
 			service:     "service/grafana",
 		})
 	}
+
 	alloyLabel := "Alloy Metrics"
-	alloyContext := mcKubeContext
-	if wcName != "" {
-		alloyLabel += " (WC)"
-		alloyContext = wcKubeContext
-	} else {
+	// alloyMetricsTargetContext is already determined: WC context if WC specified, else MC context.
+	if wcFullIdentifier != "" { // wcFullIdentifier is like "mc-wc" or empty
+		alloyLabel += " (WC)" 
+	} else if mcShortName != ""{
 		alloyLabel += " (MC)"
-	}
-	configs = append(configs, portForwardConfig{
-		label:       alloyLabel,
-		localPort:   "12345",
-		remotePort:  "12345",
-		kubeContext: alloyContext,
-		namespace:   "kube-system",
-		service:     "service/alloy-metrics-cluster",
-	})
+    } else {
+        // No MC or WC specified for Alloy, skip? Or handle error?
+        // For now, if alloyMetricsTargetContext is empty, this PF might not be added or might fail.
+    }
+
+    if alloyMetricsTargetContext != "" { // Only add if we have a context for it
+        configs = append(configs, portForwardConfig{
+            label:       alloyLabel,
+            localPort:   "12345",
+            remotePort:  "12345",
+            kubeContext: alloyMetricsTargetContext,
+            namespace:   "kube-system",
+            service:     "service/alloy-metrics-cluster",
+        })
+    }
 	return configs
 }
 

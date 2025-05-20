@@ -49,9 +49,13 @@ func renderStatusBar(m model, width int) string {
     }
 
     // right
-    mcWc := fmt.Sprintf("%s MC: %s", SafeIcon(IconKubernetes), m.managementCluster)
-    if m.workloadCluster != "" {
-        mcWc += fmt.Sprintf(" / %s WC: %s", SafeIcon(IconKubernetes), m.workloadCluster)
+    mcDisplay := m.managementClusterName
+    if mcDisplay == "" { mcDisplay = "N/A" }
+    mcWc := fmt.Sprintf("%s MC: %s", SafeIcon(IconKubernetes), mcDisplay)
+
+    if m.workloadClusterName != "" {
+        wcDisplay := m.workloadClusterName
+        mcWc += fmt.Sprintf(" / %s WC: %s", SafeIcon(IconKubernetes), wcDisplay)
     }
     rightStr := StatusBarTextStyle.Copy().Background(bg).Width(rightW).Align(lipgloss.Right).Render(mcWc)
 

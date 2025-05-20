@@ -4,6 +4,13 @@ import (
 	"fmt"
 	"time"
 
+	// We need to ensure imports for key and spinner are present if they were in the original,
+	// but the diff implies they might have been added by the faulty edit.
+	// For now, assuming they are not strictly needed for *just* the logging additions to compile
+	// if the surrounding code is correct.
+	// "github.com/charmbracelet/bubbles/key"
+	// "github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -34,6 +41,15 @@ func (m *model) setStatusMessage(message string, msgType MessageType, clearAfter
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
     var cmds []tea.Cmd
     var cmd tea.Cmd
+
+    // Only log if not a spinner.TickMsg or tea.MouseMsg, to reduce noise.
+    switch msg.(type) {
+    case spinner.TickMsg, tea.MouseMsg:
+        // Do nothing, just let these common/noisy messages pass through without generic logging.
+    default:
+        // Log all other messages.
+        m.LogDebug("[Main Update] Received msg: %T -- Value: %v", msg, msg)
+    }
 
     // --- Global quit shortcuts ------------------------------------------------
     switch msg := msg.(type) {
@@ -110,7 +126,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
                     overlayH := int(float64(m.height) * 0.7)
                     m.logViewport.Width = overlayW - logOverlayStyle.GetHorizontalFrameSize()
                     m.logViewport.Height = overlayH - logOverlayStyle.GetVerticalFrameSize()
-                    trunc := prepareLogContent(m.combinedOutput, m.logViewport.Width)
+                    trunc := prepareLogContent(m.activityLog, m.logViewport.Width)
                     m.logViewport.SetContent(trunc)
                 }
                 return m, channelReaderCmd(m.TUIChannel)
@@ -208,20 +224,27 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
     case submitNewConnectionMsg:
         m, cmd = handleSubmitNewConnectionMsg(m, msg, cmds)
     case kubeLoginResultMsg:
+        m.LogDebug("[Main Update] Matched kubeLoginResultMsg. Routing to handleKubeLoginResultMsg...")
         m, cmd = handleKubeLoginResultMsg(m, msg, cmds)
     case contextSwitchAndReinitializeResultMsg:
+        m.LogDebug("[Main Update] Matched contextSwitchAndReinitializeResultMsg. Routing to handleContextSwitchAndReinitializeResultMsg...")
         m, cmd = handleContextSwitchAndReinitializeResultMsg(m, msg, cmds)
 
     case kubeContextResultMsg:
+        m.LogDebug("[Main Update] Matched kubeContextResultMsg. Routing to handleKubeContextResultMsg...")
         m = handleKubeContextResultMsg(m, msg)
         cmds = append(cmds, channelReaderCmd(m.TUIChannel))
     case requestClusterHealthUpdate:
         m, cmd = handleRequestClusterHealthUpdate(m)
     case kubeContextSwitchedMsg:
+        m.LogDebug("[Main Update] Matched kubeContextSwitchedMsg. Routing to handleKubeContextSwitchedMsg...")
         m, cmd = handleKubeContextSwitchedMsg(m, msg)
+        cmds = append(cmds, cmd)
     case nodeStatusMsg:
+        m.LogDebug("[Main Update] Matched nodeStatusMsg. Routing to handleNodeStatusMsg...")
         m = handleNodeStatusMsg(m, msg)
-        cmds = append(cmds, channelReaderCmd(m.TUIChannel))
+        // Temporarily comment out to test if this is blocking other messages
+        // cmds = append(cmds, channelReaderCmd(m.TUIChannel)) 
     case clusterListResultMsg:
         m = handleClusterListResultMsg(m, msg)
         cmds = append(cmds, channelReaderCmd(m.TUIChannel))
@@ -254,7 +277,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
         }
         cmds = append(cmds, cmd)
 
+    case spinner.TickMsg:
+        var spinCmd tea.Cmd
+        m.spinner, spinCmd = m.spinner.Update(msg)
+        cmds = append(cmds, spinCmd)
+
     default:
+        m.LogDebug("[Main Update] Unhandled msg type in default case: %T -- Value: %v", msg, msg)
         if m.currentAppMode == ModeNewConnectionInput && m.newConnectionInput.Focused() {
             m.newConnectionInput, cmd = m.newConnectionInput.Update(msg)
         } else if m.currentAppMode == ModeLogOverlay {
@@ -269,16 +298,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
     // Keep overlay viewport content in-sync.
     if m.currentAppMode == ModeLogOverlay {
-        trunc := prepareLogContent(m.combinedOutput, m.logViewport.Width)
+        trunc := prepareLogContent(m.activityLog, m.logViewport.Width)
         m.logViewport.SetContent(trunc)
         if m.logViewport.YOffset == 0 {
             m.logViewport.GotoBottom()
         }
     } else {
-        trunc := prepareLogContent(m.combinedOutput, m.logViewport.Width)
+        trunc := prepareLogContent(m.activityLog, m.logViewport.Width)
         m.logViewport.SetContent(trunc)
     }
 
-    cmds = append(cmds, channelReaderCmd(m.TUIChannel))
+    // cmds = append(cmds, channelReaderCmd(m.TUIChannel)) // Also consider commenting out the one at the very end if the problem persists
     return m, tea.Batch(cmds...)
 } 

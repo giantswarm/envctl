@@ -81,9 +81,9 @@ const (
 
 // Misc. shared constants.
 const (
-    // maxCombinedOutputLines defines the maximum number of lines to keep in the combinedOutput log.
-    // This prevents the log from growing indefinitely and consuming too much memory.
-    maxCombinedOutputLines = 200
+    // maxActivityLogLines defines the maximum number of lines to keep in the activityLog.
+// This prevents the log from growing indefinitely and consuming too much memory.
+maxActivityLogLines = 200
 
     // maxPanelLogLines defines the maximum number of lines to keep in individual port-forward panel logs.
     maxPanelLogLines = 100
@@ -105,10 +105,11 @@ type mcpServerProcess struct {
 // close to the basic types makes it easier to reason about the data structure.
 type model struct {
     // --- Cluster Information ---
-    managementCluster  string // Name of the management cluster.
-    workloadCluster    string // Name of the workload cluster (can be empty).
-    kubeContext        string // Target Kubernetes context specified by the user.
-    currentKubeContext string // Actual current Kubernetes context.
+    managementClusterName string // User-set or from CLI: short name of the Management Cluster.
+    workloadClusterName   string // User-set or from CLI: short name of the Workload Cluster (can be empty).
+
+    currentKubeContext string // Actual current Kubernetes context name from kubeconfig.
+
     quittingMessage    string // Message to display when quitting.
 
     // --- Health Information ---
@@ -125,7 +126,7 @@ type model struct {
     mcpServers    map[string]*mcpServerProcess   // State of multiple MCP proxy processes.
 
     // --- UI State & Output ---
-    combinedOutput     []string       // Global combined log lines.
+    activityLog     []string       // Global application activity log.
     width, height      int            // Terminal dimensions.
     debugMode          bool           // Show/hide debug info.
     colorMode          string         // Current color profile description.
@@ -160,4 +161,42 @@ type model struct {
 
     // TUIChannel is used by background goroutines to send messages back to the Bubbletea update loop.
     TUIChannel chan tea.Msg
-} 
+}
+
+// -----------------------------------------------------------------------------
+// Cluster context helpers (REMOVED as per refactoring plan)
+// -----------------------------------------------------------------------------
+
+// ClusterContextKind indicates whether a context belongs to a Management
+// Cluster or a Workload Cluster.
+// type ClusterContextKind int // REMOVED
+
+// const ( // REMOVED
+// 	ContextMC ClusterContextKind = iota
+// 	ContextWC
+// )
+
+// ClusterContext wraps the most important derived strings for a specific
+// cluster.
+// // REMOVED
+// //   Kind        → MC or WC
+// //   Identifier  → canonical cluster identifier used inside Teleport ("ghost" or
+// //                 "ghost-acme")
+// //   FullContext → full kube-context as it appears in kubeconfig
+// //                 ("teleport.giantswarm.io-ghost[-acme]")
+// type ClusterContext struct { // REMOVED
+// 	Kind        ClusterContextKind
+// 	Identifier  string
+// 	FullContext string
+// }
+
+// McContext returns the fully-qualified context information for the currently
+// configured Management Cluster. If no MC is configured the Identifier /
+// FullContext strings will be empty.
+// func (m *model) McContext() ClusterContext { // REMOVED
+// }
+
+// WcContext returns the context information for the currently configured
+// Workload Cluster. The second return value is false when no WC is configured.
+// func (m *model) WcContext() (ClusterContext, bool) { // REMOVED
+// } 

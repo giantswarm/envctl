@@ -3,8 +3,9 @@ package tui
 import (
 	"envctl/internal/mcpserver"
 	"fmt"
-	"strings"
 	"time"
+
+	"envctl/internal/utils"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -15,26 +16,26 @@ import (
 )
 
 // getManagementClusterContextIdentifier generates the MC part of a kube context name.
-func (m *model) getManagementClusterContextIdentifier() string {
-    return m.managementCluster
-}
+// func (m *model) getManagementClusterContextIdentifier() string {
+//     return m.managementCluster
+// }
 
 // getWorkloadClusterContextIdentifier generates the WC context identifier based on MC and WC names.
-func (m *model) getWorkloadClusterContextIdentifier() string {
-    if m.workloadCluster == "" {
-        return ""
-    }
-    if m.managementCluster != "" && strings.HasPrefix(m.workloadCluster, m.managementCluster+"-") {
-        return m.workloadCluster
-    }
-    if m.managementCluster != "" {
-        return m.managementCluster + "-" + m.workloadCluster
-    }
-    return m.workloadCluster
-}
+// func (m *model) getWorkloadClusterContextIdentifier() string {
+//     if m.workloadCluster == "" {
+//         return ""
+//     }
+//     if m.managementCluster != "" && strings.HasPrefix(m.workloadCluster, m.managementCluster+"-") {
+//         return m.workloadCluster
+//     }
+//     if m.managementCluster != "" {
+//         return m.managementCluster + "-" + m.workloadCluster
+//     }
+//     return m.workloadCluster
+// }
 
 // InitialModel constructs the initial model with sensible defaults.
-func InitialModel(mcName, wcName, kubeCtx string, tuiDebug bool) model {
+func InitialModel(mcName, wcName, kubeContext string, tuiDebug bool) model {
     ti := textinput.New()
     ti.Placeholder = "Management Cluster"
     ti.CharLimit = 156
@@ -54,13 +55,13 @@ func InitialModel(mcName, wcName, kubeCtx string, tuiDebug bool) model {
     s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 
     m := model{
-        managementCluster:  mcName,
-        workloadCluster:    wcName,
-        kubeContext:        kubeCtx,
+        managementClusterName: mcName,
+        workloadClusterName:   wcName,
+        currentKubeContext:    kubeContext,
         portForwards:       make(map[string]*portForwardProcess),
         portForwardOrder:   make([]string, 0),
         mcpServers:         make(map[string]*mcpServerProcess),
-        combinedOutput:     make([]string, 0),
+        activityLog:        make([]string, 0),
         MCHealth:           clusterHealthInfo{IsLoading: true},
         currentAppMode:     ModeInitializing,
         newConnectionInput: ti,
@@ -132,16 +133,15 @@ func (m model) Init() tea.Cmd {
     cmds = append(cmds, getCurrentKubeContextCmd())
     cmds = append(cmds, fetchClusterListCmd())
 
-    // Initial health checks.
-    if m.managementCluster != "" {
-        if id := m.getManagementClusterContextIdentifier(); id != "" {
-            cmds = append(cmds, fetchNodeStatusCmd(id, true, m.managementCluster))
-        }
+    // Initial health checks using fully built context names
+    if m.managementClusterName != "" {
+        mcTargetContext := utils.BuildMcContext(m.managementClusterName)
+        cmds = append(cmds, fetchNodeStatusCmd(mcTargetContext, true, m.managementClusterName))
     }
-    if m.workloadCluster != "" {
-        if id := m.getWorkloadClusterContextIdentifier(); id != "" {
-            cmds = append(cmds, fetchNodeStatusCmd(id, false, m.workloadCluster))
-        }
+    if m.workloadClusterName != "" && m.managementClusterName != "" {
+        wcTargetContext := utils.BuildWcContext(m.managementClusterName, m.workloadClusterName)
+        // The third argument to fetchNodeStatusCmd is the short name for message tagging
+        cmds = append(cmds, fetchNodeStatusCmd(wcTargetContext, false, m.workloadClusterName))
     }
 
     // Start port-forwards.

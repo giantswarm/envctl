@@ -43,7 +43,7 @@ type model struct {
     focusedPanelKey  string
 
     // UI State & Output
-    combinedOutput []string
+    activityLog []string
     quitting       bool
     ready          bool
     width          int

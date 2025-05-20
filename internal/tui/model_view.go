@@ -65,7 +65,7 @@ func (m model) View() string {
                 m.mainLogViewport.Height = 0
             }
 
-            trunc := prepareLogContent(m.combinedOutput, m.mainLogViewport.Width)
+            trunc := prepareLogContent(m.activityLog, m.mainLogViewport.Width)
             m.mainLogViewport.SetContent(trunc)
 
             logPanelView = renderCombinedLogPanel(&m, contentWidth, logSectionHeight)
@@ -128,7 +128,7 @@ func (m *model) calculateOverallStatus() (OverallAppStatus, string) {
     if m.MCHealth.IsLoading {
         return AppStatusConnecting, "MC Health..."
     }
-    if m.workloadCluster != "" && m.WCHealth.IsLoading {
+    if m.workloadClusterName != "" && m.WCHealth.IsLoading {
         return AppStatusConnecting, "WC Health..."
     }
 
@@ -146,7 +146,7 @@ func (m *model) calculateOverallStatus() (OverallAppStatus, string) {
     if m.MCHealth.StatusError != nil {
         return AppStatusFailed, fmt.Sprintf("MC: %s", m.MCHealth.StatusError.Error())
     }
-    if m.workloadCluster != "" && m.WCHealth.StatusError != nil {
+    if m.workloadClusterName != "" && m.WCHealth.StatusError != nil {
         return AppStatusFailed, fmt.Sprintf("WC: %s", m.WCHealth.StatusError.Error())
     }
 
@@ -154,7 +154,7 @@ func (m *model) calculateOverallStatus() (OverallAppStatus, string) {
     if m.MCHealth.TotalNodes > 0 && m.MCHealth.ReadyNodes < m.MCHealth.TotalNodes {
         degraded = append(degraded, fmt.Sprintf("MC nodes: %d/%d", m.MCHealth.ReadyNodes, m.MCHealth.TotalNodes))
     }
-    if m.workloadCluster != "" && m.WCHealth.TotalNodes > 0 && m.WCHealth.ReadyNodes < m.WCHealth.TotalNodes {
+    if m.workloadClusterName != "" && m.WCHealth.TotalNodes > 0 && m.WCHealth.ReadyNodes < m.WCHealth.TotalNodes {
         degraded = append(degraded, fmt.Sprintf("WC nodes: %d/%d", m.WCHealth.ReadyNodes, m.WCHealth.TotalNodes))
     }
     for _, pf := range m.portForwards {

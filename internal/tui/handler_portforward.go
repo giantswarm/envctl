@@ -2,6 +2,7 @@ package tui
 
 import (
 	"envctl/internal/portforwarding"
+	"envctl/internal/utils"
 	"fmt"
 	"time"
 
@@ -48,19 +49,16 @@ func setupPortForwards(m *model, mcName, wcName string) {
     }
 
     if mcName != "" {
-        ctx := "teleport.giantswarm.io-" + mcName
+        ctx := utils.BuildMcContext(mcName)
         add("Prometheus (MC)", ctx, "mimir", "service/mimir-query-frontend", "8080", "8080", "127.0.0.1", false)
         add("Grafana (MC)", ctx, "monitoring", "service/grafana", "3000", "3000", "127.0.0.1", false)
     }
 
     if wcName != "" {
-        orig := m.managementCluster
-        m.managementCluster = mcName
-        ctxPart := m.getWorkloadClusterContextIdentifier()
-        m.managementCluster = orig
-        add("Alloy Metrics (WC)", "teleport.giantswarm.io-"+ctxPart, "kube-system", "service/alloy-metrics-cluster", "12345", "12345", "127.0.0.1", true)
+        ctx := utils.BuildWcContext(mcName, wcName)
+        add("Alloy Metrics (WC)", ctx, "kube-system", "service/alloy-metrics-cluster", "12345", "12345", "127.0.0.1", true)
     } else if mcName != "" {
-        ctx := "teleport.giantswarm.io-" + mcName
+        ctx := utils.BuildMcContext(mcName)
         add("Alloy Metrics (MC)", ctx, "kube-system", "service/alloy-metrics-cluster", "12345", "12345", "127.0.0.1", false)
     }
 }
@@ -104,7 +102,7 @@ func handlePortForwardCoreUpdateMsg(m model, msg portForwardCoreUpdateMsg) (mode
             if len(pf.output) > maxPanelLogLines {
                 pf.output = pf.output[len(pf.output)-maxPanelLogLines:]
             }
-            m.appendLogLine(fmt.Sprintf("[%s] %s", up.InstanceKey, up.OutputLog))
+            m.LogInfo("[%s] %s", up.InstanceKey, up.OutputLog)
         }
         if up.Error != nil {
             pf.active = false

@@ -54,8 +54,8 @@ func DetermineClusterProvider(contextName string) (string, error) {
 
 	// Use Teleport prefix for context name if not already prefixed and contextName is provided.
 	k8sContextName := contextName
-	if contextName != "" && !strings.HasPrefix(contextName, "teleport.giantswarm.io-") {
-		k8sContextName = "teleport.giantswarm.io-" + contextName
+	if contextName != "" && !HasTeleportPrefix(contextName) {
+		k8sContextName = TeleportPrefix + contextName
 	}
 
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()

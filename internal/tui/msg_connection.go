@@ -37,6 +37,7 @@ type contextSwitchAndReinitializeResultMsg struct {
 type kubeContextSwitchedMsg struct {
     TargetContext string
     err           error
+    DebugInfo     string // Additional debug information for context switching
 }
 
 type clusterListResultMsg struct {

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"envctl/internal/mcpserver"
+	"envctl/internal/utils"
 	"fmt"
 	"strings"
 	"time"
@@ -75,18 +76,13 @@ func handleSubmitNewConnectionMsg(m model, msg submitNewConnectionMsg, existingC
 	} else {
 		m.LogInfo("No active MCP proxies to stop.")
 	}
-	if len(m.combinedOutput) > maxCombinedOutputLines {
-		m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
-	}
+	// Removed direct activityLog manipulation - this is now handled by the logging interface
 
 	// Proceed with the new connection logic.
 	m.stashedMcName = msg.mc // Used to reconstruct WC name if needed later
 
 	if msg.mc == "" {
 		m.LogError("Management Cluster name cannot be empty.")
-		if len(m.combinedOutput) > maxCombinedOutputLines {
-			m.combinedOutput = m.combinedOutput[len(m.combinedOutput)-maxCombinedOutputLines:]
-		}
 		// Reset input mode
 		m.currentAppMode = ModeMainDashboard
 		m.newConnectionInput.Blur()
@@ -124,12 +120,10 @@ func handleSubmitNewConnectionMsg(m model, msg submitNewConnectionMsg, existingC
 // - cmds: A slice of commands that might have been accumulated.
 // Returns the updated model and a command for the next step in the connection flow or nil if login failed or no next step is taken from here.
 func handleKubeLoginResultMsg(m model, msg kubeLoginResultMsg, cmds []tea.Cmd) (model, tea.Cmd) {
-	// Append login output to the combined log first, regardless of error
-	m.AppendLogLines(strings.Split(strings.TrimRight(msg.loginStdout, "\n"), "\n"))
+	// Log the login command output first, regardless of error
+	m.LogStdout("tsh", msg.loginStdout)
 	if strings.TrimSpace(msg.loginStderr) != "" {
-		for _, line := range strings.Split(strings.TrimRight(msg.loginStderr, "\n"), "\n") {
-			m.AppendLogLines([]string{"[tsh stderr] " + line})
-		}
+		m.LogStderr("tsh", msg.loginStderr)
 	}
 
 	if msg.err != nil {
@@ -143,13 +137,15 @@ func handleKubeLoginResultMsg(m model, msg kubeLoginResultMsg, cmds []tea.Cmd) (
 
 	var nextCmds []tea.Cmd
 	if msg.isMC {
-		// MC Login was successful. Now, check if WC login is needed.
-		desiredMcForNextStep := msg.clusterName        // This is the confirmed MC name (e.g., "myinstallation")
-		desiredWcForNextStep := msg.desiredWcShortName // WC name from original user input (e.g., "mycluster")
+		// MC Login was successful. msg.clusterName is the MC short name.
+		// m.stashedMcName should have been set to this MC short name from the input UI.
+		// For consistency, ensure desiredMcName is updated if it wasn't already.
+		m.managementClusterName = msg.clusterName 
+		
+		desiredMcForNextStep := m.managementClusterName
+		desiredWcForNextStep := msg.desiredWcShortName // This comes from the initial UI input, carried by msg
 
 		if desiredWcForNextStep != "" {
-			// Construct the canonical WC identifier for the tsh login command.
-			// Ensures that if desiredWcForNextStep was already "mc-wc", it's not prefixed again.
 			var wcIdentifierForLogin string
 			if strings.HasPrefix(desiredWcForNextStep, desiredMcForNextStep+"-") {
 				wcIdentifierForLogin = desiredWcForNextStep
@@ -157,38 +153,37 @@ func handleKubeLoginResultMsg(m model, msg kubeLoginResultMsg, cmds []tea.Cmd) (
 				wcIdentifierForLogin = desiredMcForNextStep + "-" + desiredWcForNextStep
 			}
 			m.LogInfo("Step 2: Logging into Workload Cluster: %s...", wcIdentifierForLogin)
-			nextCmds = append(nextCmds, performKubeLoginCmd(wcIdentifierForLogin, false, "")) // For WC login, desiredWcShortNameToCarry is ""
+			nextCmds = append(nextCmds, performKubeLoginCmd(wcIdentifierForLogin, false, "")) 
 		} else {
-			// No WC specified, proceed to context switch and re-initialize for MC only.
 			m.LogInfo("Step 2: No Workload Cluster specified. Proceeding to context switch for MC.")
-			// desiredMcForNextStep is the MC identifier (e.g., "myinstallation")
-			targetKubeContext := "teleport.giantswarm.io-" + desiredMcForNextStep
+			targetKubeContext := utils.BuildMcContext(desiredMcForNextStep)
+			// Pass the desired MC and empty WC short names to post login operations
 			nextCmds = append(nextCmds, performPostLoginOperationsCmd(targetKubeContext, desiredMcForNextStep, ""))
 		}
 	} else {
-		// WC Login was successful. msg.clusterName here is the WC identifier (e.g., "myinstallation-mycluster") used for login.
-		// Proceed to context switch and re-initialize for MC + WC.
-		// m.stashedMcName should hold the MC name from the initial submitNewConnectionMsg.
-		finalMcName := m.stashedMcName // This is the short MC name (e.g., "myinstallation")
+		// WC Login was successful. msg.clusterName is the WC identifier (e.g., "myinstallation-mycluster").
+		// m.managementClusterName should hold the MC short name from the previous step or initial UI.
+		finalMcName := m.managementClusterName 
 
-		// msg.clusterName is the WC identifier (e.g., "myinstallation-mycluster") that was successfully logged into.
-		// We need the short WC name for desiredWcName in performPostLoginOperationsCmd.
+		// Determine the short WC name from the logged-in WC identifier (msg.clusterName)
+		// and the known MC name (m.managementClusterName).
 		var shortWcName string
 		if finalMcName != "" && strings.HasPrefix(msg.clusterName, finalMcName+"-") {
 			shortWcName = strings.TrimPrefix(msg.clusterName, finalMcName+"-")
 		} else {
-			// This implies msg.clusterName might be a short WC name itself (if finalMcName was empty or no prefix match)
-			// or some other naming convention was used for login that we need to adapt.
-			// For now, assume if it doesn't have the MC prefix, it *is* the short WC name.
-			// This matches the behavior of m.getWorkloadClusterContextIdentifier if MC is empty.
-			shortWcName = msg.clusterName // This might be problematic if msg.clusterName is complex and not just short WC
+			// This case implies that msg.clusterName might be just the short WC name itself, 
+			// or the MC prefix part was not as expected. This should be less common if logins use full identifiers.
+			// Or, if finalMcName was somehow empty at this stage.
+			shortWcName = msg.clusterName 
+			m.LogWarn("WC login name '%s' for MC '%s' did not have expected MC prefix; using '%s' as short WC name.", msg.clusterName, finalMcName, shortWcName)
 		}
+		
+		// Update the model's workloadClusterName based on successful WC login.
+		m.workloadClusterName = shortWcName
 
 		m.LogInfo("Step 3: Workload Cluster login successful. Proceeding to context switch for WC.")
-		// msg.clusterName is the WC identifier (e.g., "myinstallation-mycluster") that was successfully logged into.
-		// This is the correct identifier to form the targetKubeContext.
-		targetKubeContext := "teleport.giantswarm.io-" + msg.clusterName
-		nextCmds = append(nextCmds, performPostLoginOperationsCmd(targetKubeContext, finalMcName, shortWcName))
+		targetKubeContext := utils.BuildWcContext(m.managementClusterName, m.workloadClusterName) // Use the now updated m.workloadClusterName
+		nextCmds = append(nextCmds, performPostLoginOperationsCmd(targetKubeContext, m.managementClusterName, m.workloadClusterName))
 	}
 	finalCmds := append(cmds, nextCmds...)
 	finalCmds = append(finalCmds, clearStatusCmd)
@@ -215,15 +210,16 @@ func handleKubeLoginResultMsg(m model, msg kubeLoginResultMsg, cmds []tea.Cmd) (
 // - existingCmds: A slice of commands that might have been accumulated.
 // Returns the updated model and a batch of commands to re-initialize the TUI or nil if an error occurred.
 func handleContextSwitchAndReinitializeResultMsg(m model, msg contextSwitchAndReinitializeResultMsg, existingCmds []tea.Cmd) (model, tea.Cmd) {
-	// Log moved after the error check to see if error is the cause of no further logs
 	if msg.diagnosticLog != "" {
-		m.AppendLogLines([]string{"--- Diagnostic Log (Context Switch Phase) ---"})
-		m.AppendLogLines(strings.Split(strings.TrimSpace(msg.diagnosticLog), "\n"))
-		m.AppendLogLines([]string{"--- End Diagnostic Log ---"})
+		m.LogInfo("--- Diagnostic Log (Context Switch Phase) ---")
+		for _, line := range strings.Split(strings.TrimSpace(msg.diagnosticLog), "\n") {
+			m.LogInfo("%s", line)
+		}
+		m.LogInfo("--- End Diagnostic Log ---")
 	}
 	if msg.err != nil {
 		m.LogError("Context switch/re-init failed: %v. MCP PROXIES WILL NOT START.", msg.err)
-		m.isLoading = false // Context switch/re-init failed, stop loading
+		m.isLoading = false 
 		clearCmd := m.setStatusMessage("Context switch/re-init failed.", StatusBarError, 5*time.Second)
 		return m, clearCmd
 	}
@@ -232,65 +228,55 @@ func handleContextSwitchAndReinitializeResultMsg(m model, msg contextSwitchAndRe
 		m.LogDebug("Entered handleContextSwitchAndReinitializeResultMsg (after error check).")
 	}
 
-	m.LogInfo("Successfully switched context to: %s. Re-initializing TUI.", msg.switchedContext)
-	clearStatusCmd := m.setStatusMessage(fmt.Sprintf("Context: %s. Re-initializing...", msg.switchedContext), StatusBarSuccess, 3*time.Second)
+	m.LogInfo("Successfully switched context. Target was: %s. Re-initializing TUI.", msg.switchedContext)
+	clearStatusCmd := m.setStatusMessage(fmt.Sprintf("Target: %s. Re-initializing...", msg.switchedContext), StatusBarSuccess, 3*time.Second)
 
-	// Apply new cluster names to the model
-	m.managementCluster = msg.desiredMcName
-	m.workloadCluster = msg.desiredWcName
-	m.currentKubeContext = msg.switchedContext // Update the current context based on successful switch
+	// Apply new cluster names to the model from the successful operation
+	m.managementClusterName = msg.desiredMcName
+	m.workloadClusterName = msg.desiredWcName
+	
+	// m.currentKubeContext will be updated by the getCurrentKubeContextCmd called below.
+	// No parsing logic needed here anymore.
 
 	// Reset health info
 	m.MCHealth = clusterHealthInfo{IsLoading: true}
-	if m.workloadCluster != "" {
+	if m.workloadClusterName != "" {
 		m.WCHealth = clusterHealthInfo{IsLoading: true}
 	} else {
-		m.WCHealth = clusterHealthInfo{} // Clear WC health if no WC
+		m.WCHealth = clusterHealthInfo{} 
 	}
 
-	// Reset and set up new port forwards
-	setupPortForwards(&m, m.managementCluster, m.workloadCluster) // This clears and rebuilds portForwards map and order
-
-	// Rebuild dependency graph because the set of port forwards may have changed
+	setupPortForwards(&m, m.managementClusterName, m.workloadClusterName)
 	m.dependencyGraph = buildDependencyGraph(&m)
 
-	// Reset focus
 	if len(m.portForwardOrder) > 0 {
 		m.focusedPanelKey = m.portForwardOrder[0]
-	} else if m.managementCluster != "" {
+	} else if m.managementClusterName != "" {
 		m.focusedPanelKey = mcPaneFocusKey
 	} else {
-		m.focusedPanelKey = "" // No items to focus
+		m.focusedPanelKey = "" 
 	}
 
-	// Rebuild MCP proxy order (predefined list is static)
 	m.mcpProxyOrder = nil
 	for _, cfg := range mcpserver.PredefinedMcpServers {
 		m.mcpProxyOrder = append(m.mcpProxyOrder, cfg.Name)
 	}
 
-	// --- Re-initialize essential parts of the TUI (similar to Init, but after connection change) ---
 	var newInitCmds []tea.Cmd
-	newInitCmds = append(newInitCmds, getCurrentKubeContextCmd()) // Verify/update displayed current context
+	newInitCmds = append(newInitCmds, getCurrentKubeContextCmd()) 
 
-	if m.managementCluster != "" {
-		mcIdentifier := m.getManagementClusterContextIdentifier()
-		if mcIdentifier != "" {
-			newInitCmds = append(newInitCmds, fetchNodeStatusCmd(mcIdentifier, true, m.managementCluster))
-		}
+	if m.managementClusterName != "" {
+		mcTargetContext := utils.BuildMcContext(m.managementClusterName)
+		newInitCmds = append(newInitCmds, fetchNodeStatusCmd(mcTargetContext, true, m.managementClusterName))
 	}
-	if m.workloadCluster != "" {
-		wcIdentifier := m.getWorkloadClusterContextIdentifier()
-		if wcIdentifier != "" {
-			newInitCmds = append(newInitCmds, fetchNodeStatusCmd(wcIdentifier, false, m.workloadCluster))
-		}
+	if m.workloadClusterName != "" && m.managementClusterName != "" {
+		wcTargetContext := utils.BuildWcContext(m.managementClusterName, m.workloadClusterName)
+		newInitCmds = append(newInitCmds, fetchNodeStatusCmd(wcTargetContext, false, m.workloadClusterName))
 	}
 
-	// Start port-forwarding processes for the new setup using the centralized function
 	initialPfCmds := getInitialPortForwardCmds(&m)
 	newInitCmds = append(newInitCmds, initialPfCmds...)
 
-	// Start MCP proxy processes
 	m.LogInfo("Initializing predefined MCP proxies (kubernetes, prometheus, grafana)...")
 	mcpProxyStartupCmds := startMcpProxiesCmd(m.TUIChannel)
 	if mcpProxyStartupCmds == nil {
@@ -306,7 +292,6 @@ func handleContextSwitchAndReinitializeResultMsg(m model, msg contextSwitchAndRe
 		}
 	}
 
-	// Re-add ticker for periodic health updates
 	tickCmd := tea.Tick(healthUpdateInterval, func(t time.Time) tea.Msg {
 		return requestClusterHealthUpdate{}
 	})
@@ -314,5 +299,6 @@ func handleContextSwitchAndReinitializeResultMsg(m model, msg contextSwitchAndRe
 
 	finalCmdsToBatch := append(existingCmds, newInitCmds...)
 	finalCmdsToBatch = append(finalCmdsToBatch, clearStatusCmd)
+	m.isLoading = false
 	return m, tea.Batch(finalCmdsToBatch...)
 }
