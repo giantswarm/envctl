@@ -4,7 +4,7 @@
 
 This style guide outlines the visual design principles, color palette, and styling conventions used in the `envctl` Terminal User Interface (TUI). The goal is to maintain a consistent, visually appealing, and user-friendly experience.
 
-The TUI is built using Go with the [Bubble Tea](https://github.com/charmbracelet/bubbletea) framework and styled using [Lipgloss](https://github.com/charmbracelet/lipgloss). All styles are defined in `internal/tui/styles.go` unless otherwise noted.
+The TUI is built using Go with the [Bubble Tea](https://github.com/charmbracelet/bubbletea) framework and styled using [Lipgloss](https://github.com/charmbracelet/lipgloss). All styles are defined in `internal/tui/view/styles.go` unless otherwise noted.
 
 A key principle is the use of **adaptive colors** to ensure readability and a good aesthetic in both light and dark terminal themes, with a primary focus on an excellent dark mode experience inspired by modern terminal applications.
 
@@ -31,9 +31,9 @@ All color definitions use `lipgloss.AdaptiveColor{Light: "...", Dark: "..."}`.
 ## 3. Layout Principles & Key Components
 
 ### 3.1. Header
-- **Purpose:** Displays the application title and global key hints (Help, Navigate, Quit). Shows a spinner when global loading (`m.isLoading`) is active.
-- **Style:** `headerStyle` (defined in `styles.go`). Features a subtle background distinct from the main content area. Spinner color is magenta, set in `model.go`.
-- **Key Hints:** May include debug mode key hints if `m.debugMode` is true.
+- **Purpose:** Displays the application title and global key hints (Help, Navigate, Quit). Shows a spinner when global loading (`m.IsLoading`) is active.
+- **Style:** `headerStyle` (defined in `view/styles.go`). Features a subtle background distinct from the main content area. Spinner color is magenta, set in `model/init.go` during `InitialModel` setup.
+- **Key Hints:** May include debug mode key hints if `m.DebugMode` is true.
 
 ### 3.2. Status Bar
 - **Purpose:** Provides a persistent overview of the application's overall status, active cluster context, and displays transient messages.
@@ -42,8 +42,8 @@ All color definitions use `lipgloss.AdaptiveColor{Light: "...", Dark: "..."}`.
     - **Center:** Transient status messages (e.g., operation success/failure). Text styled with `StatusMessage*Style` (for foreground color) and centered in the available space.
     - **Right:** Active MC/WC information. Text styled with `StatusBarTextStyle`.
 - **Background:** The entire status bar's background color dynamically changes based on the `OverallAppStatus` (Success = Green, Error = Red, etc.), using `StatusBar*Bg` adaptive colors.
-- **Styles:** `StatusBarBaseStyle`, `StatusBarTextStyle`, `StatusMessage*Style`, `StatusBar*Bg` (all in `styles.go`).
-- **Implementation:** `renderStatusBar` in `view_helpers.go`.
+- **Styles:** `StatusBarBaseStyle`, `StatusBarTextStyle`, `StatusMessage*Style`, `StatusBar*Bg` (all in `view/styles.go`).
+- **Implementation:** `renderStatusBar` in `internal/tui/view/status.go`.
 
 ### 3.3. Main Content Panels
 Consists of rows displaying information about:
@@ -64,30 +64,30 @@ Consists of rows displaying information about:
     - Text within panels indicating status (e.g., "Status: Running") also uses specific colors defined in `statusMsg*Style`.
 - **Content Titles:** Panel titles (e.g., "Prometheus (MC)") use `portTitleStyle`.
 - **Health Info:** MC/WC health (node readiness) uses `health*Style` for text color (Good, Warn, Error, Loading).
-- **Layout:** Panels are arranged in rows by `renderContextPanesRow`, `renderPortForwardingRow`, `renderMcpProxiesRow` in `view_helpers.go`.
+- **Layout:** Panels are arranged in rows by functions like `renderContextPanesRow` (in `view/context.go`), `renderPortForwardingRow` (in `view/portforward.go`), `renderMcpProxiesRow` (in `view/mcp.go`).
 
 ### 3.4. Activity Log
-- **Main View:** `renderCombinedLogPanel` in `view_helpers.go`. Displays a scrollable list of recent log messages. Title styled with `logPanelTitleStyle`. Log lines use `logLineStyle`.
+- **Main View:** `renderCombinedLogPanel` in `internal/tui/view/log.go`. Displays a scrollable list of recent log messages. Title styled with `logPanelTitleStyle`. Log lines use various `log*Style` definitions.
 - **Log Overlay (`L` key):**
     - A full-screen or large centered overlay for viewing more log history.
-    - Container styled by `logOverlayStyle`. Uses `m.logViewport`.
+    - Container styled by `logOverlayStyle`. Uses `m.LogViewport` from the `model.Model`.
 
 ### 3.5. Help Overlay (`h` key)
 - **Purpose:** Displays keyboard shortcuts.
-- **Implementation:** Uses `bubbles/help.Model`.
-    - Key definitions and help text: `KeyMap` struct and `DefaultKeyMap()` in `keymap.go`.
-    - `m.help.Styles` is customized in `InitialModel` (`model.go`) for text colors.
+- **Implementation:** Uses `bubbles/help.Model` (field `Help` in `model.Model`).
+    - Key definitions and help text: `KeyMap` struct and `DefaultKeyMap()` (defined in `model/types.go` and `model/init.go` respectively).
+    - `m.Help.Styles` is customized in `view.Render` when `ModeHelpOverlay` is active.
 - **Appearance:**
-    - Rendered by `m.help.View(m.keys)`.
+    - Rendered by `m.Help.View(m.Keys)`.
     - A title "KEYBOARD SHORTCUTS" (styled by `helpTitleStyle`) is prepended.
     - The combined view is wrapped in `centeredOverlayContainerStyle` and placed in the center of the screen using `lipgloss.Place`.
     - The area around the help box is intended to be dimmed by `lipgloss.WithWhitespaceBackground` (terminal-dependent).
 
 ### 3.6. New Connection Input
-- **Mode:** `ModeNewConnectionInput`.
-- **Appearance:** Uses `bubbles/textinput.Model`. Rendered by `renderNewConnectionInputView` in `view_helpers.go`, which provides a clear prompt and a box around the input field.
+- **Mode:** `model.ModeNewConnectionInput`.
+- **Appearance:** Uses `bubbles/textinput.Model` (field `NewConnectionInput` in `model.Model`). Rendered by `renderNewConnectionInputView` in `internal/tui/view/misc.go`, which provides a clear prompt and a box around the input field.
 
-## 4. Key Style Variables (from `styles.go`)
+## 4. Key Style Variables (from `internal/tui/view/styles.go`)
 
 This is not exhaustive but lists some of the most important global style definitions:
 

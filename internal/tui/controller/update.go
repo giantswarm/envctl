@@ -8,9 +8,10 @@ import (
 	// May be needed for some view-related constants if not moved
 )
 
-// mainControllerDispatch is the new home for the primary message handling switch.
-// It takes the current model and the message, calls appropriate controller handlers,
-// and returns the (potentially updated) model and any commands.
+// mainControllerDispatch is the central message routing function for the TUI application.
+// It receives all Bubble Tea messages and directs them to the appropriate handler functions
+// based on the message type and current application mode.
+// It's responsible for updating the model and queuing up any necessary commands.
 func mainControllerDispatch(m *model.Model, msg tea.Msg) (*model.Model, tea.Cmd) {
 	// recordMsgSample(msg) // This was in model.Update, model can do it or controller if msg is passed through
 	var cmds []tea.Cmd

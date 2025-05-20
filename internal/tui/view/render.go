@@ -23,9 +23,12 @@ func Render(m *model.Model) string {
 		contentWidth := m.Width - appStyle.GetHorizontalFrameSize()
 		totalAvailableHeight := m.Height - appStyle.GetVerticalFrameSize()
 
+		// Render the header section of the main dashboard.
 		headerView := renderHeader(m, contentWidth)
 		headerHeight := lipgloss.Height(headerView)
 
+		// Calculate and constrain the height for the first row (context panes).
+		// It takes a small percentage of the available height, with min/max caps.
 		maxRow1Height := int(float64(totalAvailableHeight-headerHeight) * 0.20)
 		if maxRow1Height < 5 {
 			maxRow1Height = 5
@@ -35,6 +38,8 @@ func Render(m *model.Model) string {
 		row1View := renderContextPanesRow(m, contentWidth, maxRow1Height)
 		row1Height := lipgloss.Height(row1View)
 
+		// Calculate and constrain the height for the second row (port forwarding).
+		// It takes a moderate percentage of the available height, with min/max caps.
 		maxRow2Height := int(float64(totalAvailableHeight-headerHeight) * 0.30)
 		if maxRow2Height < 7 {
 			maxRow2Height = 7
@@ -44,6 +49,8 @@ func Render(m *model.Model) string {
 		row2View := renderPortForwardingRow(m, contentWidth, maxRow2Height)
 		row2Height := lipgloss.Height(row2View)
 
+		// Calculate and constrain the height for the third row (MCP proxies).
+		// It takes a small percentage of the available height, with a min cap.
 		maxRow3Height := int(float64(totalAvailableHeight-headerHeight) * 0.20)
 		if maxRow3Height < 5 {
 			maxRow3Height = 5
@@ -54,7 +61,7 @@ func Render(m *model.Model) string {
 		logPanelView := ""
 		var logSectionHeight int
 		if m.Height >= minHeightForMainLogView {
-			numGaps := 4
+			numGaps := 4 // Account for gaps between sections when calculating remaining height.
 			heightConsumed := headerHeight + row1Height + row2Height + row3Height + numGaps
 			logSectionHeight = totalAvailableHeight - heightConsumed
 			if logSectionHeight < 0 {
@@ -135,6 +142,7 @@ func Render(m *model.Model) string {
 }
 
 // calculateOverallStatus determines a high-level status to display in the header.
+// It aggregates health from clusters, port forwards, and MCP servers.
 func calculateOverallStatus(m *model.Model) (model.OverallAppStatus, string) {
 	if m.IsLoading {
 		return model.AppStatusConnecting, "Ongoing operation..."

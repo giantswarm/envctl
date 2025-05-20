@@ -158,17 +158,19 @@ When running `envctl connect`, the Terminal User Interface (TUI) provides a visu
 
 | Key          | Action                                   |
 |--------------|------------------------------------------|
-| Tab          | Navigate to next panel                   |
-| Shift+Tab    | Navigate to previous panel               |
+| Tab / j / ↓  | Navigate to next panel                   |
+| Shift+Tab / k / ↑ | Navigate to previous panel               |
 | q / Ctrl+C   | Quit the application                     |
 | r            | Restart port forwarding for focused panel|
 | s            | Switch Kubernetes context                |
 | N            | Start new connection                     |
 | h            | Toggle help overlay                      |
 | L            | Toggle log overlay                       |
+| C            | Toggle MCP config overlay                |
 | D            | Toggle dark/light mode                   |
 | z            | Toggle debug information                 |
-| Esc          | Close help/log overlay                   |
+| y            | Copy logs/config (when in overlay)       |
+| Esc          | Close help/log/config overlay            |
 
 For more details on the implementation and architecture of the TUI, see the [TUI documentation](docs/tui.md).
 
