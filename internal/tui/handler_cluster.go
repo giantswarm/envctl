@@ -170,7 +170,7 @@ func handleKubeContextSwitchedMsg(m model, msg kubeContextSwitchedMsg) (model, t
 
 		// The model's managementClusterName and workloadClusterName are NOT changed by a manual switch.
 		// Only the currentKubeContext is updated by fetching it again.
-		cmdToGetCurrentCtx := getCurrentKubeContextCmd()
+		cmdToGetCurrentCtx := getCurrentKubeContextCmd(m.services.Cluster)
 		m.LogDebug("[handleKubeContextSwitchedMsg] Dispatching getCurrentKubeContextCmd(). Command: %T", cmdToGetCurrentCtx)
 		if cmdToGetCurrentCtx == nil {
 			m.LogWarn("[handleKubeContextSwitchedMsg] getCurrentKubeContextCmd() returned nil!")

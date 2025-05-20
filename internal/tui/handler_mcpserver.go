@@ -122,7 +122,7 @@ func handleRestartMcpServerMsg(m model, msg restartMcpServerMsg) (model, tea.Cmd
 			}
 		}
 
-		pid, stopChan, startErr := mcpserver.StartAndManageIndividualMcpServer(*cfg, tuiUpdateFn, nil)
+		stopChan, pid, startErr := m.services.Proxy.Start(*cfg, tuiUpdateFn)
 
 		initialStatusMsg := fmt.Sprintf("Initializing proxy for %s...", cfg.Name)
 		if startErr != nil {

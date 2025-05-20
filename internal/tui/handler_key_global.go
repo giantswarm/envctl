@@ -125,12 +125,8 @@ func handleKeyMsgGlobal(m model, keyMsg tea.KeyMsg, existingCmds []tea.Cmd) (mod
 					tuiCb := func(update portforwarding.PortForwardProcessUpdate) {
 						m.TUIChannel <- portForwardCoreUpdateMsg{update: update}
 					}
-					cmd, stop, err := portforwarding.StartAndManageIndividualPortForward(currentCfg, tuiCb)
-					pid := 0
-					if cmd != nil && cmd.Process != nil {
-						pid = cmd.Process.Pid
-					}
-					return portForwardSetupResultMsg{InstanceKey: currentCfg.InstanceKey, Cmd: cmd, StopChan: stop, InitialPID: pid, Err: err}
+					stop, err := m.services.PF.Start(currentCfg, tuiCb)
+					return portForwardSetupResultMsg{InstanceKey: currentCfg.InstanceKey, StopChan: stop, InitialPID: 0, Err: err}
 				})
 			}
 		} else if _, ok := m.mcpServers[m.focusedPanelKey]; ok {
@@ -143,11 +139,11 @@ func handleKeyMsgGlobal(m model, keyMsg tea.KeyMsg, existingCmds []tea.Cmd) (mod
 		if m.focusedPanelKey == mcPaneFocusKey && m.managementClusterName != "" {
 			target := utils.BuildMcContext(m.managementClusterName)
 			m.LogInfo("Attempting to switch Kubernetes context to: %s (Pane: MC, Target: %s)", target, m.managementClusterName)
-			cmds = append(cmds, performSwitchKubeContextCmd(target))
+			cmds = append(cmds, performSwitchKubeContextCmd(m.services.Cluster, target))
 		} else if m.focusedPanelKey == wcPaneFocusKey && m.workloadClusterName != "" && m.managementClusterName != "" {
 			target := utils.BuildWcContext(m.managementClusterName, m.workloadClusterName)
 			m.LogInfo("Attempting to switch Kubernetes context to: %s (Pane: WC, Target: %s-%s)", target, m.managementClusterName, m.workloadClusterName)
-			cmds = append(cmds, performSwitchKubeContextCmd(target))
+			cmds = append(cmds, performSwitchKubeContextCmd(m.services.Cluster, target))
 		} else {
 			m.LogWarn("Cannot switch context: Focus a valid MC/WC pane with defined cluster names or ensure clusters are set via (n)ew connection.")
 		}

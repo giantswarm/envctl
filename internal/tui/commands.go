@@ -3,6 +3,7 @@ package tui
 import (
 	// "bufio" // No longer used directly here
 	"envctl/internal/mcpserver"
+	"envctl/internal/service"
 	"envctl/internal/utils"
 	"fmt"
 
@@ -96,9 +97,9 @@ func fetchNodeStatusCmd(fullTargetContextName string, isMC bool, originalCluster
 
 // getCurrentKubeContextCmd creates a tea.Cmd to asynchronously fetch the current active Kubernetes context.
 // Returns a tea.Cmd that, when run, will call utils.GetCurrentKubeContext and send a kubeContextResultMsg.
-func getCurrentKubeContextCmd() tea.Cmd {
+func getCurrentKubeContextCmd(clusterSvc service.ClusterService) tea.Cmd {
 	return func() tea.Msg {
-		currentCtx, err := utils.GetCurrentKubeContext()
+		currentCtx, err := clusterSvc.CurrentContext()
 		return kubeContextResultMsg{context: currentCtx, err: err}
 	}
 }
@@ -106,18 +107,17 @@ func getCurrentKubeContextCmd() tea.Cmd {
 // performSwitchKubeContextCmd creates a tea.Cmd to attempt switching the active Kubernetes context.
 // - targetContextName: The full name of the Kubernetes context to switch to.
 // Returns a tea.Cmd that, when run, will call utils.SwitchKubeContext and send a kubeContextSwitchedMsg.
-func performSwitchKubeContextCmd(targetContextName string) tea.Cmd {
+func performSwitchKubeContextCmd(clusterSvc service.ClusterService, targetContextName string) tea.Cmd {
 	return func() tea.Msg {
-		oldCtx, _ := utils.GetCurrentKubeContext()
+		oldCtx, _ := clusterSvc.CurrentContext()
 
-		err := utils.SwitchKubeContext(targetContextName)
+		err := clusterSvc.SwitchContext(targetContextName, "")
 
 		result := kubeContextSwitchedMsg{
 			TargetContext: targetContextName,
 			err:           err,
 			DebugInfo: fmt.Sprintf("Context switch: %s -> %s, Result: %v",
 				oldCtx, targetContextName, err == nil),
-			// Removed ForDesiredMcShortName and ForDesiredWcShortName fields
 		}
 		return result
 	}
@@ -254,7 +254,7 @@ func fetchClusterListCmd() tea.Cmd {
 // have been moved to the internal/mcpserver package.
 
 // startMcpProxiesCmd creates a slice of tea.Cmds, one for each predefined MCP proxy.
-func startMcpProxiesCmd(tuiChan chan tea.Msg) []tea.Cmd {
+func startMcpProxiesCmd(proxySvc service.MCPProxyService, tuiChan chan tea.Msg) []tea.Cmd {
 	var commandsToBatch []tea.Cmd
 
 	if len(mcpserver.PredefinedMcpServers) == 0 {
@@ -287,7 +287,7 @@ func startMcpProxiesCmd(tuiChan chan tea.Msg) []tea.Cmd {
 
 			// mcpserver.StartAndManageIndividualMcpServer prepares and starts the exec.Cmd.
 			// For TUI mode, WaitGroup is not used, so pass nil.
-			pid, stopChan, startErr := mcpserver.StartAndManageIndividualMcpServer(capturedServerCfg, tuiUpdateFn, nil)
+			stopChan, pid, startErr := proxySvc.Start(capturedServerCfg, tuiUpdateFn)
 
 			initialStatusMsg := fmt.Sprintf("Initializing proxy for %s...", label)
 			if startErr != nil {

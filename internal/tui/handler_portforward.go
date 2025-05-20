@@ -129,12 +129,8 @@ func getInitialPortForwardCmds(m *model) []tea.Cmd {
 			cb := func(update portforwarding.PortForwardProcessUpdate) {
 				m.TUIChannel <- portForwardCoreUpdateMsg{update: update}
 			}
-			cmd, stop, err := portforwarding.StartAndManageIndividualPortForward(cfg, cb)
-			pid := 0
-			if cmd != nil && cmd.Process != nil {
-				pid = cmd.Process.Pid
-			}
-			return portForwardSetupResultMsg{InstanceKey: cfg.InstanceKey, Cmd: cmd, StopChan: stop, InitialPID: pid, Err: err}
+			stop, err := m.services.PF.Start(cfg, cb)
+			return portForwardSetupResultMsg{InstanceKey: cfg.InstanceKey, StopChan: stop, InitialPID: 0, Err: err}
 		})
 	}
 	return out
@@ -157,11 +153,7 @@ func createRestartPortForwardCmd(m *model, pf *portForwardProcess) tea.Cmd {
 		cb := func(update portforwarding.PortForwardProcessUpdate) {
 			m.TUIChannel <- portForwardCoreUpdateMsg{update: update}
 		}
-		cmd, stop, err := portforwarding.StartAndManageIndividualPortForward(cfg, cb)
-		pid := 0
-		if cmd != nil && cmd.Process != nil {
-			pid = cmd.Process.Pid
-		}
-		return portForwardSetupResultMsg{InstanceKey: cfg.InstanceKey, Cmd: cmd, StopChan: stop, InitialPID: pid, Err: err}
+		stop, err := m.services.PF.Start(cfg, cb)
+		return portForwardSetupResultMsg{InstanceKey: cfg.InstanceKey, StopChan: stop, InitialPID: 0, Err: err}
 	}
 }

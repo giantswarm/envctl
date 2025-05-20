@@ -261,7 +261,7 @@ func handleContextSwitchAndReinitializeResultMsg(m model, msg contextSwitchAndRe
 	}
 
 	var newInitCmds []tea.Cmd
-	newInitCmds = append(newInitCmds, getCurrentKubeContextCmd())
+	newInitCmds = append(newInitCmds, getCurrentKubeContextCmd(m.services.Cluster))
 
 	if m.managementClusterName != "" {
 		mcTargetContext := utils.BuildMcContext(m.managementClusterName)
@@ -276,7 +276,7 @@ func handleContextSwitchAndReinitializeResultMsg(m model, msg contextSwitchAndRe
 	newInitCmds = append(newInitCmds, initialPfCmds...)
 
 	m.LogInfo("Initializing predefined MCP proxies (kubernetes, prometheus, grafana)...")
-	mcpProxyStartupCmds := startMcpProxiesCmd(m.TUIChannel)
+	mcpProxyStartupCmds := startMcpProxiesCmd(m.services.Proxy, m.TUIChannel)
 	if mcpProxyStartupCmds == nil {
 		m.LogDebug("startMcpProxiesCmd returned nil. No MCP commands generated.")
 	} else {

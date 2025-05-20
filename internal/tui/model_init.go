@@ -135,7 +135,7 @@ func channelReaderCmd(ch chan tea.Msg) tea.Cmd {
 func (m model) Init() tea.Cmd {
 	var cmds []tea.Cmd
 
-	cmds = append(cmds, getCurrentKubeContextCmd())
+	cmds = append(cmds, getCurrentKubeContextCmd(m.services.Cluster))
 	cmds = append(cmds, fetchClusterListCmd())
 
 	// Initial health checks using fully built context names
@@ -153,7 +153,7 @@ func (m model) Init() tea.Cmd {
 	cmds = append(cmds, getInitialPortForwardCmds(&m)...)
 
 	// Start MCP proxies.
-	if proxyCmds := startMcpProxiesCmd(m.TUIChannel); len(proxyCmds) > 0 {
+	if proxyCmds := startMcpProxiesCmd(m.services.Proxy, m.TUIChannel); len(proxyCmds) > 0 {
 		cmds = append(cmds, proxyCmds...)
 	}
 

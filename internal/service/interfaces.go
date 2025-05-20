@@ -12,6 +12,7 @@ package service
 import (
 	"context"
 
+	"envctl/internal/mcpserver"
 	"envctl/internal/portforwarding"
 )
 
@@ -53,7 +54,7 @@ type ClusterService interface {
 // *initiated* – status updates go through the provided callback inside
 // portforwarding.PortForwardConfig.
 type PortForwardService interface {
-    Start(cfg portforwarding.PortForwardConfig) (stop func(), err error)
+    Start(cfg portforwarding.PortForwardConfig, cb portforwarding.PortForwardUpdateFunc) (stopChan chan struct{}, err error)
     Status(id string) portforwarding.PortForwardProcessUpdate
 }
 
@@ -64,7 +65,10 @@ type PortForwardService interface {
 // TODO: Once we move the implementation out of internal/mcpserver we may want to
 // share common behaviour in an internal/processutil helper.
 type MCPProxyService interface {
-    Start(name string, cfg interface{}) (stop func(), err error) // cfg placeholder for now
+    // Start launches the MCP proxy defined by cfg and streams async updates via
+    // updateFn.  It returns the stop channel, PID of the spawned process (or 0
+    // if not applicable) and an error for immediate failures.
+    Start(cfg mcpserver.PredefinedMcpServer, updateFn func(mcpserver.McpProcessUpdate)) (stopChan chan struct{}, pid int, err error)
     Status(name string) (running bool, err error)
 }
 
@@ -84,28 +88,21 @@ type Services struct {
 // the real logic will be hooked up in follow-up commits of issue #27.
 func Default() Services {
     return Services{
-        Cluster: &noopClusterSvc{},
-        PF:      &noopPFService{},
-        Proxy:   &noopProxyService{},
+        Cluster: newClusterService(),
+        PF:      newPFService(),
+        Proxy:   newProxyService(),
     }
 }
 
 // ---------------------------------------------------------------------------
-// Temporary no-op implementations – compile-time placeholders.
+// Temporary no-op implementations for PortForward- and Proxy-services.  They
+// will be replaced in a later commit of Issue #27.
 // ---------------------------------------------------------------------------
-
-type noopClusterSvc struct{}
-
-func (n *noopClusterSvc) CurrentContext() (string, error)                        { return "", nil }
-func (n *noopClusterSvc) SwitchContext(mc, wc string) error                      { return nil }
-func (n *noopClusterSvc) Health(ctx context.Context, c string) (ClusterHealthInfo, error) {
-    return ClusterHealthInfo{IsLoading: false}, nil
-}
 
 type noopPFService struct{}
 
-func (n *noopPFService) Start(cfg portforwarding.PortForwardConfig) (func(), error) {
-    return func() {}, nil
+func (n *noopPFService) Start(cfg portforwarding.PortForwardConfig, cb portforwarding.PortForwardUpdateFunc) (chan struct{}, error) {
+    return make(chan struct{}), nil
 }
 func (n *noopPFService) Status(id string) portforwarding.PortForwardProcessUpdate {
     return portforwarding.PortForwardProcessUpdate{StatusMsg: "noop", Running: false}
@@ -113,5 +110,7 @@ func (n *noopPFService) Status(id string) portforwarding.PortForwardProcessUpdat
 
 type noopProxyService struct{}
 
-func (n *noopProxyService) Start(name string, cfg interface{}) (func(), error) { return func() {}, nil }
-func (n *noopProxyService) Status(name string) (bool, error)                  { return false, nil } 
+func (n *noopProxyService) Start(cfg mcpserver.PredefinedMcpServer, updateFn func(mcpserver.McpProcessUpdate)) (chan struct{}, int, error) {
+    return make(chan struct{}), 0, nil
+}
+func (n *noopProxyService) Status(name string) (bool, error) { return false, nil } 
