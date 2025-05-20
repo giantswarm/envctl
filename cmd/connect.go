@@ -3,7 +3,7 @@ package cmd
 import (
 	// "bufio" // No longer needed here for MCP server logs
 	"envctl/internal/mcpserver" // Changed from tui to mcpserver
-	"envctl/internal/tui"       // Still needed for TUI parts (InitialModel)
+	"envctl/internal/tui/controller"
 	"envctl/internal/utils"
 	"fmt"
 	"os" // Though not directly used for MCP, utils.StartPortForwardClientGo might need it, or other parts.
@@ -13,7 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 )
@@ -254,8 +253,7 @@ Arguments:
 
 			_ = lipgloss.HasDarkBackground()
 
-			initialModel := tui.InitialModel(managementClusterArg, shortWorkloadClusterArg, currentKubeContextAfterLogin, tuiDebugMode)
-			p := tea.NewProgram(initialModel, tea.WithAltScreen(), tea.WithMouseAllMotion())
+			p := controller.NewProgram(managementClusterArg, shortWorkloadClusterArg, currentKubeContextAfterLogin, tuiDebugMode)
 			if _, err := p.Run(); err != nil {
 				fmt.Fprintf(os.Stderr, "Error running TUI: %v\n", err)
 				return err
