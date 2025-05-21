@@ -35,19 +35,11 @@ func StartAllConfiguredPortForwards(
 			localStopChan := make(chan struct{})
 			cfg.StopChan = localStopChan // Assign to config if needed, though StartAndManageIndividualPortForward creates its own internal one.
 
-			// cmd, returnedStopChan, err := StartAndManageIndividualPortForward(cfg, updateFn, nil)
-			// The StartAndManageIndividualPortForward already returns its own stopChan that it listens to.
-			// We need to respect that and use it.
-			cmd, processSpecificStopChan, err := StartAndManageIndividualPortForward(cfg, updateFn)
-
-			pid := 0
-			if cmd != nil && cmd.Process != nil {
-				pid = cmd.Process.Pid
-			}
+			// StartAndManageIndividualPortForward uses the kube package (client-go) and returns its own stopChan.
+			processSpecificStopChan, err := StartAndManageIndividualPortForward(cfg, updateFn)
 
 			managedInfo := ManagedPortForwardInfo{
 				Config:       cfg,
-				PID:          pid,
 				StopChan:     processSpecificStopChan, // This is the one to close to stop this specific PF
 				InitialError: err,
 			}
@@ -69,7 +61,7 @@ func StartAllConfiguredPortForwards(
 				}
 				return
 			case <-processSpecificStopChan: // This case might not be strictly necessary if StartAndManage handles its own termination logging
-				// The process stopped on its own (e.g. error, or kubectl exited)
+				// The process stopped on its own (e.g. error, or client-go internal issue)
 				// updateFn inside StartAndManageIndividualPortForward should have already reported this.
 				return
 			}

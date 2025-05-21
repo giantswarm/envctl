@@ -79,8 +79,6 @@ func handlePortForwardSetupResultMsg(m *model.Model, msg model.PortForwardSetupR
 			statusCmd = m.SetStatusMessage(fmt.Sprintf("[%s] PF Setup Failed", msg.InstanceKey), model.StatusBarError, 5*time.Second)
 		} else {
 			pf.StopChan = msg.StopChan
-			pf.CmdInstance = msg.Cmd
-			pf.Pid = msg.InitialPID
 			pf.StatusMsg = "Initializing..."
 			pf.Running = true
 			statusCmd = m.SetStatusMessage(fmt.Sprintf("[%s] PF setup initiated.", msg.InstanceKey), model.StatusBarInfo, 3*time.Second)
@@ -95,7 +93,6 @@ func handlePortForwardCoreUpdateMsg(m *model.Model, msg model.PortForwardCoreUpd
 	if pf, ok := m.PortForwards[up.InstanceKey]; ok {
 		pf.StatusMsg = up.StatusMsg
 		pf.Err = up.Error
-		pf.Pid = up.PID
 		pf.Running = up.Running
 
 		if up.OutputLog != "" {
@@ -132,7 +129,7 @@ func GetInitialPortForwardCmds(m *model.Model) []tea.Cmd {
 				m.TUIChannel <- model.PortForwardCoreUpdateMsg{Update: update}
 			}
 			stop, err := m.Services.PF.Start(cfg, cb)
-			return model.PortForwardSetupResultMsg{InstanceKey: cfg.InstanceKey, StopChan: stop, InitialPID: 0, Cmd: nil, Err: err}
+			return model.PortForwardSetupResultMsg{InstanceKey: cfg.InstanceKey, StopChan: stop, Err: err}
 		})
 	}
 	return out
@@ -148,7 +145,6 @@ func createRestartPortForwardCmd(m *model.Model, pf *model.PortForwardProcess) t
 	pf.Log = nil
 	pf.Err = nil
 	pf.Running = false
-	pf.Pid = 0
 
 	cfg := pf.Config
 	return func() tea.Msg {
@@ -156,6 +152,6 @@ func createRestartPortForwardCmd(m *model.Model, pf *model.PortForwardProcess) t
 			m.TUIChannel <- model.PortForwardCoreUpdateMsg{Update: update}
 		}
 		stop, err := m.Services.PF.Start(cfg, cb)
-		return model.PortForwardSetupResultMsg{InstanceKey: cfg.InstanceKey, StopChan: stop, InitialPID: 0, Cmd: nil, Err: err}
+		return model.PortForwardSetupResultMsg{InstanceKey: cfg.InstanceKey, StopChan: stop, Err: err}
 	}
 }

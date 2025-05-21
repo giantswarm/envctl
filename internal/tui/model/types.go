@@ -5,7 +5,6 @@ import (
 	"envctl/internal/portforwarding"
 	"envctl/internal/service"
 	"envctl/internal/utils"
-	"os/exec"
 	"time"
 
 	"github.com/charmbracelet/bubbles/help"
@@ -230,8 +229,6 @@ type PortForwardProcess struct { // Renamed from portForwardProcess
 	RemotePort  int                              // Exported
 	TargetHost  string                           // Exported
 	ContextName string                           // Exported
-	Pid         int                              // Exported
-	CmdInstance *exec.Cmd                        // Exported
 	StopChan    chan struct{}                    // Exported
 	Log         []string                         // Exported
 	Active      bool                             // Exported

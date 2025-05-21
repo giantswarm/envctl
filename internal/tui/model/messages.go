@@ -3,7 +3,6 @@ package model
 import (
 	"envctl/internal/portforwarding"
 	"envctl/internal/utils"
-	"os/exec"
 )
 
 // ---- New connection flow messages ----
@@ -77,9 +76,7 @@ type PortForwardCoreUpdateMsg struct {
 
 type PortForwardSetupResultMsg struct {
 	InstanceKey string
-	Cmd         *exec.Cmd
 	StopChan    chan struct{}
-	InitialPID  int
 	Err         error
 }
 

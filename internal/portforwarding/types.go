@@ -1,7 +1,5 @@
 package portforwarding
 
-import "os/exec"
-
 // PortForwardConfig holds the configuration for a port forwarding setup.
 type PortForwardConfig struct {
 	Label          string // User-defined label for this port-forward
@@ -27,8 +25,6 @@ type PortForwardProcessUpdate struct {
 	StatusMsg   string    // e.g., "Starting", "Running", "Stopped", "Error"
 	OutputLog   string    // Log output from the process
 	Error       error     // Any error encountered
-	PID         int       // Process ID, if applicable (might not be directly a separate process)
-	Cmd         *exec.Cmd // The command being executed, if applicable
 	Running     bool
 }
 
@@ -40,7 +36,6 @@ type PortForwardUpdateFunc func(update PortForwardProcessUpdate)
 // typically returned after initiating it.
 type ManagedPortForwardInfo struct {
 	Config       PortForwardConfig
-	PID          int
 	StopChan     chan struct{} // Channel to signal termination to the process
 	InitialError error         // Any error that occurred during startup
 }

@@ -3,19 +3,16 @@ package portforwarding
 import (
 	"envctl/internal/kube"
 	"fmt"
-	"os/exec"
 	"strings"
 )
 
 // StartAndManageIndividualPortForward starts a single port-forward using the Kubernetes Go
-// client.  No external `kubectl` process is spawned – the returned *exec.Cmd is always nil
-// (kept for backwards-compatibility so that existing code storing PIDs continues to compile).
-//
-// The legacy *exec.Cmd input parameter has been removed – callers no longer need to pass `nil`.
+// client via the internal kube package.
+// It does not spawn any external processes.
 func StartAndManageIndividualPortForward(
 	cfg PortForwardConfig,
 	updateFn PortForwardUpdateFunc,
-) (*exec.Cmd, chan struct{}, error) {
+) (chan struct{}, error) {
 	// Notify caller that initialisation has begun.
 	updateFn(PortForwardProcessUpdate{
 		InstanceKey: cfg.InstanceKey,
@@ -64,7 +61,7 @@ func StartAndManageIndividualPortForward(
 	}
 	if err != nil {
 		bridge("Error", err.Error(), true, false)
-		return nil, stop, err
+		return stop, err
 	}
-	return nil, stop, nil
+	return stop, nil
 }

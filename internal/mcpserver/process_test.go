@@ -11,19 +11,6 @@ import (
 // Tests can temporarily replace it to mock command execution.
 var execCommand = exec.Command
 
-// Original execCommand, stored to restore after tests.
-// var originalExecCommand = exec.Command // This is redundant if execCommand is used carefully
-
-// mockCmd is a helper to create a mock exec.Cmd for testing purposes.
-// It allows setting up specific fields or behaviors if needed for more advanced tests.
-// For now, it just returns a basic cmd, but could be extended.
-func mockCmd(name string, arg ...string) *exec.Cmd {
-	// For basic tests, we might not need a fully functional mock process.
-	// If testing pipe errors, the pipes on this cmd will be nil by default if not set.
-	// If testing Start error, this function will be replaced.
-	return execCommand(name, arg...)
-}
-
 // TestPipeFails specifically tests the scenario where cmd.StdoutPipe() fails.
 func TestPipeFails(t *testing.T) {
 	originalExecCommand := execCommand

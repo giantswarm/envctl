@@ -160,8 +160,6 @@ func handleKeyMsgGlobal(m *model.Model, keyMsg tea.KeyMsg, existingCmds []tea.Cm
 			pf.Log = nil
 			pf.Err = nil
 			pf.Running = false
-			pf.Pid = 0
-			pf.CmdInstance = nil
 			pf.Active = true
 
 			m.IsLoading = true
@@ -174,7 +172,7 @@ func handleKeyMsgGlobal(m *model.Model, keyMsg tea.KeyMsg, existingCmds []tea.Cm
 						m.TUIChannel <- model.PortForwardCoreUpdateMsg{Update: update}
 					}
 					stop, err := m.Services.PF.Start(currentCfg, tuiCb)
-					return model.PortForwardSetupResultMsg{InstanceKey: currentCfg.InstanceKey, StopChan: stop, InitialPID: 0, Cmd: nil, Err: err}
+					return model.PortForwardSetupResultMsg{InstanceKey: currentCfg.InstanceKey, StopChan: stop, Err: err}
 				})
 			}
 		} else if _, ok := m.McpServers[m.FocusedPanelKey]; ok {

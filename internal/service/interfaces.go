@@ -94,24 +94,3 @@ func Default() Services {
 		Proxy:   newProxyService(),
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Temporary no-op implementations for PortForward- and Proxy-services.  They
-// will be replaced in a later commit of Issue #27.
-// ---------------------------------------------------------------------------
-
-type noopPFService struct{}
-
-func (n *noopPFService) Start(cfg portforwarding.PortForwardConfig, cb portforwarding.PortForwardUpdateFunc) (chan struct{}, error) {
-	return make(chan struct{}), nil
-}
-func (n *noopPFService) Status(id string) portforwarding.PortForwardProcessUpdate {
-	return portforwarding.PortForwardProcessUpdate{StatusMsg: "noop", Running: false}
-}
-
-type noopProxyService struct{}
-
-func (n *noopProxyService) Start(cfg mcpserver.PredefinedMcpServer, updateFn func(mcpserver.McpProcessUpdate)) (chan struct{}, int, error) {
-	return make(chan struct{}), 0, nil
-}
-func (n *noopProxyService) Status(name string) (bool, error) { return false, nil }
