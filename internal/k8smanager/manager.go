@@ -156,7 +156,10 @@ func (km *kubeManager) GetClusterNodeHealth(ctx context.Context, kubeContextName
 	return NodeHealth{ReadyNodes: ready, TotalNodes: total, Error: nil}, nil
 }
 
-// func (km *kubeManager) DetermineClusterProvider(ctx context.Context, kubeContextName string) (string, error) {
-// 	 // To be implemented if needed
-// 	 panic("DetermineClusterProvider not implemented")
-// }
+func (km *kubeManager) DetermineClusterProvider(ctx context.Context, kubeContextName string) (string, error) {
+	// To be implemented if needed
+	// panic("DetermineClusterProvider not implemented")
+	// For now, let's call the actual kube function, passing through the context.
+	// If a more specific context is needed here (e.g., with timeout), it can be created.
+	return kube.DetermineClusterProvider(ctx, kubeContextName)
+}

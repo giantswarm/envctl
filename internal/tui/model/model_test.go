@@ -49,6 +49,9 @@ func (m *mockKubeManagerForModelTest) HasTeleportPrefix(contextName string) bool
 func (m *mockKubeManagerForModelTest) GetClusterNodeHealth(ctx context.Context, kubeContextName string) (k8smanager.NodeHealth, error) {
 	return k8smanager.NodeHealth{ReadyNodes: 1, TotalNodes: 1, Error: nil}, nil
 }
+func (m *mockKubeManagerForModelTest) DetermineClusterProvider(ctx context.Context, kubeContextName string) (string, error) {
+	return "mockProvider", nil
+}
 
 // REMOVED: mockClusterService, mockPFService, mockProxyService as m.Services is replaced by m.KubeMgr
 

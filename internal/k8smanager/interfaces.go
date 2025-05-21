@@ -46,4 +46,5 @@ type KubeManagerAPI interface {
 
 	// Cluster Operations / Info - direct Kubernetes API interactions
 	GetClusterNodeHealth(ctx context.Context, kubeContextName string) (NodeHealth, error)
+	DetermineClusterProvider(ctx context.Context, kubeContextName string) (string, error)
 }

@@ -60,6 +60,10 @@ func (m *mockKubeManager) GetClusterNodeHealth(ctx context.Context, kubeContextN
 	return k8smanager.NodeHealth{ReadyNodes: 1, TotalNodes: 1, Error: nil}, nil
 }
 
+func (m *mockKubeManager) DetermineClusterProvider(ctx context.Context, kubeContextName string) (string, error) {
+	return "mockProvider", nil
+}
+
 // checkGoldenFile compares the actual output with the golden file.
 // If -update flag is set, it updates the golden file.
 func checkGoldenFile(t *testing.T, goldenFile string, actualOutput string) {

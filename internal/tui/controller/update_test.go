@@ -60,6 +60,10 @@ func (m *MockKubeManager) GetClusterNodeHealth(ctx context.Context, kubeContextN
 	return k8smanager.NodeHealth{ReadyNodes: 1, TotalNodes: 1}, nil
 }
 
+func (m *MockKubeManager) DetermineClusterProvider(ctx context.Context, kubeContextName string) (string, error) {
+	return "mockProvider", nil
+}
+
 // TestMainControllerDispatch_ReporterUpdateMsg_ContinuouslyProcessesViaChannelReaderCmd
 // tests if the mainControllerDispatch correctly re-queues the ChannelReaderCmd
 // after processing a ReporterUpdateMsg, allowing continuous processing of messages

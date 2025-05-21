@@ -375,9 +375,10 @@ func determineProviderFromNode(node *corev1.Node) string {
 // DetermineClusterProvider attempts to identify the cloud provider of a Kubernetes cluster
 // by inspecting the `providerID` of the first node, then falling back to labels.
 // It uses the Kubernetes Go client.
+// - ctx: The context to use for the Kubernetes API call.
 // - contextName: The Kubernetes context to use. If empty, the current context is used.
 // Returns the determined provider name (e.g., "aws") or "unknown", and an error if API calls fail.
-func DetermineClusterProvider(contextName string) (string, error) {
+func DetermineClusterProvider(ctx context.Context, contextName string) (string, error) {
 	fmt.Println("Determining cluster provider using Go client...")
 
 	// Use Teleport prefix for context name if not already prefixed and contextName is provided.
@@ -403,7 +404,7 @@ func DetermineClusterProvider(contextName string) (string, error) {
 		return "", fmt.Errorf("failed to create Kubernetes clientset for context '%s': %w", k8sContextName, err)
 	}
 
-	nodes, err := clientset.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{Limit: 1})
+	nodes, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{Limit: 1})
 	if err != nil {
 		return "", fmt.Errorf("failed to list nodes in context '%s': %w", k8sContextName, err)
 	}
