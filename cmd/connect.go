@@ -140,12 +140,18 @@ Arguments:
 
 				if update.IsError {
 					errMsg := update.Status
-					if update.OutputLog != "" { errMsg = fmt.Sprintf("%s: %s", errMsg, update.OutputLog) }
-					if update.Error != nil { errMsg = fmt.Sprintf("%s (Error: %v)", errMsg, update.Error) }
+					if update.OutputLog != "" {
+						errMsg = fmt.Sprintf("%s: %s", errMsg, update.OutputLog)
+					}
+					if update.Error != nil {
+						errMsg = fmt.Sprintf("%s (Error: %v)", errMsg, update.Error)
+					}
 					fmt.Fprintf(os.Stderr, "%sERROR: %s\n", fullPrefix, errMsg)
 				} else if update.IsReady {
 					readyMsg := update.Status
-					if update.OutputLog != "" { readyMsg = fmt.Sprintf("%s: %s", readyMsg, update.OutputLog) }
+					if update.OutputLog != "" {
+						readyMsg = fmt.Sprintf("%s: %s", readyMsg, update.OutputLog)
+					}
 					fmt.Printf("%sREADY: %s\n", fullPrefix, readyMsg)
 				} else if update.OutputLog != "" {
 					if update.Status != "" {
@@ -203,12 +209,12 @@ Arguments:
 			serviceMgr := managers.NewServiceManager()
 
 			p := controller.NewProgram(
-				managementClusterArg, 
-				workloadClusterArg, 
-				currentKubeContextAfterLogin, 
-				tuiDebugMode, 
-				mcpServerConfig,      
-				portForwardingConfig, 
+				managementClusterArg,
+				workloadClusterArg,
+				currentKubeContextAfterLogin,
+				tuiDebugMode,
+				mcpServerConfig,
+				portForwardingConfig,
 				serviceMgr,
 				kubeMgr,
 			)
@@ -250,4 +256,3 @@ func newConnectCmd() *cobra.Command {
 }
 
 // Removed init() function as MCP server config is no longer initialized here.
-

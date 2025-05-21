@@ -23,15 +23,29 @@ import (
 // (which is likely nothing as tests operate on model state after updates)
 type mockKubeManagerForModelTest struct{}
 
-func (m *mockKubeManagerForModelTest) Login(clusterName string) (stdout string, stderr string, err error) { return "", "", nil }
-func (m *mockKubeManagerForModelTest) ListClusters() (*k8smanager.ClusterList, error) { return &k8smanager.ClusterList{}, nil }
-func (m *mockKubeManagerForModelTest) GetCurrentContext() (string, error)   { return "test-context", nil }
+func (m *mockKubeManagerForModelTest) Login(clusterName string) (stdout string, stderr string, err error) {
+	return "", "", nil
+}
+func (m *mockKubeManagerForModelTest) ListClusters() (*k8smanager.ClusterList, error) {
+	return &k8smanager.ClusterList{}, nil
+}
+func (m *mockKubeManagerForModelTest) GetCurrentContext() (string, error)           { return "test-context", nil }
 func (m *mockKubeManagerForModelTest) SwitchContext(targetContextName string) error { return nil }
-func (m *mockKubeManagerForModelTest) GetAvailableContexts() ([]string, error) { return []string{"test-context"}, nil }
-func (m *mockKubeManagerForModelTest) BuildMcContextName(mcShortName string) string { return "teleport.giantswarm.io-" + mcShortName }
-func (m *mockKubeManagerForModelTest) BuildWcContextName(mcShortName, wcShortName string) string { return "teleport.giantswarm.io-" + mcShortName + "-" + wcShortName }
-func (m *mockKubeManagerForModelTest) StripTeleportPrefix(contextName string) string { return strings.TrimPrefix(contextName, "teleport.giantswarm.io-") }
-func (m *mockKubeManagerForModelTest) HasTeleportPrefix(contextName string) bool { return strings.HasPrefix(contextName, "teleport.giantswarm.io-") }
+func (m *mockKubeManagerForModelTest) GetAvailableContexts() ([]string, error) {
+	return []string{"test-context"}, nil
+}
+func (m *mockKubeManagerForModelTest) BuildMcContextName(mcShortName string) string {
+	return "teleport.giantswarm.io-" + mcShortName
+}
+func (m *mockKubeManagerForModelTest) BuildWcContextName(mcShortName, wcShortName string) string {
+	return "teleport.giantswarm.io-" + mcShortName + "-" + wcShortName
+}
+func (m *mockKubeManagerForModelTest) StripTeleportPrefix(contextName string) string {
+	return strings.TrimPrefix(contextName, "teleport.giantswarm.io-")
+}
+func (m *mockKubeManagerForModelTest) HasTeleportPrefix(contextName string) bool {
+	return strings.HasPrefix(contextName, "teleport.giantswarm.io-")
+}
 func (m *mockKubeManagerForModelTest) GetClusterNodeHealth(ctx context.Context, kubeContextName string) (k8smanager.NodeHealth, error) {
 	return k8smanager.NodeHealth{ReadyNodes: 1, TotalNodes: 1, Error: nil}, nil
 }

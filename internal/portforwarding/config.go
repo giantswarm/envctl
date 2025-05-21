@@ -79,7 +79,7 @@ var StartPortForwards = defaultStartPortForwards
 
 // defaultStartPortForwards is the actual implementation.
 func defaultStartPortForwards(
-	configs []PortForwardingConfig, 
+	configs []PortForwardingConfig,
 	updateCb UpdateFunc,
 	globalStopChan <-chan struct{},
 	wg *sync.WaitGroup,
@@ -92,7 +92,7 @@ func defaultStartPortForwards(
 
 	for _, pfCfg := range configs {
 		wg.Add(1)
-		config := pfCfg 
+		config := pfCfg
 		individualStopChan := make(chan struct{})
 		individualStopChans[config.Label] = individualStopChan
 
@@ -104,7 +104,7 @@ func defaultStartPortForwards(
 			}
 
 			kubeUpdateCallback := func(status, outputLog string, isError, isReady bool) {
-				if updateCb != nil { 
+				if updateCb != nil {
 					updateCb(config.Label, status, outputLog, isError, isReady)
 				}
 			}
@@ -116,8 +116,8 @@ func defaultStartPortForwards(
 				config.Namespace,
 				config.ServiceName,
 				portSpec,
-				config.Label,         
-				kubeUpdateCallback, 
+				config.Label,
+				kubeUpdateCallback,
 			)
 
 			if initialErr != nil {
@@ -138,18 +138,18 @@ func defaultStartPortForwards(
 			}
 
 			select {
-			case <-pfStopChan: 
+			case <-pfStopChan:
 				if updateCb != nil {
 					updateCb(config.Label, "Stopped (internal signal).", "", false, false)
 				}
-			case <-individualStopChan: 
-				if pfStopChan != nil { 
-					close(pfStopChan) 
+			case <-individualStopChan:
+				if pfStopChan != nil {
+					close(pfStopChan)
 				}
 				if updateCb != nil {
 					updateCb(config.Label, "Stopped (caller signal).", "", false, false)
 				}
-			case <-globalStopChan: 
+			case <-globalStopChan:
 				if pfStopChan != nil {
 					close(pfStopChan)
 				}

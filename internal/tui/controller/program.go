@@ -15,8 +15,8 @@ import (
 // and the functions/methods they call in their respective packages.
 // It now accepts a ServiceManagerAPI to handle background service lifecycles.
 func NewProgram(
-	mcName, wcName, kubeContext string, 
-	tuiDebug bool, 
+	mcName, wcName, kubeContext string,
+	tuiDebug bool,
 	mcpServerConfig []mcpserver.MCPServerConfig, // Kept for now, TUI model will use these to create ManagedServiceConfig
 	portForwardingConfig []portforwarding.PortForwardingConfig, // Kept for now
 	serviceMgr managers.ServiceManagerAPI, // Added ServiceManagerAPI
@@ -25,6 +25,6 @@ func NewProgram(
 	// Pass serviceMgr and kubeMgr to InitialModel.
 	initialMdl := model.InitialModel(mcName, wcName, kubeContext, tuiDebug, mcpServerConfig, portForwardingConfig, serviceMgr, kubeMgr)
 	app := NewAppModel(initialMdl, mcName, wcName) // NewAppModel might also need serviceMgr if it directly uses it.
-	                                               // For now, assuming initialMdl handles it.
+	// For now, assuming initialMdl handles it.
 	return tea.NewProgram(app, tea.WithAltScreen(), tea.WithMouseAllMotion())
 }

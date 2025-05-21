@@ -15,20 +15,20 @@ type ServiceManager struct { // Renamed from DefaultServiceManager
 	mu               sync.Mutex
 	pfGlobalStopChan chan struct{} // Global stop channel for port forwarding services
 	// Store original configs to allow for restarts
-	serviceConfigs   map[string]ManagedServiceConfig // Map label to its original ManagedServiceConfig
+	serviceConfigs map[string]ManagedServiceConfig // Map label to its original ManagedServiceConfig
 	// Track services pending restart after they stop
-	pendingRestarts  map[string]bool // Map label to true if restart is pending
+	pendingRestarts map[string]bool // Map label to true if restart is pending
 	// Store the original update callback and WaitGroup from the initial StartServices call
 	// This assumes one main StartServices call, or needs more complex management if multiple overlapping calls.
-	initialUpdateCb  ServiceUpdateFunc
-	initialWg        *sync.WaitGroup
+	initialUpdateCb ServiceUpdateFunc
+	initialWg       *sync.WaitGroup
 }
 
 // NewServiceManager creates a new instance of ServiceManager and returns it as a ServiceManagerAPI interface.
 func NewServiceManager() ServiceManagerAPI { // Returns the ServiceManagerAPI INTERFACE
 	return &ServiceManager{ // Instantiates the struct ServiceManager
-		activeServices: make(map[string]chan struct{}),
-		serviceConfigs: make(map[string]ManagedServiceConfig),
+		activeServices:  make(map[string]chan struct{}),
+		serviceConfigs:  make(map[string]ManagedServiceConfig),
 		pendingRestarts: make(map[string]bool),
 	}
 }
@@ -61,7 +61,7 @@ func (sm *ServiceManager) StartServices(
 func (sm *ServiceManager) startSpecificServicesLogic(
 	configs []ManagedServiceConfig,
 	updateCb ServiceUpdateFunc, // This specific call's updateCb
-	wg *sync.WaitGroup,        // This specific call's wg
+	wg *sync.WaitGroup, // This specific call's wg
 ) (map[string]chan struct{}, []error) {
 	sm.mu.Lock() // Lock for initial checks and setup
 
@@ -69,7 +69,7 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 	allStopChannels := make(map[string]chan struct{})
 	var pfConfigs []portforwarding.PortForwardingConfig
 	var mcpConfigs []mcpserver.MCPServerConfig
-	pfOriginalLabels := make(map[string]string) 
+	pfOriginalLabels := make(map[string]string)
 	mcpOriginalLabels := make(map[string]string)
 
 	hasPortForwards := false
@@ -85,7 +85,7 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 			hasPortForwards = true
 			if pfConfig, ok := cfg.Config.(portforwarding.PortForwardingConfig); ok {
 				actualPfConfig := pfConfig
-				actualPfConfig.Label = cfg.Label 
+				actualPfConfig.Label = cfg.Label
 				pfConfigs = append(pfConfigs, actualPfConfig)
 				pfOriginalLabels[actualPfConfig.Label] = cfg.Label
 			} else {
@@ -94,7 +94,7 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 		case ServiceTypeMCPServer:
 			if mcpConfig, ok := cfg.Config.(mcpserver.MCPServerConfig); ok {
 				actualMcpConfig := mcpConfig
-				actualMcpConfig.Name = cfg.Label 
+				actualMcpConfig.Name = cfg.Label
 				mcpConfigs = append(mcpConfigs, actualMcpConfig)
 				mcpOriginalLabels[actualMcpConfig.Name] = cfg.Label
 			} else {
@@ -114,8 +114,10 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 	if len(pfConfigs) > 0 {
 		pfUpdateAdapter := func(pfLabel, status, outputLog string, isError, isReady bool) {
 			originalLabel, ok := pfOriginalLabels[pfLabel]
-			if !ok { originalLabel = pfLabel }
-			
+			if !ok {
+				originalLabel = pfLabel
+			}
+
 			genericUpdate := ManagedServiceUpdate{
 				Type: ServiceTypePortForward, Label: originalLabel, Status: status,
 				OutputLog: outputLog, IsError: isError, IsReady: isReady, Error: nil,
@@ -125,14 +127,16 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 			}
 			sm.checkAndProcessRestart(genericUpdate) // checkAndProcessRestart uses sm.initialUpdateCb
 		}
-		
-		currentPfGlobalStopChan := sm.pfGlobalStopChan 
+
+		currentPfGlobalStopChan := sm.pfGlobalStopChan
 		pfStopChans := portforwarding.StartPortForwards(pfConfigs, pfUpdateAdapter, currentPfGlobalStopChan, wg)
-		
+
 		sm.mu.Lock()
 		for label, ch := range pfStopChans {
 			originalLabel, ok := pfOriginalLabels[label]
-			if !ok { originalLabel = label }
+			if !ok {
+				originalLabel = label
+			}
 			allStopChannels[originalLabel] = ch
 			sm.activeServices[originalLabel] = ch
 		}
@@ -143,8 +147,10 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 	if len(mcpConfigs) > 0 {
 		mcpUpdateAdapter := func(mcpUpdate mcpserver.McpProcessUpdate) {
 			originalLabel, ok := mcpOriginalLabels[mcpUpdate.Label]
-			if !ok { originalLabel = mcpUpdate.Label }
-			
+			if !ok {
+				originalLabel = mcpUpdate.Label
+			}
+
 			genericUpdate := ManagedServiceUpdate{
 				Type: ServiceTypeMCPServer, Label: originalLabel, Status: mcpUpdate.Status,
 				OutputLog: mcpUpdate.OutputLog, IsError: mcpUpdate.IsError,
@@ -157,11 +163,13 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 		}
 		mcpStopChans, mcpErrs := mcpserver.StartAndManageMCPServers(mcpConfigs, mcpUpdateAdapter, wg)
 		startupErrors = append(startupErrors, mcpErrs...)
-		
+
 		sm.mu.Lock()
 		for label, ch := range mcpStopChans {
 			originalLabel, ok := mcpOriginalLabels[label]
-			if !ok { originalLabel = label }
+			if !ok {
+				originalLabel = label
+			}
 			allStopChannels[originalLabel] = ch
 			sm.activeServices[originalLabel] = ch
 		}
@@ -252,7 +260,7 @@ func (sm *ServiceManager) RestartService(label string) error {
 
 	// Mark for restart
 	sm.pendingRestarts[label] = true
-	
+
 	_, serviceIsCurrentlyActive := sm.activeServices[label]
 	sm.mu.Unlock() // Unlock before calling StopService or synthetic update
 
@@ -265,7 +273,7 @@ func (sm *ServiceManager) RestartService(label string) error {
 		}
 		return nil
 	}
-	
+
 	return sm.StopService(label)
 }
 
@@ -276,12 +284,12 @@ func (sm *ServiceManager) checkAndProcessRestart(update ManagedServiceUpdate) {
 	defer sm.mu.Unlock()
 
 	isConsideredStopped := update.Status == "Stopped" || update.Status == "Error" || (update.IsError && !update.IsReady)
-	
+
 	if isConsideredStopped {
 		delete(sm.activeServices, update.Label)
 
 		if sm.pendingRestarts[update.Label] {
-			delete(sm.pendingRestarts, update.Label) 
+			delete(sm.pendingRestarts, update.Label)
 
 			cfg, exists := sm.serviceConfigs[update.Label]
 			if exists {
@@ -299,4 +307,4 @@ func (sm *ServiceManager) checkAndProcessRestart(update ManagedServiceUpdate) {
 			}
 		}
 	}
-} 
+}

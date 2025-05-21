@@ -177,15 +177,15 @@ type Model struct {
 	height int
 
 	// Global application state
-	QuitApp              bool
-	IsLoading            bool
-	CurrentAppMode       AppMode
-	LastAppMode          AppMode // To return to after modal dialogs
-	FocusedPanelKey      string  // Tracks which major panel (e.g. port forward, mcp server, log) has focus
-	DebugMode            bool
-	ColorMode            string                 // Stores info about current color profile and dark mode
-	ServiceManager       managers.ServiceManagerAPI
-	KubeMgr              k8smanager.KubeManagerAPI
+	QuitApp         bool
+	IsLoading       bool
+	CurrentAppMode  AppMode
+	LastAppMode     AppMode // To return to after modal dialogs
+	FocusedPanelKey string  // Tracks which major panel (e.g. port forward, mcp server, log) has focus
+	DebugMode       bool
+	ColorMode       string // Stores info about current color profile and dark mode
+	ServiceManager  managers.ServiceManagerAPI
+	KubeMgr         k8smanager.KubeManagerAPI
 
 	// Cluster and Connection Info
 	ManagementClusterName string

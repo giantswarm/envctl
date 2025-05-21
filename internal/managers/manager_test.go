@@ -28,9 +28,14 @@ func setupServiceManagerTestMocks(t *testing.T) func() {
 		for _, cfg := range configs {
 			mStopChans[cfg.Label] = make(chan struct{})
 			go func(c portforwarding.PortForwardingConfig) {
-				if wg != nil { wg.Add(1); defer wg.Done() }
+				if wg != nil {
+					wg.Add(1)
+					defer wg.Done()
+				}
 				time.Sleep(1 * time.Millisecond)
-				if updateCb != nil { updateCb(c.Label, "Mock PF Running", "", false, true) }
+				if updateCb != nil {
+					updateCb(c.Label, "Mock PF Running", "", false, true)
+				}
 			}(cfg)
 		}
 		return mStopChans
@@ -42,9 +47,14 @@ func setupServiceManagerTestMocks(t *testing.T) func() {
 		for _, cfg := range configs {
 			mStopChans[cfg.Name] = make(chan struct{})
 			go func(c mcpserver.MCPServerConfig) {
-				if wg != nil { wg.Add(1); defer wg.Done() }
+				if wg != nil {
+					wg.Add(1)
+					defer wg.Done()
+				}
 				time.Sleep(1 * time.Millisecond)
-				if mcpUpdateFn != nil { mcpUpdateFn(mcpserver.McpProcessUpdate{Label: c.Name, Status: "Mock MCP Running"}) }
+				if mcpUpdateFn != nil {
+					mcpUpdateFn(mcpserver.McpProcessUpdate{Label: c.Name, Status: "Mock MCP Running"})
+				}
 			}(cfg)
 		}
 		return mStopChans, nil
@@ -91,7 +101,7 @@ func TestServiceManager_StartServices_StartsServices(t *testing.T) {
 	}
 
 	var wg sync.WaitGroup
-	updateCh := make(chan managers.ManagedServiceUpdate, len(configs)*2) 
+	updateCh := make(chan managers.ManagedServiceUpdate, len(configs)*2)
 	updateCb := func(u managers.ManagedServiceUpdate) {
 		// Protect against send on closed channel if test timing is tricky
 		// This is a workaround; ideally, channel lifecycle is perfectly managed.
@@ -141,7 +151,7 @@ COLLECT_UPDATES:
 				initialWaitDone = true
 				// Give a very short additional time for any chained updates after wg.Done
 				// This is a pragmatic approach for testing complex async flows.
-				time.Sleep(50 * time.Millisecond) 
+				time.Sleep(50 * time.Millisecond)
 			}
 			// After initial wait and grace period, try to read remaining without blocking indefinitely
 			// If updateCh is not closed yet, this select will continue.
@@ -160,16 +170,18 @@ COLLECT_UPDATES:
 		}
 		// Safety break if waitChan is done and updateCh is empty for a bit
 		if initialWaitDone && len(updateCh) == 0 && len(receivedUpdates) >= len(configs) {
-		    time.Sleep(10 * time.Millisecond) 
-		    if len(updateCh) == 0 { break COLLECT_UPDATES }
+			time.Sleep(10 * time.Millisecond)
+			if len(updateCh) == 0 {
+				break COLLECT_UPDATES
+			}
 		}
 	}
 
-	// It's safer not to close updateCh from the test side if there could be concurrent writers 
+	// It's safer not to close updateCh from the test side if there could be concurrent writers
 	// from checkAndProcessRestart that are not covered by `wg`.
 	// Instead, we rely on collecting updates until timeout or expected number.
 
-	if len(receivedUpdates) < len(configs) { 
+	if len(receivedUpdates) < len(configs) {
 		t.Errorf("Expected at least %d updates, got %d. Updates: %v", len(configs), len(receivedUpdates), receivedUpdates)
 	}
 }
@@ -213,7 +225,7 @@ func TestServiceManager_StopService(t *testing.T) {
 
 	// Test stopping an already stopped service (by trying to close its channel again via StopService)
 	// The current implementation of StopService in ServiceManager will try to close again, which would panic.
-	// Let's refine StopService in ServiceManager to be idempotent for the close operation, 
+	// Let's refine StopService in ServiceManager to be idempotent for the close operation,
 	// or this test needs to expect an error if called twice without the service being re-added to activeServices.
 	// For now, we assume the first StopService call worked and it's removed from activeServices by checkAndProcessRestart upon update.
 	// So, calling StopService again for the same label should immediately return an error that it's not active.
@@ -276,4 +288,4 @@ func synchronized(f func()) {
 	testMu.Lock()
 	defer testMu.Unlock()
 	f()
-} 
+}

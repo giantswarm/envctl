@@ -21,16 +21,16 @@ import (
 
 // Store original functions
 var (
-	originalLoginToKubeCluster func(string) (string, string, error)
-	originalGetClusterInfo     func() (*utils.ClusterInfo, error)
-	originalGetCurrentCtx      func() (string, error)
-	originalSwitchCtx          func(string) error
-	originalBuildMcCtx         func(string) string
-	originalBuildWcCtx         func(string, string) string
-	originalStripPrefix        func(string) string
-	originalHasPrefix          func(string) bool
-	originalGetNodeStatus      func(clientset interface{}) (int, int, error) // Simplified clientset to interface{}
-	originalNewK8sClientsetFromConfig             func(c *rest.Config) (kubernetes.Interface, error)
+	originalLoginToKubeCluster                              func(string) (string, string, error)
+	originalGetClusterInfo                                  func() (*utils.ClusterInfo, error)
+	originalGetCurrentCtx                                   func() (string, error)
+	originalSwitchCtx                                       func(string) error
+	originalBuildMcCtx                                      func(string) string
+	originalBuildWcCtx                                      func(string, string) string
+	originalStripPrefix                                     func(string) string
+	originalHasPrefix                                       func(string) bool
+	originalGetNodeStatus                                   func(clientset interface{}) (int, int, error) // Simplified clientset to interface{}
+	originalNewK8sClientsetFromConfig                       func(c *rest.Config) (kubernetes.Interface, error)
 	originalK8sNewNonInteractiveDeferredLoadingClientConfig func(loader clientcmd.ClientConfigLoader, overrides *clientcmd.ConfigOverrides) clientcmd.ClientConfig // Kept this type
 )
 
@@ -222,7 +222,7 @@ func TestKubeManager_GetClusterNodeHealth_Success(t *testing.T) {
 	defer restoreKubeManagerOriginals()
 
 	// Specific mock for this test
-	currentOriginalLoader := k8smanager.K8sNewNonInteractiveDeferredLoadingClientConfig 
+	currentOriginalLoader := k8smanager.K8sNewNonInteractiveDeferredLoadingClientConfig
 	k8smanager.K8sNewNonInteractiveDeferredLoadingClientConfig = func(loader clientcmd.ClientConfigLoader, overrides *clientcmd.ConfigOverrides) clientcmd.ClientConfig {
 		return &mockClientConfig{
 			clientConfigFuncOverride: func() (*rest.Config, error) {
@@ -231,7 +231,7 @@ func TestKubeManager_GetClusterNodeHealth_Success(t *testing.T) {
 			},
 		}
 	}
-	// No need to defer restore here if restoreKubeManagerOriginals handles it, 
+	// No need to defer restore here if restoreKubeManagerOriginals handles it,
 	// but specific override means we should restore it to what setupKubeManagerMocks set, or original.
 	// Better to restore to the global original at the end of test.
 	defer func() { k8smanager.K8sNewNonInteractiveDeferredLoadingClientConfig = currentOriginalLoader }()
@@ -244,7 +244,7 @@ func TestKubeManager_GetClusterNodeHealth_Success(t *testing.T) {
 	defer func() { kube.GetNodeStatusClientGo = originalGetNodeStatus }()
 
 	km := k8smanager.NewKubeManager()
-	health, err := km.GetClusterNodeHealth(context.Background(), "test-ctx-success") 
+	health, err := km.GetClusterNodeHealth(context.Background(), "test-ctx-success")
 
 	if err != nil {
 		t.Fatalf("GetClusterNodeHealth failed: %v", err)
@@ -294,8 +294,8 @@ func TestKubeManager_GetClusterNodeHealth_NodeStatusError(t *testing.T) {
 	currentOriginalLoader := k8smanager.K8sNewNonInteractiveDeferredLoadingClientConfig
 	k8smanager.K8sNewNonInteractiveDeferredLoadingClientConfig = func(loader clientcmd.ClientConfigLoader, overrides *clientcmd.ConfigOverrides) clientcmd.ClientConfig {
 		return &mockClientConfig{
-			clientConfigFuncOverride: func() (*rest.Config, error) { 
-				return &rest.Config{Host: "fake-nodestatus-host"}, nil 
+			clientConfigFuncOverride: func() (*rest.Config, error) {
+				return &rest.Config{Host: "fake-nodestatus-host"}, nil
 			},
 		}
 	}

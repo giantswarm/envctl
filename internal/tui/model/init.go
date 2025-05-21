@@ -90,10 +90,10 @@ func DefaultKeyMap() KeyMap { // Returns model.KeyMap (KeyMap is in this package
 
 // InitialModel constructs the initial model with sensible defaults.
 func InitialModel(
-	mcName, wcName, kubeContext string, 
-	tuiDebug bool, 
-	mcpServerConfig []mcpserver.MCPServerConfig, 
-	portForwardingConfig []portforwarding.PortForwardingConfig, 
+	mcName, wcName, kubeContext string,
+	tuiDebug bool,
+	mcpServerConfig []mcpserver.MCPServerConfig,
+	portForwardingConfig []portforwarding.PortForwardingConfig,
 	serviceMgr managers.ServiceManagerAPI,
 	kubeMgr k8smanager.KubeManagerAPI,
 ) *Model {
@@ -221,9 +221,9 @@ func (m *Model) Init() tea.Cmd {
 		startServicesCmd := func() tea.Msg {
 			// The WaitGroup here is for the ServiceManager's internal goroutines.
 			// The TUI model might have its own WaitGroup for other async tasks if needed.
-			var wg sync.WaitGroup 
+			var wg sync.WaitGroup
 			_, startupErrors := m.ServiceManager.StartServices(managedServiceConfigs, tuiServiceUpdateCb, &wg)
-			
+
 			// We need a way to signal the TUI that all services have been *attempted* to start
 			// and to pass any initial startup errors. Using AllServicesStartedMsg for this.
 			// Note: This message is sent after StartServices returns. Individual updates
@@ -241,7 +241,7 @@ func (m *Model) Init() tea.Cmd {
 	// Spinner tick
 	cmds = append(cmds, m.Spinner.Tick)
 
-	// Any other initial commands previously dispatched by controller.AppModel.Init() 
+	// Any other initial commands previously dispatched by controller.AppModel.Init()
 	// or specific to the model's setup would go here.
 	// For example, fetching initial cluster health, etc. (These might also become services managed by ServiceManager if complex)
 

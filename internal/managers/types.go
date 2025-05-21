@@ -27,4 +27,4 @@ type ManagedServiceUpdate struct {
 }
 
 // ServiceUpdateFunc is the callback for receiving updates from any managed service.
-type ServiceUpdateFunc func(update ManagedServiceUpdate) 
+type ServiceUpdateFunc func(update ManagedServiceUpdate)

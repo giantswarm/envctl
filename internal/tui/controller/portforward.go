@@ -33,8 +33,8 @@ func SetupPortForwards(m *model.Model, mcName, wcName string) {
 		m.PortForwardOrder = append(m.PortForwardOrder, pfCfg.Label)
 		m.PortForwards[pfCfg.Label] = &model.PortForwardProcess{
 			Label:     pfCfg.Label,
-			Config:    pfCfg, // Store the full config from PortForwardingConfig
-			Active:    true,  // Assume all available PFs are initially active
+			Config:    pfCfg,               // Store the full config from PortForwardingConfig
+			Active:    true,                // Assume all available PFs are initially active
 			StatusMsg: "Awaiting Setup...", // Initial status, will be updated by ServiceManager
 		}
 	}

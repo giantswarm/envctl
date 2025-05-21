@@ -220,7 +220,7 @@ func handleKeyMsgGlobal(m *model.Model, keyMsg tea.KeyMsg, existingCmds []tea.Cm
 		if serviceLabelToStop != "" && stoppable {
 			LogInfo(m, "[Controller] User requested to stop %s: %s", serviceTypeToStop, serviceLabelToStop)
 			model.AppendActivityLog(m, fmt.Sprintf("Attempting to stop %s: %s...", serviceTypeToStop, serviceLabelToStop))
-			
+
 			stopCmd := func() tea.Msg {
 				if m.ServiceManager == nil {
 					return model.ServiceErrorMsg{Label: serviceLabelToStop, Err: fmt.Errorf("ServiceManager not available")}

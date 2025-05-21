@@ -20,8 +20,7 @@ var NewK8sClientsetFromConfig = func(c *rest.Config) (kubernetes.Interface, erro
 }
 
 // K8sNewNonInteractiveDeferredLoadingClientConfig is a package-level variable to allow mocking of clientcmd.NewNonInteractiveDeferredLoadingClientConfig.
-var K8sNewNonInteractiveDeferredLoadingClientConfig = 
-	func(loader clientcmd.ClientConfigLoader, overrides *clientcmd.ConfigOverrides) clientcmd.ClientConfig {
+var K8sNewNonInteractiveDeferredLoadingClientConfig = func(loader clientcmd.ClientConfigLoader, overrides *clientcmd.ConfigOverrides) clientcmd.ClientConfig {
 	return clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loader, overrides)
 }
 
@@ -58,14 +57,14 @@ func (km *kubeManager) ListClusters() (*ClusterList, error) {
 	for _, mcName := range utilsInfo.ManagementClusters {
 		kcContextName := utils.BuildMcContext(mcName) // Use existing util for now
 		cluster := Cluster{
-			Name:                mcName,
+			Name:                  mcName,
 			KubeconfigContextName: kcContextName,
-			IsManagement:        true,
+			IsManagement:          true,
 		}
 		kmlist.ManagementClusters = append(kmlist.ManagementClusters, cluster)
 		kmlist.AllClusters[kcContextName] = cluster
 		if kcContextName != "" {
-		    kmlist.ContextNames = append(kmlist.ContextNames, kcContextName)
+			kmlist.ContextNames = append(kmlist.ContextNames, kcContextName)
 		}
 	}
 
@@ -74,16 +73,16 @@ func (km *kubeManager) ListClusters() (*ClusterList, error) {
 		for _, wcShortName := range wcShortNames {
 			kcContextName := utils.BuildWcContext(mcName, wcShortName) // Use existing util
 			cluster := Cluster{
-				Name:                wcShortName, // Store short name as Name for WC
+				Name:                  wcShortName, // Store short name as Name for WC
 				KubeconfigContextName: kcContextName,
-				IsManagement:        false,
-				MCName:              mcName,
-				WCShortName:         wcShortName,
+				IsManagement:          false,
+				MCName:                mcName,
+				WCShortName:           wcShortName,
 			}
 			kmlist.WorkloadClusters[mcName] = append(kmlist.WorkloadClusters[mcName], cluster)
 			kmlist.AllClusters[kcContextName] = cluster
 			if kcContextName != "" {
-			    kmlist.ContextNames = append(kmlist.ContextNames, kcContextName)
+				kmlist.ContextNames = append(kmlist.ContextNames, kcContextName)
 			}
 		}
 	}

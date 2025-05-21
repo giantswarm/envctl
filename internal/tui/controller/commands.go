@@ -84,8 +84,8 @@ func FetchNodeStatusCmd(kubeMgr k8smanager.KubeManagerAPI, fullTargetContextName
 
 		// Directly use kubeMgr.GetClusterNodeHealth
 		health, err := kubeMgr.GetClusterNodeHealth(context.Background(), fullTargetContextName) // Assuming context.Background is okay for now
-		
-		debugStr.WriteString(fmt.Sprintf("Node status for %s (ctx %s): Ready=%d, Total=%d, Err=%v", 
+
+		debugStr.WriteString(fmt.Sprintf("Node status for %s (ctx %s): Ready=%d, Total=%d, Err=%v",
 			originalClusterShortName, fullTargetContextName, health.ReadyNodes, health.TotalNodes, err))
 
 		if err != nil && strings.Contains(err.Error(), "does not exist in kubeconfig") {

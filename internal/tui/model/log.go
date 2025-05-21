@@ -34,4 +34,4 @@ func LogInfo(m *Model, format string, args ...interface{}) {
 	// Example implementation, replace with your actual one or integrate its logic.
 	entry := fmt.Sprintf("[INFO] "+format, args...)
 	AppendActivityLog(m, entry)
-} 
+}

@@ -51,9 +51,9 @@ func mainControllerDispatch(m *model.Model, msg tea.Msg) (*model.Model, tea.Cmd)
 			// 	for name, proc := range m.McpServers { ... }
 			// }
 
-			model.FinalizeMsgSampling() 
+			model.FinalizeMsgSampling()
 			cmds = append(cmds, tea.Quit) // tea.Quit is the primary command to exit Bubble Tea
-			// We might want a small delay or a message to confirm shutdown before Quit, 
+			// We might want a small delay or a message to confirm shutdown before Quit,
 			// but StopAllServices is asynchronous in terms of when goroutines actually end.
 			// The WaitGroup in cmd/connect.go handles waiting for actual process termination for CLI mode.
 			// For TUI, tea.Quit will terminate the UI loop.
@@ -195,7 +195,9 @@ func handleServiceUpdateMsg(m *model.Model, msg model.ServiceUpdateMsg) (*model.
 		if exists {
 			pfProcess.StatusMsg = update.Status
 			pfProcess.Running = update.IsReady
-			if update.IsError { pfProcess.Err = update.Error }
+			if update.IsError {
+				pfProcess.Err = update.Error
+			}
 			if update.OutputLog != "" {
 				pfProcess.Log = append(pfProcess.Log, update.OutputLog)
 				if len(pfProcess.Log) > model.MaxPanelLogLines { // Keep log size in check
@@ -212,7 +214,9 @@ func handleServiceUpdateMsg(m *model.Model, msg model.ServiceUpdateMsg) (*model.
 		if exists {
 			mcpProcess.StatusMsg = update.Status
 			// mcpProcess.Running = update.IsReady // McpServerProcess doesn't have a 'Running' field, Active is for config
-			if update.IsError { mcpProcess.Err = update.Error }
+			if update.IsError {
+				mcpProcess.Err = update.Error
+			}
 			if update.OutputLog != "" {
 				mcpProcess.Output = append(mcpProcess.Output, update.OutputLog)
 				// TODO: Limit McpServerProcess output log size similarly to PortForwards

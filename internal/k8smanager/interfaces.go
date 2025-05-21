@@ -4,19 +4,19 @@ import "context"
 
 // Cluster represents basic info about a discovered cluster
 type Cluster struct {
-	Name                string
+	Name                  string
 	KubeconfigContextName string // The full context name from kubeconfig (e.g., teleport.giantswarm.io-mc-wc)
-	IsManagement        bool   // True if it's an MC
-	MCName              string // If WC, this is its parent MC's short name. Empty for MCs.
-	WCShortName         string // If WC, its short name. Empty for MCs.
+	IsManagement          bool   // True if it's an MC
+	MCName                string // If WC, this is its parent MC's short name. Empty for MCs.
+	WCShortName           string // If WC, its short name. Empty for MCs.
 }
 
 // ClusterList holds MCs and WCs
 type ClusterList struct {
-	ManagementClusters []Cluster                       // List of Management Clusters
-	WorkloadClusters   map[string][]Cluster          // Key: MC short name, Value: List of its WCs
-	AllClusters        map[string]Cluster            // Key: KubeconfigContextName, Value: Cluster struct for quick lookup
-	ContextNames       []string                      // All KubeconfigContextNames found by tsh kube ls
+	ManagementClusters []Cluster            // List of Management Clusters
+	WorkloadClusters   map[string][]Cluster // Key: MC short name, Value: List of its WCs
+	AllClusters        map[string]Cluster   // Key: KubeconfigContextName, Value: Cluster struct for quick lookup
+	ContextNames       []string             // All KubeconfigContextNames found by tsh kube ls
 }
 
 // NodeHealth represents basic node status
@@ -46,4 +46,4 @@ type KubeManagerAPI interface {
 
 	// Cluster Operations / Info - direct Kubernetes API interactions
 	GetClusterNodeHealth(ctx context.Context, kubeContextName string) (NodeHealth, error)
-} 
+}

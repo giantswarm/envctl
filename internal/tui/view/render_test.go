@@ -32,15 +32,29 @@ var updateGoldenFiles = flag.Bool("update", false, "Update golden files")
 
 type mockKubeManager struct{} // This mock will implement k8smanager.KubeManagerAPI
 
-func (m *mockKubeManager) Login(clusterName string) (stdout string, stderr string, err error) { return "", "", nil }
-func (m *mockKubeManager) ListClusters() (*k8smanager.ClusterList, error) { return &k8smanager.ClusterList{}, nil }
-func (m *mockKubeManager) GetCurrentContext() (string, error)   { return "test-context", nil }
+func (m *mockKubeManager) Login(clusterName string) (stdout string, stderr string, err error) {
+	return "", "", nil
+}
+func (m *mockKubeManager) ListClusters() (*k8smanager.ClusterList, error) {
+	return &k8smanager.ClusterList{}, nil
+}
+func (m *mockKubeManager) GetCurrentContext() (string, error)           { return "test-context", nil }
 func (m *mockKubeManager) SwitchContext(targetContextName string) error { return nil }
-func (m *mockKubeManager) GetAvailableContexts() ([]string, error) { return []string{"test-context"}, nil }
-func (m *mockKubeManager) BuildMcContextName(mcShortName string) string { return "teleport.giantswarm.io-" + mcShortName }
-func (m *mockKubeManager) BuildWcContextName(mcShortName, wcShortName string) string { return "teleport.giantswarm.io-" + mcShortName + "-" + wcShortName }
-func (m *mockKubeManager) StripTeleportPrefix(contextName string) string { return strings.TrimPrefix(contextName, "teleport.giantswarm.io-") }
-func (m *mockKubeManager) HasTeleportPrefix(contextName string) bool { return strings.HasPrefix(contextName, "teleport.giantswarm.io-") }
+func (m *mockKubeManager) GetAvailableContexts() ([]string, error) {
+	return []string{"test-context"}, nil
+}
+func (m *mockKubeManager) BuildMcContextName(mcShortName string) string {
+	return "teleport.giantswarm.io-" + mcShortName
+}
+func (m *mockKubeManager) BuildWcContextName(mcShortName, wcShortName string) string {
+	return "teleport.giantswarm.io-" + mcShortName + "-" + wcShortName
+}
+func (m *mockKubeManager) StripTeleportPrefix(contextName string) string {
+	return strings.TrimPrefix(contextName, "teleport.giantswarm.io-")
+}
+func (m *mockKubeManager) HasTeleportPrefix(contextName string) bool {
+	return strings.HasPrefix(contextName, "teleport.giantswarm.io-")
+}
 func (m *mockKubeManager) GetClusterNodeHealth(ctx context.Context, kubeContextName string) (k8smanager.NodeHealth, error) {
 	// Return a default healthy state for tests, or vary based on kubeContextName if needed for specific tests.
 	return k8smanager.NodeHealth{ReadyNodes: 1, TotalNodes: 1, Error: nil}, nil
