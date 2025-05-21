@@ -1,7 +1,7 @@
 package mcpserver
 
-// PredefinedMcpServers defines the static configuration for all known MCP servers.
-var PredefinedMcpServers = []PredefinedMcpServer{
+// mcpServerConfigList defines the static configuration for all known MCP servers.
+var mcpServerConfigList = []MCPServerConfig{
 	{
 		Name:      "kubernetes",
 		ProxyPort: 8001,
@@ -26,4 +26,9 @@ var PredefinedMcpServers = []PredefinedMcpServer{
 		Args:      []string{"mcp-server-grafana"},
 		Env:       map[string]string{"GRAFANA_URL": "http://localhost:3000"},
 	},
+}
+
+// GetMCPServerConfig returns the static list of MCP server configurations.
+func GetMCPServerConfig() []MCPServerConfig {
+	return mcpServerConfigList
 }

@@ -12,7 +12,7 @@ import (
 )
 
 // Mock implementation for StartAndManageIndividualPortForward
-func mockStartAndManageIndividualPortForward(cfg PortForwardConfig, updateFn PortForwardUpdateFunc, t *testing.T) (chan struct{}, error) {
+func mockStartAndManageIndividualPortForward(cfg PortForwardingConfig, updateFn PortForwardUpdateFunc, t *testing.T) (chan struct{}, error) {
 	t.Logf("[mockStartAndManageIndividualPortForward - %s] Called", cfg.InstanceKey)
 	mockStop := make(chan struct{})
 	updateFn(PortForwardProcessUpdate{InstanceKey: cfg.InstanceKey, StatusMsg: "Mocked Running", Running: true})
@@ -28,7 +28,7 @@ func mockStartAndManageIndividualPortForward(cfg PortForwardConfig, updateFn Por
 	return mockStop, nil
 }
 
-func mockStartAndManageIndividualPortForwardError(cfg PortForwardConfig, updateFn PortForwardUpdateFunc, t *testing.T) (chan struct{}, error) {
+func mockStartAndManageIndividualPortForwardError(cfg PortForwardingConfig, updateFn PortForwardUpdateFunc, t *testing.T) (chan struct{}, error) {
 	t.Logf("[mockStartAndManageIndividualPortForwardError - %s] Called", cfg.InstanceKey)
 	updateFn(PortForwardProcessUpdate{InstanceKey: cfg.InstanceKey, StatusMsg: "Mocked Initializing then Error", Running: false})
 	t.Logf("[mockStartAndManageIndividualPortForwardError - %s] Sent 'Mocked Initializing then Error' update", cfg.InstanceKey)
@@ -38,7 +38,7 @@ func mockStartAndManageIndividualPortForwardError(cfg PortForwardConfig, updateF
 func TestStartAllConfiguredPortForwards_Success(t *testing.T) {
 	t.Logf("TestStartAllConfiguredPortForwards_Success: BEGIN")
 	originalStartFn := startAndManageIndividualPortForwardFn
-	startAndManageIndividualPortForwardFn = func(cfg PortForwardConfig, updateFn PortForwardUpdateFunc) (chan struct{}, error) {
+	startAndManageIndividualPortForwardFn = func(cfg PortForwardingConfig, updateFn PortForwardUpdateFunc) (chan struct{}, error) {
 		return mockStartAndManageIndividualPortForward(cfg, updateFn, t)
 	}
 	defer func() {
@@ -46,7 +46,7 @@ func TestStartAllConfiguredPortForwards_Success(t *testing.T) {
 		t.Logf("TestStartAllConfiguredPortForwards_Success: Restored original startFn")
 	}()
 
-	configs := []PortForwardConfig{
+	configs := []PortForwardingConfig{
 		{InstanceKey: "pf1", Label: "PF1"},
 		{InstanceKey: "pf2", Label: "PF2"},
 	}
@@ -150,7 +150,7 @@ Loop:
 func TestStartAllConfiguredPortForwards_IndividualError(t *testing.T) {
 	t.Logf("TestStartAllConfiguredPortForwards_IndividualError: BEGIN")
 	originalStartFn := startAndManageIndividualPortForwardFn
-	startAndManageIndividualPortForwardFn = func(cfg PortForwardConfig, updateFn PortForwardUpdateFunc) (chan struct{}, error) {
+	startAndManageIndividualPortForwardFn = func(cfg PortForwardingConfig, updateFn PortForwardUpdateFunc) (chan struct{}, error) {
 		return mockStartAndManageIndividualPortForwardError(cfg, updateFn, t)
 	}
 	defer func() {
@@ -158,7 +158,7 @@ func TestStartAllConfiguredPortForwards_IndividualError(t *testing.T) {
 		t.Logf("TestStartAllConfiguredPortForwards_IndividualError: Restored original startFn")
 	}()
 
-	configs := []PortForwardConfig{
+	configs := []PortForwardingConfig{
 		{InstanceKey: "pf-err", Label: "PF Error"},
 	}
 
@@ -218,35 +218,35 @@ func TestNonTUIUpdater(t *testing.T) {
 	}()
 
 	tests := []struct {
-		name          string
-		update        PortForwardProcessUpdate
-		expectedOut   string
-		expectedErr   string
-		isStdout      bool // true if expected on stdout, false for stderr
+		name        string
+		update      PortForwardProcessUpdate
+		expectedOut string
+		expectedErr string
+		isStdout    bool // true if expected on stdout, false for stderr
 	}{
 		{
-			name: "Status update",
-			update: PortForwardProcessUpdate{InstanceKey: "test1", LocalPort: "8080", RemotePort: "80", StatusMsg: "Running"},
+			name:        "Status update",
+			update:      PortForwardProcessUpdate{InstanceKey: "test1", LocalPort: "8080", RemotePort: "80", StatusMsg: "Running"},
 			expectedOut: "[test1 PF 8080:80] STATUS: Running\n",
-			isStdout: true,
+			isStdout:    true,
 		},
 		{
-			name: "Log output",
-			update: PortForwardProcessUpdate{InstanceKey: "test2", LocalPort: "3000", RemotePort: "3000", OutputLog: "Some log line"},
+			name:        "Log output",
+			update:      PortForwardProcessUpdate{InstanceKey: "test2", LocalPort: "3000", RemotePort: "3000", OutputLog: "Some log line"},
 			expectedOut: "[test2 PF 3000:3000] LOG: Some log line\n",
-			isStdout: true,
+			isStdout:    true,
 		},
 		{
-			name: "Error update",
-			update: PortForwardProcessUpdate{InstanceKey: "test3", LocalPort: "9090", RemotePort: "90", StatusMsg: "Failed", Error: errors.New("epic fail")},
+			name:        "Error update",
+			update:      PortForwardProcessUpdate{InstanceKey: "test3", LocalPort: "9090", RemotePort: "90", StatusMsg: "Failed", Error: errors.New("epic fail")},
 			expectedErr: "[test3 PF 9090:90] ERROR: Failed - epic fail\n",
-			isStdout: false,
+			isStdout:    false,
 		},
 		{
-			name: "Ready forwarding message",
-			update: PortForwardProcessUpdate{InstanceKey: "test4", LocalPort: "8888", RemotePort: "88", StatusMsg: "Active", OutputLog: "Forwarding from 127.0.0.1:8888 -> 88"},
+			name:        "Ready forwarding message",
+			update:      PortForwardProcessUpdate{InstanceKey: "test4", LocalPort: "8888", RemotePort: "88", StatusMsg: "Active", OutputLog: "Forwarding from 127.0.0.1:8888 -> 88"},
 			expectedOut: "[test4 PF 8888:88] STATUS: Active - Forwarding from 127.0.0.1:8888 -> 88\n",
-			isStdout: true,
+			isStdout:    true,
 		},
 	}
 
@@ -259,13 +259,13 @@ func TestNonTUIUpdater(t *testing.T) {
 
 			// Need to close the write ends to allow ReadAll to unblock
 			if tt.isStdout {
-				w.Close()       // Close stdout write pipe
+				w.Close() // Close stdout write pipe
 				stdoutData, _ := io.ReadAll(r)
 				outBytes.Write(stdoutData)
 				r, w, _ = os.Pipe() // Re-open for next test iteration
 				os.Stdout = w
 			} else {
-				wErr.Close()    // Close stderr write pipe
+				wErr.Close() // Close stderr write pipe
 				stderrData, _ := io.ReadAll(rErr)
 				errBytes.Write(stderrData)
 				rErr, wErr, _ = os.Pipe() // Re-open for next test iteration
@@ -283,4 +283,4 @@ func TestNonTUIUpdater(t *testing.T) {
 			}
 		})
 	}
-} 
+}

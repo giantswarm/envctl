@@ -9,7 +9,8 @@ import (
 // BuildDependencyGraph constructs a dependency graph linking MCP proxies and
 // port-forward processes so that the TUI can make lifecycle decisions
 // (e.g. when an MCP is restarted its port-forwards are restarted first).
-func BuildDependencyGraph(m *model.Model) *dependency.Graph {
+// It now accepts the list of MCP server configurations as an argument.
+func BuildDependencyGraph(m *model.Model, mcpServerConfig []mcpserver.MCPServerConfig) *dependency.Graph {
 	g := dependency.New()
 
 	// 1. Port-forward nodes
@@ -23,7 +24,7 @@ func BuildDependencyGraph(m *model.Model) *dependency.Graph {
 	}
 
 	// 2. MCP proxy nodes with their static dependencies
-	for _, cfg := range mcpserver.PredefinedMcpServers {
+	for _, cfg := range mcpServerConfig {
 		node := dependency.Node{
 			ID:           dependency.NodeID("mcp:" + cfg.Name),
 			FriendlyName: cfg.Name,

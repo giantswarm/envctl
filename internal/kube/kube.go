@@ -337,9 +337,9 @@ func determineProviderFromNode(node *corev1.Node) string {
 			return "azure"
 		} else if strings.HasPrefix(providerID, "gce://") {
 			return "gcp"
-		} else if strings.Contains(providerID, "vsphere") { 
+		} else if strings.Contains(providerID, "vsphere") {
 			return "vsphere"
-		} else if strings.Contains(providerID, "openstack") { 
+		} else if strings.Contains(providerID, "openstack") {
 			return "openstack"
 		}
 		// If providerID is present but not matched, try labels next
@@ -370,8 +370,8 @@ func DetermineClusterProvider(contextName string) (string, error) {
 
 	// Use Teleport prefix for context name if not already prefixed and contextName is provided.
 	k8sContextName := contextName
-	if contextName != "" && !strings.HasPrefix(contextName, "teleport.giantswarm.io-") { 
-		k8sContextName = "teleport.giantswarm.io-" + contextName 
+	if contextName != "" && !strings.HasPrefix(contextName, "teleport.giantswarm.io-") {
+		k8sContextName = "teleport.giantswarm.io-" + contextName
 	}
 
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()

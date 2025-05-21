@@ -7,7 +7,7 @@ type proxyService struct{}
 
 func newProxyService() MCPProxyService { return &proxyService{} }
 
-func (p *proxyService) Start(cfg mcpserver.PredefinedMcpServer, updateFn func(mcpserver.McpProcessUpdate)) (chan struct{}, int, error) {
+func (p *proxyService) Start(cfg mcpserver.MCPServerConfig, updateFn func(mcpserver.McpProcessUpdate)) (chan struct{}, int, error) {
 	pid, stop, err := mcpserver.StartAndManageIndividualMcpServer(cfg, updateFn, nil)
 	return stop, pid, err
 }

@@ -17,7 +17,7 @@ func TestPipeFails(t *testing.T) {
 	}
 	defer func() { execCommand = originalExecCommand }()
 
-	serverCfg := PredefinedMcpServer{
+	serverCfg := MCPServerConfig{
 		Name:      "pipe-fail-server",
 		ProxyPort: 9002,
 		Command:   "some-cmd",
@@ -30,7 +30,7 @@ func TestPipeFails(t *testing.T) {
 	if err == nil {
 		t.Fatal("Expected StartAndManageIndividualMcpServer to return an error for pipe failure, but it was nil")
 	}
-	
+
 	// If cmd.Path is bad, StdoutPipe or StderrPipe might be the first to fail.
 	expectedErrSubstr := fmt.Sprintf("stdout pipe for %s", serverCfg.Name)
 	// It could also be a stderr pipe error if stdout somehow passed, or a start error if pipes surprisingly work.
@@ -46,7 +46,7 @@ func TestPipeFails(t *testing.T) {
 }
 
 // proxyArgsForTest is a helper to reconstruct the arguments mcp-proxy would be called with.
-func proxyArgsForTest(serverCfg PredefinedMcpServer) []string {
+func proxyArgsForTest(serverCfg MCPServerConfig) []string {
 	proxyArgs := []string{
 		"--port", fmt.Sprintf("%d", serverCfg.ProxyPort),
 		"--pass-environment",
@@ -54,4 +54,4 @@ func proxyArgsForTest(serverCfg PredefinedMcpServer) []string {
 		serverCfg.Command,
 	}
 	return append(proxyArgs, serverCfg.Args...)
-} 
+}

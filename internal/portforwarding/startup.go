@@ -15,10 +15,10 @@ var startAndManageIndividualPortForwardFn = StartAndManageIndividualPortForward
 
 // StartAllConfiguredPortForwards starts and manages a list of port forwarding configurations.
 // It's designed for non-TUI mode (e.g., CLI usage).
-// It takes a slice of PortForwardConfig, a generic update function, and a global stop channel.
+// It takes a slice of PortForwardingConfig, a generic update function, and a global stop channel.
 // The global stop channel can be used to signal all started port forwards to terminate.
 func StartAllConfiguredPortForwards(
-	configs []PortForwardConfig,
+	configs []PortForwardingConfig,
 	updateFn PortForwardUpdateFunc,
 	globalStopChan chan struct{}, // External signal to stop all port forwards
 ) ([]ManagedPortForwardInfo, error) {
@@ -32,7 +32,7 @@ func StartAllConfiguredPortForwards(
 	for i, pfConfig := range configs {
 		wg.Add(1)
 		log.Printf("[StartAll] Goroutine %d for %s: wg.Add(1) called.", i, pfConfig.InstanceKey)
-		go func(cfg PortForwardConfig, idx int) {
+		go func(cfg PortForwardingConfig, idx int) {
 			log.Printf("[StartAll GOROUTINE %d - %s] START. Calling defer wg.Done().", idx, cfg.InstanceKey)
 			defer func() {
 				log.Printf("[StartAll GOROUTINE %d - %s] wg.Done() CALLED.", idx, cfg.InstanceKey)

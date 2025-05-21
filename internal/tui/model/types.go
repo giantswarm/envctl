@@ -173,18 +173,21 @@ func (k KeyMap) InputModeHelp() [][]key.Binding {
 // close to the basic types makes it easier to reason about the data structure.
 type Model struct {
 	// --- Cluster Information ---
-	ManagementClusterName    string
-	WorkloadClusterName      string
-	CurrentKubeContext       string
-	QuittingMessage          string
-	MCHealth                 ClusterHealthInfo
-	WCHealth                 ClusterHealthInfo
-	PortForwards             map[string]*PortForwardProcess
-	PortForwardOrder         []string
-	FocusedPanelKey          string
-	McpProxyOrder            []string
-	McpServers               map[string]*McpServerProcess
-	PredefinedMcpServers     []mcpserver.PredefinedMcpServer
+	ManagementClusterName string
+	WorkloadClusterName   string
+	CurrentKubeContext    string
+	QuittingMessage       string
+	MCHealth              ClusterHealthInfo
+	WCHealth              ClusterHealthInfo
+	// --- Port Forwarding & MCP ---
+	PortForwardingConfig []portforwarding.PortForwardingConfig
+	PortForwards         map[string]*PortForwardProcess
+	PortForwardOrder     []string
+	FocusedPanelKey      string
+	McpProxyOrder        []string
+	McpServers           map[string]*McpServerProcess
+	MCPServerConfig      []mcpserver.MCPServerConfig
+	// --- UI State & Output ---
 	ActivityLog              []string
 	ActivityLogDirty         bool
 	LogViewportLastWidth     int
@@ -225,19 +228,19 @@ type ClusterHealthInfo struct { // Renamed from clusterHealthInfo
 }
 
 type PortForwardProcess struct { // Renamed from portForwardProcess
-	Label       string                           // Exported
-	Command     string                           // Exported
-	LocalPort   int                              // Exported
-	RemotePort  int                              // Exported
-	TargetHost  string                           // Exported
-	ContextName string                           // Exported
-	StopChan    chan struct{}                    // Exported
-	Log         []string                         // Exported
-	Active      bool                             // Exported
-	Running     bool                             // Exported
-	StatusMsg   string                           // Exported
-	Err         error                            // Exported
-	Config      portforwarding.PortForwardConfig // Added Exported Config field
+	Label       string                              // Exported
+	Command     string                              // Exported
+	LocalPort   int                                 // Exported
+	RemotePort  int                                 // Exported
+	TargetHost  string                              // Exported
+	ContextName string                              // Exported
+	StopChan    chan struct{}                       // Exported
+	Log         []string                            // Exported
+	Active      bool                                // Exported
+	Running     bool                                // Exported
+	StatusMsg   string                              // Exported
+	Err         error                               // Exported
+	Config      portforwarding.PortForwardingConfig // Update type here
 }
 
 type McpServerProcess struct { // Renamed from mcpServerProcess

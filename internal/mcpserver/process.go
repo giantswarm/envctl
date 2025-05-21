@@ -15,7 +15,7 @@ var execCommand = exec.Command
 // It takes a serverConfig, an updateFn callback, and an optional WaitGroup.
 // It returns the PID, a stop channel for terminating the process, and any initial error during startup.
 func StartAndManageIndividualMcpServer(
-	serverConfig PredefinedMcpServer,
+	serverConfig MCPServerConfig,
 	updateFn McpUpdateFunc,
 	wg *sync.WaitGroup,
 ) (pid int, stopChan chan struct{}, initialError error) {

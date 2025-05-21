@@ -4,6 +4,7 @@ import (
 	"envctl/internal/color"
 	"envctl/internal/kube"
 	"envctl/internal/mcpserver"
+	"envctl/internal/portforwarding"
 	"envctl/internal/tui/controller"
 	"envctl/internal/utils"
 	"fmt"
@@ -56,8 +57,7 @@ Arguments:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		managementClusterArg := args[0]
 		workloadClusterArg := ""
-		fullWorkloadClusterIdentifier := ""
-
+		var fullWorkloadClusterIdentifier string
 		if len(args) == 2 {
 			workloadClusterArg = args[1]
 			fullWorkloadClusterIdentifier = managementClusterArg + "-" + workloadClusterArg
@@ -106,32 +106,26 @@ Arguments:
 		if noTUI {
 			fmt.Println("Skipping TUI. Setting up port forwarding and MCP proxies in the background...")
 
-			var targetCtxForAlloy string
-			if workloadClusterArg != "" {
-				targetCtxForAlloy = utils.BuildWcContext(managementClusterArg, workloadClusterArg)
-			} else {
-				targetCtxForAlloy = utils.BuildMcContext(managementClusterArg)
-			}
-			portForwardConfigs := getPortForwardConfigs(managementClusterArg, fullWorkloadClusterIdentifier, targetCtxForAlloy)
+			portForwardingConfig := portforwarding.GetPortForwardConfig(managementClusterArg, workloadClusterArg)
 
 			var wg sync.WaitGroup
 			allPortForwardsStopChan := make(chan struct{})
 			mcpStopChans := make(map[string]chan struct{})
 
 			portForwardsStarted := false
-			if len(portForwardConfigs) > 0 {
+			if len(portForwardingConfig) > 0 {
 				fmt.Println("--- Port Forwarding ---")
 				portForwardsStarted = true
-				for _, pfConfig := range portForwardConfigs {
+				for _, pfCfg := range portForwardingConfig {
 					wg.Add(1)
-					config := pfConfig
+					config := pfCfg
 					go func() {
 						defer wg.Done()
 						fmt.Printf("Attempting to start port-forward for %s on %s to %s:%s (context: %s)...\n",
-							config.label, config.service, config.localPort, config.remotePort, config.kubeContext)
+							config.Label, config.ServiceName, config.LocalPort, config.RemotePort, config.KubeContext)
 
 						sendUpdateFunc := func(status, outputLog string, isError, isReady bool) {
-							logPrefix := fmt.Sprintf("[%s] ", config.label)
+							logPrefix := fmt.Sprintf("[%s] ", config.Label)
 							if isError {
 								fmt.Printf("%sERROR: %s %s\n", logPrefix, status, outputLog)
 							} else if isReady {
@@ -143,34 +137,34 @@ Arguments:
 							}
 						}
 
-						portSpec := fmt.Sprintf("%s:%s", config.localPort, config.remotePort)
+						portSpec := fmt.Sprintf("%s:%s", config.LocalPort, config.RemotePort)
 						individualStopChan, initialStatus, initialErr := kube.StartPortForwardClientGo(
-							config.kubeContext,
-							config.namespace,
-							config.service,
+							config.KubeContext,
+							config.Namespace,
+							config.ServiceName,
 							portSpec,
-							config.label,
+							config.Label,
 							sendUpdateFunc,
 						)
 
 						if initialErr != nil {
-							fmt.Fprintf(os.Stderr, "[%s] Failed to start port-forward: %v. Initial Status: %s\n", config.label, initialErr, initialStatus)
+							fmt.Fprintf(os.Stderr, "[%s] Failed to start port-forward: %v. Initial Status: %s\n", config.Label, initialErr, initialStatus)
 							return
 						}
 						if individualStopChan == nil && initialErr == nil {
-							fmt.Fprintf(os.Stderr, "[%s] Port-forward setup returned no error but stop channel is nil. Initial Status: %s\n", config.label, initialStatus)
+							fmt.Fprintf(os.Stderr, "[%s] Port-forward setup returned no error but stop channel is nil. Initial Status: %s\n", config.Label, initialStatus)
 							return
 						}
 
-						fmt.Printf("[%s] Port-forwarding setup initiated. Initial TUI status: %s\n", config.label, initialStatus)
+						fmt.Printf("[%s] Port-forwarding setup initiated. Initial TUI status: %s\n", config.Label, initialStatus)
 
 						select {
 						case <-individualStopChan:
-							fmt.Printf("[%s] Port-forwarding stopped (individual signal).\n", config.label)
+							fmt.Printf("[%s] Port-forwarding stopped (individual signal).\n", config.Label)
 						case <-allPortForwardsStopChan:
-							fmt.Printf("[%s] Stopping port-forwarding (global signal)...\n", config.label)
+							fmt.Printf("[%s] Stopping port-forwarding (global signal)...\n", config.Label)
 							close(individualStopChan)
-							fmt.Printf("[%s] Port-forwarding stopped (global signal processed).\n", config.label)
+							fmt.Printf("[%s] Port-forwarding stopped (global signal processed).\n", config.Label)
 						}
 					}()
 				}
@@ -192,9 +186,10 @@ Arguments:
 				}
 			}
 
-			managedMcpChan := mcpserver.StartAllPredefinedMcpServers(consoleMcpUpdateFn, &wg)
+			mcpServerConfig := mcpserver.GetMCPServerConfig()
+			managedMcpChan := mcpserver.StartAllMCPServers(mcpServerConfig, consoleMcpUpdateFn, &wg)
 			mcpServersAttempted := false
-			if len(mcpserver.PredefinedMcpServers) > 0 {
+			if len(mcpServerConfig) > 0 {
 				mcpServersAttempted = true
 			}
 
@@ -259,11 +254,11 @@ Arguments:
 
 			// Initialize color profile for TUI (force dark mode for now)
 			color.Initialize(true)
-			// _ = lipgloss.HasDarkBackground() // Old no-op call, replaced by Initialize
 
-			// Pass the predefined MCP servers to the TUI program
-			predefinedMcpServers := mcpserver.PredefinedMcpServers
-			p := controller.NewProgram(managementClusterArg, workloadClusterArg, currentKubeContextAfterLogin, tuiDebugMode, predefinedMcpServers)
+			mcpServerConfig := mcpserver.GetMCPServerConfig()
+			portForwardingConfig := portforwarding.GetPortForwardConfig(managementClusterArg, workloadClusterArg)
+
+			p := controller.NewProgram(managementClusterArg, workloadClusterArg, currentKubeContextAfterLogin, tuiDebugMode, mcpServerConfig, portForwardingConfig)
 			if _, err := p.Run(); err != nil {
 				fmt.Fprintf(os.Stderr, "Error running TUI: %v\n", err)
 				return err
@@ -299,63 +294,6 @@ func newConnectCmd() *cobra.Command {
 	connectCmdDef.Flags().BoolVar(&noTUI, "no-tui", false, "Disable TUI and run port forwarding in the background")
 	connectCmdDef.Flags().BoolVar(&tuiDebugMode, "debug-tui", false, "Enable TUI debug mode from startup (shows extra logs)")
 	return connectCmdDef
-}
-
-type portForwardConfig struct {
-	label       string
-	localPort   string
-	remotePort  string
-	kubeContext string
-	namespace   string
-	service     string
-}
-
-func getPortForwardConfigs(mcShortName, wcFullIdentifier string, alloyMetricsTargetContext string) []portForwardConfig {
-	configs := make([]portForwardConfig, 0)
-	mcKubeContext := utils.BuildMcContext(mcShortName)
-	// var wcKubeContext string // Not directly used for individual PFs other than Alloy
-
-	if mcShortName != "" {
-		configs = append(configs, portForwardConfig{
-			label:       "Prometheus (MC)",
-			localPort:   "8080",
-			remotePort:  "8080",
-			kubeContext: mcKubeContext, // Prometheus always on MC context
-			namespace:   "mimir",
-			service:     "service/mimir-query-frontend",
-		})
-		configs = append(configs, portForwardConfig{
-			label:       "Grafana (MC)",
-			localPort:   "3000",
-			remotePort:  "3000",
-			kubeContext: mcKubeContext, // Grafana always on MC context
-			namespace:   "monitoring",
-			service:     "service/grafana",
-		})
-	}
-
-	alloyLabel := "Alloy Metrics"
-	// alloyMetricsTargetContext is already determined: WC context if WC specified, else MC context.
-	if wcFullIdentifier != "" { // wcFullIdentifier is like "mc-wc" or empty
-		alloyLabel += " (WC)"
-	} else if mcShortName != "" {
-		alloyLabel += " (MC)"
-	} else {
-		// No MC or WC specified for Alloy, skip? Or handle error?
-		// For now, if alloyMetricsTargetContext is empty, this PF might not be added or might fail.
-	}
-
-	if alloyMetricsTargetContext != "" { // Only add if we have a context for it
-		configs = append(configs, portForwardConfig{
-			label:       alloyLabel,
-			localPort:   "12345",
-			remotePort:  "12345",
-			kubeContext: alloyMetricsTargetContext,
-			namespace:   "kube-system",
-			service:     "service/alloy-metrics-cluster",
-		})
-	}
-	return configs
 }
 
 // Removed init() function as MCP server config is no longer initialized here.

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	// For mcpserver.MCPServerConfig type if needed by other funcs in this pkg
 	"envctl/internal/tui/model"
 	"envctl/internal/tui/view"
 	"envctl/internal/utils"
@@ -28,18 +29,17 @@ func (a *AppModel) GetModel() *model.Model {
 func NewAppModel(m *model.Model, mcName, wcName string) *AppModel {
 	app := &AppModel{model: m}
 
-	// PredefinedMcpServers is now set in model.InitialModel via parameter
+	// PredefinedMcpServers is now set in model.InitialModel via parameter as MCPServerConfig
 
 	// Initialize McpProxyOrder based on the predefined servers in the model
-	app.model.McpProxyOrder = nil // Initialize explicitly
-	for _, cfg := range app.model.PredefinedMcpServers {
+	app.model.McpProxyOrder = nil                   // Initialize explicitly
+	for _, cfg := range app.model.MCPServerConfig { // Use renamed field
 		app.model.McpProxyOrder = append(app.model.McpProxyOrder, cfg.Name)
 	}
 
 	// Configure initial port-forwards and dependency graph using controller functions
-	// These were previously in model.InitialModel
 	SetupPortForwards(app.model, mcName, wcName)
-	app.model.DependencyGraph = BuildDependencyGraph(app.model)
+	app.model.DependencyGraph = BuildDependencyGraph(app.model, app.model.MCPServerConfig) // Use renamed field
 
 	// Set initial focused panel key (logic moved from model.InitialModel)
 	if len(app.model.PortForwardOrder) > 0 {
@@ -77,7 +77,7 @@ func (a *AppModel) Init() tea.Cmd {
 	// GetInitialPortForwardCmds should operate on the now configured model.
 	controllerCmds = append(controllerCmds, GetInitialPortForwardCmds(a.model)...)
 
-	if proxyCmds := StartMcpProxiesCmd(a.model.PredefinedMcpServers, a.model.Services.Proxy, a.model.TUIChannel); len(proxyCmds) > 0 {
+	if proxyCmds := StartMcpProxiesCmd(a.model.MCPServerConfig, a.model.Services.Proxy, a.model.TUIChannel); len(proxyCmds) > 0 { // Use renamed field
 		controllerCmds = append(controllerCmds, proxyCmds...)
 	}
 

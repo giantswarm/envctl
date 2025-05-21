@@ -274,10 +274,10 @@ func FetchClusterListCmd() tea.Cmd {
 // have been moved to the internal/mcpserver package.
 
 // startMcpProxiesCmd creates a slice of tea.Cmds, one for each predefined MCP proxy.
-func StartMcpProxiesCmd(predefinedServers []mcpserver.PredefinedMcpServer, proxySvc service.MCPProxyService, tuiChan chan tea.Msg) []tea.Cmd {
+func StartMcpProxiesCmd(mcpServerConfig []mcpserver.MCPServerConfig, proxySvc service.MCPProxyService, tuiChan chan tea.Msg) []tea.Cmd {
 	var commandsToBatch []tea.Cmd
 
-	if len(predefinedServers) == 0 {
+	if len(mcpServerConfig) == 0 {
 		cmd := func() tea.Msg {
 			return model.McpServerStatusUpdateMsg{Label: "MCP Proxies", Status: "Info", OutputLog: "No predefined MCP servers configured."}
 		}
@@ -285,7 +285,7 @@ func StartMcpProxiesCmd(predefinedServers []mcpserver.PredefinedMcpServer, proxy
 		return commandsToBatch
 	}
 
-	for _, serverCfg := range predefinedServers {
+	for _, serverCfg := range mcpServerConfig {
 		// Capture range variable for the closure
 		capturedServerCfg := serverCfg
 

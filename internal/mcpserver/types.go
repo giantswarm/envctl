@@ -1,8 +1,8 @@
 package mcpserver
 
-// PredefinedMcpServer holds the configuration for an MCP server that envctl knows how to start.
+// MCPServerConfig holds the configuration for an MCP server that envctl knows how to start.
 // The actual server (e.g., mcp-server-kubernetes) is run via mcp-proxy.
-type PredefinedMcpServer struct {
+type MCPServerConfig struct {
 	Name      string            // e.g., "kubernetes", "prometheus"
 	ProxyPort int               // Port for mcp-proxy to listen on
 	Command   string            // The underlying MCP server command (e.g., "npx", "uvx")

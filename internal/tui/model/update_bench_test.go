@@ -32,7 +32,7 @@ var benchmarkMsgs = func() []tea.Msg {
 // It mirrors the production InitialModel but disables debug logging to focus
 // on Update-loop cost alone.
 func newBenchModel() tea.Model {
-	mCore := model.InitialModel("mc", "wc", "mc", false, mcpserver.PredefinedMcpServers)
+	mCore := model.InitialModel("mc", "wc", "mc", false, mcpserver.GetMCPServerConfig(), nil)
 	// Seed terminal dimensions
 	mCore.Width = 120
 	mCore.Height = 40

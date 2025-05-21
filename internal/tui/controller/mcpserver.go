@@ -89,17 +89,19 @@ func handleRestartMcpServerMsg(m *model.Model, msg model.RestartMcpServerMsg) (*
 	startCmd := func() tea.Msg {
 		time.Sleep(restartDelay)
 
-		var cfg *mcpserver.PredefinedMcpServer
-		for i := range mcpserver.PredefinedMcpServers {
-			if mcpserver.PredefinedMcpServers[i].Name == serverName {
-				cfg = &mcpserver.PredefinedMcpServers[i]
+		var cfgFound *mcpserver.MCPServerConfig
+		for i := range m.MCPServerConfig {
+			if m.MCPServerConfig[i].Name == serverName {
+				cfgFound = &m.MCPServerConfig[i]
 				break
 			}
 		}
 
-		if cfg == nil {
+		if cfgFound == nil {
 			return model.McpServerStatusUpdateMsg{Label: serverName, Status: "Error", OutputLog: "Unknown MCP proxy"}
 		}
+
+		cfgToStart := *cfgFound
 
 		tuiUpdateFn := func(update mcpserver.McpProcessUpdate) {
 			if m.TUIChannel != nil {
@@ -113,15 +115,15 @@ func handleRestartMcpServerMsg(m *model.Model, msg model.RestartMcpServerMsg) (*
 			}
 		}
 
-		stopChan, pid, startErr := m.Services.Proxy.Start(*cfg, tuiUpdateFn)
+		stopChan, pid, startErr := m.Services.Proxy.Start(cfgToStart, tuiUpdateFn)
 
-		initialStatusMsg := fmt.Sprintf("Initializing proxy for %s...", cfg.Name)
+		initialStatusMsg := fmt.Sprintf("Initializing proxy for %s...", cfgToStart.Name)
 		if startErr != nil {
-			initialStatusMsg = fmt.Sprintf("Failed to start %s: %s", cfg.Name, startErr.Error())
+			initialStatusMsg = fmt.Sprintf("Failed to start %s: %s", cfgToStart.Name, startErr.Error())
 		}
 
 		return model.McpServerSetupCompletedMsg{
-			Label:    cfg.Name,
+			Label:    cfgToStart.Name,
 			StopChan: stopChan,
 			PID:      pid,
 			Status:   initialStatusMsg,
@@ -133,13 +135,13 @@ func handleRestartMcpServerMsg(m *model.Model, msg model.RestartMcpServerMsg) (*
 }
 
 // GenerateMcpConfigJson creates a JSON string with MCP server endpoint configurations.
-// It now takes the list of predefined servers as an argument.
-func GenerateMcpConfigJson(predefinedServers []mcpserver.PredefinedMcpServer) string {
+// It now takes the list of MCP server configurations as an argument.
+func GenerateMcpConfigJson(mcpServerConfig []mcpserver.MCPServerConfig) string {
 	type entry struct {
 		URL string `json:"url"`
 	}
 	servers := make(map[string]entry)
-	for _, cfg := range predefinedServers {
+	for _, cfg := range mcpServerConfig {
 		key := fmt.Sprintf("%s-mcp", cfg.Name)
 		servers[key] = entry{URL: fmt.Sprintf("http://localhost:%d/sse", cfg.ProxyPort)}
 	}

@@ -211,7 +211,7 @@ func handleContextSwitchAndReinitializeResultMsg(m *model.Model, msg model.Conte
 	}
 
 	SetupPortForwards(m, m.ManagementClusterName, m.WorkloadClusterName)
-	m.DependencyGraph = BuildDependencyGraph(m)
+	m.DependencyGraph = BuildDependencyGraph(m, m.MCPServerConfig)
 
 	if len(m.PortForwardOrder) > 0 {
 		m.FocusedPanelKey = m.PortForwardOrder[0]
@@ -222,7 +222,7 @@ func handleContextSwitchAndReinitializeResultMsg(m *model.Model, msg model.Conte
 	}
 
 	m.McpProxyOrder = nil
-	for _, cfg := range m.PredefinedMcpServers {
+	for _, cfg := range m.MCPServerConfig {
 		m.McpProxyOrder = append(m.McpProxyOrder, cfg.Name)
 	}
 
@@ -242,7 +242,7 @@ func handleContextSwitchAndReinitializeResultMsg(m *model.Model, msg model.Conte
 	newInitCmds = append(newInitCmds, initialPfCmds...)
 
 	LogInfo(m, "Initializing predefined MCP proxies (kubernetes, prometheus, grafana)...")
-	mcpProxyStartupCmds := StartMcpProxiesCmd(m.PredefinedMcpServers, m.Services.Proxy, m.TUIChannel)
+	mcpProxyStartupCmds := StartMcpProxiesCmd(m.MCPServerConfig, m.Services.Proxy, m.TUIChannel)
 	if mcpProxyStartupCmds == nil {
 		LogDebug(m, "StartMcpProxiesCmd returned nil. No MCP commands generated.")
 	} else {

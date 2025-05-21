@@ -55,7 +55,7 @@ type ClusterService interface {
 // *initiated* – status updates go through the provided callback inside
 // portforwarding.PortForwardConfig.
 type PortForwardService interface {
-	Start(cfg portforwarding.PortForwardConfig, cb portforwarding.PortForwardUpdateFunc) (stopChan chan struct{}, err error)
+	Start(cfg portforwarding.PortForwardingConfig, cb portforwarding.PortForwardUpdateFunc) (stopChan chan struct{}, err error)
 	Status(id string) portforwarding.PortForwardProcessUpdate
 }
 
@@ -69,7 +69,7 @@ type MCPProxyService interface {
 	// Start launches the MCP proxy defined by cfg and streams async updates via
 	// updateFn.  It returns the stop channel, PID of the spawned process (or 0
 	// if not applicable) and an error for immediate failures.
-	Start(cfg mcpserver.PredefinedMcpServer, updateFn func(mcpserver.McpProcessUpdate)) (stopChan chan struct{}, pid int, err error)
+	Start(cfg mcpserver.MCPServerConfig, updateFn func(mcpserver.McpProcessUpdate)) (stopChan chan struct{}, pid int, err error)
 	Status(name string) (running bool, err error)
 }
 

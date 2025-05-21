@@ -3,7 +3,6 @@ package controller
 import (
 	"envctl/internal/portforwarding"
 	"envctl/internal/tui/model"
-	"envctl/internal/utils"
 	"fmt"
 	"time"
 
@@ -14,8 +13,8 @@ import (
 // Port-forward setup helpers and handlers (previously portforward_handlers.go)
 // -----------------------------------------------------------------------------
 
-// SetupPortForwards configures the initial set of port-forwarding processes based on the cluster names.
-// It populates the model's portForwards map and portForwardOrder slice.
+// SetupPortForwards configures the model's PortForwards map and PortForwardOrder slice
+// based on the PortForwardingConfig which is determined externally and passed into the model.
 func SetupPortForwards(m *model.Model, mcName, wcName string) {
 	m.PortForwards = make(map[string]*model.PortForwardProcess)
 	m.PortForwardOrder = nil
@@ -26,41 +25,18 @@ func SetupPortForwards(m *model.Model, mcName, wcName string) {
 		m.PortForwardOrder = append(m.PortForwardOrder, model.WcPaneFocusKey)
 	}
 
-	kubeConfigPath := "" // rely on default unless overridden later
-
-	add := func(label, context, ns, svc, lp, rp, bind string, isWc bool) {
-		cfg := portforwarding.PortForwardConfig{
-			Label:          label,
-			InstanceKey:    label,
-			KubeContext:    context,
-			Namespace:      ns,
-			ServiceName:    svc,
-			LocalPort:      lp,
-			RemotePort:     rp,
-			BindAddress:    bind,
-			KubeConfigPath: kubeConfigPath,
-		}
-		m.PortForwardOrder = append(m.PortForwardOrder, label)
-		m.PortForwards[label] = &model.PortForwardProcess{
-			Label:     label,
-			Config:    cfg,
-			Active:    true,
+	// Iterate over the centrally defined port forward configurations stored in the model
+	for _, pfCfg := range m.PortForwardingConfig {
+		// The InstanceKey from PortForwardingConfig should be used as the key
+		// Ensure Label and InstanceKey are consistent if they need to be.
+		// For now, assuming pfCfg.Label is suitable as the key and for display.
+		m.PortForwardOrder = append(m.PortForwardOrder, pfCfg.Label)
+		m.PortForwards[pfCfg.Label] = &model.PortForwardProcess{
+			Label:     pfCfg.Label,
+			Config:    pfCfg, // Store the full config from PortForwardingConfig
+			Active:    true,  // Assume all available PFs are initially active
 			StatusMsg: "Awaiting Setup...",
 		}
-	}
-
-	if mcName != "" {
-		ctx := utils.BuildMcContext(mcName)
-		add("Prometheus (MC)", ctx, "mimir", "service/mimir-query-frontend", "8080", "8080", "127.0.0.1", false)
-		add("Grafana (MC)", ctx, "monitoring", "service/grafana", "3000", "3000", "127.0.0.1", false)
-	}
-
-	if wcName != "" {
-		ctx := utils.BuildWcContext(mcName, wcName)
-		add("Alloy Metrics (WC)", ctx, "kube-system", "service/alloy-metrics-cluster", "12345", "12345", "127.0.0.1", true)
-	} else if mcName != "" {
-		ctx := utils.BuildMcContext(mcName)
-		add("Alloy Metrics (MC)", ctx, "kube-system", "service/alloy-metrics-cluster", "12345", "12345", "127.0.0.1", false)
 	}
 }
 

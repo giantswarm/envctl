@@ -13,7 +13,7 @@ type pfService struct{}
 
 func newPFService() PortForwardService { return &pfService{} }
 
-func (p *pfService) Start(cfg portforwarding.PortForwardConfig, cb portforwarding.PortForwardUpdateFunc) (chan struct{}, error) {
+func (p *pfService) Start(cfg portforwarding.PortForwardingConfig, cb portforwarding.PortForwardUpdateFunc) (chan struct{}, error) {
 	stop, err := portforwarding.StartAndManageIndividualPortForward(cfg, cb)
 	return stop, err
 }

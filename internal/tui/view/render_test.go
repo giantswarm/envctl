@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"envctl/internal/color"
-	"envctl/internal/mcpserver"      // For McpServerConfig for service mock
-	"envctl/internal/portforwarding" // For PortForwardConfig for service mock
+	"envctl/internal/mcpserver"      // For mcpserver.MCPServerConfig
+	"envctl/internal/portforwarding" // For portforwarding.PortForwardingConfig
 	"envctl/internal/service"        // For service.Services struct
 	"envctl/internal/tui/model"
 
@@ -36,7 +36,7 @@ func (m *mockClusterService) Health(ctx context.Context, cluster string) (servic
 
 type mockPFService struct{}
 
-func (m *mockPFService) Start(cfg portforwarding.PortForwardConfig, cb portforwarding.PortForwardUpdateFunc) (stopChan chan struct{}, err error) {
+func (m *mockPFService) Start(cfg portforwarding.PortForwardingConfig, cb portforwarding.PortForwardUpdateFunc) (stopChan chan struct{}, err error) {
 	return make(chan struct{}), nil
 }
 func (m *mockPFService) Status(id string) portforwarding.PortForwardProcessUpdate {
@@ -45,7 +45,7 @@ func (m *mockPFService) Status(id string) portforwarding.PortForwardProcessUpdat
 
 type mockProxyService struct{}
 
-func (m *mockProxyService) Start(cfg mcpserver.PredefinedMcpServer, updateFn func(mcpserver.McpProcessUpdate)) (stopChan chan struct{}, pid int, err error) {
+func (m *mockProxyService) Start(cfg mcpserver.MCPServerConfig, updateFn func(mcpserver.McpProcessUpdate)) (stopChan chan struct{}, pid int, err error) {
 	return make(chan struct{}), 0, nil
 }
 func (m *mockProxyService) Status(name string) (running bool, err error) { return true, nil }
@@ -145,7 +145,7 @@ func TestRenderHeader_Simple(t *testing.T) {
 
 	initialTime := time.Date(2024, 1, 1, 10, 30, 0, 0, time.UTC)
 
-	m := model.InitialModel("MCmgmt", "WCwork", "test-context", false, mcpserver.PredefinedMcpServers)
+	m := model.InitialModel("MCmgmt", "WCwork", "test-context", false, mcpserver.GetMCPServerConfig(), nil)
 	m.CurrentAppMode = model.ModeMainDashboard
 	m.Width = 100 // Provide a fixed width for consistent rendering
 	m.MCHealth = model.ClusterHealthInfo{ReadyNodes: 3, TotalNodes: 3, LastUpdated: initialTime}
@@ -180,7 +180,7 @@ func TestRenderContextPanesRow_Simple(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 
 	initialTime := time.Date(2024, 1, 1, 10, 30, 0, 0, time.UTC)
-	m := model.InitialModel("MCmgmt", "WCwork", "test-context", false, mcpserver.PredefinedMcpServers)
+	m := model.InitialModel("MCmgmt", "WCwork", "test-context", false, mcpserver.GetMCPServerConfig(), nil)
 	m.CurrentAppMode = model.ModeMainDashboard
 	m.Width = 120
 	m.Height = 30
@@ -214,7 +214,11 @@ func TestRenderContextPanesRow_Simple(t *testing.T) {
 func TestRenderPortForwardingRow_Simple(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 
-	m := model.InitialModel("MCmgmt", "", "test-context", false, mcpserver.PredefinedMcpServers) // No WC for this simple PF test
+	pfConfigs := []portforwarding.PortForwardingConfig{
+		{Label: "Service One", InstanceKey: "svc/service1-8080", ServiceName: "svc/service1", LocalPort: "8080", RemotePort: "80", KubeContext: "test-context", Namespace: "default"},
+		{Label: "My Pod", InstanceKey: "pod/mypod-9090", ServiceName: "pod/mypod", LocalPort: "9090", RemotePort: "3000", KubeContext: "test-context", Namespace: "default"},
+	}
+	m := model.InitialModel("MCmgmt", "", "test-context", false, mcpserver.GetMCPServerConfig(), pfConfigs)
 	m.CurrentAppMode = model.ModeMainDashboard
 	m.Width = 120
 	m.Height = 30
@@ -224,10 +228,8 @@ func TestRenderPortForwardingRow_Simple(t *testing.T) {
 		Proxy:   &mockProxyService{},
 	}
 
-	pfKey1 := "svc/service1-8080"
-	pfKey2 := "pod/mypod-9090"
 	m.PortForwards = map[string]*model.PortForwardProcess{
-		pfKey1: {
+		"svc/service1-8080": {
 			Label:       "Service One",
 			LocalPort:   8080,
 			RemotePort:  80,
@@ -237,7 +239,7 @@ func TestRenderPortForwardingRow_Simple(t *testing.T) {
 			Active:      true,
 			Running:     true,
 		},
-		pfKey2: {
+		"pod/mypod-9090": {
 			Label:       "My Pod",
 			LocalPort:   9090,
 			RemotePort:  3000,
@@ -249,8 +251,8 @@ func TestRenderPortForwardingRow_Simple(t *testing.T) {
 			Err:         errors.New("placeholder error"), // Using a standard error
 		},
 	}
-	m.PortForwardOrder = []string{pfKey1, pfKey2}
-	m.FocusedPanelKey = pfKey1 // Focus the first port-forward
+	m.PortForwardOrder = []string{"svc/service1-8080", "pod/mypod-9090"}
+	m.FocusedPanelKey = "svc/service1-8080" // Focus the first port-forward
 
 	// Force dark background for consistent testing of adaptive colors
 	originalHasDarkBackground := lipgloss.HasDarkBackground()
@@ -272,7 +274,7 @@ func TestRenderPortForwardingRow_Simple(t *testing.T) {
 func TestRenderMcpProxiesRow_Simple(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 
-	m := model.InitialModel("MCmgmt", "WCwork", "test-context", false, mcpserver.PredefinedMcpServers)
+	m := model.InitialModel("MCmgmt", "WCwork", "test-context", false, mcpserver.GetMCPServerConfig(), nil)
 	m.CurrentAppMode = model.ModeMainDashboard
 	m.Width = 120
 	m.Height = 30
@@ -328,7 +330,7 @@ func TestRenderMcpProxiesRow_Simple(t *testing.T) {
 func TestRenderStatusBar_Simple(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 
-	m := model.InitialModel("MC", "WC", "ctx", false, mcpserver.PredefinedMcpServers)
+	m := model.InitialModel("MC", "WC", "ctx", false, mcpserver.GetMCPServerConfig(), nil)
 	m.Width = 80
 	m.CurrentAppMode = model.ModeMainDashboard // Or any mode that shows status bar
 	m.StatusBarMessage = "This is an INFO message."
@@ -359,7 +361,7 @@ func TestRenderStatusBar_Simple(t *testing.T) {
 func TestRender_HelpOverlay(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 
-	m := model.InitialModel("MC", "WC", "ctx", false, mcpserver.PredefinedMcpServers)
+	m := model.InitialModel("MC", "WC", "ctx", false, mcpserver.GetMCPServerConfig(), nil)
 	m.Width = 100
 	m.Height = 30
 	m.CurrentAppMode = model.ModeHelpOverlay
@@ -382,7 +384,7 @@ func TestRender_HelpOverlay(t *testing.T) {
 func TestRender_LogOverlay(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 
-	m := model.InitialModel("MC", "WC", "ctx", false, mcpserver.PredefinedMcpServers)
+	m := model.InitialModel("MC", "WC", "ctx", false, mcpserver.GetMCPServerConfig(), nil)
 	m.Width = 100
 	m.Height = 30
 	m.CurrentAppMode = model.ModeLogOverlay
@@ -426,7 +428,7 @@ func TestRender_LogOverlay(t *testing.T) {
 func TestRender_McpConfigOverlay(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 
-	m := model.InitialModel("MC", "WC", "ctx", false, mcpserver.PredefinedMcpServers)
+	m := model.InitialModel("MC", "WC", "ctx", false, mcpserver.GetMCPServerConfig(), nil)
 	m.Width = 100
 	m.Height = 30
 	m.CurrentAppMode = model.ModeMcpConfigOverlay
@@ -458,7 +460,7 @@ func TestRender_McpConfigOverlay(t *testing.T) {
 func TestRenderCombinedLogPanel_Simple(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 
-	m := model.InitialModel("MC", "WC", "ctx", false, mcpserver.PredefinedMcpServers)
+	m := model.InitialModel("MC", "WC", "ctx", false, mcpserver.GetMCPServerConfig(), nil)
 	m.Width = 100
 	m.Height = 40 // Need enough height for this panel to be rendered
 	m.CurrentAppMode = model.ModeMainDashboard
@@ -503,7 +505,7 @@ func TestRenderCombinedLogPanel_Simple(t *testing.T) {
 
 func TestRender_ModeQuitting(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
-	m := model.InitialModel("", "", "", false, mcpserver.PredefinedMcpServers)
+	m := model.InitialModel("", "", "", false, mcpserver.GetMCPServerConfig(), nil)
 	m.Width = 80
 	m.Height = 24
 	m.CurrentAppMode = model.ModeQuitting
@@ -527,7 +529,7 @@ func TestRender_ModeInitializing(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 
 	t.Run("NoSize", func(t *testing.T) {
-		m := model.InitialModel("", "", "", false, mcpserver.PredefinedMcpServers)
+		m := model.InitialModel("", "", "", false, mcpserver.GetMCPServerConfig(), nil)
 		m.Width = 0 // Critical: test case for when window size is not yet known
 		m.Height = 0
 		m.CurrentAppMode = model.ModeInitializing
@@ -546,7 +548,7 @@ func TestRender_ModeInitializing(t *testing.T) {
 	})
 
 	t.Run("WithSize", func(t *testing.T) {
-		m := model.InitialModel("", "", "", false, mcpserver.PredefinedMcpServers)
+		m := model.InitialModel("", "", "", false, mcpserver.GetMCPServerConfig(), nil)
 		m.Width = 80
 		m.Height = 24
 		m.CurrentAppMode = model.ModeInitializing
@@ -567,7 +569,7 @@ func TestRender_ModeInitializing(t *testing.T) {
 
 func TestRender_ModeUnknown(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
-	m := model.InitialModel("", "", "", false, mcpserver.PredefinedMcpServers)
+	m := model.InitialModel("", "", "", false, mcpserver.GetMCPServerConfig(), nil)
 	m.Width = 80
 	m.Height = 24
 	m.CurrentAppMode = model.AppMode(999) // An undefined AppMode value
@@ -589,7 +591,11 @@ func TestRender_MainDashboard_Full(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 
 	initialTime := time.Date(2024, 1, 1, 10, 30, 0, 0, time.UTC)
-	m := model.InitialModel("MCmgmt", "WCwork", "test-context", false, mcpserver.PredefinedMcpServers)
+	mcName := "MCmgmt"
+	wcShortName := "WCwork"
+	portForwardingConfig := portforwarding.GetPortForwardConfig(mcName, wcShortName)
+
+	m := model.InitialModel(mcName, wcShortName, "test-context", false, mcpserver.GetMCPServerConfig(), portForwardingConfig)
 	m.CurrentAppMode = model.ModeMainDashboard
 	m.Width = 120 // Sufficient width
 	m.Height = 50 // Sufficient height for all sections including main log panel

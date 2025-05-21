@@ -7,6 +7,7 @@ import (
 	"envctl/internal/service" // For service.Services and sub-interfaces
 	"envctl/internal/tui/controller"
 	"envctl/internal/tui/model"
+	"envctl/internal/utils" // Ensure this is present
 	"os"
 	"testing"
 	"time"
@@ -26,7 +27,7 @@ func (m *mockClusterService) Health(ctx context.Context, cluster string) (servic
 
 type mockPFService struct{}
 
-func (m *mockPFService) Start(cfg portforwarding.PortForwardConfig, cb portforwarding.PortForwardUpdateFunc) (stopChan chan struct{}, err error) {
+func (m *mockPFService) Start(cfg portforwarding.PortForwardingConfig, cb portforwarding.PortForwardUpdateFunc) (stopChan chan struct{}, err error) {
 	return make(chan struct{}), nil
 }
 func (m *mockPFService) Status(id string) portforwarding.PortForwardProcessUpdate {
@@ -35,7 +36,7 @@ func (m *mockPFService) Status(id string) portforwarding.PortForwardProcessUpdat
 
 type mockProxyService struct{}
 
-func (m *mockProxyService) Start(cfg mcpserver.PredefinedMcpServer, updateFn func(mcpserver.McpProcessUpdate)) (stopChan chan struct{}, pid int, err error) {
+func (m *mockProxyService) Start(cfg mcpserver.MCPServerConfig, updateFn func(mcpserver.McpProcessUpdate)) (stopChan chan struct{}, pid int, err error) {
 	return make(chan struct{}), 0, nil
 }
 func (m *mockProxyService) Status(name string) (running bool, err error) { return true, nil }
@@ -235,7 +236,7 @@ func TestAppModeTransitions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			coreModel := model.InitialModel("test-mc", "test-wc", "test-context", false, mcpserver.PredefinedMcpServers)
+			coreModel := model.InitialModel("test-mc", "test-wc", "test-context", false, mcpserver.GetMCPServerConfig(), nil)
 			coreModel.CurrentAppMode = tt.initialAppMode
 
 			// Apply test-specific initial model setup
@@ -284,7 +285,7 @@ func TestMessageHandling(t *testing.T) {
 		{
 			name: "ClearStatusBarMsg clears status bar",
 			initialModel: func() *model.Model {
-				m := model.InitialModel("mc", "wc", "ctx", false, mcpserver.PredefinedMcpServers)
+				m := model.InitialModel("mc", "wc", "ctx", false, mcpserver.GetMCPServerConfig(), nil)
 				m.StatusBarMessage = "Initial message"
 				m.StatusBarMessageType = model.StatusBarInfo
 				// Setup mock services
@@ -306,7 +307,11 @@ func TestMessageHandling(t *testing.T) {
 		{
 			name: "PortForwardCoreUpdateMsg updates existing port-forward process",
 			initialModel: func() *model.Model {
-				m := model.InitialModel("mc", "wc", "ctx", false, mcpserver.PredefinedMcpServers)
+				// For this test, we want actual port forward configs so SetupPortForwards can work.
+				pfCfgs := []portforwarding.PortForwardingConfig{
+					{Label: "Prometheus (MC)", InstanceKey: "Prometheus (MC)", ServiceName: "service/mimir-query-frontend", Namespace: "mimir", LocalPort: "8080", RemotePort: "8080", KubeContext: utils.BuildMcContext("mc")},
+				}
+				m := model.InitialModel("mc", "wc", "ctx", false, mcpserver.GetMCPServerConfig(), pfCfgs)
 				m.Services = service.Services{
 					Cluster: &mockClusterService{},
 					PF:      &mockPFService{},
@@ -344,7 +349,7 @@ func TestMessageHandling(t *testing.T) {
 		{
 			name: "SetStatusMessage updates status bar and handles cancellation channel",
 			initialModel: func() *model.Model {
-				m := model.InitialModel("mc", "wc", "ctx", false, mcpserver.PredefinedMcpServers)
+				m := model.InitialModel("mc", "wc", "ctx", false, mcpserver.GetMCPServerConfig(), nil)
 				m.Services = service.Services{
 					Cluster: &mockClusterService{},
 					PF:      &mockPFService{},

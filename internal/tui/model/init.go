@@ -2,6 +2,7 @@ package model
 
 import (
 	"envctl/internal/mcpserver"
+	"envctl/internal/portforwarding"
 	"envctl/internal/service"
 	"fmt"
 
@@ -105,7 +106,7 @@ func DefaultKeyMap() KeyMap { // Returns model.KeyMap (KeyMap is in this package
 }
 
 // InitialModel constructs the initial model with sensible defaults.
-func InitialModel(mcName, wcName, kubeContext string, tuiDebug bool, predefinedServers []mcpserver.PredefinedMcpServer) *Model {
+func InitialModel(mcName, wcName, kubeContext string, tuiDebug bool, mcpServerConfig []mcpserver.MCPServerConfig, portForwardingConfig []portforwarding.PortForwardingConfig) *Model {
 	ti := textinput.New()
 	ti.Placeholder = "Management Cluster"
 	ti.CharLimit = 156
@@ -128,7 +129,8 @@ func InitialModel(mcName, wcName, kubeContext string, tuiDebug bool, predefinedS
 		ManagementClusterName:    mcName,
 		WorkloadClusterName:      wcName,
 		CurrentKubeContext:       kubeContext,
-		PredefinedMcpServers:     predefinedServers,
+		MCPServerConfig:          mcpServerConfig,
+		PortForwardingConfig:     portForwardingConfig,
 		PortForwards:             make(map[string]*PortForwardProcess),
 		PortForwardOrder:         make([]string, 0),
 		McpServers:               make(map[string]*McpServerProcess),

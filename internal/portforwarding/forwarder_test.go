@@ -41,7 +41,7 @@ func TestStartAndManageIndividualPortForward_Success(t *testing.T) {
 		return mockStopChan, "Initializing TestService...", nil // Initial status from kube layer
 	}
 
-	cfg := PortForwardConfig{
+	cfg := PortForwardingConfig{
 		InstanceKey: "test-pf",
 		ServiceName: "TestService", // Matched with mock initial status
 		Namespace:   "test-ns",
@@ -73,7 +73,7 @@ func TestStartAndManageIndividualPortForward_Success(t *testing.T) {
 
 	syncChan := make(chan bool)
 	t.Logf("TestStartAndManageIndividualPortForward_Success: Waiting for ready update signal via syncChan for '%s'", cfg.Label)
-	go func(){
+	go func() {
 		loopStart := time.Now()
 		for {
 			if time.Since(loopStart) > 2*time.Second {
@@ -84,7 +84,7 @@ func TestStartAndManageIndividualPortForward_Success(t *testing.T) {
 			mu.Lock()
 			readyFound := false
 			for _, u := range updates {
-				if u.Running && u.StatusMsg == "Forwarding from 127.0.0.1:8080 to 80"{
+				if u.Running && u.StatusMsg == "Forwarding from 127.0.0.1:8080 to 80" {
 					readyFound = true
 					break
 				}
@@ -100,8 +100,8 @@ func TestStartAndManageIndividualPortForward_Success(t *testing.T) {
 	}()
 
 	if !<-syncChan {
-        t.Fatalf("TestStartAndManageIndividualPortForward_Success: Timed out waiting for the ready update for '%s'", cfg.Label)
-    }
+		t.Fatalf("TestStartAndManageIndividualPortForward_Success: Timed out waiting for the ready update for '%s'", cfg.Label)
+	}
 	t.Logf("TestStartAndManageIndividualPortForward_Success: Received signal from syncChan for '%s'", cfg.Label)
 
 	mu.Lock()
@@ -109,7 +109,7 @@ func TestStartAndManageIndividualPortForward_Success(t *testing.T) {
 
 	expectedUpdates := []PortForwardProcessUpdate{
 		{InstanceKey: "test-pf", ServiceName: "TestService", Namespace: "test-ns", LocalPort: "8080", RemotePort: "80", StatusMsg: "Initializing", Running: false},
-		{InstanceKey: "test-pf", ServiceName: "TestService", Namespace: "test-ns", LocalPort: "8080", RemotePort: "80", StatusMsg: "Initializing TestService...", OutputLog: "", Running: true}, // Initial status from mock, should be Running:true
+		{InstanceKey: "test-pf", ServiceName: "TestService", Namespace: "test-ns", LocalPort: "8080", RemotePort: "80", StatusMsg: "Initializing TestService...", OutputLog: "", Running: true},          // Initial status from mock, should be Running:true
 		{InstanceKey: "test-pf", ServiceName: "TestService", Namespace: "test-ns", LocalPort: "8080", RemotePort: "80", StatusMsg: "Forwarding from 127.0.0.1:8080 to 80", OutputLog: "", Running: true}, // Ready status from mock via bridgeFn
 	}
 
@@ -149,7 +149,7 @@ func TestStartAndManageIndividualPortForward_KubeError(t *testing.T) {
 		return nil, "", expectedErr
 	}
 
-	cfg := PortForwardConfig{InstanceKey: "error-pf", ServiceName: "ErrorService", Namespace: "err-ns", LocalPort: "123", RemotePort: "456", Label: "error-label"}
+	cfg := PortForwardingConfig{InstanceKey: "error-pf", ServiceName: "ErrorService", Namespace: "err-ns", LocalPort: "123", RemotePort: "456", Label: "error-label"}
 	var updates []PortForwardProcessUpdate
 	var mu sync.Mutex
 	updateFn := func(update PortForwardProcessUpdate) {
@@ -190,10 +190,10 @@ func TestStartAndManageIndividualPortForward_KubeError(t *testing.T) {
 	// Define the expected error update structure
 	expectedErrorUpdate := PortForwardProcessUpdate{
 		InstanceKey: "error-pf", ServiceName: "ErrorService", Namespace: "err-ns", LocalPort: "123", RemotePort: "456",
-		StatusMsg:   "Error",
-		OutputLog:   "kube error",
-		Error:       fmt.Errorf("kube error"), // This is the expected error form
-		Running:     false,
+		StatusMsg: "Error",
+		OutputLog: "kube error",
+		Error:     fmt.Errorf("kube error"), // This is the expected error form
+		Running:   false,
 	}
 
 	// Custom comparison for the update that contains an error (updates[1])
@@ -203,7 +203,7 @@ func TestStartAndManageIndividualPortForward_KubeError(t *testing.T) {
 	if actualErrorUpdate.Error == nil {
 		t.Errorf("Update 1 for '%s': expected an error, but got nil", cfg.Label)
 	} else if actualErrorUpdate.Error.Error() != expectedErrorUpdate.Error.Error() { // Compare error messages
-		t.Errorf("Update 1 for '%s': error message mismatch. Expected %q, got %q", 
+		t.Errorf("Update 1 for '%s': error message mismatch. Expected %q, got %q",
 			cfg.Label, expectedErrorUpdate.Error.Error(), actualErrorUpdate.Error.Error())
 	}
 
@@ -214,9 +214,9 @@ func TestStartAndManageIndividualPortForward_KubeError(t *testing.T) {
 	expectedStructForDeepEqual.Error = nil
 
 	if !reflect.DeepEqual(actualErrorUpdateForDeepEqual, expectedStructForDeepEqual) {
-		t.Errorf("Update 1 for '%s' (non-error fields): expected %+v (error field ignored), got %+v (error field ignored)", 
+		t.Errorf("Update 1 for '%s' (non-error fields): expected %+v (error field ignored), got %+v (error field ignored)",
 			cfg.Label, expectedStructForDeepEqual, actualErrorUpdateForDeepEqual)
 	}
 
 	t.Logf("TestStartAndManageIndividualPortForward_KubeError: END")
-} 
+}

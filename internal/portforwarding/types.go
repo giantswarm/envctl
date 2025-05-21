@@ -1,7 +1,7 @@
 package portforwarding
 
-// PortForwardConfig holds the configuration for a port forwarding setup.
-type PortForwardConfig struct {
+// PortForwardingConfig holds the configuration for a port forwarding setup.
+type PortForwardingConfig struct {
 	Label          string // User-defined label for this port-forward
 	ServiceName    string
 	Namespace      string
@@ -22,9 +22,9 @@ type PortForwardProcessUpdate struct {
 	Namespace   string
 	LocalPort   string
 	RemotePort  string
-	StatusMsg   string    // e.g., "Starting", "Running", "Stopped", "Error"
-	OutputLog   string    // Log output from the process
-	Error       error     // Any error encountered
+	StatusMsg   string // e.g., "Starting", "Running", "Stopped", "Error"
+	OutputLog   string // Log output from the process
+	Error       error  // Any error encountered
 	Running     bool
 }
 
@@ -35,7 +35,7 @@ type PortForwardUpdateFunc func(update PortForwardProcessUpdate)
 // ManagedPortForwardInfo holds information about a managed port-forward process,
 // typically returned after initiating it.
 type ManagedPortForwardInfo struct {
-	Config       PortForwardConfig
+	Config       PortForwardingConfig
 	StopChan     chan struct{} // Channel to signal termination to the process
 	InitialError error         // Any error that occurred during startup
 }

@@ -11,7 +11,7 @@ import (
 )
 
 // renderMcpProxyPanel renders one MCP proxy status panel.
-func renderMcpProxyPanel(serverName string, predefinedData mcpserver.PredefinedMcpServer, proc *model.McpServerProcess, m *model.Model, targetOuterWidth int) string {
+func renderMcpProxyPanel(serverName string, predefinedData mcpserver.MCPServerConfig, proc *model.McpServerProcess, m *model.Model, targetOuterWidth int) string {
 	var baseStyle lipgloss.Style
 	var contentFg lipgloss.Style
 	statusMsg := "Not Started"
@@ -83,8 +83,8 @@ func renderMcpProxyPanel(serverName string, predefinedData mcpserver.PredefinedM
 func renderMcpProxiesRow(m *model.Model, contentWidth int, maxRowHeight int) string {
 	const cols = 3
 	totalBorder := 0
-	styles := make([]lipgloss.Style, len(m.PredefinedMcpServers))
-	for i, def := range m.PredefinedMcpServers {
+	styles := make([]lipgloss.Style, len(m.MCPServerConfig))
+	for i, def := range m.MCPServerConfig {
 		proc := m.McpServers[def.Name]
 		st := ""
 		if proc != nil {
@@ -105,7 +105,7 @@ func renderMcpProxiesRow(m *model.Model, contentWidth int, maxRowHeight int) str
 		}
 	}
 
-	displayCols := len(m.PredefinedMcpServers)
+	displayCols := len(m.MCPServerConfig)
 	if displayCols > cols {
 		displayCols = cols
 	}
@@ -124,7 +124,7 @@ func renderMcpProxiesRow(m *model.Model, contentWidth int, maxRowHeight int) str
 
 	var cells []string
 	for i := 0; i < displayCols; i++ {
-		def := m.PredefinedMcpServers[i]
+		def := m.MCPServerConfig[i]
 		proc := m.McpServers[def.Name]
 		w := baseInner
 		if i < remainder {
@@ -133,7 +133,7 @@ func renderMcpProxiesRow(m *model.Model, contentWidth int, maxRowHeight int) str
 		rendered := renderMcpProxyPanel(def.Name, def, proc, m, w+styles[i].GetHorizontalFrameSize())
 		cells = append(cells, rendered)
 	}
-	for i := len(m.PredefinedMcpServers); i < cols; i++ {
+	for i := len(m.MCPServerConfig); i < cols; i++ {
 		w := baseInner
 		if i < remainder {
 			w++

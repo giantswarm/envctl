@@ -5,24 +5,25 @@ import (
 	// "syscall" // Not directly used here
 )
 
-// StartAllPredefinedMcpServers iterates through PredefinedMcpServers, attempts to start each one
-// using StartAndManageIndividualMcpServer, and sends information about each attempt (ManagedMcpServerInfo)
-// on the returned channel. The provided McpUpdateFunc will be used for ongoing updates from each server.
+// StartAllMCPServers iterates through the given list of MCPServerConfig configurations,
+// attempts to start each one using StartAndManageIndividualMcpServer, and sends information
+// about each attempt (ManagedMcpServerInfo) on the returned channel.
+// The provided McpUpdateFunc will be used for ongoing updates from each server.
 // The master goroutine that launches individual servers will add to the WaitGroup for each server it attempts.
 // StartAndManageIndividualMcpServer is then responsible for wg.Done() if it successfully launches its own goroutine,
-// otherwise this function (StartAllPredefinedMcpServers) must handle wg.Done() for initial startup failures.
-func StartAllPredefinedMcpServers(updateFn McpUpdateFunc, wg *sync.WaitGroup) <-chan ManagedMcpServerInfo {
+// otherwise this function (StartAllMCPServers) must handle wg.Done() for initial startup failures.
+func StartAllMCPServers(mcpServerConfigs []MCPServerConfig, updateFn McpUpdateFunc, wg *sync.WaitGroup) <-chan ManagedMcpServerInfo {
 	infoChan := make(chan ManagedMcpServerInfo)
 
 	go func() {
 		defer close(infoChan)
 
-		if len(PredefinedMcpServers) == 0 {
+		if len(mcpServerConfigs) == 0 {
 			// Caller can check if the channel closes immediately to know no servers were defined/attempted.
 			return
 		}
 
-		for _, serverCfg := range PredefinedMcpServers {
+		for _, serverCfg := range mcpServerConfigs {
 			if wg != nil {
 				wg.Add(1) // Add before attempting to start, corresponding Done is crucial.
 			}

@@ -13,7 +13,7 @@ var KubeStartPortForwardFn = kube.StartPortForwardClientGo
 // client via the internal kube package.
 // It does not spawn any external processes.
 func StartAndManageIndividualPortForward(
-	cfg PortForwardConfig,
+	cfg PortForwardingConfig,
 	updateFn PortForwardUpdateFunc,
 ) (chan struct{}, error) {
 	// Notify caller that initialisation has begun.

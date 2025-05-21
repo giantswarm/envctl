@@ -105,51 +105,51 @@ func TestTuiLogWriter_Write(t *testing.T) {
 		wantAsError []bool // Tracks the asError flag for each log line
 	}{
 		{
-			name:    "single line",
-			input:   "hello world\n",
-			asError: false,
+			name:        "single line",
+			input:       "hello world\n",
+			asError:     false,
 			wantLogs:    []string{"hello world"},
 			wantAsError: []bool{false},
 		},
 		{
-			name:    "multiple lines",
-			input:   "line1\nline2\nline3\n",
-			asError: true,
+			name:        "multiple lines",
+			input:       "line1\nline2\nline3\n",
+			asError:     true,
 			wantLogs:    []string{"line1", "line2", "line3"},
 			wantAsError: []bool{true, true, true},
 		},
 		{
-			name:    "empty input",
-			input:   "",
-			asError: false,
+			name:        "empty input",
+			input:       "",
+			asError:     false,
 			wantLogs:    nil, // Expect no calls to sendUpdate
 			wantAsError: nil,
 		},
 		{
-			name:    "line without newline suffix",
-			input:   "incomplete line",
-			asError: false,
+			name:        "line without newline suffix",
+			input:       "incomplete line",
+			asError:     false,
 			wantLogs:    []string{"incomplete line"},
 			wantAsError: []bool{false},
 		},
 		{
-			name:    "client-go info log prefix",
-			input:   "I1234 56:78.901 client-go/stuff.go:123] this is the actual log\n",
-			asError: false,
+			name:        "client-go info log prefix",
+			input:       "I1234 56:78.901 client-go/stuff.go:123] this is the actual log\n",
+			asError:     false,
 			wantLogs:    []string{"client-go/stuff.go:123] this is the actual log"},
 			wantAsError: []bool{false},
 		},
 		{
-			name:    "client-go info log prefix without enough parts",
-			input:   "I1234 client-go log\n", // Does not match SplitN( ,3) expectation
-			asError: false,
+			name:        "client-go info log prefix without enough parts",
+			input:       "I1234 client-go log\n", // Does not match SplitN( ,3) expectation
+			asError:     false,
 			wantLogs:    []string{"log"},
 			wantAsError: []bool{false},
 		},
 		{
-			name:    "mixed newlines and empty lines",
-			input:   "line one\n\nline three\n",
-			asError: false,
+			name:        "mixed newlines and empty lines",
+			input:       "line one\n\nline three\n",
+			asError:     false,
 			wantLogs:    []string{"line one", "line three"}, // Empty line should be skipped
 			wantAsError: []bool{false, false},
 		},
@@ -243,7 +243,7 @@ func TestGetPodNameForPortForward(t *testing.T) {
 				&corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "frontend-pod-a", Namespace: "prod", Labels: map[string]string{"tier": "frontend"}}, Status: corev1.PodStatus{Phase: corev1.PodRunning, Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionFalse}}, ContainerStatuses: []corev1.ContainerStatus{{Ready: false}}}},
 				&corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "frontend-pod-b", Namespace: "prod", Labels: map[string]string{"tier": "frontend"}}, Status: corev1.PodStatus{Phase: corev1.PodRunning, Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}}, ContainerStatuses: []corev1.ContainerStatus{{Ready: true}}}},
 			},
-			wantPodName: "frontend-pod-b", 
+			wantPodName: "frontend-pod-b",
 			wantErr:     false,
 			desc:        "Should pick a ready pod from multiple backing pods.",
 		},
@@ -252,7 +252,7 @@ func TestGetPodNameForPortForward(t *testing.T) {
 			namespace:           "default",
 			serviceArg:          "service/no-selector-svc",
 			remotePodTargetPort: 8080,
-			initialObjects:      []runtime.Object{&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "no-selector-svc", Namespace: "default"}, Spec: corev1.ServiceSpec{Ports: []corev1.ServicePort{{Port: 80, TargetPort: intstr.FromInt(8080)}}}}}, 
+			initialObjects:      []runtime.Object{&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "no-selector-svc", Namespace: "default"}, Spec: corev1.ServiceSpec{Ports: []corev1.ServicePort{{Port: 80, TargetPort: intstr.FromInt(8080)}}}}},
 			wantErr:             true,
 			desc:                "Should return error if service has no selector.",
 		},
@@ -261,7 +261,7 @@ func TestGetPodNameForPortForward(t *testing.T) {
 			namespace:           "default",
 			serviceArg:          "service/no-pods-svc",
 			remotePodTargetPort: 8080,
-			initialObjects:      []runtime.Object{&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "no-pods-svc", Namespace: "default"}, Spec: corev1.ServiceSpec{Selector: map[string]string{"app": "nonexistent"}, Ports: []corev1.ServicePort{{Port: 80, TargetPort: intstr.FromInt(8080)}}}}}, 
+			initialObjects:      []runtime.Object{&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "no-pods-svc", Namespace: "default"}, Spec: corev1.ServiceSpec{Selector: map[string]string{"app": "nonexistent"}, Ports: []corev1.ServicePort{{Port: 80, TargetPort: intstr.FromInt(8080)}}}}},
 			wantErr:             true,
 			desc:                "Should return error if service selector matches no pods.",
 		},
@@ -274,8 +274,8 @@ func TestGetPodNameForPortForward(t *testing.T) {
 				&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "not-ready-svc", Namespace: "default"}, Spec: corev1.ServiceSpec{Selector: map[string]string{"app": "not-ready"}, Ports: []corev1.ServicePort{{Port: 80, TargetPort: intstr.FromInt(8080)}}}},
 				&corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod-not-ready", Namespace: "default", Labels: map[string]string{"app": "not-ready"}}, Status: corev1.PodStatus{Phase: corev1.PodRunning, Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionFalse}}, ContainerStatuses: []corev1.ContainerStatus{{Ready: false}}}},
 			},
-			wantErr:             true,
-			desc:                "Should return error if service has pods but none are ready.",
+			wantErr: true,
+			desc:    "Should return error if service has pods but none are ready.",
 		},
 		{
 			name:                "invalid serviceArg format",
@@ -295,15 +295,15 @@ func TestGetPodNameForPortForward(t *testing.T) {
 				&corev1.Pod{
 					ObjectMeta: metav1.ObjectMeta{Name: "pod-empty-cs", Namespace: "default", Labels: map[string]string{"app": "empty-cs"}},
 					Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: "main"}}}, // Has a container defined
-					Status:     corev1.PodStatus{
+					Status: corev1.PodStatus{
 						Phase:             corev1.PodRunning,
 						Conditions:        []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}},
 						ContainerStatuses: []corev1.ContainerStatus{}, // Empty container statuses
 					},
 				},
 			},
-			wantErr:             true, // Should result in "no ready pods found"
-			desc:                "Should not select pod if PodReady but ContainerStatuses is empty while Spec.Containers is not.",
+			wantErr: true, // Should result in "no ready pods found"
+			desc:    "Should not select pod if PodReady but ContainerStatuses is empty while Spec.Containers is not.",
 		},
 		{
 			name:                "service with pod ready but one container not ready",
@@ -314,7 +314,7 @@ func TestGetPodNameForPortForward(t *testing.T) {
 				&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "container-not-ready-svc", Namespace: "default"}, Spec: corev1.ServiceSpec{Selector: map[string]string{"app": "container-not-ready"}, Ports: []corev1.ServicePort{{Port: 80, TargetPort: intstr.FromInt(8080)}}}},
 				&corev1.Pod{
 					ObjectMeta: metav1.ObjectMeta{Name: "pod-container-not-ready", Namespace: "default", Labels: map[string]string{"app": "container-not-ready"}},
-					Status:     corev1.PodStatus{
+					Status: corev1.PodStatus{
 						Phase:      corev1.PodRunning,
 						Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}},
 						ContainerStatuses: []corev1.ContainerStatus{
@@ -324,8 +324,8 @@ func TestGetPodNameForPortForward(t *testing.T) {
 					},
 				},
 			},
-			wantErr:             true, // Should result in "no ready pods found"
-			desc:                "Should not select pod if PodReady but one of its containers is not ready.",
+			wantErr: true, // Should result in "no ready pods found"
+			desc:    "Should not select pod if PodReady but one of its containers is not ready.",
 		},
 		{
 			name:                "service with ready pod, but targetPort mismatch (current code ignores mismatch)",
@@ -337,7 +337,7 @@ func TestGetPodNameForPortForward(t *testing.T) {
 				&corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod-port-mismatch", Namespace: "default", Labels: map[string]string{"app": "port-mismatch"}}, Status: corev1.PodStatus{Phase: corev1.PodRunning, Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}}, ContainerStatuses: []corev1.ContainerStatus{{Ready: true}}}},
 			},
 			wantPodName: "pod-port-mismatch", // Currently, the code does not enforce TargetPort match strictly
-			wantErr:     false,             // So, it should still find the pod based on selector if strict check is off
+			wantErr:     false,               // So, it should still find the pod based on selector if strict check is off
 			desc:        "Should select pod even if remotePodTargetPort doesn't match Service TargetPort (due to current relaxed check).",
 		},
 	}
@@ -372,46 +372,46 @@ func TestStartPortForwardClientGo_InputValidation(t *testing.T) {
 		desc        string
 	}{
 		{
-			name:       "valid input smoke test (expect further errors)",
-			kubeContext:"test-ctx", namespace: "default", serviceArg: "pod/mypod", portString: "8080:80", pfLabel: "test",
-			wantErr:    true, // Will error out trying to get REST config for a fake context
-			desc:       "Basic valid format, should pass initial parsing but fail later.",
+			name:        "valid input smoke test (expect further errors)",
+			kubeContext: "test-ctx", namespace: "default", serviceArg: "pod/mypod", portString: "8080:80", pfLabel: "test",
+			wantErr: true, // Will error out trying to get REST config for a fake context
+			desc:    "Basic valid format, should pass initial parsing but fail later.",
 		},
 		{
-			name:       "invalid port string format - missing colon",
-			kubeContext:"test-ctx", namespace: "default", serviceArg: "pod/mypod", portString: "808080", pfLabel: "test",
-			wantErr:    true,
-			desc:       "Should error on port string without colon.",
+			name:        "invalid port string format - missing colon",
+			kubeContext: "test-ctx", namespace: "default", serviceArg: "pod/mypod", portString: "808080", pfLabel: "test",
+			wantErr: true,
+			desc:    "Should error on port string without colon.",
 		},
 		{
-			name:       "invalid port string format - too many colons",
-			kubeContext:"test-ctx", namespace: "default", serviceArg: "pod/mypod", portString: "8080:80:30", pfLabel: "test",
-			wantErr:    true,
-			desc:       "Should error on port string with too many colons.",
+			name:        "invalid port string format - too many colons",
+			kubeContext: "test-ctx", namespace: "default", serviceArg: "pod/mypod", portString: "8080:80:30", pfLabel: "test",
+			wantErr: true,
+			desc:    "Should error on port string with too many colons.",
 		},
 		{
-			name:       "invalid local port - not a number",
-			kubeContext:"test-ctx", namespace: "default", serviceArg: "pod/mypod", portString: "bad:80", pfLabel: "test",
-			wantErr:    true,
-			desc:       "Should error if local port is not a number.",
+			name:        "invalid local port - not a number",
+			kubeContext: "test-ctx", namespace: "default", serviceArg: "pod/mypod", portString: "bad:80", pfLabel: "test",
+			wantErr: true,
+			desc:    "Should error if local port is not a number.",
 		},
 		{
-			name:       "invalid remote port - not a number",
-			kubeContext:"test-ctx", namespace: "default", serviceArg: "pod/mypod", portString: "8080:bad", pfLabel: "test",
-			wantErr:    true,
-			desc:       "Should error if remote port is not a number.",
+			name:        "invalid remote port - not a number",
+			kubeContext: "test-ctx", namespace: "default", serviceArg: "pod/mypod", portString: "8080:bad", pfLabel: "test",
+			wantErr: true,
+			desc:    "Should error if remote port is not a number.",
 		},
 		{
-			name:       "invalid local port - out of range",
-			kubeContext:"test-ctx", namespace: "default", serviceArg: "pod/mypod", portString: "70000:80", pfLabel: "test",
-			wantErr:    true, // strconv.ParseUint for uint16 will error for 70000
-			desc:       "Should error if local port is out of uint16 range.",
+			name:        "invalid local port - out of range",
+			kubeContext: "test-ctx", namespace: "default", serviceArg: "pod/mypod", portString: "70000:80", pfLabel: "test",
+			wantErr: true, // strconv.ParseUint for uint16 will error for 70000
+			desc:    "Should error if local port is out of uint16 range.",
 		},
 		{
-			name:       "invalid remote port - out of range",
-			kubeContext:"test-ctx", namespace: "default", serviceArg: "pod/mypod", portString: "8080:70000", pfLabel: "test",
-			wantErr:    true, // strconv.ParseUint for uint16 will error for 70000
-			desc:       "Should error if remote port is out of uint16 range.",
+			name:        "invalid remote port - out of range",
+			kubeContext: "test-ctx", namespace: "default", serviceArg: "pod/mypod", portString: "8080:70000", pfLabel: "test",
+			wantErr: true, // strconv.ParseUint for uint16 will error for 70000
+			desc:    "Should error if remote port is out of uint16 range.",
 		},
 	}
 
@@ -436,63 +436,63 @@ func TestDetermineProviderFromNode(t *testing.T) {
 		wantProvider string
 	}{
 		{
-			name: "aws via providerID",
-			node: &corev1.Node{Spec: corev1.NodeSpec{ProviderID: "aws:///us-east-1/i-12345"}},
+			name:         "aws via providerID",
+			node:         &corev1.Node{Spec: corev1.NodeSpec{ProviderID: "aws:///us-east-1/i-12345"}},
 			wantProvider: "aws",
 		},
 		{
-			name: "azure via providerID",
-			node: &corev1.Node{Spec: corev1.NodeSpec{ProviderID: "azure:///subscriptions/subid/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/vm-name"}},
+			name:         "azure via providerID",
+			node:         &corev1.Node{Spec: corev1.NodeSpec{ProviderID: "azure:///subscriptions/subid/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/vm-name"}},
 			wantProvider: "azure",
 		},
 		{
-			name: "gcp via providerID",
-			node: &corev1.Node{Spec: corev1.NodeSpec{ProviderID: "gce://project-id/us-central1-a/instance-1"}},
+			name:         "gcp via providerID",
+			node:         &corev1.Node{Spec: corev1.NodeSpec{ProviderID: "gce://project-id/us-central1-a/instance-1"}},
 			wantProvider: "gcp",
 		},
 		{
-			name: "vsphere via providerID",
-			node: &corev1.Node{Spec: corev1.NodeSpec{ProviderID: "vsphere://guid"}},
+			name:         "vsphere via providerID",
+			node:         &corev1.Node{Spec: corev1.NodeSpec{ProviderID: "vsphere://guid"}},
 			wantProvider: "vsphere",
 		},
 		{
-			name: "openstack via providerID",
-			node: &corev1.Node{Spec: corev1.NodeSpec{ProviderID: "openstack:///id"}},
+			name:         "openstack via providerID",
+			node:         &corev1.Node{Spec: corev1.NodeSpec{ProviderID: "openstack:///id"}},
 			wantProvider: "openstack",
 		},
 		{
-			name: "aws via eks label",
-			node: &corev1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"eks.amazonaws.com/nodegroup": "my-group"}}},
+			name:         "aws via eks label",
+			node:         &corev1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"eks.amazonaws.com/nodegroup": "my-group"}}},
 			wantProvider: "aws",
 		},
 		{
-			name: "aws via compute label",
-			node: &corev1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"alpha.kubernetes.io/instance-type": "m5.large", "topology.kubernetes.io/zone": "us-east-1a", "failure-domain.beta.kubernetes.io/zone": "us-east-1a", "node.kubernetes.io/instance-type": "m5.large", "beta.kubernetes.io/instance-type": "m5.large", "failure-domain.beta.kubernetes.io/region": "us-east-1", "topology.kubernetes.io/region": "us-east-1", "amazonaws.com/compute": "ec2"}}},
+			name:         "aws via compute label",
+			node:         &corev1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"alpha.kubernetes.io/instance-type": "m5.large", "topology.kubernetes.io/zone": "us-east-1a", "failure-domain.beta.kubernetes.io/zone": "us-east-1a", "node.kubernetes.io/instance-type": "m5.large", "beta.kubernetes.io/instance-type": "m5.large", "failure-domain.beta.kubernetes.io/region": "us-east-1", "topology.kubernetes.io/region": "us-east-1", "amazonaws.com/compute": "ec2"}}},
 			wantProvider: "aws",
 		},
 		{
-			name: "azure via label",
-			node: &corev1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"kubernetes.azure.com/cluster": "aks-cluster"}}},
+			name:         "azure via label",
+			node:         &corev1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"kubernetes.azure.com/cluster": "aks-cluster"}}},
 			wantProvider: "azure",
 		},
 		{
-			name: "gcp via gke label",
-			node: &corev1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"cloud.google.com/gke-nodepool": "pool-1"}}},
+			name:         "gcp via gke label",
+			node:         &corev1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"cloud.google.com/gke-nodepool": "pool-1"}}},
 			wantProvider: "gcp",
 		},
 		{
-			name: "unknown provider - no ID, no matching labels",
-			node: &corev1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"foo": "bar"}}},
+			name:         "unknown provider - no ID, no matching labels",
+			node:         &corev1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"foo": "bar"}}},
 			wantProvider: "unknown",
 		},
 		{
-			name: "unknown provider - empty node spec and meta",
-			node: &corev1.Node{},
+			name:         "unknown provider - empty node spec and meta",
+			node:         &corev1.Node{},
 			wantProvider: "unknown",
 		},
 		{
-			name: "providerID present but not matched, fallback to unknown label",
-			node: &corev1.Node{Spec: corev1.NodeSpec{ProviderID: "somecloud://id"}, ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"foo": "bar"}}},
+			name:         "providerID present but not matched, fallback to unknown label",
+			node:         &corev1.Node{Spec: corev1.NodeSpec{ProviderID: "somecloud://id"}, ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"foo": "bar"}}},
 			wantProvider: "unknown",
 		},
 	}
@@ -508,10 +508,10 @@ func TestDetermineProviderFromNode(t *testing.T) {
 
 func TestGetCurrentKubeContext(t *testing.T) {
 	tests := []struct {
-		name          string
+		name            string
 		setupKubeconfig func(t *testing.T) (cleanup func())
-		wantContext   string
-		wantErr       bool
+		wantContext     string
+		wantErr         bool
 	}{
 		{
 			name: "valid kubeconfig with current context set",
@@ -617,18 +617,18 @@ func TestGetCurrentKubeContext(t *testing.T) {
 
 func TestSwitchKubeContext(t *testing.T) {
 	tests := []struct {
-		name             string
+		name              string
 		initialKubeconfig *api.Config // nil for non-existent or error cases initially
-		contextToSwitch  string
-		setupFS          func(t *testing.T) (kubeconfigPath string, cleanup func()) // For non-existent file test
-		wantErr          bool
-		verifySwitch     func(t *testing.T, kubeconfigPath string) // Check CurrentContext after switch
+		contextToSwitch   string
+		setupFS           func(t *testing.T) (kubeconfigPath string, cleanup func()) // For non-existent file test
+		wantErr           bool
+		verifySwitch      func(t *testing.T, kubeconfigPath string) // Check CurrentContext after switch
 	}{
 		{
 			name: "switch to existing context",
 			initialKubeconfig: &api.Config{
 				CurrentContext: "ctx1",
-				Contexts:       map[string]*api.Context{
+				Contexts: map[string]*api.Context{
 					"ctx1": {Cluster: "cluster1"},
 					"ctx2": {Cluster: "cluster2"},
 				},
@@ -664,7 +664,7 @@ func TestSwitchKubeContext(t *testing.T) {
 			setupFS: func(t *testing.T) (string, func()) {
 				kubeconfigPath := filepath.Join(t.TempDir(), "non_existent_kubeconfig")
 				// Ensure it doesn't exist (though TempDir is new, this is explicit)
-				os.Remove(kubeconfigPath) 
+				os.Remove(kubeconfigPath)
 				return kubeconfigPath, func() {}
 			},
 			contextToSwitch: "any-ctx",
