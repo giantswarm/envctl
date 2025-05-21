@@ -3,6 +3,7 @@ package model_test
 import (
 	"context"
 	"envctl/internal/k8smanager" // NEW: for KubeManagerAPI and its types
+	"envctl/internal/reporting"
 
 	// For ServiceManagerAPI if needed (nil for now)
 	"envctl/internal/mcpserver"
@@ -51,6 +52,10 @@ func (m *mockKubeManagerForModelTest) GetClusterNodeHealth(ctx context.Context, 
 }
 func (m *mockKubeManagerForModelTest) DetermineClusterProvider(ctx context.Context, kubeContextName string) (string, error) {
 	return "mockProvider", nil
+}
+
+func (m *mockKubeManagerForModelTest) SetReporter(reporter reporting.ServiceReporter) {
+	// Mock implementation, can be empty.
 }
 
 // REMOVED: mockClusterService, mockPFService, mockProxyService as m.Services is replaced by m.KubeMgr

@@ -1,6 +1,9 @@
 package k8smanager
 
-import "context"
+import (
+	"context"
+	"envctl/internal/reporting"
+)
 
 // Cluster represents basic info about a discovered cluster
 type Cluster struct {
@@ -47,4 +50,7 @@ type KubeManagerAPI interface {
 	// Cluster Operations / Info - direct Kubernetes API interactions
 	GetClusterNodeHealth(ctx context.Context, kubeContextName string) (NodeHealth, error)
 	DetermineClusterProvider(ctx context.Context, kubeContextName string) (string, error)
+
+	// Reporter Management
+	SetReporter(reporter reporting.ServiceReporter)
 }

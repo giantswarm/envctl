@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"envctl/internal/color" // For ServiceManagerAPI if needed by tests (nil for now)
+	"envctl/internal/reporting"
+
 	// Added for KubeManagerAPI type for nil
 	"envctl/internal/k8smanager"     // Using k8smanager
 	"envctl/internal/mcpserver"      // For mcpserver.MCPServerConfig
@@ -62,6 +64,10 @@ func (m *mockKubeManager) GetClusterNodeHealth(ctx context.Context, kubeContextN
 
 func (m *mockKubeManager) DetermineClusterProvider(ctx context.Context, kubeContextName string) (string, error) {
 	return "mockProvider", nil
+}
+
+func (m *mockKubeManager) SetReporter(reporter reporting.ServiceReporter) {
+	// Mock implementation, can be empty.
 }
 
 // checkGoldenFile compares the actual output with the golden file.

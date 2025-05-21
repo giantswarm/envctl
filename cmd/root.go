@@ -44,7 +44,8 @@ func Execute() {
 // init is a special Go function that is executed when the package is initialized.
 // It is used here to add subcommands to the root command.
 func init() {
-	rootCmd.AddCommand(newConnectCmd())
+	// connectCmdDef is now added in cmd/connect.go's init() function
+	// rootCmd.AddCommand(newConnectCmd())
 	rootCmd.AddCommand(newVersionCmd())
 	rootCmd.AddCommand(newSelfUpdateCmd())
 

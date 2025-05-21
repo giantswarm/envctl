@@ -3,8 +3,9 @@ package k8smanager_test
 import (
 	"context"
 	"envctl/internal/k8smanager"
-	"envctl/internal/kube"  // To access original functions for overriding
-	"envctl/internal/utils" // To access original functions for overriding
+	"envctl/internal/kube"      // To access original functions for overriding
+	"envctl/internal/reporting" // For reporting.ServiceReporter
+	"envctl/internal/utils"     // To access original functions for overriding
 	"fmt"
 	"reflect" // For DeepEqual
 	"testing"
@@ -70,6 +71,24 @@ func (mcc *mockClientConfig) ConfigAccess() clientcmd.ConfigAccess {
 }
 
 var _ clientcmd.ClientConfig = &mockClientConfig{} // Ensure it satisfies the interface
+
+// mockServiceReporter is a simple mock for reporting.ServiceReporter
+type mockServiceReporter struct {
+	ReportFunc func(update reporting.ManagedServiceUpdate)
+}
+
+func (m *mockServiceReporter) Report(update reporting.ManagedServiceUpdate) {
+	if m.ReportFunc != nil {
+		m.ReportFunc(update)
+	}
+}
+
+func newTestKubeManager() k8smanager.KubeManagerAPI {
+	// For tests, we can pass a nil reporter, and NewKubeManager will use a ConsoleReporter,
+	// or we can pass a specific mock reporter if we want to assert reporting calls.
+	// Using nil here as most existing tests don't check reporter calls yet.
+	return k8smanager.NewKubeManager(nil)
+}
 
 func setupKubeManagerMocks(t *testing.T) {
 	// Store originals first time
@@ -152,7 +171,7 @@ func TestKubeManager_Login(t *testing.T) {
 	setupKubeManagerMocks(t)
 	defer restoreKubeManagerOriginals()
 
-	km := k8smanager.NewKubeManager()
+	km := newTestKubeManager()
 	stdout, stderr, err := km.Login("mycluster")
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
@@ -169,7 +188,7 @@ func TestKubeManager_ListClusters(t *testing.T) {
 	setupKubeManagerMocks(t)
 	defer restoreKubeManagerOriginals()
 
-	km := k8smanager.NewKubeManager()
+	km := newTestKubeManager()
 	cl, err := km.ListClusters()
 	if err != nil {
 		t.Fatalf("ListClusters failed: %v", err)
@@ -195,7 +214,7 @@ func TestKubeManager_ListClusters(t *testing.T) {
 func TestKubeManager_GetCurrentContext(t *testing.T) {
 	setupKubeManagerMocks(t)
 	defer restoreKubeManagerOriginals()
-	km := k8smanager.NewKubeManager()
+	km := newTestKubeManager()
 	ctx, err := km.GetCurrentContext()
 	if err != nil || ctx != "test-current-context" {
 		t.Errorf("GetCurrentContext() got %v, %v, want test-current-context, nil", ctx, err)
@@ -205,7 +224,7 @@ func TestKubeManager_GetCurrentContext(t *testing.T) {
 func TestKubeManager_SwitchContext(t *testing.T) {
 	setupKubeManagerMocks(t)
 	defer restoreKubeManagerOriginals()
-	km := k8smanager.NewKubeManager()
+	km := newTestKubeManager()
 	target := "new-context"
 	var switchedTo string
 	kube.SwitchKubeContext = func(s string) error { // Override mock for this test
@@ -243,7 +262,7 @@ func TestKubeManager_GetClusterNodeHealth_Success(t *testing.T) {
 	}
 	defer func() { kube.GetNodeStatusClientGo = originalGetNodeStatus }()
 
-	km := k8smanager.NewKubeManager()
+	km := newTestKubeManager()
 	health, err := km.GetClusterNodeHealth(context.Background(), "test-ctx-success")
 
 	if err != nil {
@@ -276,7 +295,7 @@ func TestKubeManager_GetClusterNodeHealth_ClientConfigError(t *testing.T) {
 	}
 	defer func() { k8smanager.K8sNewNonInteractiveDeferredLoadingClientConfig = currentOriginalLoader }()
 
-	km := k8smanager.NewKubeManager()
+	km := newTestKubeManager()
 	_, err := km.GetClusterNodeHealth(context.Background(), "test-ctx-clientconfig-error")
 
 	if err == nil {
@@ -309,7 +328,7 @@ func TestKubeManager_GetClusterNodeHealth_NodeStatusError(t *testing.T) {
 	}
 	defer func() { kube.GetNodeStatusClientGo = originalGetNodeStatus }()
 
-	km := k8smanager.NewKubeManager()
+	km := newTestKubeManager()
 	health, err := km.GetClusterNodeHealth(context.Background(), "test-ctx-nodestatus-error")
 
 	if err == nil {

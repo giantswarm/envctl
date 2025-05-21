@@ -8,6 +8,7 @@ import (
 	"envctl/internal/portforwarding"
 	"envctl/internal/reporting"
 	"envctl/internal/tui/controller"
+	"envctl/internal/tui/model"
 	"envctl/internal/utils"
 	"fmt"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea" // For TUI program
 	"github.com/spf13/cobra"
 )
 
@@ -23,6 +25,7 @@ import (
 
 var noTUI bool        // Variable to store the value of the --no-tui flag
 var tuiDebugMode bool // Variable to store the value of the --debug-tui flag for TUI
+var debug bool        // General debug flag, distinct from tuiDebugMode for now if needed
 
 // connectCmdDef defines the connect command structure
 var connectCmdDef = &cobra.Command{
@@ -58,146 +61,113 @@ Arguments:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		managementClusterArg := args[0]
 		workloadClusterArg := ""
-		var fullWorkloadClusterIdentifier string
 		if len(args) == 2 {
 			workloadClusterArg = args[1]
-			fullWorkloadClusterIdentifier = managementClusterArg + "-" + workloadClusterArg
 		}
 
-		kubeMgr := k8smanager.NewKubeManager()
+		// Note: 'debug' is the general debug flag, 'tuiDebugMode' is specific to TUI's own debug features.
+		// model.InitialModel will receive 'debug' for general debug logging purposes.
 
-		fmt.Println("--- Kubernetes Login ---")
+		kubeMgr := k8smanager.NewKubeManager(reporting.NewConsoleReporter())
 
-		if managementClusterArg != "" {
-			fmt.Printf("Attempting to login to Management Cluster: %s\n", managementClusterArg)
-			mcLoginStdout, mcLoginStderr, err := kubeMgr.Login(managementClusterArg)
-			if mcLoginStdout != "" {
-				fmt.Print(mcLoginStdout)
-			}
-			if mcLoginStderr != "" {
-				fmt.Fprint(os.Stderr, mcLoginStderr)
-			}
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: failed to log into management cluster '%s': %v\n", managementClusterArg, err)
-			}
+		initialKubeContext, err := kubeMgr.GetCurrentContext()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: could not get initial Kubernetes context: %v\n", err)
+			initialKubeContext = "unknown"
 		}
-
-		if fullWorkloadClusterIdentifier != "" {
-			fmt.Printf("Attempting to login to Workload Cluster: %s\n", fullWorkloadClusterIdentifier)
-			wcLoginStdout, wcLoginStderr, wcErr := kubeMgr.Login(fullWorkloadClusterIdentifier)
-			if wcLoginStdout != "" {
-				fmt.Print(wcLoginStdout)
-			}
-			if wcLoginStderr != "" {
-				fmt.Fprint(os.Stderr, wcLoginStderr)
-			}
-			if wcErr != nil {
-				fmt.Fprintf(os.Stderr, "Warning: tsh kube login for %s failed: %v. Stderr: %s\n", fullWorkloadClusterIdentifier, wcErr, wcLoginStderr)
-			}
-		}
-
-		currentKubeContextAfterLogin, ctxErr := kubeMgr.GetCurrentContext()
-		if ctxErr != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to get current Kubernetes context after login: %v\n", ctxErr)
-			currentKubeContextAfterLogin = ""
-		}
-		fmt.Printf("Actual Kubernetes context after login: %s\n", currentKubeContextAfterLogin)
-		fmt.Println("--------------------------")
+		fmt.Printf("Initial Kubernetes context: %s\n", initialKubeContext)
 
 		portForwardingConfig := portforwarding.GetPortForwardConfig(managementClusterArg, workloadClusterArg)
 		mcpServerConfig := mcpserver.GetMCPServerConfig()
 
 		if noTUI {
-			fmt.Println("Skipping TUI. Setting up services in the background...")
-
-			var wg sync.WaitGroup
+			fmt.Println("Running in no-TUI mode.")
 			consoleReporter := reporting.NewConsoleReporter()
 			serviceMgr := managers.NewServiceManager(consoleReporter)
+			// kubeMgr already has a ConsoleReporter.
 
-			var managedServiceConfigs []managers.ManagedServiceConfig
-			for _, pfCfg := range portForwardingConfig {
-				managedServiceConfigs = append(managedServiceConfigs, managers.ManagedServiceConfig{
-					Type:   reporting.ServiceTypePortForward,
-					Label:  pfCfg.Label,
-					Config: pfCfg,
-				})
-			}
-			for _, mcpCfg := range mcpServerConfig {
-				managedServiceConfigs = append(managedServiceConfigs, managers.ManagedServiceConfig{
-					Type:   reporting.ServiceTypeMCPServer,
-					Label:  mcpCfg.Name,
-					Config: mcpCfg,
-				})
-			}
-
-			if len(managedServiceConfigs) > 0 {
-				fmt.Println("--- Starting Background Services ---")
-				_, startupErrors := serviceMgr.StartServices(managedServiceConfigs, &wg)
-				if len(startupErrors) > 0 {
-					consoleReporter.Report(reporting.ManagedServiceUpdate{
-						Timestamp:   time.Now(),
-						SourceType:  reporting.ServiceTypeSystem,
-						SourceLabel: "ServiceManagerInit",
-						Level:       reporting.LogLevelError,
-						Message:     "Errors during initial service startup configuration phase:",
-					})
-					for _, err := range startupErrors {
-						consoleReporter.Report(reporting.ManagedServiceUpdate{
-							Timestamp:   time.Now(),
-							SourceType:  reporting.ServiceTypeSystem,
-							SourceLabel: "ServiceStartupError",
-							Level:       reporting.LogLevelError,
-							Message:     err.Error(),
-							ErrorDetail: err,
-						})
-					}
+			if managementClusterArg != "" {
+				fmt.Printf("Attempting login to Management Cluster: %s (via KubeManager)\n", managementClusterArg)
+				_, _, loginErr := kubeMgr.Login(managementClusterArg)
+				if loginErr != nil {
+					fmt.Fprintf(os.Stderr, "Login to %s failed. Continuing with setup if possible...\n", managementClusterArg)
+				} else {
+					currentKubeContextAfterLogin, _ := kubeMgr.GetCurrentContext()
+					fmt.Printf("Context after login to %s: %s\n", managementClusterArg, currentKubeContextAfterLogin)
+					initialKubeContext = currentKubeContextAfterLogin
 				}
-				fmt.Println("All background services initiated. Press Ctrl+C to stop.")
-			} else {
-				fmt.Println("No background services (port-forwards or MCP proxies) were configured. Exiting.")
+			}
+
+			fmt.Println("--- Setting up background services (no-TUI mode) ---")
+			var wg sync.WaitGroup
+			activeServices, startupErrors := serviceMgr.StartServices(
+				buildManagedServiceConfigs(portForwardingConfig, mcpServerConfig),
+				&wg,
+			)
+			if len(startupErrors) > 0 {
+				fmt.Fprintln(os.Stderr, "Errors during service startup configuration:")
+				for _, e := range startupErrors {
+					fmt.Fprintf(os.Stderr, "- %v\n", e)
+				}
+			}
+			if len(activeServices) == 0 {
+				fmt.Println("No background services were configured or started successfully. Exiting.")
 				return nil
 			}
 
+			fmt.Printf("%d services initiated. Press Ctrl+C to stop all services and exit.\n", len(activeServices))
+			// wg.Wait() // Don't wait here, let them run in background
+
 			sigChan := make(chan os.Signal, 1)
 			signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
 			<-sigChan
 
-			fmt.Println("\nReceived interrupt signal. Shutting down services...")
+			fmt.Println("\n--- Shutting down services ---")
 			serviceMgr.StopAllServices()
+			// Give some time for services to stop based on their internal logic and reporting
+			// Consider waiting on the initial wg if it was used to track goroutine completion in StartServices
+			// For now, a short explicit wait or rely on OS to clean up child processes of mcp-server etc.
+			time.Sleep(1 * time.Second) // Brief pause for cleanup
+			fmt.Println("All services signaled to stop.")
 
-			waitGroupDone := make(chan struct{})
-			go func() {
-				wg.Wait()
-				close(waitGroupDone)
-			}()
+		} else { // TUI Mode
+			fmt.Println("Starting TUI mode...")
+			// Determine color scheme - this needs to be read from viper or a flag
+			// For now, assume dark. Replace with actual flag reading.
+			// colorScheme := viper.GetString("color-scheme")
+			// color.Initialize(colorScheme == "dark" || colorScheme == "")
+			color.Initialize(true) // Default to dark for now
 
-			select {
-			case <-waitGroupDone:
-				fmt.Println("All background services gracefully shut down.")
-			case <-time.After(10 * time.Second):
-				fmt.Println("Timeout waiting for background services to shut down. Forcing exit.")
-			}
-
-			return nil
-
-		} else {
-			fmt.Println("Setup complete. Starting TUI...")
-			color.Initialize(true)
-
-			p := controller.NewProgram(
+			// model.InitialModel will create ServiceManager internally and set up TUIReporter for both itself and kubeMgr.
+			coreModel := model.InitialModel(
 				managementClusterArg,
 				workloadClusterArg,
-				currentKubeContextAfterLogin,
-				tuiDebugMode,
+				initialKubeContext,
+				debug, // Use the general debug flag here
 				mcpServerConfig,
 				portForwardingConfig,
-				kubeMgr,
+				kubeMgr, // Pass KubeManager; its reporter will be reset by InitialModel/AppModel
 			)
-			if _, err := p.Run(); err != nil {
+
+			// NewAppModel takes the core model and other necessary details.
+			// It's responsible for further setup, including ServiceManager and TUIReporter if not done in InitialModel.
+			appModel := controller.NewAppModel(coreModel, managementClusterArg, workloadClusterArg)
+
+			program := tea.NewProgram(appModel, tea.WithAltScreen(), tea.WithMouseCellMotion())
+
+			if _, err := program.Run(); err != nil {
 				fmt.Fprintf(os.Stderr, "Error running TUI: %v\n", err)
+				// Attempt to stop services if AppModel and ServiceManager exist
+				if appModel != nil {
+					// Accessing ServiceManager might need a method on AppModel or directly from coreModel if it's exposed.
+					// Assuming coreModel (m) has ServiceManager after initialization by AppModel or InitialModel.
+					if coreModel.ServiceManager != nil {
+						coreModel.ServiceManager.StopAllServices()
+					}
+				}
 				return err
 			}
+			fmt.Println("TUI exited.")
 		}
 		return nil
 	},
@@ -225,10 +195,33 @@ Arguments:
 	},
 }
 
-func newConnectCmd() *cobra.Command {
-	connectCmdDef.Flags().BoolVar(&noTUI, "no-tui", false, "Disable TUI and run port forwarding in the background")
-	connectCmdDef.Flags().BoolVar(&tuiDebugMode, "debug-tui", false, "Enable TUI debug mode from startup (shows extra logs)")
-	return connectCmdDef
+// buildManagedServiceConfigs is a helper to create the config slice for ServiceManager.
+func buildManagedServiceConfigs(pfConfigs []portforwarding.PortForwardingConfig, mcpConfigs []mcpserver.MCPServerConfig) []managers.ManagedServiceConfig {
+	var managedServiceConfigs []managers.ManagedServiceConfig
+	for _, pfCfg := range pfConfigs {
+		managedServiceConfigs = append(managedServiceConfigs, managers.ManagedServiceConfig{
+			Type:   reporting.ServiceTypePortForward,
+			Label:  pfCfg.Label,
+			Config: pfCfg,
+		})
+	}
+	for _, mcpCfg := range mcpConfigs {
+		managedServiceConfigs = append(managedServiceConfigs, managers.ManagedServiceConfig{
+			Type:   reporting.ServiceTypeMCPServer,
+			Label:  mcpCfg.Name,
+			Config: mcpCfg,
+		})
+	}
+	return managedServiceConfigs
 }
 
-// Removed init() function as MCP server config is no longer initialized here.
+func init() {
+	rootCmd.AddCommand(connectCmdDef)
+	connectCmdDef.Flags().BoolVar(&noTUI, "no-tui", false, "Disable TUI and run port forwarding in the background")
+	// Flag for TUI specific debug features (e.g. showing debug panel in TUI)
+	connectCmdDef.Flags().BoolVar(&tuiDebugMode, "debug-tui", false, "Enable TUI debug mode from startup (shows extra logs, debug panel)")
+	// General debug flag for more verbose logging across the application, including non-TUI parts if applicable
+	connectCmdDef.Flags().BoolVar(&debug, "debug", false, "Enable general debug logging")
+
+	// Removed viper bindings as direct flag variables are used.
+}

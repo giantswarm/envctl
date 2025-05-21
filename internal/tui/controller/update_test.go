@@ -64,6 +64,11 @@ func (m *MockKubeManager) DetermineClusterProvider(ctx context.Context, kubeCont
 	return "mockProvider", nil
 }
 
+func (m *MockKubeManager) SetReporter(reporter reporting.ServiceReporter) {
+	// Mock implementation: can be empty if not used in these specific tests,
+	// or store the reporter if tests need to verify it was set.
+}
+
 // TestMainControllerDispatch_ReporterUpdateMsg_ContinuouslyProcessesViaChannelReaderCmd
 // tests if the mainControllerDispatch correctly re-queues the ChannelReaderCmd
 // after processing a ReporterUpdateMsg, allowing continuous processing of messages
