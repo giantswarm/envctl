@@ -7,10 +7,6 @@ import (
 	"testing"
 )
 
-// execCommand is a package-level variable that normally points to exec.Command.
-// Tests can temporarily replace it to mock command execution.
-var execCommand = exec.Command
-
 // TestPipeFails specifically tests the scenario where cmd.StdoutPipe() fails.
 func TestPipeFails(t *testing.T) {
 	originalExecCommand := execCommand

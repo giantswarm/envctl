@@ -9,6 +9,8 @@ import (
 	"syscall"
 )
 
+var execCommand = exec.Command
+
 // StartAndManageIndividualMcpServer prepares, starts, and manages a single MCP server process.
 // It takes a serverConfig, an updateFn callback, and an optional WaitGroup.
 // It returns the PID, a stop channel for terminating the process, and any initial error during startup.
@@ -30,7 +32,7 @@ func StartAndManageIndividualMcpServer(
 	}
 	proxyArgs = append(proxyArgs, serverConfig.Args...)
 
-	cmd := exec.Command("mcp-proxy", proxyArgs...)
+	cmd := execCommand("mcp-proxy", proxyArgs...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Env = os.Environ() // Inherit current environment
 	for k, v := range serverConfig.Env {
