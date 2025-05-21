@@ -2,7 +2,6 @@ package model
 
 import (
 	"envctl/internal/k8smanager"
-	"envctl/internal/managers"
 )
 
 // ---- New connection flow messages ----
@@ -84,14 +83,21 @@ type ClearStatusBarMsg struct{}
 // or triggering updates without specific side effects.
 type NopMsg struct{}
 
-// ---- ServiceManager related messages (NEW - KEEP THESE) ----
-type ServiceUpdateMsg struct {
-	Update managers.ManagedServiceUpdate
-}
+// ---- ServiceManager related messages ----
+
+// ServiceUpdateMsg is now REMOVED. Use ReporterUpdateMsg (defined in reporting package) instead.
+// type ServiceUpdateMsg struct {
+// 	Update managers.ManagedServiceUpdate
+// }
+
+// ReporterUpdateMsg is now defined in the reporting package.
+// type ReporterUpdateMsg struct {
+// 	Update reporting.ManagedServiceUpdate
+// }
 
 // ServiceErrorMsg is a more specific message for critical errors from a service,
-// though ServiceUpdateMsg can also carry error information.
 // This could be used for errors that need special handling or distinct logging.
+// Consider if this should also be a ReporterUpdateMsg with LogLevelError/Fatal.
 type ServiceErrorMsg struct {
 	Label string
 	Err   error
@@ -103,6 +109,7 @@ type AllServicesStartedMsg struct {
 }
 
 // ServiceStopResultMsg is sent after an attempt to stop a service.
+// Consider if this should also be a ReporterUpdateMsg.
 type ServiceStopResultMsg struct {
 	Label string
 	Err   error // nil if successful

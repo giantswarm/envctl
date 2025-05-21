@@ -68,29 +68,38 @@ func GetPortForwardConfig(mcShortName, workloadClusterArg string) []PortForwardi
 }
 
 // UpdateFunc defines the callback for port forwarding status updates.
-// Parameters: label, status message, detailed output log, isError flag, isReady flag.
+// Reverted to old signature: label, status, outputLog, isError, isReady bool
 type UpdateFunc func(label, status, outputLog string, isError, isReady bool)
 
 // StartPortForwardsFunc is the type for the StartPortForwards function, for mocking.
-// Note: This type matches the original StartPortForwards signature.
-// The original StartPortForwards should be renamed (e.g., to defaultStartPortForwards)
-// and this var should be initialized with it.
-var StartPortForwards = defaultStartPortForwards
+var StartPortForwards = DefaultStartPortForwards // Points to the exported function
 
-// defaultStartPortForwards is the actual implementation.
-func defaultStartPortForwards(
+// DefaultStartPortForwards is the actual implementation, now exported.
+func DefaultStartPortForwards(
 	configs []PortForwardingConfig,
-	updateCb UpdateFunc,
+	updateCb UpdateFunc, // Now old signature
 	globalStopChan <-chan struct{},
 	wg *sync.WaitGroup,
 ) map[string]chan struct{} {
+
+	if updateCb != nil {
+		// Log entry using old signature
+		updateCb("PortForwardingSys", "TRACE", fmt.Sprintf(">>> ENTERED REAL DefaultStartPortForwards. Configs: %d", len(configs)), false, false)
+	}
+
 	individualStopChans := make(map[string]chan struct{})
 
 	if len(configs) == 0 {
+		if updateCb != nil {
+			updateCb("PortForwardingSys", "INFO_defaultStartPortForwards", "No port forward configs to process.", false, false)
+		}
 		return individualStopChans
 	}
 
 	for _, pfCfg := range configs {
+		if updateCb != nil {
+			updateCb(pfCfg.Label, "DEBUG_PF_LOOP", fmt.Sprintf("Looping for: %s", pfCfg.Label), false, false)
+		}
 		wg.Add(1)
 		config := pfCfg
 		individualStopChan := make(chan struct{})
@@ -103,6 +112,11 @@ func defaultStartPortForwards(
 				updateCb(config.Label, "Attempting to start...", "", false, false)
 			}
 
+			if updateCb != nil {
+				updateCb(config.Label, "DEBUG_PF_GOROUTINE", "Active, pre-portspec", false, false)
+			}
+
+			// kubeUpdateCallback now also uses the old signature for kube.SendUpdateFunc
 			kubeUpdateCallback := func(status, outputLog string, isError, isReady bool) {
 				if updateCb != nil {
 					updateCb(config.Label, status, outputLog, isError, isReady)
@@ -110,6 +124,10 @@ func defaultStartPortForwards(
 			}
 
 			portSpec := fmt.Sprintf("%s:%s", config.LocalPort, config.RemotePort)
+
+			if updateCb != nil {
+				updateCb(config.Label, "", fmt.Sprintf("DEBUG_PF_CONFIG: PRE-CALL to kube.StartPortForwardClientGo for %s", config.Label), false, false)
+			}
 
 			pfStopChan, initialStatus, initialErr := kube.StartPortForwardClientGo(
 				config.KubeContext,
@@ -120,21 +138,26 @@ func defaultStartPortForwards(
 				kubeUpdateCallback,
 			)
 
+			if updateCb != nil {
+				debugMsg := fmt.Sprintf("POST-CALL kube.StartPortForwardClientGo: initialStatus='%s', pfStopChan_is_nil=%t", initialStatus, pfStopChan == nil)
+				updateCb(config.Label, "", debugMsg, initialErr != nil, false)
+			}
+
 			if initialErr != nil {
 				if updateCb != nil {
 					updateCb(config.Label, fmt.Sprintf("Failed to start: %v", initialErr), initialStatus, true, false)
 				}
 				return
 			}
-			if pfStopChan == nil && initialErr == nil {
+			if pfStopChan == nil {
 				if updateCb != nil {
-					updateCb(config.Label, "Setup returned no error but stop channel is nil.", initialStatus, true, false)
+					updateCb(config.Label, "Critical setup error: stop channel is nil despite no initial error.", initialStatus, true, false)
 				}
 				return
 			}
 
 			if updateCb != nil {
-				updateCb(config.Label, "Port-forwarding setup initiated.", initialStatus, false, true)
+				updateCb(config.Label, "Port-forwarding setup process initiated.", initialStatus, false, false)
 			}
 
 			select {

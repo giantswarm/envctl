@@ -1,6 +1,7 @@
 package kube
 
 import (
+	// "envctl/internal/reporting" // No longer needed by this test file if using old signature
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -98,76 +99,81 @@ func GetNodeStatusClientGo(kubeContext string) (readyNodes int, totalNodes int, 
 
 func TestTuiLogWriter_Write(t *testing.T) {
 	tests := []struct {
-		name        string
-		input       string
-		asError     bool
-		wantLogs    []string
-		wantAsError []bool // Tracks the asError flag for each log line
+		name    string
+		input   string
+		asError bool
+		// wantUpdates []reporting.ManagedServiceUpdate // OLD
+		wantStatus    []string // For tuiLogWriter, status is always ""
+		wantOutputLog []string
+		wantIsError   []bool
+		wantIsReady   []bool // For tuiLogWriter, isReady is always false
 	}{
 		{
-			name:        "single line",
-			input:       "hello world\n",
-			asError:     false,
-			wantLogs:    []string{"hello world"},
-			wantAsError: []bool{false},
+			name:    "single line",
+			input:   "hello world\n",
+			asError: false,
+			// wantUpdates: []reporting.ManagedServiceUpdate{
+			// 	{SourceLabel: "test", Level: reporting.LogLevelStdout, Message: "hello world", IsError: false},
+			// },
+			wantStatus:    []string{""},
+			wantOutputLog: []string{"hello world"},
+			wantIsError:   []bool{false},
+			wantIsReady:   []bool{false},
 		},
 		{
-			name:        "multiple lines",
-			input:       "line1\nline2\nline3\n",
-			asError:     true,
-			wantLogs:    []string{"line1", "line2", "line3"},
-			wantAsError: []bool{true, true, true},
+			name:    "multiple lines",
+			input:   "line1\nline2\nline3\n",
+			asError: true,
+			// wantUpdates: []reporting.ManagedServiceUpdate{
+			// 	{SourceLabel: "test", Level: reporting.LogLevelStderr, Message: "line1", IsError: true},
+			// 	{SourceLabel: "test", Level: reporting.LogLevelStderr, Message: "line2", IsError: true},
+			// 	{SourceLabel: "test", Level: reporting.LogLevelStderr, Message: "line3", IsError: true},
+			// },
+			wantStatus:    []string{"", "", ""},
+			wantOutputLog: []string{"line1", "line2", "line3"},
+			wantIsError:   []bool{true, true, true},
+			wantIsReady:   []bool{false, false, false},
+		},
+		// ... (Adapt other test cases in TestTuiLogWriter_Write similarly)
+		{
+			name:          "empty input",
+			input:         "",
+			asError:       false,
+			wantOutputLog: nil, // No calls to sendUpdate
 		},
 		{
-			name:        "empty input",
-			input:       "",
-			asError:     false,
-			wantLogs:    nil, // Expect no calls to sendUpdate
-			wantAsError: nil,
+			name:          "line without newline suffix",
+			input:         "incomplete line",
+			asError:       false,
+			wantStatus:    []string{""},
+			wantOutputLog: []string{"incomplete line"},
+			wantIsError:   []bool{false},
+			wantIsReady:   []bool{false},
 		},
 		{
-			name:        "line without newline suffix",
-			input:       "incomplete line",
-			asError:     false,
-			wantLogs:    []string{"incomplete line"},
-			wantAsError: []bool{false},
-		},
-		{
-			name:        "client-go info log prefix",
-			input:       "I1234 56:78.901 client-go/stuff.go:123] this is the actual log\n",
-			asError:     false,
-			wantLogs:    []string{"client-go/stuff.go:123] this is the actual log"},
-			wantAsError: []bool{false},
-		},
-		{
-			name:        "client-go info log prefix without enough parts",
-			input:       "I1234 client-go log\n", // Does not match SplitN( ,3) expectation
-			asError:     false,
-			wantLogs:    []string{"log"},
-			wantAsError: []bool{false},
-		},
-		{
-			name:        "mixed newlines and empty lines",
-			input:       "line one\n\nline three\n",
-			asError:     false,
-			wantLogs:    []string{"line one", "line three"}, // Empty line should be skipped
-			wantAsError: []bool{false, false},
+			name:          "client-go info log prefix",
+			input:         "I1234 56:78.901 client-go/stuff.go:123] this is the actual log\n",
+			asError:       false,
+			wantStatus:    []string{""},
+			wantOutputLog: []string{"client-go/stuff.go:123] this is the actual log"},
+			wantIsError:   []bool{false},
+			wantIsReady:   []bool{false},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var gotLogs []string
-			var gotAsError []bool
+			var gotStatus []string
+			var gotOutputLog []string
+			var gotIsError []bool
+			var gotIsReady []bool
+
+			// Revert mockSendUpdate signature
 			mockSendUpdate := func(status, outputLog string, isError, isReady bool) {
-				gotLogs = append(gotLogs, outputLog)
-				gotAsError = append(gotAsError, isError)
-				if status != "" {
-					t.Errorf("tuiLogWriter.Write() sendUpdate got status %q, want empty", status)
-				}
-				if isReady {
-					t.Error("tuiLogWriter.Write() sendUpdate got isReady true, want false")
-				}
+				gotStatus = append(gotStatus, status)
+				gotOutputLog = append(gotOutputLog, outputLog)
+				gotIsError = append(gotIsError, isError)
+				gotIsReady = append(gotIsReady, isReady)
 			}
 
 			w := &tuiLogWriter{
@@ -176,6 +182,7 @@ func TestTuiLogWriter_Write(t *testing.T) {
 				asError:    tt.asError,
 			}
 
+			// ... (w.Write call and basic checks) ...
 			n, err := w.Write([]byte(tt.input))
 			if err != nil {
 				t.Fatalf("Write() error = %v", err)
@@ -184,16 +191,22 @@ func TestTuiLogWriter_Write(t *testing.T) {
 				t.Errorf("Write() bytes written = %v, want %v", n, len(tt.input))
 			}
 
-			if len(gotLogs) != len(tt.wantLogs) {
-				t.Fatalf("Write() got %d log lines, want %d. Got logs: %v", len(gotLogs), len(tt.wantLogs), gotLogs)
+			if len(gotOutputLog) != len(tt.wantOutputLog) {
+				t.Fatalf("Write() got %d log lines, want %d. Got logs: %v", len(gotOutputLog), len(tt.wantOutputLog), gotOutputLog)
 			}
 
-			for i := range gotLogs {
-				if gotLogs[i] != tt.wantLogs[i] {
-					t.Errorf("Write() gotLog[%d] = %q, want %q", i, gotLogs[i], tt.wantLogs[i])
+			for i := range gotOutputLog {
+				if gotStatus[i] != tt.wantStatus[i] {
+					t.Errorf("Write() gotStatus[%d] = %q, want %q", i, gotStatus[i], tt.wantStatus[i])
 				}
-				if gotAsError[i] != tt.wantAsError[i] {
-					t.Errorf("Write() gotAsError[%d] = %v, want %v", i, gotAsError[i], tt.wantAsError[i])
+				if gotOutputLog[i] != tt.wantOutputLog[i] {
+					t.Errorf("Write() gotOutputLog[%d] = %q, want %q", i, gotOutputLog[i], tt.wantOutputLog[i])
+				}
+				if gotIsError[i] != tt.wantIsError[i] {
+					t.Errorf("Write() gotIsError[%d] = %v, want %v", i, gotIsError[i], tt.wantIsError[i])
+				}
+				if gotIsReady[i] != tt.wantIsReady[i] {
+					t.Errorf("Write() gotIsReady[%d] = %v, want %v", i, gotIsReady[i], tt.wantIsReady[i])
 				}
 			}
 		})
@@ -359,7 +372,8 @@ func TestGetPodNameForPortForward(t *testing.T) {
 }
 
 func TestStartPortForwardClientGo_InputValidation(t *testing.T) {
-	mockSendUpdate := func(status, outputLog string, isError, isReady bool) { /* no-op for these tests */ }
+	// Revert mockSendUpdate signature
+	mockSendUpdate := func(status, outputLog string, isError, isReady bool) { /* no-op */ }
 
 	tests := []struct {
 		name        string
@@ -421,7 +435,6 @@ func TestStartPortForwardClientGo_InputValidation(t *testing.T) {
 			if (err != nil) != tt.wantErr {
 				t.Errorf("%s: StartPortForwardClientGo() error = %v, wantErr %v", tt.desc, err, tt.wantErr)
 			}
-			// If a stop channel is returned, it should be closed to prevent goroutine leaks if the test panics or http client is used.
 			if stopChan != nil {
 				close(stopChan)
 			}

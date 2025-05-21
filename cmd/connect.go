@@ -6,6 +6,7 @@ import (
 	"envctl/internal/managers"
 	"envctl/internal/mcpserver"
 	"envctl/internal/portforwarding"
+	"envctl/internal/reporting"
 	"envctl/internal/tui/controller"
 	"envctl/internal/utils"
 	"fmt"
@@ -110,67 +111,45 @@ Arguments:
 			fmt.Println("Skipping TUI. Setting up services in the background...")
 
 			var wg sync.WaitGroup
-			serviceMgr := managers.NewServiceManager()
+			consoleReporter := reporting.NewConsoleReporter()
+			serviceMgr := managers.NewServiceManager(consoleReporter)
 
 			var managedServiceConfigs []managers.ManagedServiceConfig
 			for _, pfCfg := range portForwardingConfig {
 				managedServiceConfigs = append(managedServiceConfigs, managers.ManagedServiceConfig{
-					Type:   managers.ServiceTypePortForward,
+					Type:   reporting.ServiceTypePortForward,
 					Label:  pfCfg.Label,
 					Config: pfCfg,
 				})
 			}
 			for _, mcpCfg := range mcpServerConfig {
 				managedServiceConfigs = append(managedServiceConfigs, managers.ManagedServiceConfig{
-					Type:   managers.ServiceTypeMCPServer,
+					Type:   reporting.ServiceTypeMCPServer,
 					Label:  mcpCfg.Name,
 					Config: mcpCfg,
 				})
 			}
 
-			consoleServiceUpdateFn := func(update managers.ManagedServiceUpdate) {
-				logPrefix := fmt.Sprintf("[%s] ", update.Label)
-				serviceTypePrefix := ""
-				if update.Type == managers.ServiceTypePortForward {
-					serviceTypePrefix = "[Port Forward] "
-				} else if update.Type == managers.ServiceTypeMCPServer {
-					serviceTypePrefix = "[MCP Proxy] "
-				}
-				fullPrefix := serviceTypePrefix + logPrefix
-
-				if update.IsError {
-					errMsg := update.Status
-					if update.OutputLog != "" {
-						errMsg = fmt.Sprintf("%s: %s", errMsg, update.OutputLog)
-					}
-					if update.Error != nil {
-						errMsg = fmt.Sprintf("%s (Error: %v)", errMsg, update.Error)
-					}
-					fmt.Fprintf(os.Stderr, "%sERROR: %s\n", fullPrefix, errMsg)
-				} else if update.IsReady {
-					readyMsg := update.Status
-					if update.OutputLog != "" {
-						readyMsg = fmt.Sprintf("%s: %s", readyMsg, update.OutputLog)
-					}
-					fmt.Printf("%sREADY: %s\n", fullPrefix, readyMsg)
-				} else if update.OutputLog != "" {
-					if update.Status != "" {
-						fmt.Printf("%sLOG: %s - %s\n", fullPrefix, update.Status, update.OutputLog)
-					} else {
-						fmt.Printf("%sLOG: %s\n", fullPrefix, update.OutputLog)
-					}
-				} else if update.Status != "" {
-					fmt.Printf("%sSTATUS: %s\n", fullPrefix, update.Status)
-				}
-			}
-
 			if len(managedServiceConfigs) > 0 {
 				fmt.Println("--- Starting Background Services ---")
-				_, startupErrors := serviceMgr.StartServices(managedServiceConfigs, consoleServiceUpdateFn, &wg)
+				_, startupErrors := serviceMgr.StartServices(managedServiceConfigs, &wg)
 				if len(startupErrors) > 0 {
-					fmt.Fprintln(os.Stderr, "Errors during service startup:")
+					consoleReporter.Report(reporting.ManagedServiceUpdate{
+						Timestamp:   time.Now(),
+						SourceType:  reporting.ServiceTypeSystem,
+						SourceLabel: "ServiceManagerInit",
+						Level:       reporting.LogLevelError,
+						Message:     "Errors during initial service startup configuration phase:",
+					})
 					for _, err := range startupErrors {
-						fmt.Fprintf(os.Stderr, "- %v\n", err)
+						consoleReporter.Report(reporting.ManagedServiceUpdate{
+							Timestamp:   time.Now(),
+							SourceType:  reporting.ServiceTypeSystem,
+							SourceLabel: "ServiceStartupError",
+							Level:       reporting.LogLevelError,
+							Message:     err.Error(),
+							ErrorDetail: err,
+						})
 					}
 				}
 				fmt.Println("All background services initiated. Press Ctrl+C to stop.")
@@ -206,8 +185,6 @@ Arguments:
 			fmt.Println("Setup complete. Starting TUI...")
 			color.Initialize(true)
 
-			serviceMgr := managers.NewServiceManager()
-
 			p := controller.NewProgram(
 				managementClusterArg,
 				workloadClusterArg,
@@ -215,7 +192,6 @@ Arguments:
 				tuiDebugMode,
 				mcpServerConfig,
 				portForwardingConfig,
-				serviceMgr,
 				kubeMgr,
 			)
 			if _, err := p.Run(); err != nil {

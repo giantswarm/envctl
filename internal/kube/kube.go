@@ -18,39 +18,31 @@ import (
 	"k8s.io/client-go/transport/spdy"
 )
 
-// SendUpdateFunc defines a callback function signature used by port-forwarding logic
-// to send status updates (including log messages, errors, and readiness status)
-// back to the caller, typically the TUI, for display and state management.
+// SendUpdateFunc defines a callback function signature used by port-forwarding logic.
+// Reverted to old signature: status, outputLog string, isError, isReady bool
 type SendUpdateFunc func(status, outputLog string, isError, isReady bool)
 
 // tuiLogWriter is an io.Writer implementation that wraps the SendUpdateFunc.
-// It's used to capture stdout/stderr from the client-go port forwarding process
-// and relay each line as a log message to the TUI.
 type tuiLogWriter struct {
-	label      string         // Label to prefix messages, identifying the source port-forward.
-	sendUpdate SendUpdateFunc // The callback function to send formatted log messages.
-	asError    bool           // If true, indicates this writer handles stderr-like messages, potentially flagging them as errors.
+	label      string
+	sendUpdate SendUpdateFunc
+	asError    bool
 }
 
 // Write processes the byte slice p, splits it into lines, and sends each line
-// via the sendUpdate callback. It also performs minor cleaning of client-go internal log prefixes.
+// via the sendUpdate callback.
 func (w *tuiLogWriter) Write(p []byte) (n int, err error) {
 	lines := strings.Split(strings.TrimSuffix(string(p), "\n"), "\n")
 	for _, line := range lines {
-		if line != "" { // Avoid sending empty log lines
-			// For plain log output, status is empty, isReady is false.
-			// Strip out client-go internal formatting and provide cleaner messages
+		if line != "" {
 			cleanLine := line
-
-			// Remove timestamp prefixes often seen in client-go logs
 			if strings.Contains(cleanLine, "I") && strings.Contains(cleanLine, "client-go") {
 				parts := strings.SplitN(cleanLine, " ", 3)
 				if len(parts) >= 3 {
 					cleanLine = parts[2]
 				}
 			}
-
-			// Send as log output without additional label prefix since handler will add it
+			// For plain log output, status is empty, isReady is false.
 			w.sendUpdate("", cleanLine, w.asError, false)
 		}
 	}
@@ -65,8 +57,9 @@ func StartPortForwardClientGo(
 	serviceArg string, // e.g., "service/my-svc" or "pod/my-pod"
 	portString string, // e.g., "8080:8080"
 	pfLabel string,
-	sendUpdate SendUpdateFunc,
+	sendUpdate SendUpdateFunc, // Now old signature func(status, outputLog string, isError, isReady bool)
 ) (chan struct{}, string, error) {
+	sendUpdate("", fmt.Sprintf("DEBUG_KUBE_PF: Enter StartPortForwardClientGo for %s. Context: %s, Service: %s/%s", pfLabel, kubeContext, namespace, serviceArg), false, false)
 
 	// 1. Parse Ports
 	portParts := strings.Split(portString, ":")
@@ -94,23 +87,32 @@ func StartPortForwardClientGo(
 	configOverrides := &clientcmd.ConfigOverrides{CurrentContext: kubeContext}
 	kubeConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
 
+	sendUpdate("", fmt.Sprintf("Attempting to get REST config..."), false, false)
 	restConfig, err := kubeConfig.ClientConfig()
 	if err != nil {
+		sendUpdate("ERROR", fmt.Sprintf("Error getting REST config: %v", err), true, false)
 		return nil, "", fmt.Errorf("failed to get REST config for context %q: %w", kubeContext, err)
 	}
+	sendUpdate("", fmt.Sprintf("Got REST config. Timeout: %s", restConfig.Timeout.String()), false, false)
 	restConfig.Timeout = 30 * time.Second // Example timeout for connection attempts
 
 	// 3. Kubernetes Clientset
+	sendUpdate("", fmt.Sprintf("Attempting to create clientset..."), false, false)
 	clientset, err := kubernetes.NewForConfig(restConfig)
 	if err != nil {
+		sendUpdate("ERROR", fmt.Sprintf("Error creating clientset: %v", err), true, false)
 		return nil, "", fmt.Errorf("failed to create Kubernetes clientset: %w", err)
 	}
+	sendUpdate("", fmt.Sprintf("Clientset created."), false, false)
 
 	// 4. Determine Target Pod
+	sendUpdate("", fmt.Sprintf("Attempting to determine target pod..."), false, false)
 	podName, err := getPodNameForPortForward(clientset, namespace, serviceArg, uint16(remotePort))
 	if err != nil {
+		sendUpdate("ERROR", fmt.Sprintf("Error determining target pod: %v", err), true, false)
 		return nil, "", fmt.Errorf("failed to determine target pod for %q in %q: %w", serviceArg, namespace, err)
 	}
+	sendUpdate("", fmt.Sprintf("Target pod determined: %s", podName), false, false)
 
 	// 5. Create PortForwarder URL
 	// Example URL: POST https://<server>/api/v1/namespaces/<namespace>/pods/<pod>/portforward
@@ -122,10 +124,13 @@ func StartPortForwardClientGo(
 		URL()
 
 	// 6. Create Dialer & PortForwarder
+	sendUpdate("", fmt.Sprintf("Attempting to create SPDY round tripper..."), false, false)
 	transport, upgrader, err := spdy.RoundTripperFor(restConfig)
 	if err != nil {
+		sendUpdate("ERROR", fmt.Sprintf("Error creating SPDY round tripper: %v", err), true, false)
 		return nil, "", fmt.Errorf("failed to create SPDY round tripper: %w", err)
 	}
+	sendUpdate("", fmt.Sprintf("SPDY round tripper created. Creating dialer..."), false, false)
 	dialer := spdy.NewDialer(upgrader, &http.Client{Transport: transport}, http.MethodPost, reqURL)
 
 	stopChan := make(chan struct{}, 1) // Buffered to allow send without immediate receive
@@ -139,10 +144,13 @@ func StartPortForwardClientGo(
 	// If localPort is 0, GetPorts() must be used after ready.
 	addresses := []string{"127.0.0.1"} // Listen on localhost
 
+	sendUpdate("", fmt.Sprintf("Attempting to create port forwarder object (NewOnAddresses)..."), false, false)
 	forwarder, err := portforward.NewOnAddresses(dialer, addresses, ports, stopChan, readyChan, stdOutWriter, stdErrWriter)
 	if err != nil {
+		sendUpdate("ERROR", fmt.Sprintf("Error creating port forwarder object: %v", err), true, false)
 		return nil, "", fmt.Errorf("failed to create port forwarder: %w", err)
 	}
+	sendUpdate("", fmt.Sprintf("Port forwarder object created."), false, false)
 
 	initialStatusLog := fmt.Sprintf("Initializing %s:%s -> %s/%s (pod %s)...", localPortStr, remotePortStr, namespace, serviceArg, podName)
 	sendUpdate(initialStatusLog, "", false, false)
@@ -152,9 +160,11 @@ func StartPortForwardClientGo(
 
 	// 7. Run Asynchronously
 	go func() {
-		sendUpdate("", "Starting ForwardPorts process...", false, false)
+		sendUpdate("", "DEBUG: Goroutine for ForwardPorts starting...", false, false)
+		sendUpdate("", "DEBUG: Starting ForwardPorts process...", false, false)
 		if err = forwarder.ForwardPorts(); err != nil {
-			sendUpdate("", fmt.Sprintf("ForwardPorts error: %v", err), true, false)
+			sendUpdate("ERROR", fmt.Sprintf("forwarder.ForwardPorts() returned error: %v", err), true, false)
+			sendUpdate("ERROR", fmt.Sprintf("ForwardPorts error: %v", err), true, false)
 			select {
 			case <-stopChan:
 				sendUpdate("Stopped.", "Port forwarding terminated by request after error.", false, false)
@@ -162,42 +172,49 @@ func StartPortForwardClientGo(
 				sendUpdate("Error.", fmt.Sprintf("Forwarding failed: %v", err), true, false)
 			}
 		} else {
-			sendUpdate("", "ForwardPorts completed gracefully", false, false)
+			sendUpdate("", "DEBUG: forwarder.ForwardPorts() completed without error.", false, false)
+			sendUpdate("", "DEBUG: ForwardPorts completed gracefully", false, false)
 			sendUpdate("Stopped.", "Port forwarding connection closed.", false, false)
 		}
+		sendUpdate("", "DEBUG: Goroutine for ForwardPorts finished.", false, false)
 	}()
 
 	go func() {
-		sendUpdate("", "Monitoring ready/stop channels...", false, false)
+		sendUpdate("", "DEBUG: Goroutine for ready/stop monitoring starting...", false, false)
+		sendUpdate("", "DEBUG: Monitoring ready/stop channels...", false, false)
 		select {
 		case <-stopChan:
-			sendUpdate("", "Stop signal received.", false, false)
+			sendUpdate("", "DEBUG: Received on stopChan in ready/stop monitor.", false, false)
+			sendUpdate("", "Stop signal received in ready/stop monitor.", false, false)
 			return
 		case <-readyChan:
-			sendUpdate("", "Ready signal received!", false, false)
+			sendUpdate("", "DEBUG: Received on readyChan!", false, false)
+			sendUpdate("", "Ready signal received!", false, true)
 			actualPorts, portErr := forwarder.GetPorts()
 			var fwdDetail string
+			readyMessageIsError := false // To flag if the main ready message should also indicate an error/warning
+
 			if portErr == nil && len(actualPorts) > 0 {
 				fwdDetail = fmt.Sprintf("Forwarding from 127.0.0.1:%d to pod port %d", actualPorts[0].Local, actualPorts[0].Remote)
 			} else {
 				fwdDetail = fmt.Sprintf("Forwarding from 127.0.0.1:%s to pod port %s", localPortStr, remotePortStr)
 				if portErr != nil {
-					sendUpdate("", fmt.Sprintf("Warning: could not get bound local port: %v", portErr), true, false)
+					sendUpdate("WARN", fmt.Sprintf("Warning: could not get bound local port: %v", portErr), true, false)
+					readyMessageIsError = true // The main forwarding message will also be an error type status
 				}
 			}
-			sendUpdate(fwdDetail, "", false, true) // isReady = true
-			sendUpdate("", "Waiting for stop signal (port-forward is active)", false, false)
-			<-stopChan // Wait for stop signal after ready
+			// Send the primary forwarding detail. Mark as error if portErr occurred, but still ready=true because PF is up.
+			sendUpdate(fwdDetail, "", readyMessageIsError, true)
+
+			sendUpdate("", fmt.Sprintf("Waiting for stop signal (port-forward is active)"), false, false)
+			<-stopChan
+			sendUpdate("", "DEBUG: Received on stopChan after ready.", false, false)
 			sendUpdate("", "Stop signal received after port-forward was active.", false, false)
 			return
 		case <-time.After(60 * time.Second):
-			sendUpdate("", "Timeout (60s) waiting for ready signal.", true, false)
-			sendUpdate(
-				"Timeout.",
-				"Port-forward timed out after 60s waiting for ready signal.",
-				true,  // isError = true
-				false, // isReady = false
-			)
+			sendUpdate("Timeout.", "Timeout (60s) waiting for readyChan.", true, false)
+			sendUpdate("Timeout.", "Timeout (60s) waiting for ready signal.", true, false)
+			sendUpdate("Timeout.", "Timeout.", true, false)
 			return
 		}
 	}()

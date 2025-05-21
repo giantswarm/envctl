@@ -6,6 +6,7 @@ import (
 	"envctl/internal/managers"
 	"envctl/internal/mcpserver"
 	"envctl/internal/portforwarding"
+	"envctl/internal/reporting"
 	"time"
 
 	"github.com/charmbracelet/bubbles/help"
@@ -173,8 +174,8 @@ func (k KeyMap) InputModeHelp() [][]key.Binding {
 // close to the basic types makes it easier to reason about the data structure.
 type Model struct {
 	// Terminal dimensions
-	width  int
-	height int
+	Width  int
+	Height int
 
 	// Global application state
 	QuitApp         bool
@@ -184,8 +185,6 @@ type Model struct {
 	FocusedPanelKey string  // Tracks which major panel (e.g. port forward, mcp server, log) has focus
 	DebugMode       bool
 	ColorMode       string // Stores info about current color profile and dark mode
-	ServiceManager  managers.ServiceManagerAPI
-	KubeMgr         k8smanager.KubeManagerAPI
 
 	// Cluster and Connection Info
 	ManagementClusterName string
@@ -194,35 +193,44 @@ type Model struct {
 	QuittingMessage       string
 	MCHealth              ClusterHealthInfo
 	WCHealth              ClusterHealthInfo
-	// --- Port Forwarding & MCP ---
+
+	// --- Port Forwarding specific fields ---
 	PortForwardingConfig []portforwarding.PortForwardingConfig
 	PortForwards         map[string]*PortForwardProcess
 	PortForwardOrder     []string
-	McpProxyOrder        []string
-	McpServers           map[string]*McpServerProcess
-	MCPServerConfig      []mcpserver.MCPServerConfig
+
+	// --- MCP Proxy specific fields ---
+	McpServers        map[string]*McpServerProcess // Holds live data for MCP server instances
+	McpProxyOrder     []string                     // Defines the display order of MCP proxies
+	MCPServerConfig   []mcpserver.MCPServerConfig  // Initial configurations for MCP servers
+	McpConfigViewport viewport.Model               // For the MCP config overlay
+
 	// --- UI State & Output ---
 	ActivityLog              []string
 	ActivityLogDirty         bool
 	LogViewportLastWidth     int
 	MainLogViewportLastWidth int
-	Width, Height            int
-	// Re-export fields that were unexported due to ViewModel conflict
-	LogViewport          viewport.Model
-	MainLogViewport      viewport.Model
-	McpConfigViewport    viewport.Model
-	Spinner              spinner.Model
-	NewConnectionInput   textinput.Model
-	CurrentInputStep     InputStep
-	StashedMcName        string
-	ClusterInfo          *k8smanager.ClusterList
-	Keys                 KeyMap
-	Help                 help.Model
-	TUIChannel           chan tea.Msg
-	DependencyGraph      *dependency.Graph
-	StatusBarMessage     string
-	StatusBarMessageType MessageType
-	StatusBarClearCancel chan struct{}
+	LogViewport              viewport.Model
+	MainLogViewport          viewport.Model
+	Spinner                  spinner.Model
+	NewConnectionInput       textinput.Model
+	CurrentInputStep         InputStep
+	StashedMcName            string
+	ClusterInfo              *k8smanager.ClusterList
+	Keys                     KeyMap
+	Help                     help.Model
+	TUIChannel               chan tea.Msg
+	DependencyGraph          *dependency.Graph
+	StatusBarMessage         string
+	StatusBarMessageType     MessageType
+	StatusBarClearCancel     chan struct{}
+
+	// --- Service Management ---
+	ServiceManager managers.ServiceManagerAPI // Interface for managing services
+	Reporter       reporting.ServiceReporter  // For sending updates to TUI/console
+
+	// --- Kubernetes interaction (via KubeManager) ---
+	KubeMgr k8smanager.KubeManagerAPI
 }
 
 // Other structs that might need field export if used cross-package

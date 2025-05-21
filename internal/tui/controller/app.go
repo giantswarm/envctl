@@ -66,14 +66,16 @@ func (a *AppModel) Init() tea.Cmd {
 		controllerCmds = append(controllerCmds, GetCurrentKubeContextCmd(a.model.KubeMgr))
 		controllerCmds = append(controllerCmds, FetchClusterListCmd(a.model.KubeMgr))
 
-		if a.model.ManagementClusterName != "" {
-			mcTargetContext := a.model.KubeMgr.BuildMcContextName(a.model.ManagementClusterName)
-			controllerCmds = append(controllerCmds, FetchNodeStatusCmd(a.model.KubeMgr, mcTargetContext, true, a.model.ManagementClusterName))
-		}
-		if a.model.WorkloadClusterName != "" && a.model.ManagementClusterName != "" {
-			wcTargetContext := a.model.KubeMgr.BuildWcContextName(a.model.ManagementClusterName, a.model.WorkloadClusterName)
-			controllerCmds = append(controllerCmds, FetchNodeStatusCmd(a.model.KubeMgr, wcTargetContext, false, a.model.WorkloadClusterName))
-		}
+		// Initial health checks are now triggered by handleKubeContextResultMsg
+		// when CurrentAppMode is ModeInitializing.
+		// if a.model.ManagementClusterName != "" { // REMOVED
+		// 	mcTargetContext := a.model.KubeMgr.BuildMcContextName(a.model.ManagementClusterName) // REMOVED
+		// 	controllerCmds = append(controllerCmds, FetchNodeStatusCmd(a.model.KubeMgr, mcTargetContext, true, a.model.ManagementClusterName)) // REMOVED
+		// } // REMOVED
+		// if a.model.WorkloadClusterName != "" && a.model.ManagementClusterName != "" { // REMOVED
+		// 	wcTargetContext := a.model.KubeMgr.BuildWcContextName(a.model.ManagementClusterName, a.model.WorkloadClusterName) // REMOVED
+		// 	controllerCmds = append(controllerCmds, FetchNodeStatusCmd(a.model.KubeMgr, wcTargetContext, false, a.model.WorkloadClusterName)) // REMOVED
+		// } // REMOVED
 	}
 
 	tickCmd := tea.Tick(HealthUpdateInterval, func(t time.Time) tea.Msg { return model.RequestClusterHealthUpdate{} })

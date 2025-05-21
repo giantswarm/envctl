@@ -1,30 +1,26 @@
 package managers
 
-// ServiceType indicates the kind of service being managed.
-type ServiceType string
+import "envctl/internal/reporting"
 
-const (
-	ServiceTypePortForward ServiceType = "PortForward"
-	ServiceTypeMCPServer   ServiceType = "MCPServer"
-)
+// ServiceType indicates the kind of service being managed.
+// This will be replaced by reporting.ServiceType
+// type ServiceType string // REMOVED
+
+// const (
+// 	ServiceTypePortForward ServiceType = "PortForward" // REMOVED
+// 	ServiceTypeMCPServer   ServiceType = "MCPServer"   // REMOVED
+// )
 
 // ManagedServiceConfig wraps a configuration for any manageable service.
+// This will use reporting.ServiceType or be adapted
 type ManagedServiceConfig struct {
-	Type   ServiceType
-	Label  string      // A unique label for this service instance
-	Config interface{} // Actual config (e.g., portforwarding.PortForwardingConfig or mcpserver.MCPServerConfig)
+	Type   reporting.ServiceType // Changed to reporting.ServiceType
+	Label  string                // A unique label for this service instance
+	Config interface{}           // Actual config (e.g., portforwarding.PortForwardingConfig or mcpserver.MCPServerConfig)
 }
 
-// ManagedServiceUpdate carries status updates from a managed service.
-type ManagedServiceUpdate struct {
-	Type      ServiceType
-	Label     string // Matches the label in ManagedServiceConfig
-	Status    string // e.g., "Running", "Stopped", "Error", "Starting"
-	OutputLog string // Log line from stdout/stderr
-	IsError   bool   // True if this update represents a critical error
-	IsReady   bool   // True if the service is fully up and ready
-	Error     error  // The actual error if IsError is true
-}
+// ManagedServiceUpdate type will be removed from here and reporting.ManagedServiceUpdate will be used.
+// type ManagedServiceUpdate struct { ... } // REMOVED
 
-// ServiceUpdateFunc is the callback for receiving updates from any managed service.
-type ServiceUpdateFunc func(update ManagedServiceUpdate)
+// ServiceUpdateFunc type will be removed from here.
+// type ServiceUpdateFunc func(update ManagedServiceUpdate) // REMOVED

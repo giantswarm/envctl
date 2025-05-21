@@ -2,11 +2,13 @@ package mcpserver
 
 import (
 	"bufio"
+	// "envctl/internal/reporting" // No longer directly needed by this file if updateFn uses McpProcessUpdate
 	"fmt"
 	"os"
 	"os/exec"
 	"sync"
 	"syscall"
+	// "time" // No longer needed for Timestamps here
 )
 
 var execCommand = exec.Command
@@ -16,7 +18,7 @@ var execCommand = exec.Command
 // It returns the PID, a stop channel for terminating the process, and any initial error during startup.
 func StartAndManageIndividualMcpServer(
 	serverConfig MCPServerConfig,
-	updateFn McpUpdateFunc,
+	updateFn McpUpdateFunc, // This is func(update McpProcessUpdate)
 	wg *sync.WaitGroup,
 ) (pid int, stopChan chan struct{}, initialError error) {
 
@@ -64,11 +66,13 @@ func StartAndManageIndividualMcpServer(
 
 	// If an update function is provided, send an initial "Running" status update with the PID.
 	if updateFn != nil {
+		// Use McpProcessUpdate as expected by updateFn
 		updateFn(McpProcessUpdate{
 			Label:     label,
 			PID:       processPid,
 			Status:    "Running",
 			OutputLog: fmt.Sprintf("Proxy for %s (PID: %d) with underlying %s %v, listening on http://localhost:%d/sse", label, processPid, serverConfig.Command, serverConfig.Args, proxyPort),
+			// IsError, Err are implicitly false/nil for this initial success message
 		})
 	}
 
@@ -97,8 +101,7 @@ func StartAndManageIndividualMcpServer(
 			for scanner.Scan() {
 				logLine := scanner.Text()
 				if updateFn != nil {
-					// Send plain stderr log. The updateFn consumer can decide if it's an error "status".
-					updateFn(McpProcessUpdate{Label: label, PID: processPid, OutputLog: fmt.Sprintf("[%s STDERR] %s", label, logLine)})
+					updateFn(McpProcessUpdate{Label: label, PID: processPid, OutputLog: fmt.Sprintf("[%s STDERR] %s", label, logLine), IsError: true /* Assume stderr content might imply an error for the service */})
 				}
 			}
 		}()
@@ -122,24 +125,23 @@ func StartAndManageIndividualMcpServer(
 			}
 
 		case <-currentStopChan: // Use the stopChan created and returned by this function
+			finalMsg := ""
+			isErrFlag := false
+			var stopErr error
 			if cmd.ProcessState == nil || !cmd.ProcessState.Exited() { // Check if process is still running
 				if err := syscall.Kill(-processPid, syscall.SIGKILL); err != nil {
-					logMsg := fmt.Sprintf("Failed to kill proxy for %s (PID: %d): %v", label, processPid, err)
-					if updateFn != nil {
-						updateFn(McpProcessUpdate{Label: label, PID: processPid, Status: "Error", OutputLog: logMsg, IsError: true, Err: err})
-					}
+					finalMsg = fmt.Sprintf("Failed to kill proxy for %s (PID: %d): %v", label, processPid, err)
+					isErrFlag = true
+					stopErr = err
 				} else {
-					logMsg := fmt.Sprintf("Proxy for %s (PID: %d) stopped via signal.", label, processPid)
-					if updateFn != nil {
-						updateFn(McpProcessUpdate{Label: label, PID: processPid, Status: "Stopped", OutputLog: logMsg})
-					}
+					finalMsg = fmt.Sprintf("Proxy for %s (PID: %d) stopped via signal.", label, processPid)
 				}
 				<-processDone // Wait for the process to actually exit after kill
 			} else {
-				logMsg := fmt.Sprintf("Proxy for %s (PID: %d) already exited before stop signal processing.", label, processPid)
-				if updateFn != nil {
-					updateFn(McpProcessUpdate{Label: label, PID: processPid, Status: "Stopped", OutputLog: logMsg})
-				}
+				finalMsg = fmt.Sprintf("Proxy for %s (PID: %d) already exited before stop signal processing.", label, processPid)
+			}
+			if updateFn != nil {
+				updateFn(McpProcessUpdate{Label: label, PID: processPid, Status: "Stopped", OutputLog: finalMsg, IsError: isErrFlag, Err: stopErr})
 			}
 		}
 	}() // End of main managing goroutine

@@ -11,17 +11,19 @@ type MCPServerConfig struct {
 }
 
 // McpProcessUpdate is used to report status, logs, and errors from a running MCP process.
+// RE-INTRODUCED for internal mcpserver package use.
 type McpProcessUpdate struct {
 	Label     string
 	PID       int
-	Status    string // e.g., "Running", "Stopped", "Error", or empty if just a log line
-	OutputLog string // Log line from stdout/stderr
-	IsError   bool   // True if this update represents a critical error for the process itself
-	Err       error  // The actual error if IsError is true
+	Status    string
+	OutputLog string
+	IsError   bool
+	Err       error
 }
 
 // McpUpdateFunc is a callback function type for receiving McpProcessUpdate messages.
-type McpUpdateFunc func(update McpProcessUpdate)
+// It now uses the local McpProcessUpdate struct.
+type McpUpdateFunc func(update McpProcessUpdate) // REVERTED to use local McpProcessUpdate
 
 // ManagedMcpServerInfo holds information about an MCP server that has been initiated.
 // It's sent over a channel by StartAllPredefinedMcpServers.

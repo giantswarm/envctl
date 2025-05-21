@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	// "envctl/internal/reporting" // No longer needed by this test if using local McpProcessUpdate
 	"fmt"
 	"os/exec"
 	"strings"
@@ -23,7 +24,7 @@ func TestPipeFails(t *testing.T) {
 		Command:   "some-cmd",
 		Args:      []string{"some-arg"},
 	}
-	mockUpdateFn := func(update McpProcessUpdate) { /* no-op */ }
+	mockUpdateFn := func(update McpProcessUpdate) { /* no-op, or add assertions if needed */ }
 
 	_, _, err := StartAndManageIndividualMcpServer(serverCfg, mockUpdateFn, nil)
 

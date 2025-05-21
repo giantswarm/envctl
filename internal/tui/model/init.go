@@ -5,6 +5,7 @@ import (
 	"envctl/internal/managers"
 	"envctl/internal/mcpserver"
 	"envctl/internal/portforwarding"
+	"envctl/internal/reporting"
 	"fmt"
 	"sync"
 
@@ -94,7 +95,6 @@ func InitialModel(
 	tuiDebug bool,
 	mcpServerConfig []mcpserver.MCPServerConfig,
 	portForwardingConfig []portforwarding.PortForwardingConfig,
-	serviceMgr managers.ServiceManagerAPI,
 	kubeMgr k8smanager.KubeManagerAPI,
 ) *Model {
 	ti := textinput.New()
@@ -103,7 +103,7 @@ func InitialModel(
 	ti.Width = 50
 
 	// Buffered channel to avoid blocking goroutines.
-	tuiMsgChannel := make(chan tea.Msg, 100)
+	tuiMsgChannel := make(chan tea.Msg, 1000)
 
 	// Force dark background for lipgloss; helps with colour-consistency.
 	colorProfile := lipgloss.ColorProfile().String()
@@ -115,6 +115,12 @@ func InitialModel(
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 
+	// Create TUIReporter first, as ServiceManager needs it.
+	tuiReporter := reporting.NewTUIReporter(tuiMsgChannel)
+
+	// Create ServiceManager, now passing the reporter.
+	serviceMgr := managers.NewServiceManager(tuiReporter)
+
 	m := Model{
 		ManagementClusterName:    mcName,
 		WorkloadClusterName:      wcName,
@@ -123,6 +129,7 @@ func InitialModel(
 		PortForwardingConfig:     portForwardingConfig,
 		ServiceManager:           serviceMgr,
 		KubeMgr:                  kubeMgr,
+		Reporter:                 tuiReporter,
 		PortForwards:             make(map[string]*PortForwardProcess),
 		PortForwardOrder:         make([]string, 0),
 		McpServers:               make(map[string]*McpServerProcess),
@@ -172,78 +179,62 @@ func InitialModel(
 // channelReaderCmd returns a Bubbletea command that forwards messages from the given channel.
 func channelReaderCmd(ch chan tea.Msg) tea.Cmd {
 	return func() tea.Msg {
-		return <-ch
+		// fmt.Println("DEBUG_TUI_CHANNEL: Attempting to read from TUIChannel...") // REMOVED
+		msg := <-ch
+		// fmt.Printf("DEBUG_TUI_CHANNEL: Read message from TUIChannel: %T\n", msg) // REMOVED
+		return msg
 	}
 }
 
 // Init implements tea.Model and starts asynchronous bootstrap tasks.
 // It now also starts the port forwarding and MCP services using the ServiceManager.
 func (m *Model) Init() tea.Cmd {
+	// fmt.Println("DEBUG_TUI_LIFECYCLE: model.Model.Init() called") // REMOVED
 	var cmds []tea.Cmd
 
 	if m.ServiceManager == nil {
-		// This should not happen if InitialModel and NewProgram are correctly wired
 		errMsg := "ServiceManager not initialized in TUI model"
-		m.ActivityLog = append(m.ActivityLog, errMsg)
+		// Use reporter if available, otherwise direct append (should not happen)
+		if m.Reporter != nil {
+			m.Reporter.Report(reporting.ManagedServiceUpdate{SourceType: reporting.ServiceTypeSystem, SourceLabel: "ModelInit", Level: reporting.LogLevelFatal, Message: errMsg, IsError: true})
+		} else {
+			m.ActivityLog = append(m.ActivityLog, errMsg) // Fallback
+		}
 		m.QuittingMessage = errMsg
-		return tea.Quit // or some error message
+		return tea.Quit
 	}
 
-	// 1. Prepare ManagedServiceConfig slice
 	var managedServiceConfigs []managers.ManagedServiceConfig
-	for _, pfCfg := range m.PortForwardingConfig { // These are populated by InitialModel
+	for _, pfCfg := range m.PortForwardingConfig {
 		managedServiceConfigs = append(managedServiceConfigs, managers.ManagedServiceConfig{
-			Type:   managers.ServiceTypePortForward,
+			Type:   reporting.ServiceTypePortForward, // Use reporting type
 			Label:  pfCfg.Label,
 			Config: pfCfg,
 		})
 	}
-	for _, mcpCfg := range m.MCPServerConfig { // These are populated by InitialModel
+	for _, mcpCfg := range m.MCPServerConfig {
 		managedServiceConfigs = append(managedServiceConfigs, managers.ManagedServiceConfig{
-			Type:   managers.ServiceTypeMCPServer,
+			Type:   reporting.ServiceTypeMCPServer, // Use reporting type
 			Label:  mcpCfg.Name,
 			Config: mcpCfg,
 		})
 	}
 
-	// 2. Define the TUI service update callback
-	tuiServiceUpdateCb := func(update managers.ManagedServiceUpdate) {
-		if m.TUIChannel != nil {
-			// Send the update to the TUI's main channel to be processed in Model.Update
-			// This runs in the goroutine of the service manager, so it must not block.
-			// Ensure TUIChannel is buffered or consumed promptly.
-			m.TUIChannel <- ServiceUpdateMsg{Update: update}
-		}
-	}
-
-	// 3. Create a command to start all services
 	if len(managedServiceConfigs) > 0 {
 		startServicesCmd := func() tea.Msg {
-			// The WaitGroup here is for the ServiceManager's internal goroutines.
-			// The TUI model might have its own WaitGroup for other async tasks if needed.
 			var wg sync.WaitGroup
-			_, startupErrors := m.ServiceManager.StartServices(managedServiceConfigs, tuiServiceUpdateCb, &wg)
-
-			// We need a way to signal the TUI that all services have been *attempted* to start
-			// and to pass any initial startup errors. Using AllServicesStartedMsg for this.
-			// Note: This message is sent after StartServices returns. Individual updates
-			// will arrive via tuiServiceUpdateCb.
+			// Call StartServices without the updateCb
+			_, startupErrors := m.ServiceManager.StartServices(managedServiceConfigs, &wg)
 			return AllServicesStartedMsg{InitialStartupErrors: startupErrors}
 		}
 		cmds = append(cmds, startServicesCmd)
 	}
 
-	// Listen for async messages on the model's TUIChannel
 	if m.TUIChannel != nil {
 		cmds = append(cmds, channelReaderCmd(m.TUIChannel))
 	}
 
-	// Spinner tick
 	cmds = append(cmds, m.Spinner.Tick)
-
-	// Any other initial commands previously dispatched by controller.AppModel.Init()
-	// or specific to the model's setup would go here.
-	// For example, fetching initial cluster health, etc. (These might also become services managed by ServiceManager if complex)
 
 	return tea.Batch(cmds...)
 }

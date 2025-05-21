@@ -1,7 +1,7 @@
 package controller
 
 import (
-	"envctl/internal/managers"
+	"envctl/internal/reporting"
 	"envctl/internal/tui/model"
 	"envctl/internal/tui/view"
 	"fmt"
@@ -9,7 +9,9 @@ import (
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
+
 	// May be needed for some view-related constants if not moved
+	"errors"
 )
 
 // mainControllerDispatch is the central message routing function for the TUI application.
@@ -137,8 +139,9 @@ func mainControllerDispatch(m *model.Model, msg tea.Msg) (*model.Model, tea.Cmd)
 		m.Spinner, spinCmd = m.Spinner.Update(msg)
 		cmds = append(cmds, spinCmd)
 
-	case model.ServiceUpdateMsg:
-		return handleServiceUpdateMsg(m, msg)
+	case reporting.ReporterUpdateMsg:
+		return handleReporterUpdate(m, msg.Update)
+
 	case model.AllServicesStartedMsg:
 		return handleAllServicesStartedMsg(m, msg)
 	case model.ServiceStopResultMsg:
@@ -180,123 +183,213 @@ func mainControllerDispatch(m *model.Model, msg tea.Msg) (*model.Model, tea.Cmd)
 
 // NEW HANDLER FUNCTIONS
 
-func handleServiceUpdateMsg(m *model.Model, msg model.ServiceUpdateMsg) (*model.Model, tea.Cmd) {
-	update := msg.Update
-	LogDebug(m, "[Controller] Handling ServiceUpdateMsg for Label: %s, Status: %s, Type: %s", update.Label, update.Status, update.Type)
-
-	var logMsg string
-	if update.OutputLog != "" {
-		logMsg = fmt.Sprintf("%s: %s", update.Status, update.OutputLog)
-	} else {
-		logMsg = update.Status
-	}
-
-	if update.Type == managers.ServiceTypePortForward {
-		pfProcess, exists := m.PortForwards[update.Label]
-		if exists {
-			pfProcess.StatusMsg = update.Status
-			pfProcess.Running = update.IsReady
-			if update.IsError {
-				pfProcess.Err = update.Error
-			}
-			if update.OutputLog != "" {
-				pfProcess.Log = append(pfProcess.Log, update.OutputLog)
-				if len(pfProcess.Log) > model.MaxPanelLogLines { // Keep log size in check
-					pfProcess.Log = pfProcess.Log[len(pfProcess.Log)-model.MaxPanelLogLines:]
-				}
-			}
-			LogDebug(m, "[Controller] Updated PortForward '%s': Status=%s, Running=%t", update.Label, pfProcess.StatusMsg, pfProcess.Running)
-		} else {
-			LogDebug(m, "[Controller] Received ServiceUpdateMsg for unknown PortForward label: %s", update.Label)
-			// Optionally, create a new PortForwardProcess entry if it dynamically appears
-		}
-	} else if update.Type == managers.ServiceTypeMCPServer {
-		mcpProcess, exists := m.McpServers[update.Label]
-		if exists {
-			mcpProcess.StatusMsg = update.Status
-			// mcpProcess.Running = update.IsReady // McpServerProcess doesn't have a 'Running' field, Active is for config
-			if update.IsError {
-				mcpProcess.Err = update.Error
-			}
-			if update.OutputLog != "" {
-				mcpProcess.Output = append(mcpProcess.Output, update.OutputLog)
-				// TODO: Limit McpServerProcess output log size similarly to PortForwards
-				if len(mcpProcess.Output) > model.MaxPanelLogLines {
-					mcpProcess.Output = mcpProcess.Output[len(mcpProcess.Output)-model.MaxPanelLogLines:]
-				}
-			}
-			LogDebug(m, "[Controller] Updated McpServer '%s': Status=%s", update.Label, mcpProcess.StatusMsg)
-		} else {
-			LogDebug(m, "[Controller] Received ServiceUpdateMsg for unknown McpServer label: %s", update.Label)
-		}
-	}
-
-	// Add to global activity log
-	logEntry := fmt.Sprintf("[%s - %s] %s", update.Type, update.Label, logMsg)
-	if update.IsError && update.Error != nil {
-		logEntry = fmt.Sprintf("%s (Error: %v)", logEntry, update.Error)
-	}
-	model.AppendActivityLog(m, logEntry)
-
-	// Potentially update overall app status if a critical service fails
-	// if update.IsError && isCriticalService(update.Label) { m.OverallStatus = model.AppStatusDegraded }
-
-	return m, nil // No further command from this simple update, view will re-render
-}
-
 func handleAllServicesStartedMsg(m *model.Model, msg model.AllServicesStartedMsg) (*model.Model, tea.Cmd) {
-	LogInfo(m, "[Controller] All services processed by ServiceManager. StartServices completed.")
-	m.IsLoading = false // Example: Turn off global loading spinner if it was on for service init
+	if m.Reporter != nil {
+		m.Reporter.Report(reporting.ManagedServiceUpdate{
+			Timestamp:   time.Now(),
+			SourceType:  reporting.ServiceTypeSystem,
+			SourceLabel: "ServiceManager",
+			Level:       reporting.LogLevelInfo,
+			Message:     "All service startup commands processed by ServiceManager.",
+		})
+	} else {
+		// Fallback if reporter is somehow nil (should not happen in TUI mode if initialized correctly)
+		model.AppendActivityLog(m, "[INFO] [System - ServiceManager] All service startup commands processed by ServiceManager.")
+	}
+	m.IsLoading = false // Signifies initial batch dispatch of services is done.
 
 	if len(msg.InitialStartupErrors) > 0 {
-		model.AppendActivityLog(m, "--- Initial Service Startup Errors ---")
 		for _, err := range msg.InitialStartupErrors {
-			model.AppendActivityLog(m, fmt.Sprintf("[ERROR] %v", err))
+			if m.Reporter != nil {
+				m.Reporter.Report(reporting.ManagedServiceUpdate{
+					Timestamp:   time.Now(),
+					SourceType:  reporting.ServiceTypeSystem,
+					SourceLabel: "ServiceManagerInit", // Or a more specific label if available from err context
+					Level:       reporting.LogLevelError,
+					Message:     fmt.Sprintf("Initial service startup error: %v", err),
+					ErrorDetail: err,
+					IsError:     true,
+				})
+			} else {
+				model.AppendActivityLog(m, fmt.Sprintf("[ERROR] [System - ServiceManagerInit] Initial service startup error: %v", err))
+			}
 		}
-		model.AppendActivityLog(m, "------------------------------------")
-		// Optionally set a status bar message or change app mode if critical errors occurred
-		// return m, m.SetStatusMessage("Some services failed to start. Check logs.", model.StatusBarError, 10*time.Second)
 	}
 	return m, nil
 }
 
 func handleServiceStopResultMsg(m *model.Model, msg model.ServiceStopResultMsg) (*model.Model, tea.Cmd) {
+	level := reporting.LogLevelInfo
+	message := fmt.Sprintf("Service '%s' stop signal processed.", msg.Label)
+	isError := false
+	var errDetail error = nil // Initialize explicitly
+
 	if msg.Err != nil {
-		logEntry := fmt.Sprintf("[Controller] Failed to stop service '%s': %v", msg.Label, msg.Err)
-		model.AppendActivityLog(m, logEntry)
-		LogInfo(m, "%s", logEntry)
+		level = reporting.LogLevelError
+		message = fmt.Sprintf("Error processing stop for service '%s': %v", msg.Label, msg.Err)
+		isError = true
+		errDetail = msg.Err
+	}
+
+	if m.Reporter != nil {
+		m.Reporter.Report(reporting.ManagedServiceUpdate{
+			Timestamp:   time.Now(),
+			SourceType:  reporting.ServiceTypeSystem, // Or determine actual type if service is known
+			SourceLabel: msg.Label,                   // Label of the service being stopped
+			Level:       level,
+			Message:     message,
+			IsError:     isError,
+			ErrorDetail: errDetail,
+		})
 	} else {
-		logEntry := fmt.Sprintf("[Controller] Service '%s' signalled to stop.", msg.Label)
-		model.AppendActivityLog(m, logEntry)
-		LogInfo(m, "%s", logEntry)
+		// Fallback if reporter is somehow nil
+		logKey := "INFO"
+		if isError {
+			logKey = "ERROR"
+		}
+		model.AppendActivityLog(m, fmt.Sprintf("[%s] [System - %s] %s", logKey, msg.Label, message))
 	}
 	return m, nil
 }
 
 func handleRestartMcpServerMsg(m *model.Model, msg model.RestartMcpServerMsg) (*model.Model, tea.Cmd) {
-	LogInfo(m, "[Controller] Received request to restart service: %s", msg.Label)
+	// Log initial request using the new reporter system via LogInfo (once refactored)
+	// For now, direct report or old LogInfo:
+	if m.Reporter != nil {
+		m.Reporter.Report(reporting.ManagedServiceUpdate{
+			Timestamp:   time.Now(),
+			SourceType:  reporting.ServiceTypeSystem,
+			SourceLabel: msg.Label, // Service being restarted
+			Level:       reporting.LogLevelInfo,
+			Message:     fmt.Sprintf("User requested restart for MCP server: %s", msg.Label),
+		})
+	} else {
+		LogInfo(m, "[Controller] User requested restart for MCP server: %s", msg.Label) // Fallback
+	}
 
 	if m.ServiceManager == nil {
 		errMsg := fmt.Sprintf("ServiceManager not available to restart service: %s", msg.Label)
-		LogInfo(m, "%s", errMsg)
-		model.AppendActivityLog(m, errMsg)
+		if m.Reporter != nil {
+			m.Reporter.Report(reporting.ManagedServiceUpdate{Timestamp: time.Now(), SourceType: reporting.ServiceTypeSystem, SourceLabel: "RestartService", Level: reporting.LogLevelError, Message: errMsg, IsError: true, ErrorDetail: errors.New(errMsg)})
+		} else {
+			model.AppendActivityLog(m, errMsg)
+		}
 		return m, m.SetStatusMessage(errMsg, model.StatusBarError, 5*time.Second)
 	}
 
-	err := m.ServiceManager.RestartService(msg.Label)
-	var statusMsg string
-	var statusMsgType model.MessageType
+	err := m.ServiceManager.RestartService(msg.Label) // This will trigger its own updates via the reporter for "Stopping" and "Restarting..."
+
+	statusBarMsg := fmt.Sprintf("Restart initiated for %s...", msg.Label)
+	statusBarMsgType := model.StatusBarInfo
+
+	// Report the immediate outcome of *initiating* the restart
+	level := reporting.LogLevelInfo
+	message := statusBarMsg
+	isError := false
+	var errDetail error = nil
 
 	if err != nil {
-		statusMsg = fmt.Sprintf("Error initiating restart for %s: %v", msg.Label, err)
-		statusMsgType = model.StatusBarError
-		model.AppendActivityLog(m, statusMsg)
-		LogInfo(m, "%s", statusMsg)
-	} else {
-		statusMsg = fmt.Sprintf("Restart initiated for %s...", msg.Label)
-		statusMsgType = model.StatusBarInfo
-		model.AppendActivityLog(m, statusMsg)
+		message = fmt.Sprintf("Error initiating restart for %s: %v", msg.Label, err)
+		statusBarMsg = message // Update status bar message as well
+		statusBarMsgType = model.StatusBarError
+		level = reporting.LogLevelError
+		isError = true
+		errDetail = err
 	}
 
-	return m, m.SetStatusMessage(statusMsg, statusMsgType, 5*time.Second)
+	if m.Reporter != nil {
+		m.Reporter.Report(reporting.ManagedServiceUpdate{
+			Timestamp:   time.Now(),
+			SourceType:  reporting.ServiceTypeSystem,
+			SourceLabel: msg.Label,
+			Level:       level,
+			Message:     message,
+			IsError:     isError,
+			ErrorDetail: errDetail,
+		})
+	} else {
+		model.AppendActivityLog(m, message) // Fallback if reporter is nil
+	}
+
+	return m, m.SetStatusMessage(statusBarMsg, statusBarMsgType, 5*time.Second)
+}
+
+func handleReporterUpdate(m *model.Model, update reporting.ManagedServiceUpdate) (*model.Model, tea.Cmd) {
+	// Extremely simplified version for testing channel throughput
+	fmt.Printf("DEBUG_TUI_HANDLER_SIMPLIFIED: Received: %s - %s: %s\n", update.SourceType, update.SourceLabel, update.Message)
+
+	// Comment out all previous work:
+	/*
+	// 1. Format and append to ActivityLog
+	var logParts []string
+	logParts = append(logParts, fmt.Sprintf("[%s]", update.Timestamp.Format("15:04:05.000")))
+	if update.Level != "" {
+		logParts = append(logParts, fmt.Sprintf("[%s]", strings.ToUpper(string(update.Level))))
+	}
+
+	var sourceDisplay strings.Builder
+	if update.SourceType != "" {
+		sourceDisplay.WriteString(string(update.SourceType))
+	}
+	if update.SourceLabel != "" {
+		if sourceDisplay.Len() > 0 {
+			sourceDisplay.WriteString(" - ")
+		}
+		sourceDisplay.WriteString(update.SourceLabel)
+	}
+	if sourceDisplay.Len() > 0 {
+		logParts = append(logParts, fmt.Sprintf("[%s]", sourceDisplay.String()))
+	}
+
+	logParts = append(logParts, update.Message)
+
+	if strings.TrimSpace(update.Details) != "" && update.Details != update.Message {
+		detailLines := strings.Split(strings.TrimSuffix(update.Details, "\n"), "\n")
+		for i, line := range detailLines {
+			if i == 0 {
+				logParts = append(logParts, fmt.Sprintf("\n  Details: %s", line))
+			} else {
+				logParts = append(logParts, fmt.Sprintf("\n           %s", line))
+			}
+		}
+	}
+
+	if update.ErrorDetail != nil {
+		if update.Message != update.ErrorDetail.Error() {
+			logParts = append(logParts, fmt.Sprintf("\n  ErrorDetail: %v", update.ErrorDetail))
+		}
+	}
+	model.AppendActivityLog(m, strings.Join(logParts, " "))
+	m.ActivityLogDirty = true
+
+	// 2. Update specific model state
+	switch update.SourceType {
+	case reporting.ServiceTypePortForward:
+		if pfProcess, exists := m.PortForwards[update.SourceLabel]; exists {
+			pfProcess.StatusMsg = update.Message
+			pfProcess.Running = update.IsReady
+			pfProcess.Err = update.ErrorDetail
+			if (update.Level == reporting.LogLevelStdout || update.Level == reporting.LogLevelStderr) && update.Details != "" {
+				pfProcess.Log = append(pfProcess.Log, strings.Split(update.Details, "\n")...)
+				if len(pfProcess.Log) > model.MaxPanelLogLines {
+					pfProcess.Log = pfProcess.Log[len(pfProcess.Log)-model.MaxPanelLogLines:]
+				}
+			}
+		}
+	case reporting.ServiceTypeMCPServer:
+		if mcpProcess, exists := m.McpServers[update.SourceLabel]; exists {
+			mcpProcess.StatusMsg = update.Message
+			mcpProcess.Active = update.IsReady
+			mcpProcess.Err = update.ErrorDetail
+			if (update.Level == reporting.LogLevelStdout || update.Level == reporting.LogLevelStderr) && update.Details != "" {
+				mcpProcess.Output = append(mcpProcess.Output, strings.Split(update.Details, "\n")...)
+				if len(mcpProcess.Output) > model.MaxPanelLogLines {
+					mcpProcess.Output = mcpProcess.Output[len(mcpProcess.Output)-model.MaxPanelLogLines:]
+				}
+			}
+		}
+	}
+	*/
+
+	return m, nil 
 }

@@ -245,10 +245,9 @@ func TestAppModeTransitions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			coreModel := model.InitialModel("test-mc", "test-wc", "test-context", false, mcpserver.GetMCPServerConfig(), nil, nil, &mockKubeManagerForModelTest{})
+			coreModel := model.InitialModel("test-mc", "test-wc", "test-context", false, mcpserver.GetMCPServerConfig(), nil, &mockKubeManagerForModelTest{})
 			coreModel.CurrentAppMode = tt.initialAppMode
 
-			// Apply test-specific initial model setup
 			if tt.initialModelSetup != nil {
 				tt.initialModelSetup(coreModel)
 			}
@@ -262,14 +261,13 @@ func TestAppModeTransitions(t *testing.T) {
 				t.Fatalf("Update did not return a *controller.AppModel as expected")
 			}
 
-			finalModel := finalControllerApp.GetModel() // Use the new GetModel() method
+			finalModel := finalControllerApp.GetModel()
 			if finalModel.CurrentAppMode != tt.expectedAppMode {
 				t.Errorf("%s: expected AppMode %s (%d), got %s (%d)",
 					tt.description,
 					tt.expectedAppMode.String(), tt.expectedAppMode,
 					finalModel.CurrentAppMode.String(), finalModel.CurrentAppMode)
 			}
-			// Apply additional model assertions if provided
 			if tt.assertModel != nil {
 				tt.assertModel(t, finalModel)
 			}
@@ -288,7 +286,7 @@ func TestMessageHandling(t *testing.T) {
 		{
 			name: "ClearStatusBarMsg clears status bar",
 			initialModel: func() *model.Model {
-				m := model.InitialModel("mc", "wc", "ctx", false, mcpserver.GetMCPServerConfig(), nil, nil, &mockKubeManagerForModelTest{})
+				m := model.InitialModel("mc", "wc", "ctx", false, mcpserver.GetMCPServerConfig(), nil, &mockKubeManagerForModelTest{})
 				m.StatusBarMessage = "Initial message"
 				m.StatusBarMessageType = model.StatusBarInfo
 				return m
@@ -304,7 +302,7 @@ func TestMessageHandling(t *testing.T) {
 		{
 			name: "SetStatusMessage updates status bar and handles cancellation channel",
 			initialModel: func() *model.Model {
-				m := model.InitialModel("mc", "wc", "ctx", false, mcpserver.GetMCPServerConfig(), nil, nil, &mockKubeManagerForModelTest{})
+				m := model.InitialModel("mc", "wc", "ctx", false, mcpserver.GetMCPServerConfig(), nil, &mockKubeManagerForModelTest{})
 				return m
 			},
 			// No specific message, we will call the method directly on the model in assert.

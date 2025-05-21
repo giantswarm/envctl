@@ -4,8 +4,11 @@ import (
 	// No longer importing "envctl/internal/managers"
 	"envctl/internal/mcpserver"
 	"envctl/internal/portforwarding"
+	"envctl/internal/reporting"
+	"errors"
 	"fmt"
 	"sync"
+	"time"
 )
 
 // ServiceManager implements the ServiceManagerAPI interface.
@@ -20,16 +23,38 @@ type ServiceManager struct { // Renamed from DefaultServiceManager
 	pendingRestarts map[string]bool // Map label to true if restart is pending
 	// Store the original update callback and WaitGroup from the initial StartServices call
 	// This assumes one main StartServices call, or needs more complex management if multiple overlapping calls.
-	initialUpdateCb ServiceUpdateFunc
-	initialWg       *sync.WaitGroup
+	initialWg *sync.WaitGroup
+	reporter  reporting.ServiceReporter
 }
 
 // NewServiceManager creates a new instance of ServiceManager and returns it as a ServiceManagerAPI interface.
-func NewServiceManager() ServiceManagerAPI { // Returns the ServiceManagerAPI INTERFACE
-	return &ServiceManager{ // Instantiates the struct ServiceManager
+func NewServiceManager(reporter reporting.ServiceReporter) ServiceManagerAPI {
+	if reporter == nil {
+		// Fallback to a NoOpReporter or a ConsoleReporter if nil is provided,
+		// to prevent panics if a reporter is absolutely necessary for operation.
+		// For now, let's assume a reporter is essential and this is an error if nil.
+		// Or, create a default console reporter.
+		fmt.Println("Warning: NewServiceManager called with a nil reporter. Using a new ConsoleReporter as fallback.")
+		reporter = reporting.NewConsoleReporter() // Fallback
+	}
+	return &ServiceManager{
 		activeServices:  make(map[string]chan struct{}),
 		serviceConfigs:  make(map[string]ManagedServiceConfig),
 		pendingRestarts: make(map[string]bool),
+		initialWg:       &sync.WaitGroup{},
+		reporter:        reporter,
+	}
+}
+
+// SetReporter allows changing the reporter after initialization.
+func (sm *ServiceManager) SetReporter(reporter reporting.ServiceReporter) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	if reporter == nil {
+		fmt.Println("Warning: ServiceManager.SetReporter called with a nil reporter. Using a new ConsoleReporter as fallback.")
+		sm.reporter = reporting.NewConsoleReporter()
+	} else {
+		sm.reporter = reporter
 	}
 }
 
@@ -38,11 +63,9 @@ func NewServiceManager() ServiceManagerAPI { // Returns the ServiceManagerAPI IN
 // then calls the internal worker to start the services.
 func (sm *ServiceManager) StartServices(
 	configs []ManagedServiceConfig,
-	updateCb ServiceUpdateFunc,
 	wg *sync.WaitGroup,
 ) (map[string]chan struct{}, []error) {
 	sm.mu.Lock()
-	sm.initialUpdateCb = updateCb
 	sm.initialWg = wg
 
 	if sm.serviceConfigs == nil {
@@ -53,17 +76,16 @@ func (sm *ServiceManager) StartServices(
 	}
 	sm.mu.Unlock()
 
-	return sm.startSpecificServicesLogic(configs, updateCb, wg)
+	return sm.startSpecificServicesLogic(configs, wg)
 }
 
 // startSpecificServicesLogic is the internal worker for starting services.
 // It's called by StartServices and by the restart mechanism.
 func (sm *ServiceManager) startSpecificServicesLogic(
 	configs []ManagedServiceConfig,
-	updateCb ServiceUpdateFunc, // This specific call's updateCb
-	wg *sync.WaitGroup, // This specific call's wg
+	wg *sync.WaitGroup,
 ) (map[string]chan struct{}, []error) {
-	sm.mu.Lock() // Lock for initial checks and setup
+	sm.mu.Lock()
 
 	var startupErrors []error
 	allStopChannels := make(map[string]chan struct{})
@@ -74,14 +96,9 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 
 	hasPortForwards := false
 	for _, cfg := range configs {
-		// Also ensure this config is in the main serviceConfigs map if it's a fresh individual start
-		// This is already handled by StartServices or when RestartService re-fetches from sm.serviceConfigs
-		// if _, exists := sm.serviceConfigs[cfg.Label]; !exists {
-		// 	sm.serviceConfigs[cfg.Label] = cfg
-		// }
-
+		// cfg.Type is now reporting.ServiceType
 		switch cfg.Type {
-		case ServiceTypePortForward:
+		case reporting.ServiceTypePortForward:
 			hasPortForwards = true
 			if pfConfig, ok := cfg.Config.(portforwarding.PortForwardingConfig); ok {
 				actualPfConfig := pfConfig
@@ -89,47 +106,96 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 				pfConfigs = append(pfConfigs, actualPfConfig)
 				pfOriginalLabels[actualPfConfig.Label] = cfg.Label
 			} else {
-				startupErrors = append(startupErrors, fmt.Errorf("invalid port forward config for label %s", cfg.Label))
+				startupErrors = append(startupErrors, fmt.Errorf("invalid port forward config for label %s: type assertion failed", cfg.Label))
 			}
-		case ServiceTypeMCPServer:
+		case reporting.ServiceTypeMCPServer:
 			if mcpConfig, ok := cfg.Config.(mcpserver.MCPServerConfig); ok {
 				actualMcpConfig := mcpConfig
 				actualMcpConfig.Name = cfg.Label
 				mcpConfigs = append(mcpConfigs, actualMcpConfig)
 				mcpOriginalLabels[actualMcpConfig.Name] = cfg.Label
 			} else {
-				startupErrors = append(startupErrors, fmt.Errorf("invalid MCP server config for label %s", cfg.Label))
+				startupErrors = append(startupErrors, fmt.Errorf("invalid MCP server config for label %s: type assertion failed", cfg.Label))
 			}
 		default:
-			startupErrors = append(startupErrors, fmt.Errorf("unknown service type for label %s: %s", cfg.Label, cfg.Type))
+			if sm.reporter != nil {
+				sm.reporter.Report(reporting.ManagedServiceUpdate{
+					Timestamp:   time.Now(),
+					SourceType:  reporting.ServiceTypeSystem,
+					SourceLabel: "ServiceManager",
+					Level:       reporting.LogLevelError,
+					Message:     fmt.Sprintf("Unknown service type in ManagedServiceConfig for label %s: %s", cfg.Label, cfg.Type),
+				})
+			}
+			startupErrors = append(startupErrors, fmt.Errorf("unknown service type %q for label %q", string(cfg.Type), cfg.Label))
 		}
 	}
 
 	if hasPortForwards && sm.pfGlobalStopChan == nil {
 		sm.pfGlobalStopChan = make(chan struct{})
 	}
-	sm.mu.Unlock() // Unlock after config processing and pfGlobalStopChan check
+	sm.mu.Unlock()
 
-	// --- Start Port Forwarding Services ---
 	if len(pfConfigs) > 0 {
-		pfUpdateAdapter := func(pfLabel, status, outputLog string, isError, isReady bool) {
-			originalLabel, ok := pfOriginalLabels[pfLabel]
+		if sm.reporter != nil {
+			sm.reporter.Report(reporting.ManagedServiceUpdate{
+				Timestamp:   time.Now(),
+				SourceType:  reporting.ServiceTypeSystem,
+				SourceLabel: "ServiceManager",
+				Level:       reporting.LogLevelDebug,
+				Message:     fmt.Sprintf("Processing %d port forward configs. About to call portforwarding.DefaultStartPortForwards.", len(pfConfigs)),
+			})
+		}
+
+		pfUpdateAdapter := func(serviceLabel, statusMsg, detailsMsg string, isErrorFlag, isReadyFlag bool) {
+			originalLabel, ok := pfOriginalLabels[serviceLabel]
 			if !ok {
-				originalLabel = pfLabel
+				originalLabel = serviceLabel
+			}
+			level := reporting.LogLevelInfo
+			if isErrorFlag { level = reporting.LogLevelError
+			} else if isReadyFlag { level = reporting.LogLevelInfo
+			} else if detailsMsg != "" && statusMsg == "" { level = reporting.LogLevelDebug }
+
+			updateForReporter := reporting.ManagedServiceUpdate{
+				Timestamp:     time.Now(),
+				SourceType:    reporting.ServiceTypePortForward,
+				SourceLabel:   originalLabel,
+				Message:       statusMsg,
+				Details:       detailsMsg,
+				IsError:       isErrorFlag,
+				IsReady:       isReadyFlag,
+				Level:         level,
+				// ErrorDetail will be set below if isErrorFlag is true
+			}
+			if isErrorFlag {
+				// If detailsMsg contains the actual error text from the port forward attempt
+				if detailsMsg != "" {
+					updateForReporter.ErrorDetail = errors.New(detailsMsg)
+				} else if statusMsg != "" && statusMsg != "Error" { // If statusMsg has specific error but detailsMsg is empty
+					updateForReporter.ErrorDetail = errors.New(statusMsg)
+				} else {
+					updateForReporter.ErrorDetail = errors.New("port-forward operation failed") // Generic fallback
+				}
 			}
 
-			genericUpdate := ManagedServiceUpdate{
-				Type: ServiceTypePortForward, Label: originalLabel, Status: status,
-				OutputLog: outputLog, IsError: isError, IsReady: isReady, Error: nil,
+			if sm.reporter != nil {
+				sm.reporter.Report(updateForReporter)
 			}
-			if updateCb != nil { // Use the updateCb passed to this specific call
-				updateCb(genericUpdate)
-			}
-			sm.checkAndProcessRestart(genericUpdate) // checkAndProcessRestart uses sm.initialUpdateCb
+			sm.checkAndProcessRestart(updateForReporter)
 		}
 
 		currentPfGlobalStopChan := sm.pfGlobalStopChan
-		pfStopChans := portforwarding.StartPortForwards(pfConfigs, pfUpdateAdapter, currentPfGlobalStopChan, wg)
+		pfStopChans := portforwarding.DefaultStartPortForwards(pfConfigs, pfUpdateAdapter, currentPfGlobalStopChan, wg)
+		if sm.reporter != nil {
+			sm.reporter.Report(reporting.ManagedServiceUpdate{
+				Timestamp:   time.Now(),
+				SourceType:  reporting.ServiceTypeSystem,
+				SourceLabel: "ServiceManager",
+				Level:       reporting.LogLevelDebug,
+				Message:     fmt.Sprintf("Returned from portforwarding.DefaultStartPortForwards. Stop chans count: %d", len(pfStopChans)),
+			})
+		}
 
 		sm.mu.Lock()
 		for label, ch := range pfStopChans {
@@ -143,23 +209,34 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 		sm.mu.Unlock()
 	}
 
-	// --- Start MCP Server Services ---
 	if len(mcpConfigs) > 0 {
-		mcpUpdateAdapter := func(mcpUpdate mcpserver.McpProcessUpdate) {
-			originalLabel, ok := mcpOriginalLabels[mcpUpdate.Label]
+		mcpUpdateAdapter := func(mcpProcUpdate mcpserver.McpProcessUpdate) {
+			originalLabel, ok := mcpOriginalLabels[mcpProcUpdate.Label]
 			if !ok {
-				originalLabel = mcpUpdate.Label
+				originalLabel = mcpProcUpdate.Label
 			}
 
-			genericUpdate := ManagedServiceUpdate{
-				Type: ServiceTypeMCPServer, Label: originalLabel, Status: mcpUpdate.Status,
-				OutputLog: mcpUpdate.OutputLog, IsError: mcpUpdate.IsError,
-				IsReady: mcpUpdate.Status == "Running", Error: mcpUpdate.Err,
+			level := reporting.LogLevelInfo
+			if mcpProcUpdate.IsError {
+				level = reporting.LogLevelError
 			}
-			if updateCb != nil { // Use the updateCb passed to this specific call
-				updateCb(genericUpdate)
+
+			// Construct reporting.ManagedServiceUpdate from mcpserver.McpProcessUpdate
+			updateForReporter := reporting.ManagedServiceUpdate{
+				Timestamp:   time.Now(),
+				SourceType:  reporting.ServiceTypeMCPServer,
+				SourceLabel: originalLabel,
+				Message:     mcpProcUpdate.Status,
+				Details:     mcpProcUpdate.OutputLog,
+				IsError:     mcpProcUpdate.IsError,
+				IsReady:     mcpProcUpdate.Status == "Running", // Example: derive IsReady
+				ErrorDetail: mcpProcUpdate.Err,
+				Level:       level,
 			}
-			sm.checkAndProcessRestart(genericUpdate) // checkAndProcessRestart uses sm.initialUpdateCb
+			if sm.reporter != nil {
+				sm.reporter.Report(updateForReporter)
+			}
+			sm.checkAndProcessRestart(updateForReporter)
 		}
 		mcpStopChans, mcpErrs := mcpserver.StartAndManageMCPServers(mcpConfigs, mcpUpdateAdapter, wg)
 		startupErrors = append(startupErrors, mcpErrs...)
@@ -257,53 +334,57 @@ func (sm *ServiceManager) RestartService(label string) error {
 		sm.mu.Unlock()
 		return fmt.Errorf("RestartService: no configuration found for service label '%s'", label)
 	}
-
-	// Mark for restart
 	sm.pendingRestarts[label] = true
-
 	_, serviceIsCurrentlyActive := sm.activeServices[label]
-	sm.mu.Unlock() // Unlock before calling StopService or synthetic update
+	sm.mu.Unlock()
 
 	if !serviceIsCurrentlyActive {
-		if sm.initialUpdateCb != nil {
-			sm.initialUpdateCb(ManagedServiceUpdate{
-				Type: originalCfg.Type, Label: label, Status: "Stopped", // Synthetic stop to trigger checkAndProcessRestart
-				IsReady: false, IsError: false,
+		if sm.reporter != nil {
+			// originalCfg.Type is now reporting.ServiceType
+			sm.reporter.Report(reporting.ManagedServiceUpdate{
+				Timestamp:   time.Now(),
+				SourceType:  originalCfg.Type, // Directly use if it's reporting.ServiceType
+				SourceLabel: label,
+				Level:       reporting.LogLevelInfo,
+				Message:     "Stopped",
+				IsReady:     false,
+				IsError:     false,
 			})
 		}
 		return nil
 	}
-
 	return sm.StopService(label)
 }
 
 // checkAndProcessRestart is called by the update adapters after an update is sent.
-// If a service has stopped and was pending restart, it triggers the restart.
-func (sm *ServiceManager) checkAndProcessRestart(update ManagedServiceUpdate) {
+// It now accepts reporting.ManagedServiceUpdate.
+func (sm *ServiceManager) checkAndProcessRestart(update reporting.ManagedServiceUpdate) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	isConsideredStopped := update.Status == "Stopped" || update.Status == "Error" || (update.IsError && !update.IsReady)
+	// Use fields from reporting.ManagedServiceUpdate
+	isConsideredStopped := update.Message == "Stopped" || update.Message == "Error" || (update.IsError && !update.IsReady)
 
 	if isConsideredStopped {
-		delete(sm.activeServices, update.Label)
+		delete(sm.activeServices, update.SourceLabel)
 
-		if sm.pendingRestarts[update.Label] {
-			delete(sm.pendingRestarts, update.Label)
+		if sm.pendingRestarts[update.SourceLabel] {
+			delete(sm.pendingRestarts, update.SourceLabel)
 
-			cfg, exists := sm.serviceConfigs[update.Label]
+			cfg, exists := sm.serviceConfigs[update.SourceLabel]
 			if exists {
-				if sm.initialUpdateCb != nil {
-					sm.initialUpdateCb(ManagedServiceUpdate{
-						Type:   cfg.Type,
-						Label:  cfg.Label,
-						Status: "Restarting...",
+				if sm.reporter != nil {
+					// cfg.Type is now reporting.ServiceType
+					sm.reporter.Report(reporting.ManagedServiceUpdate{
+						Timestamp:   time.Now(),
+						SourceType:  cfg.Type, // Directly use if it's reporting.ServiceType
+						SourceLabel: cfg.Label,
+						Level:       reporting.LogLevelInfo,
+						Message:     "Restarting...",
 					})
 				}
 				var restartWg sync.WaitGroup
-				// Pass sm.initialUpdateCb and the new restartWg
-				// The original sm.initialWg is for the whole batch, not individual restarts.
-				go sm.startSpecificServicesLogic([]ManagedServiceConfig{cfg}, sm.initialUpdateCb, &restartWg)
+				go sm.startSpecificServicesLogic([]ManagedServiceConfig{cfg}, &restartWg)
 			}
 		}
 	}

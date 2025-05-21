@@ -1,9 +1,11 @@
 package controller
 
 import (
+	// "envctl/internal/reporting" // No longer needed by logger.go directly
 	"envctl/internal/tui/model"
 	"fmt"
 	"strings"
+	// "time" // No longer needed by logger.go directly
 )
 
 // The functions in this file provide a unified way for all handlers and
@@ -18,7 +20,6 @@ func LogInfo(m *model.Model, format string, a ...interface{}) {
 }
 
 // LogDebug appends a debug-level message to the activity log.
-// Debug messages are only logged when debug mode is active (toggled with 'z').
 func LogDebug(m *model.Model, format string, a ...interface{}) {
 	if m != nil && m.DebugMode {
 		appendLogLine(m, "[DEBUG] "+fmt.Sprintf(format, a...))
@@ -37,6 +38,7 @@ func LogError(m *model.Model, format string, a ...interface{}) {
 
 // appendLogLine is a small helper that performs the actual slice append and
 // enforces the MaxActivityLogLines invariant.
+// THIS WILL BE REMOVED once all logging goes through the reporter and handleReporterUpdate.
 func appendLogLine(m *model.Model, line string) {
 	if m == nil {
 		return
@@ -56,6 +58,7 @@ func LogStdout(m *model.Model, source string, outputLines string) {
 	lines := strings.Split(strings.TrimRight(outputLines, "\n"), "\n")
 	for _, line := range lines {
 		if strings.TrimSpace(line) != "" {
+			// Calls the local LogInfo, which now calls appendLogLine directly.
 			LogInfo(m, "[%s] %s", source, line)
 		}
 	}
@@ -69,6 +72,7 @@ func LogStderr(m *model.Model, source string, errorLines string) {
 	lines := strings.Split(strings.TrimRight(errorLines, "\n"), "\n")
 	for _, line := range lines {
 		if strings.TrimSpace(line) != "" {
+			// Calls the local LogError, which now calls appendLogLine directly.
 			LogError(m, "[%s stderr] %s", source, line)
 		}
 	}

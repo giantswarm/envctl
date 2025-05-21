@@ -4,6 +4,7 @@ import (
 	"envctl/internal/managers"
 	"envctl/internal/mcpserver"
 	"envctl/internal/portforwarding"
+	"envctl/internal/reporting"
 	"envctl/internal/tui/model"
 	"fmt"
 	"strings"
@@ -234,7 +235,7 @@ func handleContextSwitchAndReinitializeResultMsg(m *model.Model, msg model.Conte
 
 	// 4. Re-fetch/Re-generate Service Configs for the new context
 	m.PortForwardingConfig = portforwarding.GetPortForwardConfig(m.ManagementClusterName, m.WorkloadClusterName)
-	m.MCPServerConfig = mcpserver.GetMCPServerConfig() // This is static but good to re-assign
+	m.MCPServerConfig = mcpserver.GetMCPServerConfig()
 
 	// 5. Clear Old TUI State for services and re-setup display structures
 	m.PortForwards = make(map[string]*model.PortForwardProcess)
@@ -262,52 +263,51 @@ func handleContextSwitchAndReinitializeResultMsg(m *model.Model, msg model.Conte
 
 	var newInitCmds []tea.Cmd
 	if m.KubeMgr == nil {
-		LogInfo(m, "KubeManager not available in handleContextSwitchAndReinitializeResultMsg, cannot re-init fully.")
-		// This is a problem, ideally return an error message to TUI
+		// Log this via reporter
+		if m.Reporter != nil {
+			m.Reporter.Report(reporting.ManagedServiceUpdate{Timestamp: time.Now(), SourceType: reporting.ServiceTypeSystem, SourceLabel: "ContextSwitch", Level: reporting.LogLevelWarn, Message: "KubeManager not available, cannot re-init fully."})
+		}
 	} else {
-		newInitCmds = append(newInitCmds, GetCurrentKubeContextCmd(m.KubeMgr)) // Corrected: pass m.KubeMgr
-
+		newInitCmds = append(newInitCmds, GetCurrentKubeContextCmd(m.KubeMgr))
 		if m.ManagementClusterName != "" {
 			mcTargetContext := m.KubeMgr.BuildMcContextName(m.ManagementClusterName)
-			newInitCmds = append(newInitCmds, FetchNodeStatusCmd(m.KubeMgr, mcTargetContext, true, m.ManagementClusterName)) // Corrected
+			newInitCmds = append(newInitCmds, FetchNodeStatusCmd(m.KubeMgr, mcTargetContext, true, m.ManagementClusterName))
 		}
 		if m.WorkloadClusterName != "" && m.ManagementClusterName != "" {
 			wcTargetContext := m.KubeMgr.BuildWcContextName(m.ManagementClusterName, m.WorkloadClusterName)
-			newInitCmds = append(newInitCmds, FetchNodeStatusCmd(m.KubeMgr, wcTargetContext, false, m.WorkloadClusterName)) // Corrected
+			newInitCmds = append(newInitCmds, FetchNodeStatusCmd(m.KubeMgr, wcTargetContext, false, m.WorkloadClusterName))
 		}
 
-		// Trigger Service Start (logic as previously refactored, using m.ServiceManager and m.KubeMgr as needed by its internals indirectly)
+		// Prepare ManagedServiceConfig slice for the ServiceManager
 		var managedServiceConfigs []managers.ManagedServiceConfig
 		for _, pfCfg := range m.PortForwardingConfig {
 			managedServiceConfigs = append(managedServiceConfigs, managers.ManagedServiceConfig{
-				Type:   managers.ServiceTypePortForward,
+				Type:   reporting.ServiceTypePortForward, // Use reporting type
 				Label:  pfCfg.Label,
 				Config: pfCfg,
 			})
 		}
 		for _, mcpCfg := range m.MCPServerConfig {
 			managedServiceConfigs = append(managedServiceConfigs, managers.ManagedServiceConfig{
-				Type:   managers.ServiceTypeMCPServer,
+				Type:   reporting.ServiceTypeMCPServer, // Use reporting type
 				Label:  mcpCfg.Name,
 				Config: mcpCfg,
 			})
 		}
 
-		tuiServiceUpdateCb := func(update managers.ManagedServiceUpdate) {
-			if m.TUIChannel != nil {
-				m.TUIChannel <- model.ServiceUpdateMsg{Update: update}
-			}
-		}
-
 		if len(managedServiceConfigs) > 0 && m.ServiceManager != nil {
 			startServicesCmd := func() tea.Msg {
 				var wg sync.WaitGroup
-				_, startupErrors := m.ServiceManager.StartServices(managedServiceConfigs, tuiServiceUpdateCb, &wg)
+				// Call StartServices without the updateCb
+				_, startupErrors := m.ServiceManager.StartServices(managedServiceConfigs, &wg)
 				return model.AllServicesStartedMsg{InitialStartupErrors: startupErrors}
 			}
 			newInitCmds = append(newInitCmds, startServicesCmd)
 		} else if m.ServiceManager == nil {
-			LogInfo(m, "ServiceManager is nil in handleContextSwitchAndReinitializeResultMsg, cannot start services.")
+			// Log this via reporter
+			if m.Reporter != nil {
+				m.Reporter.Report(reporting.ManagedServiceUpdate{Timestamp: time.Now(), SourceType: reporting.ServiceTypeSystem, SourceLabel: "ContextSwitch", Level: reporting.LogLevelError, Message: "ServiceManager is nil, cannot start services.", IsError: true})
+			}
 		}
 	}
 

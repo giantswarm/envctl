@@ -155,7 +155,7 @@ func TestRenderHeader_Simple(t *testing.T) {
 
 	initialTime := time.Date(2024, 1, 1, 10, 30, 0, 0, time.UTC)
 
-	m := model.InitialModel("MCmgmt", "WCwork", "test-context", false, mcpserver.GetMCPServerConfig(), nil, nil, &mockKubeManager{})
+	m := model.InitialModel("MCmgmt", "WCwork", "test-context", false, mcpserver.GetMCPServerConfig(), nil, &mockKubeManager{})
 	m.CurrentAppMode = model.ModeMainDashboard
 	m.Width = 100 // Provide a fixed width for consistent rendering
 	m.MCHealth = model.ClusterHealthInfo{ReadyNodes: 3, TotalNodes: 3, LastUpdated: initialTime}
@@ -183,7 +183,7 @@ func TestRenderContextPanesRow_Simple(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 
 	initialTime := time.Date(2024, 1, 1, 10, 30, 0, 0, time.UTC)
-	m := model.InitialModel("MCmgmt", "WCwork", "test-context", false, mcpserver.GetMCPServerConfig(), nil, nil, &mockKubeManager{})
+	m := model.InitialModel("MCmgmt", "WCwork", "test-context", false, mcpserver.GetMCPServerConfig(), nil, &mockKubeManager{})
 	m.CurrentAppMode = model.ModeMainDashboard
 	m.Width = 120
 	m.Height = 30
@@ -216,7 +216,7 @@ func TestRenderPortForwardingRow_Simple(t *testing.T) {
 		{Label: "Service One", InstanceKey: "svc/service1-8080", ServiceName: "svc/service1", LocalPort: "8080", RemotePort: "80", KubeContext: "test-context", Namespace: "default"},
 		{Label: "My Pod", InstanceKey: "pod/mypod-9090", ServiceName: "pod/mypod", LocalPort: "9090", RemotePort: "3000", KubeContext: "test-context", Namespace: "default"},
 	}
-	m := model.InitialModel("MCmgmt", "", "test-context", false, mcpserver.GetMCPServerConfig(), pfConfigs, nil, &mockKubeManager{})
+	m := model.InitialModel("MCmgmt", "", "test-context", false, mcpserver.GetMCPServerConfig(), pfConfigs, &mockKubeManager{})
 	m.CurrentAppMode = model.ModeMainDashboard
 	m.Width = 120
 	m.Height = 30
@@ -267,7 +267,7 @@ func TestRenderPortForwardingRow_Simple(t *testing.T) {
 func TestRenderMcpProxiesRow_Simple(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 
-	m := model.InitialModel("MCmgmt", "WCwork", "test-context", false, mcpserver.GetMCPServerConfig(), nil, nil, &mockKubeManager{})
+	m := model.InitialModel("MCmgmt", "WCwork", "test-context", false, mcpserver.GetMCPServerConfig(), nil, &mockKubeManager{})
 	m.CurrentAppMode = model.ModeMainDashboard
 	m.Width = 120
 	m.Height = 30
@@ -318,7 +318,7 @@ func TestRenderMcpProxiesRow_Simple(t *testing.T) {
 func TestRenderStatusBar_Simple(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 
-	m := model.InitialModel("MC", "WC", "ctx", false, mcpserver.GetMCPServerConfig(), nil, nil, &mockKubeManager{})
+	m := model.InitialModel("MC", "WC", "ctx", false, mcpserver.GetMCPServerConfig(), nil, &mockKubeManager{})
 	m.Width = 80
 	m.CurrentAppMode = model.ModeMainDashboard // Or any mode that shows status bar
 	m.StatusBarMessage = "This is an INFO message."
@@ -349,7 +349,7 @@ func TestRenderStatusBar_Simple(t *testing.T) {
 func TestRender_HelpOverlay(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 
-	m := model.InitialModel("MC", "WC", "ctx", false, mcpserver.GetMCPServerConfig(), nil, nil, &mockKubeManager{})
+	m := model.InitialModel("MC", "WC", "ctx", false, mcpserver.GetMCPServerConfig(), nil, &mockKubeManager{})
 	m.Width = 100
 	m.Height = 30
 	m.CurrentAppMode = model.ModeHelpOverlay
@@ -372,7 +372,7 @@ func TestRender_HelpOverlay(t *testing.T) {
 func TestRender_LogOverlay(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 
-	m := model.InitialModel("MC", "WC", "ctx", false, mcpserver.GetMCPServerConfig(), nil, nil, &mockKubeManager{})
+	m := model.InitialModel("MC", "WC", "ctx", false, mcpserver.GetMCPServerConfig(), nil, &mockKubeManager{})
 	m.Width = 100
 	m.Height = 30
 	m.CurrentAppMode = model.ModeLogOverlay
@@ -411,7 +411,7 @@ func TestRender_LogOverlay(t *testing.T) {
 func TestRender_McpConfigOverlay(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 
-	m := model.InitialModel("MC", "WC", "ctx", false, mcpserver.GetMCPServerConfig(), nil, nil, &mockKubeManager{})
+	m := model.InitialModel("MC", "WC", "ctx", false, mcpserver.GetMCPServerConfig(), nil, &mockKubeManager{})
 	m.Width = 100
 	m.Height = 30
 	m.CurrentAppMode = model.ModeMcpConfigOverlay
@@ -438,7 +438,7 @@ func TestRender_McpConfigOverlay(t *testing.T) {
 func TestRenderCombinedLogPanel_Simple(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 
-	m := model.InitialModel("MC", "WC", "ctx", false, mcpserver.GetMCPServerConfig(), nil, nil, &mockKubeManager{})
+	m := model.InitialModel("MC", "WC", "ctx", false, mcpserver.GetMCPServerConfig(), nil, &mockKubeManager{})
 	m.Width = 100
 	m.Height = 40 // Need enough height for this panel to be rendered
 	m.CurrentAppMode = model.ModeMainDashboard
@@ -477,7 +477,7 @@ func TestRenderCombinedLogPanel_Simple(t *testing.T) {
 
 func TestRender_ModeQuitting(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
-	m := model.InitialModel("", "", "", false, mcpserver.GetMCPServerConfig(), nil, nil, &mockKubeManager{})
+	m := model.InitialModel("", "", "", false, mcpserver.GetMCPServerConfig(), nil, &mockKubeManager{})
 	m.Width = 80
 	m.Height = 24
 	m.CurrentAppMode = model.ModeQuitting
@@ -501,7 +501,7 @@ func TestRender_ModeInitializing(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 
 	t.Run("NoSize", func(t *testing.T) {
-		m := model.InitialModel("", "", "", false, mcpserver.GetMCPServerConfig(), nil, nil, &mockKubeManager{})
+		m := model.InitialModel("", "", "", false, mcpserver.GetMCPServerConfig(), nil, &mockKubeManager{})
 		m.Width = 0 // Critical: test case for when window size is not yet known
 		m.Height = 0
 		m.CurrentAppMode = model.ModeInitializing
@@ -520,7 +520,7 @@ func TestRender_ModeInitializing(t *testing.T) {
 	})
 
 	t.Run("WithSize", func(t *testing.T) {
-		m := model.InitialModel("", "", "", false, mcpserver.GetMCPServerConfig(), nil, nil, &mockKubeManager{})
+		m := model.InitialModel("", "", "", false, mcpserver.GetMCPServerConfig(), nil, &mockKubeManager{})
 		m.Width = 80
 		m.Height = 24
 		m.CurrentAppMode = model.ModeInitializing
@@ -541,7 +541,7 @@ func TestRender_ModeInitializing(t *testing.T) {
 
 func TestRender_ModeUnknown(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
-	m := model.InitialModel("", "", "", false, mcpserver.GetMCPServerConfig(), nil, nil, &mockKubeManager{})
+	m := model.InitialModel("", "", "", false, mcpserver.GetMCPServerConfig(), nil, &mockKubeManager{})
 	m.Width = 80
 	m.Height = 24
 	m.CurrentAppMode = model.AppMode(999) // An undefined AppMode value
@@ -559,64 +559,70 @@ func TestRender_ModeUnknown(t *testing.T) {
 	checkGoldenFile(t, goldenFile, output)
 }
 
-func TestRender_MainDashboard_Full(t *testing.T) {
-	// NO_COLOR=true in Makefile should handle disabling ANSI codes
+func TestRender_MainDashboard_Normal(t *testing.T) {
+	// NO_COLOR=true in Makefile should handle this, but for isolated test runs:
+	// originalNoColor := os.Getenv("NO_COLOR")
+	// os.Setenv("NO_COLOR", "true")
+	// defer os.Setenv("NO_COLOR", originalNoColor)
 
-	initialTime := time.Date(2024, 1, 1, 10, 30, 0, 0, time.UTC)
-	mcName := "MCmgmt"
-	wcShortName := "WCwork"
-	portForwardingConfig := portforwarding.GetPortForwardConfig(mcName, wcShortName)
+	mcpCfgs := mcpserver.GetMCPServerConfig()
+	pfCfgs := portforwarding.GetPortForwardConfig("MC", "WC")
+	mockKube := &mockKubeManager{}
 
-	m := model.InitialModel(mcName, wcShortName, "test-context", false, mcpserver.GetMCPServerConfig(), portForwardingConfig, nil, &mockKubeManager{})
+	m := model.InitialModel("MC", "WC", "teleport.giantswarm.io-MC-WC", false, mcpCfgs, pfCfgs, mockKube)
+
+	// Manually replicate SetupPortForwards logic for the test model
+	m.PortForwards = make(map[string]*model.PortForwardProcess)
+	m.PortForwardOrder = nil
+	m.PortForwardOrder = append(m.PortForwardOrder, model.McPaneFocusKey)
+	if m.WorkloadClusterName != "" { // Check wcName from model
+		m.PortForwardOrder = append(m.PortForwardOrder, model.WcPaneFocusKey)
+	}
+	for _, pfCfg := range m.PortForwardingConfig { // This is already set by InitialModel from pfCfgs
+		m.PortForwardOrder = append(m.PortForwardOrder, pfCfg.Label)
+		// Initialize dummy PortForwardProcess entries, specific values set later in test
+		m.PortForwards[pfCfg.Label] = &model.PortForwardProcess{Label: pfCfg.Label, Config: pfCfg, Active: true, StatusMsg: "Awaiting Setup..."}
+	}
+
+	m.Width = 120
+	m.Height = 35
 	m.CurrentAppMode = model.ModeMainDashboard
-	m.Width = 120 // Sufficient width
-	m.Height = 50 // Sufficient height for all sections including main log panel
 
-	// Setup Health
-	m.MCHealth = model.ClusterHealthInfo{ReadyNodes: 3, TotalNodes: 3, LastUpdated: initialTime}
-	m.WCHealth = model.ClusterHealthInfo{ReadyNodes: 1, TotalNodes: 2, LastUpdated: initialTime}
-
-	// Setup Port Forwards (from controller.SetupPortForwards for consistency, but simplified here)
-	pfKey1 := "Prometheus (MC)"
-	pfKey2 := "Grafana (MC)"
-	m.PortForwards = map[string]*model.PortForwardProcess{
-		pfKey1: {Label: pfKey1, LocalPort: 8080, RemotePort: 8080, StatusMsg: "Running", Active: true, Running: true},
-		pfKey2: {Label: pfKey2, LocalPort: 3000, RemotePort: 3000, StatusMsg: "Error", Active: true, Running: false, Err: errors.New("pf error")},
+	if len(m.PortForwardOrder) > 0 {
+		m.FocusedPanelKey = m.PortForwardOrder[0]
+	} else {
+		t.Logf("Warning: PortForwardOrder is empty in test. FocusedPanelKey not set to first PF.")
+		m.FocusedPanelKey = model.McPaneFocusKey // Fallback focus for test
 	}
-	m.PortForwardOrder = []string{model.McPaneFocusKey, model.WcPaneFocusKey, pfKey1, pfKey2} // Match typical order
 
-	// Setup MCP Servers (from mcpserver.PredefinedMcpServers for consistency, simplified)
-	mcpKeyK8s := "kubernetes-mcp" // Assuming this matches a predefined name used in view logic if any special handling
-	mcpKeyProm := "prometheus-mcp"
-	m.McpServers = map[string]*model.McpServerProcess{
-		mcpKeyK8s:  {Label: "kubernetes API", Active: true, StatusMsg: "Running (PID: 123)"},
-		mcpKeyProm: {Label: "prometheus", Active: false, StatusMsg: "Inactive"},
+	// Simulate some service states
+	if proc, ok := m.PortForwards["Prometheus (MC)"]; ok {
+		proc.Running = true
+		proc.StatusMsg = "Running (PID: 123)"
 	}
-	m.McpProxyOrder = []string{mcpKeyK8s, mcpKeyProm} // Match typical order from PredefinedMcpServers
-
-	// Setup Activity Log for MainLogViewport
-	m.ActivityLog = []string{
-		"[INFO] System initialized.",
-		"[DEBUG] Test debug message for main log.",
+	if proc, ok := m.PortForwards["Alloy Metrics (WC)"]; ok {
+		proc.Running = false
+		proc.Err = errors.New("connection refused")
+		proc.StatusMsg = "Error: connection refused"
 	}
-	m.ActivityLogDirty = true // To trigger log processing in Render
+	if mcpProc, ok := m.McpServers["kubernetes"]; ok {
+		mcpProc.Active = true
+		mcpProc.StatusMsg = "Proxy Running - Healthy"
+		mcpProc.Pid = 456
+	}
 
-	m.FocusedPanelKey = pfKey1 // Focus a port-forward
-	m.Keys = model.DefaultKeyMap()
-	m.StatusBarMessage = "Main dashboard ready."
-	m.StatusBarMessageType = model.StatusBarSuccess
-
-	// Force dark background for consistent testing
+	// Ensure all necessary styles are initialized (they should be by default by lipgloss or our color package)
+	// Forcing dark background for consistent test output
 	originalHasDarkBackground := lipgloss.HasDarkBackground()
 	lipgloss.SetHasDarkBackground(true)
-	color.Initialize(true)
+	color.Initialize(true) // Re-initialize colors for dark mode
 	defer func() {
 		lipgloss.SetHasDarkBackground(originalHasDarkBackground)
-		color.Initialize(originalHasDarkBackground)
+		color.Initialize(originalHasDarkBackground) // Restore original theme
 	}()
 
-	output := Render(m)
-	goldenFile := filepath.Join("testdata", "render_main_dashboard_full.golden")
+	output := Render(m) // Call the main Render function
+	goldenFile := filepath.Join("testdata", "render_main_dashboard_normal.golden")
 	checkGoldenFile(t, goldenFile, output)
 }
 

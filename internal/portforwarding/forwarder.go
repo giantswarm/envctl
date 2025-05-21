@@ -3,11 +3,11 @@ package portforwarding
 import (
 	"envctl/internal/kube"
 	"fmt"
-	"strings"
 )
 
 // KubeStartPortForwardClientGoFn allows mocking of kube.StartPortForwardClientGo for testing.
-var KubeStartPortForwardFn = kube.StartPortForwardClientGo
+// It is a variable so it can be replaced by tests.
+var KubeStartPortForwardFn = kube.StartPortForwardClientGo // Test comment to force re-evaluation
 
 // StartAndManageIndividualPortForward starts a single port-forward using the Kubernetes Go
 // client via the internal kube package.
@@ -16,55 +16,39 @@ func StartAndManageIndividualPortForward(
 	cfg PortForwardingConfig,
 	updateFn PortForwardUpdateFunc,
 ) (chan struct{}, error) {
-	// Notify caller that initialisation has begun.
-	updateFn(PortForwardProcessUpdate{
-		InstanceKey: cfg.InstanceKey,
-		ServiceName: cfg.ServiceName,
-		Namespace:   cfg.Namespace,
-		LocalPort:   cfg.LocalPort,
-		RemotePort:  cfg.RemotePort,
-		StatusMsg:   "Initializing",
-		Running:     false,
-	})
+	if updateFn != nil {
+		updateFn(cfg.Label, "Initializing", "", false, false)
+	}
 
-	// Translate utils-level updates into package-level updates expected by the TUI / CLI.
-	bridge := func(status, output string, isError, isReady bool) {
-		upd := PortForwardProcessUpdate{
-			InstanceKey: cfg.InstanceKey,
-			ServiceName: cfg.ServiceName,
-			Namespace:   cfg.Namespace,
-			LocalPort:   cfg.LocalPort,
-			RemotePort:  cfg.RemotePort,
-			StatusMsg:   status,
-			OutputLog:   strings.TrimSpace(output),
-			Running:     !(isError || strings.Contains(status, "Stopped")),
+	var bridgeCallback kube.SendUpdateFunc = func(status, outputLog string, isError, isReady bool) {
+		if updateFn != nil {
+			updateFn(cfg.Label, status, outputLog, isError, isReady)
 		}
-		if isError {
-			upd.Error = fmt.Errorf("%s", output)
-		}
-		if isReady {
-			upd.Running = true
-		}
-		updateFn(upd)
 	}
 
 	portMap := fmt.Sprintf("%s:%s", cfg.LocalPort, cfg.RemotePort)
 
-	stop, initialStatus, err := KubeStartPortForwardFn(
+	stopChan, initialStatus, initialErr := KubeStartPortForwardFn(
 		cfg.KubeContext,
 		cfg.Namespace,
 		cfg.ServiceName,
 		portMap,
 		cfg.Label,
-		bridge,
+		bridgeCallback,
 	)
 
-	if initialStatus != "" {
-		bridge(initialStatus, "", false, false)
+	if initialStatus != "" && initialErr == nil {
+		if updateFn != nil {
+			updateFn(cfg.Label, initialStatus, "", false, false)
+		}
 	}
-	if err != nil {
-		bridge("Error", err.Error(), true, false)
-		return stop, err
+
+	if initialErr != nil {
+		if updateFn != nil {
+			updateFn(cfg.Label, fmt.Sprintf("Failed to initialize port-forward: %v", initialErr), initialStatus, true, false)
+		}
+		return stopChan, initialErr
 	}
-	return stop, nil
+
+	return stopChan, nil
 }

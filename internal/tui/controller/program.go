@@ -2,7 +2,6 @@ package controller
 
 import (
 	"envctl/internal/k8smanager"
-	"envctl/internal/managers"
 	"envctl/internal/mcpserver"
 	"envctl/internal/portforwarding"
 	"envctl/internal/tui/model"
@@ -10,21 +9,31 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// NewProgram assembles the model and returns a ready-to-run *tea.Program.
-// View and Controller aspects are handled by the model's Init/Update/View methods
-// and the functions/methods they call in their respective packages.
-// It now accepts a ServiceManagerAPI to handle background service lifecycles.
+// NewProgram initializes the entire TUI application, including the model and controller.
 func NewProgram(
-	mcName, wcName, kubeContext string,
-	tuiDebug bool,
-	mcpServerConfig []mcpserver.MCPServerConfig, // Kept for now, TUI model will use these to create ManagedServiceConfig
-	portForwardingConfig []portforwarding.PortForwardingConfig, // Kept for now
-	serviceMgr managers.ServiceManagerAPI, // Added ServiceManagerAPI
-	kubeMgr k8smanager.KubeManagerAPI, // ADDED kubeMgr
+	mcName, wcName, currentKubeContext string,
+	tuiDebugMode bool,
+	mcpServerConfig []mcpserver.MCPServerConfig,
+	portForwardingConfig []portforwarding.PortForwardingConfig,
+	// serviceMgr managers.ServiceManagerAPI, // REMOVED - Model now creates its own ServiceManager
+	kubeMgr k8smanager.KubeManagerAPI,
 ) *tea.Program {
-	// Pass serviceMgr and kubeMgr to InitialModel.
-	initialMdl := model.InitialModel(mcName, wcName, kubeContext, tuiDebug, mcpServerConfig, portForwardingConfig, serviceMgr, kubeMgr)
-	app := NewAppModel(initialMdl, mcName, wcName) // NewAppModel might also need serviceMgr if it directly uses it.
-	// For now, assuming initialMdl handles it.
-	return tea.NewProgram(app, tea.WithAltScreen(), tea.WithMouseAllMotion())
+	// Initialize the core data model. ServiceManager is now created within InitialModel.
+	m := model.InitialModel(
+		mcName,
+		wcName,
+		currentKubeContext,
+		tuiDebugMode,
+		mcpServerConfig,
+		portForwardingConfig,
+		kubeMgr,
+	)
+
+	// Setup AppModel which acts as the controller layer for Bubble Tea.
+	// It takes the initialized model.
+	appModel := NewAppModel(m, mcName, wcName)
+
+	// Create and return the Bubble Tea program.
+	// Program execution starts when p.Run() is called by the caller.
+	return tea.NewProgram(appModel, tea.WithAltScreen(), tea.WithMouseCellMotion())
 }

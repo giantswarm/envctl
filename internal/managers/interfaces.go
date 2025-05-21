@@ -1,6 +1,7 @@
 package managers
 
 import (
+	"envctl/internal/reporting"
 	"sync"
 )
 
@@ -10,12 +11,12 @@ import (
 type ServiceManagerAPI interface { // Renamed from ServiceManager
 	// StartServices starts multiple services based on the provided configurations.
 	// - configs: A slice of ManagedServiceConfig, each defining a service to start.
-	// - updateCb: A callback function that will receive ManagedServiceUpdate messages.
 	// - wg: A WaitGroup to synchronize goroutine completion.
+	// It uses the ServiceReporter instance provided at ServiceManager creation for updates.
 	// Returns a map of service labels to their individual stop channels, and a slice of startup errors.
 	StartServices(
 		configs []ManagedServiceConfig, // Defined in types.go in the same package
-		updateCb ServiceUpdateFunc, // Defined in types.go in the same package
+		// updateCb ServiceUpdateFunc, // REMOVED: Replaced by injected ServiceReporter
 		wg *sync.WaitGroup,
 	) (map[string]chan struct{}, []error)
 
@@ -29,4 +30,8 @@ type ServiceManagerAPI interface { // Renamed from ServiceManager
 	// RestartService signals a specific service to stop and then start again.
 	// This is an asynchronous operation. The service will go through stopping/starting states.
 	RestartService(label string) error
+
+	// SetReporter allows changing the reporter after initialization (e.g., for testing or mode switches if ever needed).
+	// Typically, the reporter is set at construction.
+	SetReporter(reporter reporting.ServiceReporter)
 }
