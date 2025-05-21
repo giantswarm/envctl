@@ -44,11 +44,11 @@ func (m *mockProxyService) Status(name string) (running bool, err error) { retur
 
 func TestAppModeTransitions(t *testing.T) {
 	tests := []struct {
-		name            string
-		initialAppMode  model.AppMode
-		msg             tea.Msg
-		expectedAppMode model.AppMode
-		description     string
+		name              string
+		initialAppMode    model.AppMode
+		msg               tea.Msg
+		expectedAppMode   model.AppMode
+		description       string
 		initialModelSetup func(*model.Model)
 		assertModel       func(*testing.T, *model.Model)
 	}{
@@ -139,9 +139,9 @@ func TestAppModeTransitions(t *testing.T) {
 		},
 		// --- Tests for ModeNewConnectionInput flow ---
 		{
-			name:            "NewConnectionInput: MC name entered, press Enter",
-			initialAppMode:  model.ModeNewConnectionInput, // Assume 'n' was pressed before
-			msg:             tea.KeyMsg{Type: tea.KeyEnter, Alt: false},
+			name:           "NewConnectionInput: MC name entered, press Enter",
+			initialAppMode: model.ModeNewConnectionInput, // Assume 'n' was pressed before
+			msg:            tea.KeyMsg{Type: tea.KeyEnter, Alt: false},
 			// Setup initial model for this specific state within NewConnectionInput
 			initialModelSetup: func(m *model.Model) {
 				m.CurrentInputStep = model.McInputStep
@@ -163,9 +163,9 @@ func TestAppModeTransitions(t *testing.T) {
 			description: "Entering MC name and pressing Enter should move to WC input step.",
 		},
 		{
-			name:            "NewConnectionInput: WC name entered, press Enter",
-			initialAppMode:  model.ModeNewConnectionInput,
-			msg:             tea.KeyMsg{Type: tea.KeyEnter, Alt: false},
+			name:           "NewConnectionInput: WC name entered, press Enter",
+			initialAppMode: model.ModeNewConnectionInput,
+			msg:            tea.KeyMsg{Type: tea.KeyEnter, Alt: false},
 			initialModelSetup: func(m *model.Model) {
 				m.CurrentInputStep = model.WcInputStep
 				m.StashedMcName = "my-mc"
@@ -188,9 +188,9 @@ func TestAppModeTransitions(t *testing.T) {
 			description: "Entering WC name and pressing Enter should return to MainDashboard.",
 		},
 		{
-			name:            "NewConnectionInput: MC step, press Esc",
-			initialAppMode:  model.ModeNewConnectionInput,
-			msg:             tea.KeyMsg{Type: tea.KeyEscape, Alt: false},
+			name:           "NewConnectionInput: MC step, press Esc",
+			initialAppMode: model.ModeNewConnectionInput,
+			msg:            tea.KeyMsg{Type: tea.KeyEscape, Alt: false},
 			initialModelSetup: func(m *model.Model) {
 				m.CurrentInputStep = model.McInputStep
 				m.NewConnectionInput.SetValue("some-mc-text")
@@ -208,9 +208,9 @@ func TestAppModeTransitions(t *testing.T) {
 			description: "Pressing Esc during MC input should cancel and return to MainDashboard.",
 		},
 		{
-			name:            "NewConnectionInput: WC step, press Esc",
-			initialAppMode:  model.ModeNewConnectionInput,
-			msg:             tea.KeyMsg{Type: tea.KeyEscape, Alt: false},
+			name:           "NewConnectionInput: WC step, press Esc",
+			initialAppMode: model.ModeNewConnectionInput,
+			msg:            tea.KeyMsg{Type: tea.KeyEscape, Alt: false},
 			initialModelSetup: func(m *model.Model) {
 				m.CurrentInputStep = model.WcInputStep
 				m.StashedMcName = "my-mc"
@@ -237,7 +237,7 @@ func TestAppModeTransitions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			coreModel := model.InitialModel("test-mc", "test-wc", "test-context", false)
 			coreModel.CurrentAppMode = tt.initialAppMode
-			
+
 			// Apply test-specific initial model setup
 			if tt.initialModelSetup != nil {
 				tt.initialModelSetup(coreModel)
@@ -260,9 +260,9 @@ func TestAppModeTransitions(t *testing.T) {
 
 			finalModel := finalControllerApp.GetModel() // Use the new GetModel() method
 			if finalModel.CurrentAppMode != tt.expectedAppMode {
-				t.Errorf("%s: expected AppMode %s (%d), got %s (%d)", 
-					tt.description, 
-					tt.expectedAppMode.String(), tt.expectedAppMode, 
+				t.Errorf("%s: expected AppMode %s (%d), got %s (%d)",
+					tt.description,
+					tt.expectedAppMode.String(), tt.expectedAppMode,
 					finalModel.CurrentAppMode.String(), finalModel.CurrentAppMode)
 			}
 			// Apply additional model assertions if provided
@@ -514,7 +514,9 @@ func TestKeyMap_HelpMethods(t *testing.T) {
 					break
 				}
 			}
-			if foundQuit { break }
+			if foundQuit {
+				break
+			}
 		}
 		if !foundQuit {
 			t.Error("FullHelp() did not contain the Quit keybinding")

@@ -396,10 +396,10 @@ func TestRender_LogOverlay(t *testing.T) {
 	// We set some initial dimensions for the viewport within the model.
 	// The Render function will further refine LogViewport.Width and LogViewport.Height.
 	// Let an overlay width/height be calculated as in Render function
-	overlayWidth := int(float64(m.Width) * 0.8)    // 80
+	overlayWidth := int(float64(m.Width) * 0.8)   // 80
 	overlayHeight := int(float64(m.Height) * 0.7) // 21
-	m.LogViewport.Width = overlayWidth - 2 // Assuming 2 is for border/padding
-	m.LogViewport.Height = overlayHeight - 2 // Assuming 2 is for border/padding
+	m.LogViewport.Width = overlayWidth - 2        // Assuming 2 is for border/padding
+	m.LogViewport.Height = overlayHeight - 2      // Assuming 2 is for border/padding
 	m.LogViewport.SetContent(strings.Join(m.ActivityLog, "\n"))
 
 	m.Keys = model.DefaultKeyMap() // For status bar
@@ -470,10 +470,10 @@ func TestRenderCombinedLogPanel_Simple(t *testing.T) {
 
 	// Setup MainLogViewport as it would be in the main Render function
 	contentWidthForPanel := m.Width - color.AppStyle.GetHorizontalFrameSize() // e.g. 98
-	logSectionHeight := 10 // Arbitrary height for the log panel section
+	logSectionHeight := 10                                                    // Arbitrary height for the log panel section
 
 	m.MainLogViewport.Width = contentWidthForPanel - color.PanelStatusDefaultStyle.GetHorizontalFrameSize() // Adjust for panel padding
-	m.MainLogViewport.Height = logSectionHeight - color.PanelStatusDefaultStyle.GetVerticalBorderSize() - lipgloss.Height(color.LogPanelTitleStyle.Render(" ")) -1
+	m.MainLogViewport.Height = logSectionHeight - color.PanelStatusDefaultStyle.GetVerticalBorderSize() - lipgloss.Height(color.LogPanelTitleStyle.Render(" ")) - 1
 	if m.MainLogViewport.Height < 0 {
 		m.MainLogViewport.Height = 0
 	}
@@ -611,7 +611,7 @@ func TestRender_MainDashboard_Full(t *testing.T) {
 	mcpKeyK8s := "kubernetes-mcp" // Assuming this matches a predefined name used in view logic if any special handling
 	mcpKeyProm := "prometheus-mcp"
 	m.McpServers = map[string]*model.McpServerProcess{
-		mcpKeyK8s: {Label: "kubernetes API", Active: true, StatusMsg: "Running (PID: 123)"},
+		mcpKeyK8s:  {Label: "kubernetes API", Active: true, StatusMsg: "Running (PID: 123)"},
 		mcpKeyProm: {Label: "prometheus", Active: false, StatusMsg: "Inactive"},
 	}
 	m.McpProxyOrder = []string{mcpKeyK8s, mcpKeyProm} // Match typical order from PredefinedMcpServers
