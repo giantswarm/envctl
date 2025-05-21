@@ -153,19 +153,23 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 				originalLabel = serviceLabel
 			}
 			level := reporting.LogLevelInfo
-			if isErrorFlag { level = reporting.LogLevelError
-			} else if isReadyFlag { level = reporting.LogLevelInfo
-			} else if detailsMsg != "" && statusMsg == "" { level = reporting.LogLevelDebug }
+			if isErrorFlag {
+				level = reporting.LogLevelError
+			} else if isReadyFlag {
+				level = reporting.LogLevelInfo
+			} else if detailsMsg != "" && statusMsg == "" {
+				level = reporting.LogLevelDebug
+			}
 
 			updateForReporter := reporting.ManagedServiceUpdate{
-				Timestamp:     time.Now(),
-				SourceType:    reporting.ServiceTypePortForward,
-				SourceLabel:   originalLabel,
-				Message:       statusMsg,
-				Details:       detailsMsg,
-				IsError:       isErrorFlag,
-				IsReady:       isReadyFlag,
-				Level:         level,
+				Timestamp:   time.Now(),
+				SourceType:  reporting.ServiceTypePortForward,
+				SourceLabel: originalLabel,
+				Message:     statusMsg,
+				Details:     detailsMsg,
+				IsError:     isErrorFlag,
+				IsReady:     isReadyFlag,
+				Level:       level,
 				// ErrorDetail will be set below if isErrorFlag is true
 			}
 			if isErrorFlag {
