@@ -14,4 +14,4 @@ To run all tests and linters, use the `make test` command in your terminal. If y
     - Corresponding golden files (located in `internal/tui/view/testdata/*.golden`) must be generated or updated.
     - This is typically done by running `go test ./internal/tui/view/... -update`.
     - The updated golden files must be carefully reviewed and verified to ensure they reflect the intended visual changes.
-- Strive to meet or improve test coverage for the modified packages.
+- Strive to meet or improve test coverage for the modified packages. There should be a minimum of 80% test coverage.

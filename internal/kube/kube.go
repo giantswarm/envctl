@@ -321,6 +321,45 @@ func GetNodeStatusClientGo(clientset kubernetes.Interface) (readyNodes int, tota
 	return readyNodes, totalNodes, nil
 }
 
+// determineProviderFromNode is an unexported helper that inspects a single node's
+// ProviderID and labels to determine the cloud provider.
+func determineProviderFromNode(node *corev1.Node) string {
+	if node == nil {
+		return "unknown"
+	}
+
+	providerID := node.Spec.ProviderID
+
+	if providerID != "" {
+		if strings.HasPrefix(providerID, "aws://") {
+			return "aws"
+		} else if strings.HasPrefix(providerID, "azure://") {
+			return "azure"
+		} else if strings.HasPrefix(providerID, "gce://") {
+			return "gcp"
+		} else if strings.Contains(providerID, "vsphere") { 
+			return "vsphere"
+		} else if strings.Contains(providerID, "openstack") { 
+			return "openstack"
+		}
+		// If providerID is present but not matched, try labels next
+	}
+
+	labels := node.GetLabels()
+	if len(labels) > 0 {
+		for k := range labels {
+			if strings.Contains(k, "eks.amazonaws.com") || strings.Contains(k, "amazonaws.com/compute") {
+				return "aws"
+			} else if strings.Contains(k, "kubernetes.azure.com") || strings.Contains(k, "cloud-provider-azure") {
+				return "azure"
+			} else if strings.Contains(k, "cloud.google.com/gke") || strings.Contains(k, "instancegroup.gke.io") {
+				return "gcp"
+			}
+		}
+	}
+	return "unknown"
+}
+
 // DetermineClusterProvider attempts to identify the cloud provider of a Kubernetes cluster
 // by inspecting the `providerID` of the first node, then falling back to labels.
 // It uses the Kubernetes Go client.
@@ -331,14 +370,12 @@ func DetermineClusterProvider(contextName string) (string, error) {
 
 	// Use Teleport prefix for context name if not already prefixed and contextName is provided.
 	k8sContextName := contextName
-	if contextName != "" && !strings.HasPrefix(contextName, "teleport.giantswarm.io-") { // Assuming TeleportPrefix constant would be here or passed
-		k8sContextName = "teleport.giantswarm.io-" + contextName // Assuming TeleportPrefix constant would be here or passed
+	if contextName != "" && !strings.HasPrefix(contextName, "teleport.giantswarm.io-") { 
+		k8sContextName = "teleport.giantswarm.io-" + contextName 
 	}
 
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
 	configOverrides := &clientcmd.ConfigOverrides{}
-	// If a specific context name is provided, use it.
-	// Otherwise (k8sContextName is empty), it will use the current context from kubeconfig.
 	if k8sContextName != "" {
 		configOverrides.CurrentContext = k8sContextName
 	}
@@ -363,43 +400,7 @@ func DetermineClusterProvider(contextName string) (string, error) {
 		return "unknown", fmt.Errorf("no nodes found in cluster with context '%s'", k8sContextName)
 	}
 
-	node := nodes.Items[0]
-	providerID := node.Spec.ProviderID
-
-	// The providerID is typically in the format: <provider>://<provider-specific-info>
-	if providerID != "" {
-		if strings.HasPrefix(providerID, "aws://") {
-			return "aws", nil
-		} else if strings.HasPrefix(providerID, "azure://") {
-			return "azure", nil
-		} else if strings.HasPrefix(providerID, "gce://") {
-			return "gcp", nil
-		} else if strings.Contains(providerID, "vsphere") { // vsphere might not have a URI prefix
-			return "vsphere", nil
-		} else if strings.Contains(providerID, "openstack") { // openstack might not have a URI prefix
-			return "openstack", nil
-		}
-		// If providerID is present but not matched, try labels next
-	}
-
-	// Fallback to checking labels if providerID is empty or not recognized
-	labels := node.GetLabels()
-	if len(labels) > 0 {
-		// Look for known provider-specific labels
-		for k := range labels {
-			if strings.Contains(k, "eks.amazonaws.com") || strings.Contains(k, "amazonaws.com/compute") {
-				return "aws", nil
-			} else if strings.Contains(k, "kubernetes.azure.com") || strings.Contains(k, "cloud-provider-azure") {
-				return "azure", nil
-			} else if strings.Contains(k, "cloud.google.com/gke") || strings.Contains(k, "instancegroup.gke.io") {
-				return "gcp", nil
-			}
-		}
-	}
-
-	// If we can't determine the provider from providerID or labels, return unknown.
-	// It could also be a bare metal cluster or a less common provider.
-	return "unknown", nil
+	return determineProviderFromNode(&nodes.Items[0]), nil
 }
 
 // GetCurrentKubeContext retrieves the name of the currently active Kubernetes context
