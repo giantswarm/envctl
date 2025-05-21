@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"encoding/json"
 	"envctl/internal/mcpserver"
 	"envctl/internal/tui/model"
 	"fmt"
@@ -129,4 +130,23 @@ func handleRestartMcpServerMsg(m *model.Model, msg model.RestartMcpServerMsg) (*
 	}
 
 	return m, startCmd
+}
+
+// GenerateMcpConfigJson creates a JSON string with MCP server endpoint configurations.
+// It now takes the list of predefined servers as an argument.
+func GenerateMcpConfigJson(predefinedServers []mcpserver.PredefinedMcpServer) string {
+	type entry struct {
+		URL string `json:"url"`
+	}
+	servers := make(map[string]entry)
+	for _, cfg := range predefinedServers {
+		key := fmt.Sprintf("%s-mcp", cfg.Name)
+		servers[key] = entry{URL: fmt.Sprintf("http://localhost:%d/sse", cfg.ProxyPort)}
+	}
+	root := map[string]interface{}{"mcpServers": servers}
+	b, err := json.MarshalIndent(root, "", "  ")
+	if err != nil {
+		return "{}" // Return empty JSON object on error
+	}
+	return string(b)
 }

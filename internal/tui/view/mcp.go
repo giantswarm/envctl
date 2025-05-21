@@ -83,8 +83,8 @@ func renderMcpProxyPanel(serverName string, predefinedData mcpserver.PredefinedM
 func renderMcpProxiesRow(m *model.Model, contentWidth int, maxRowHeight int) string {
 	const cols = 3
 	totalBorder := 0
-	styles := make([]lipgloss.Style, len(mcpserver.PredefinedMcpServers))
-	for i, def := range mcpserver.PredefinedMcpServers {
+	styles := make([]lipgloss.Style, len(m.PredefinedMcpServers))
+	for i, def := range m.PredefinedMcpServers {
 		proc := m.McpServers[def.Name]
 		st := ""
 		if proc != nil {
@@ -105,7 +105,7 @@ func renderMcpProxiesRow(m *model.Model, contentWidth int, maxRowHeight int) str
 		}
 	}
 
-	displayCols := len(mcpserver.PredefinedMcpServers)
+	displayCols := len(m.PredefinedMcpServers)
 	if displayCols > cols {
 		displayCols = cols
 	}
@@ -124,7 +124,7 @@ func renderMcpProxiesRow(m *model.Model, contentWidth int, maxRowHeight int) str
 
 	var cells []string
 	for i := 0; i < displayCols; i++ {
-		def := mcpserver.PredefinedMcpServers[i]
+		def := m.PredefinedMcpServers[i]
 		proc := m.McpServers[def.Name]
 		w := baseInner
 		if i < remainder {
@@ -133,7 +133,7 @@ func renderMcpProxiesRow(m *model.Model, contentWidth int, maxRowHeight int) str
 		rendered := renderMcpProxyPanel(def.Name, def, proc, m, w+styles[i].GetHorizontalFrameSize())
 		cells = append(cells, rendered)
 	}
-	for i := len(mcpserver.PredefinedMcpServers); i < cols; i++ {
+	for i := len(m.PredefinedMcpServers); i < cols; i++ {
 		w := baseInner
 		if i < remainder {
 			w++

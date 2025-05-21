@@ -202,9 +202,7 @@ func Render(m *model.Model) string {
 		cfgH := int(float64(m.Height) * 0.7)
 		m.McpConfigViewport.Width = cfgW - color.McpConfigOverlayStyle.GetHorizontalFrameSize()
 		m.McpConfigViewport.Height = cfgH - color.McpConfigOverlayStyle.GetVerticalFrameSize()
-		if m.McpConfigViewport.TotalLineCount() == 0 {
-			m.McpConfigViewport.SetContent(GenerateMcpConfigJson())
-		}
+		// Content is now set by the controller when entering this mode.
 		cfgOverlay := renderMcpConfigOverlay(m, cfgW, cfgH)
 		overlayCanvas := lipgloss.Place(m.Width, m.Height-1, lipgloss.Center, lipgloss.Center, cfgOverlay, lipgloss.WithWhitespaceBackground(lipgloss.AdaptiveColor{Light: "rgba(0,0,0,0.1)", Dark: "rgba(0,0,0,0.6)"}))
 		statusBar := renderStatusBar(m, m.Width)

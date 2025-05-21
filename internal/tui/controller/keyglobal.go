@@ -3,7 +3,6 @@ package controller
 import (
 	"envctl/internal/portforwarding"
 	"envctl/internal/tui/model"
-	"envctl/internal/tui/view"
 	"envctl/internal/utils"
 	"fmt"
 	"strings"
@@ -36,7 +35,7 @@ func handleKeyMsgGlobal(m *model.Model, keyMsg tea.KeyMsg, existingCmds []tea.Cm
 			m.CurrentAppMode = model.ModeMainDashboard
 			return m, nil
 		case "y":
-			configStr := view.GenerateMcpConfigJson()
+			configStr := GenerateMcpConfigJson(m.PredefinedMcpServers)
 			if err := clipboard.WriteAll(configStr); err != nil {
 				LogError(m, "Failed to copy MCP config: %v", err)
 				return m, m.SetStatusMessage("Copy MCP config failed", model.StatusBarError, 3*time.Second)
@@ -114,6 +113,10 @@ func handleKeyMsgGlobal(m *model.Model, keyMsg tea.KeyMsg, existingCmds []tea.Cm
 			m.CurrentAppMode = model.ModeMainDashboard
 		} else {
 			m.CurrentAppMode = model.ModeMcpConfigOverlay
+			// Populate the viewport content when entering the mode
+			configJSON := GenerateMcpConfigJson(m.PredefinedMcpServers)
+			m.McpConfigViewport.SetContent(configJSON)
+			m.McpConfigViewport.GotoTop() // Reset scroll position
 		}
 		return m, nil
 	}

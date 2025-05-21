@@ -1,11 +1,8 @@
 package view
 
 import (
-	"encoding/json"
 	"envctl/internal/color"
-	"envctl/internal/mcpserver"
 	"envctl/internal/tui/model"
-	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -108,23 +105,7 @@ func applyStyling(lines []string) []string {
 	return styled
 }
 
-// generateMcpConfigJson & renderMcpConfigOverlay moved as-is.
-func GenerateMcpConfigJson() string {
-	type entry struct {
-		URL string `json:"url"`
-	}
-	servers := make(map[string]entry)
-	for _, cfg := range mcpserver.PredefinedMcpServers {
-		key := fmt.Sprintf("%s-mcp", cfg.Name)
-		servers[key] = entry{URL: fmt.Sprintf("http://localhost:%d/sse", cfg.ProxyPort)}
-	}
-	root := map[string]interface{}{"mcpServers": servers}
-	b, err := json.MarshalIndent(root, "", "  ")
-	if err != nil {
-		return "{}"
-	}
-	return string(b)
-}
+// generateMcpConfigJson has been moved to internal/tui/controller/mcpserver.go
 
 func renderMcpConfigOverlay(m *model.Model, width, height int) string {
 	title := color.LogPanelTitleStyle.Render(SafeIcon(IconGear) + " MCP Configuration  (↑/↓ scroll  •  y copy  •  Esc close)")

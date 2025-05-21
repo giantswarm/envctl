@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"envctl/internal/mcpserver"
 	"envctl/internal/tui/model"
 	"envctl/internal/utils"
 	"fmt"
@@ -223,7 +222,7 @@ func handleContextSwitchAndReinitializeResultMsg(m *model.Model, msg model.Conte
 	}
 
 	m.McpProxyOrder = nil
-	for _, cfg := range mcpserver.PredefinedMcpServers {
+	for _, cfg := range m.PredefinedMcpServers {
 		m.McpProxyOrder = append(m.McpProxyOrder, cfg.Name)
 	}
 
@@ -243,7 +242,7 @@ func handleContextSwitchAndReinitializeResultMsg(m *model.Model, msg model.Conte
 	newInitCmds = append(newInitCmds, initialPfCmds...)
 
 	LogInfo(m, "Initializing predefined MCP proxies (kubernetes, prometheus, grafana)...")
-	mcpProxyStartupCmds := StartMcpProxiesCmd(m.Services.Proxy, m.TUIChannel)
+	mcpProxyStartupCmds := StartMcpProxiesCmd(m.PredefinedMcpServers, m.Services.Proxy, m.TUIChannel)
 	if mcpProxyStartupCmds == nil {
 		LogDebug(m, "StartMcpProxiesCmd returned nil. No MCP commands generated.")
 	} else {

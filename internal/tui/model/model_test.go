@@ -235,7 +235,7 @@ func TestAppModeTransitions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			coreModel := model.InitialModel("test-mc", "test-wc", "test-context", false)
+			coreModel := model.InitialModel("test-mc", "test-wc", "test-context", false, mcpserver.PredefinedMcpServers)
 			coreModel.CurrentAppMode = tt.initialAppMode
 
 			// Apply test-specific initial model setup
@@ -284,7 +284,7 @@ func TestMessageHandling(t *testing.T) {
 		{
 			name: "ClearStatusBarMsg clears status bar",
 			initialModel: func() *model.Model {
-				m := model.InitialModel("mc", "wc", "ctx", false)
+				m := model.InitialModel("mc", "wc", "ctx", false, mcpserver.PredefinedMcpServers)
 				m.StatusBarMessage = "Initial message"
 				m.StatusBarMessageType = model.StatusBarInfo
 				// Setup mock services
@@ -306,7 +306,7 @@ func TestMessageHandling(t *testing.T) {
 		{
 			name: "PortForwardCoreUpdateMsg updates existing port-forward process",
 			initialModel: func() *model.Model {
-				m := model.InitialModel("mc", "wc", "ctx", false)
+				m := model.InitialModel("mc", "wc", "ctx", false, mcpserver.PredefinedMcpServers)
 				m.Services = service.Services{
 					Cluster: &mockClusterService{},
 					PF:      &mockPFService{},
@@ -344,7 +344,7 @@ func TestMessageHandling(t *testing.T) {
 		{
 			name: "SetStatusMessage updates status bar and handles cancellation channel",
 			initialModel: func() *model.Model {
-				m := model.InitialModel("mc", "wc", "ctx", false)
+				m := model.InitialModel("mc", "wc", "ctx", false, mcpserver.PredefinedMcpServers)
 				m.Services = service.Services{
 					Cluster: &mockClusterService{},
 					PF:      &mockPFService{},

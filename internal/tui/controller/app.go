@@ -28,6 +28,14 @@ func (a *AppModel) GetModel() *model.Model {
 func NewAppModel(m *model.Model, mcName, wcName string) *AppModel {
 	app := &AppModel{model: m}
 
+	// PredefinedMcpServers is now set in model.InitialModel via parameter
+
+	// Initialize McpProxyOrder based on the predefined servers in the model
+	app.model.McpProxyOrder = nil // Initialize explicitly
+	for _, cfg := range app.model.PredefinedMcpServers {
+		app.model.McpProxyOrder = append(app.model.McpProxyOrder, cfg.Name)
+	}
+
 	// Configure initial port-forwards and dependency graph using controller functions
 	// These were previously in model.InitialModel
 	SetupPortForwards(app.model, mcName, wcName)
@@ -69,7 +77,7 @@ func (a *AppModel) Init() tea.Cmd {
 	// GetInitialPortForwardCmds should operate on the now configured model.
 	controllerCmds = append(controllerCmds, GetInitialPortForwardCmds(a.model)...)
 
-	if proxyCmds := StartMcpProxiesCmd(a.model.Services.Proxy, a.model.TUIChannel); len(proxyCmds) > 0 {
+	if proxyCmds := StartMcpProxiesCmd(a.model.PredefinedMcpServers, a.model.Services.Proxy, a.model.TUIChannel); len(proxyCmds) > 0 {
 		controllerCmds = append(controllerCmds, proxyCmds...)
 	}
 

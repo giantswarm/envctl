@@ -55,12 +55,12 @@ Arguments:
 	Args: cobra.RangeArgs(1, 2), // Accepts 1 or 2 arguments
 	RunE: func(cmd *cobra.Command, args []string) error {
 		managementClusterArg := args[0]
-		shortWorkloadClusterArg := ""
+		workloadClusterArg := ""
 		fullWorkloadClusterIdentifier := ""
 
 		if len(args) == 2 {
-			shortWorkloadClusterArg = args[1]
-			fullWorkloadClusterIdentifier = managementClusterArg + "-" + shortWorkloadClusterArg
+			workloadClusterArg = args[1]
+			fullWorkloadClusterIdentifier = managementClusterArg + "-" + workloadClusterArg
 		}
 
 		fmt.Println("--- Kubernetes Login ---")
@@ -107,8 +107,8 @@ Arguments:
 			fmt.Println("Skipping TUI. Setting up port forwarding and MCP proxies in the background...")
 
 			var targetCtxForAlloy string
-			if shortWorkloadClusterArg != "" {
-				targetCtxForAlloy = utils.BuildWcContext(managementClusterArg, shortWorkloadClusterArg)
+			if workloadClusterArg != "" {
+				targetCtxForAlloy = utils.BuildWcContext(managementClusterArg, workloadClusterArg)
 			} else {
 				targetCtxForAlloy = utils.BuildMcContext(managementClusterArg)
 			}
@@ -261,7 +261,9 @@ Arguments:
 			color.Initialize(true)
 			// _ = lipgloss.HasDarkBackground() // Old no-op call, replaced by Initialize
 
-			p := controller.NewProgram(managementClusterArg, shortWorkloadClusterArg, currentKubeContextAfterLogin, tuiDebugMode)
+			// Pass the predefined MCP servers to the TUI program
+			predefinedMcpServers := mcpserver.PredefinedMcpServers
+			p := controller.NewProgram(managementClusterArg, workloadClusterArg, currentKubeContextAfterLogin, tuiDebugMode, predefinedMcpServers)
 			if _, err := p.Run(); err != nil {
 				fmt.Fprintf(os.Stderr, "Error running TUI: %v\n", err)
 				return err

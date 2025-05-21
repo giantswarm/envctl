@@ -145,7 +145,7 @@ func TestRenderHeader_Simple(t *testing.T) {
 
 	initialTime := time.Date(2024, 1, 1, 10, 30, 0, 0, time.UTC)
 
-	m := model.InitialModel("MCmgmt", "WCwork", "test-context", false)
+	m := model.InitialModel("MCmgmt", "WCwork", "test-context", false, mcpserver.PredefinedMcpServers)
 	m.CurrentAppMode = model.ModeMainDashboard
 	m.Width = 100 // Provide a fixed width for consistent rendering
 	m.MCHealth = model.ClusterHealthInfo{ReadyNodes: 3, TotalNodes: 3, LastUpdated: initialTime}
@@ -180,7 +180,7 @@ func TestRenderContextPanesRow_Simple(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 
 	initialTime := time.Date(2024, 1, 1, 10, 30, 0, 0, time.UTC)
-	m := model.InitialModel("MCmgmt", "WCwork", "test-context", false)
+	m := model.InitialModel("MCmgmt", "WCwork", "test-context", false, mcpserver.PredefinedMcpServers)
 	m.CurrentAppMode = model.ModeMainDashboard
 	m.Width = 120
 	m.Height = 30
@@ -214,7 +214,7 @@ func TestRenderContextPanesRow_Simple(t *testing.T) {
 func TestRenderPortForwardingRow_Simple(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 
-	m := model.InitialModel("MCmgmt", "", "test-context", false) // No WC for this simple PF test
+	m := model.InitialModel("MCmgmt", "", "test-context", false, mcpserver.PredefinedMcpServers) // No WC for this simple PF test
 	m.CurrentAppMode = model.ModeMainDashboard
 	m.Width = 120
 	m.Height = 30
@@ -272,7 +272,7 @@ func TestRenderPortForwardingRow_Simple(t *testing.T) {
 func TestRenderMcpProxiesRow_Simple(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 
-	m := model.InitialModel("MCmgmt", "WCwork", "test-context", false)
+	m := model.InitialModel("MCmgmt", "WCwork", "test-context", false, mcpserver.PredefinedMcpServers)
 	m.CurrentAppMode = model.ModeMainDashboard
 	m.Width = 120
 	m.Height = 30
@@ -328,7 +328,7 @@ func TestRenderMcpProxiesRow_Simple(t *testing.T) {
 func TestRenderStatusBar_Simple(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 
-	m := model.InitialModel("MC", "WC", "ctx", false)
+	m := model.InitialModel("MC", "WC", "ctx", false, mcpserver.PredefinedMcpServers)
 	m.Width = 80
 	m.CurrentAppMode = model.ModeMainDashboard // Or any mode that shows status bar
 	m.StatusBarMessage = "This is an INFO message."
@@ -359,7 +359,7 @@ func TestRenderStatusBar_Simple(t *testing.T) {
 func TestRender_HelpOverlay(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 
-	m := model.InitialModel("MC", "WC", "ctx", false)
+	m := model.InitialModel("MC", "WC", "ctx", false, mcpserver.PredefinedMcpServers)
 	m.Width = 100
 	m.Height = 30
 	m.CurrentAppMode = model.ModeHelpOverlay
@@ -382,7 +382,7 @@ func TestRender_HelpOverlay(t *testing.T) {
 func TestRender_LogOverlay(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 
-	m := model.InitialModel("MC", "WC", "ctx", false)
+	m := model.InitialModel("MC", "WC", "ctx", false, mcpserver.PredefinedMcpServers)
 	m.Width = 100
 	m.Height = 30
 	m.CurrentAppMode = model.ModeLogOverlay
@@ -426,7 +426,7 @@ func TestRender_LogOverlay(t *testing.T) {
 func TestRender_McpConfigOverlay(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 
-	m := model.InitialModel("MC", "WC", "ctx", false)
+	m := model.InitialModel("MC", "WC", "ctx", false, mcpserver.PredefinedMcpServers)
 	m.Width = 100
 	m.Height = 30
 	m.CurrentAppMode = model.ModeMcpConfigOverlay
@@ -458,7 +458,7 @@ func TestRender_McpConfigOverlay(t *testing.T) {
 func TestRenderCombinedLogPanel_Simple(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 
-	m := model.InitialModel("MC", "WC", "ctx", false)
+	m := model.InitialModel("MC", "WC", "ctx", false, mcpserver.PredefinedMcpServers)
 	m.Width = 100
 	m.Height = 40 // Need enough height for this panel to be rendered
 	m.CurrentAppMode = model.ModeMainDashboard
@@ -503,7 +503,7 @@ func TestRenderCombinedLogPanel_Simple(t *testing.T) {
 
 func TestRender_ModeQuitting(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
-	m := model.InitialModel("", "", "", false)
+	m := model.InitialModel("", "", "", false, mcpserver.PredefinedMcpServers)
 	m.Width = 80
 	m.Height = 24
 	m.CurrentAppMode = model.ModeQuitting
@@ -527,7 +527,7 @@ func TestRender_ModeInitializing(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 
 	t.Run("NoSize", func(t *testing.T) {
-		m := model.InitialModel("", "", "", false)
+		m := model.InitialModel("", "", "", false, mcpserver.PredefinedMcpServers)
 		m.Width = 0 // Critical: test case for when window size is not yet known
 		m.Height = 0
 		m.CurrentAppMode = model.ModeInitializing
@@ -546,7 +546,7 @@ func TestRender_ModeInitializing(t *testing.T) {
 	})
 
 	t.Run("WithSize", func(t *testing.T) {
-		m := model.InitialModel("", "", "", false)
+		m := model.InitialModel("", "", "", false, mcpserver.PredefinedMcpServers)
 		m.Width = 80
 		m.Height = 24
 		m.CurrentAppMode = model.ModeInitializing
@@ -567,7 +567,7 @@ func TestRender_ModeInitializing(t *testing.T) {
 
 func TestRender_ModeUnknown(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
-	m := model.InitialModel("", "", "", false)
+	m := model.InitialModel("", "", "", false, mcpserver.PredefinedMcpServers)
 	m.Width = 80
 	m.Height = 24
 	m.CurrentAppMode = model.AppMode(999) // An undefined AppMode value
@@ -589,7 +589,7 @@ func TestRender_MainDashboard_Full(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 
 	initialTime := time.Date(2024, 1, 1, 10, 30, 0, 0, time.UTC)
-	m := model.InitialModel("MCmgmt", "WCwork", "test-context", false)
+	m := model.InitialModel("MCmgmt", "WCwork", "test-context", false, mcpserver.PredefinedMcpServers)
 	m.CurrentAppMode = model.ModeMainDashboard
 	m.Width = 120 // Sufficient width
 	m.Height = 50 // Sufficient height for all sections including main log panel

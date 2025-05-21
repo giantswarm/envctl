@@ -5,19 +5,19 @@
             │                                                                          │            
             │   ⚙  MCP Configuration  (↑/↓ scroll  •  y copy  •  Esc close)            │            
             │                                                                          │            
-            │  {                                                                       │            
-            │    "mcpServers": {                                                       │            
-            │      "grafana-mcp": {                                                    │            
-            │        "url": "http://localhost:8003/sse"                                │            
-            │      },                                                                  │            
-            │      "kubernetes-mcp": {                                                 │            
-            │        "url": "http://localhost:8001/sse"                                │            
-            │      },                                                                  │            
-            │      "prometheus-mcp": {                                                 │            
-            │        "url": "http://localhost:8002/sse"                                │            
-            │      }                                                                   │            
-            │    }                                                                     │            
-            │  }                                                                       │            
+            │                                                                          │            
+            │                                                                          │            
+            │                                                                          │            
+            │                                                                          │            
+            │                                                                          │            
+            │                                                                          │            
+            │                                                                          │            
+            │                                                                          │            
+            │                                                                          │            
+            │                                                                          │            
+            │                                                                          │            
+            │                                                                          │            
+            │                                                                          │            
             │                                                                          │            
             │                                                                          │            
             │                                                                          │            

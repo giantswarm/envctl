@@ -105,7 +105,7 @@ func DefaultKeyMap() KeyMap { // Returns model.KeyMap (KeyMap is in this package
 }
 
 // InitialModel constructs the initial model with sensible defaults.
-func InitialModel(mcName, wcName, kubeContext string, tuiDebug bool) *Model {
+func InitialModel(mcName, wcName, kubeContext string, tuiDebug bool, predefinedServers []mcpserver.PredefinedMcpServer) *Model {
 	ti := textinput.New()
 	ti.Placeholder = "Management Cluster"
 	ti.CharLimit = 156
@@ -128,6 +128,7 @@ func InitialModel(mcName, wcName, kubeContext string, tuiDebug bool) *Model {
 		ManagementClusterName:    mcName,
 		WorkloadClusterName:      wcName,
 		CurrentKubeContext:       kubeContext,
+		PredefinedMcpServers:     predefinedServers,
 		PortForwards:             make(map[string]*PortForwardProcess),
 		PortForwardOrder:         make([]string, 0),
 		McpServers:               make(map[string]*McpServerProcess),
@@ -162,13 +163,8 @@ func InitialModel(mcName, wcName, kubeContext string, tuiDebug bool) *Model {
 		m.WCHealth = ClusterHealthInfo{IsLoading: true}
 	}
 
-	// Build navigation order for MCP proxies - this uses mcpserver, which is fine for model to know about.
-	// This might be better if controller sets it up if McpProxyOrder is purely for controller navigation.
-	// For now, leave as it only depends on mcpserver package, not controller or view.
+	// McpProxyOrder will be initialized by the controller.
 	m.McpProxyOrder = nil // Initialize explicitly
-	for _, cfg := range mcpserver.PredefinedMcpServers {
-		m.McpProxyOrder = append(m.McpProxyOrder, cfg.Name)
-	}
 
 	// Initial focused panel can be set here if it's a sensible default not requiring controller logic
 	if len(m.PortForwardOrder) > 0 { // PortForwardOrder will be empty now initially

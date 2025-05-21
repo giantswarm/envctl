@@ -1,6 +1,7 @@
 package model_test
 
 import (
+	"envctl/internal/mcpserver"
 	"testing"
 
 	"envctl/internal/tui/controller"
@@ -31,7 +32,7 @@ var benchmarkMsgs = func() []tea.Msg {
 // It mirrors the production InitialModel but disables debug logging to focus
 // on Update-loop cost alone.
 func newBenchModel() tea.Model {
-	mCore := model.InitialModel("mc", "wc", "mc", false)
+	mCore := model.InitialModel("mc", "wc", "mc", false, mcpserver.PredefinedMcpServers)
 	// Seed terminal dimensions
 	mCore.Width = 120
 	mCore.Height = 40

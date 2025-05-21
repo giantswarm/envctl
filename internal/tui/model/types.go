@@ -2,6 +2,7 @@ package model
 
 import (
 	"envctl/internal/dependency"
+	"envctl/internal/mcpserver"
 	"envctl/internal/portforwarding"
 	"envctl/internal/service"
 	"envctl/internal/utils"
@@ -183,6 +184,7 @@ type Model struct {
 	FocusedPanelKey          string
 	McpProxyOrder            []string
 	McpServers               map[string]*McpServerProcess
+	PredefinedMcpServers     []mcpserver.PredefinedMcpServer
 	ActivityLog              []string
 	ActivityLogDirty         bool
 	LogViewportLastWidth     int
