@@ -285,6 +285,61 @@ func TestGetPodNameForPortForward(t *testing.T) {
 			wantErr:             true,
 			desc:                "Should return error for invalid serviceArg format.",
 		},
+		{
+			name:                "service with pod ready but container statuses empty",
+			namespace:           "default",
+			serviceArg:          "service/empty-container-status-svc",
+			remotePodTargetPort: 8080,
+			initialObjects: []runtime.Object{
+				&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "empty-container-status-svc", Namespace: "default"}, Spec: corev1.ServiceSpec{Selector: map[string]string{"app": "empty-cs"}, Ports: []corev1.ServicePort{{Port: 80, TargetPort: intstr.FromInt(8080)}}}},
+				&corev1.Pod{
+					ObjectMeta: metav1.ObjectMeta{Name: "pod-empty-cs", Namespace: "default", Labels: map[string]string{"app": "empty-cs"}},
+					Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: "main"}}}, // Has a container defined
+					Status:     corev1.PodStatus{
+						Phase:             corev1.PodRunning,
+						Conditions:        []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}},
+						ContainerStatuses: []corev1.ContainerStatus{}, // Empty container statuses
+					},
+				},
+			},
+			wantErr:             true, // Should result in "no ready pods found"
+			desc:                "Should not select pod if PodReady but ContainerStatuses is empty while Spec.Containers is not.",
+		},
+		{
+			name:                "service with pod ready but one container not ready",
+			namespace:           "default",
+			serviceArg:          "service/container-not-ready-svc",
+			remotePodTargetPort: 8080,
+			initialObjects: []runtime.Object{
+				&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "container-not-ready-svc", Namespace: "default"}, Spec: corev1.ServiceSpec{Selector: map[string]string{"app": "container-not-ready"}, Ports: []corev1.ServicePort{{Port: 80, TargetPort: intstr.FromInt(8080)}}}},
+				&corev1.Pod{
+					ObjectMeta: metav1.ObjectMeta{Name: "pod-container-not-ready", Namespace: "default", Labels: map[string]string{"app": "container-not-ready"}},
+					Status:     corev1.PodStatus{
+						Phase:      corev1.PodRunning,
+						Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}},
+						ContainerStatuses: []corev1.ContainerStatus{
+							{Name: "main", Ready: true},
+							{Name: "sidecar", Ready: false}, // One container not ready
+						},
+					},
+				},
+			},
+			wantErr:             true, // Should result in "no ready pods found"
+			desc:                "Should not select pod if PodReady but one of its containers is not ready.",
+		},
+		{
+			name:                "service with ready pod, but targetPort mismatch (current code ignores mismatch)",
+			namespace:           "default",
+			serviceArg:          "service/port-mismatch-svc",
+			remotePodTargetPort: 9999, // This port is not in service spec's TargetPort
+			initialObjects: []runtime.Object{
+				&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "port-mismatch-svc", Namespace: "default"}, Spec: corev1.ServiceSpec{Selector: map[string]string{"app": "port-mismatch"}, Ports: []corev1.ServicePort{{Port: 80, TargetPort: intstr.FromInt(8080)}}}},
+				&corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod-port-mismatch", Namespace: "default", Labels: map[string]string{"app": "port-mismatch"}}, Status: corev1.PodStatus{Phase: corev1.PodRunning, Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}}, ContainerStatuses: []corev1.ContainerStatus{{Ready: true}}}},
+			},
+			wantPodName: "pod-port-mismatch", // Currently, the code does not enforce TargetPort match strictly
+			wantErr:     false,             // So, it should still find the pod based on selector if strict check is off
+			desc:        "Should select pod even if remotePodTargetPort doesn't match Service TargetPort (due to current relaxed check).",
+		},
 	}
 
 	for _, tt := range tests {
