@@ -2,12 +2,16 @@ package portforwarding
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"strings"
 	"sync"
 	"syscall"
 )
+
+// startAndManageIndividualPortForwardFn allows mocking of StartAndManageIndividualPortForward for testing StartAllConfiguredPortForwards.
+var startAndManageIndividualPortForwardFn = StartAndManageIndividualPortForward
 
 // StartAllConfiguredPortForwards starts and manages a list of port forwarding configurations.
 // It's designed for non-TUI mode (e.g., CLI usage).
@@ -18,78 +22,96 @@ func StartAllConfiguredPortForwards(
 	updateFn PortForwardUpdateFunc,
 	globalStopChan chan struct{}, // External signal to stop all port forwards
 ) ([]ManagedPortForwardInfo, error) {
+	log.Printf("[StartAll] BEGIN. Num configs: %d", len(configs))
 	var startedPfs []ManagedPortForwardInfo
 	var wg sync.WaitGroup
 
-	// Buffered channel to collect results from each goroutine
 	resultsChan := make(chan ManagedPortForwardInfo, len(configs))
 	errorsChan := make(chan error, len(configs))
 
-	for _, pfConfig := range configs {
+	for i, pfConfig := range configs {
 		wg.Add(1)
-		go func(cfg PortForwardConfig) {
-			defer wg.Done()
+		log.Printf("[StartAll] Goroutine %d for %s: wg.Add(1) called.", i, pfConfig.InstanceKey)
+		go func(cfg PortForwardConfig, idx int) {
+			log.Printf("[StartAll GOROUTINE %d - %s] START. Calling defer wg.Done().", idx, cfg.InstanceKey)
+			defer func() {
+				log.Printf("[StartAll GOROUTINE %d - %s] wg.Done() CALLED.", idx, cfg.InstanceKey)
+				wg.Done()
+			}()
 
-			// Create a specific stop channel for this individual port-forward
-			// This local stopChan will be closed if the globalStopChan is closed.
 			localStopChan := make(chan struct{})
-			cfg.StopChan = localStopChan // Assign to config if needed, though StartAndManageIndividualPortForward creates its own internal one.
+			cfg.StopChan = localStopChan
 
-			// StartAndManageIndividualPortForward uses the kube package (client-go) and returns its own stopChan.
-			processSpecificStopChan, err := StartAndManageIndividualPortForward(cfg, updateFn)
+			log.Printf("[StartAll GOROUTINE %d - %s] Calling startAndManageIndividualPortForwardFn.", idx, cfg.InstanceKey)
+			processSpecificStopChan, err := startAndManageIndividualPortForwardFn(cfg, updateFn)
+			log.Printf("[StartAll GOROUTINE %d - %s] startAndManageIndividualPortForwardFn returned. Error: %v", idx, cfg.InstanceKey, err)
 
 			managedInfo := ManagedPortForwardInfo{
 				Config:       cfg,
-				StopChan:     processSpecificStopChan, // This is the one to close to stop this specific PF
+				StopChan:     processSpecificStopChan,
 				InitialError: err,
 			}
 
 			if err != nil {
+				log.Printf("[StartAll GOROUTINE %d - %s] Startup error: %v. Sending to errorsChan.", idx, cfg.InstanceKey, err)
 				errorsChan <- fmt.Errorf("error starting port-forward '%s': %w", cfg.Label, err)
-				resultsChan <- managedInfo // Send info even on error for tracking
+				resultsChan <- managedInfo
+				log.Printf("[StartAll GOROUTINE %d - %s] RETURN after error.", idx, cfg.InstanceKey)
 				return
 			}
 
+			log.Printf("[StartAll GOROUTINE %d - %s] Startup success. Sending to resultsChan.", idx, cfg.InstanceKey)
 			resultsChan <- managedInfo
+			log.Printf("[StartAll GOROUTINE %d - %s] Entering select block.", idx, cfg.InstanceKey)
 
-			// Wait for either the global stop signal or the individual process to stop on its own.
 			select {
 			case <-globalStopChan:
+				log.Printf("[StartAll GOROUTINE %d - %s] SELECT CASE: Received from globalStopChan.", idx, cfg.InstanceKey)
 				if processSpecificStopChan != nil {
-					// updateFn might log this as "Stopped (requested)"
-					close(processSpecificStopChan) // Signal the specific port forward to stop
+					log.Printf("[StartAll GOROUTINE %d - %s] SELECT CASE: Closing processSpecificStopChan.", idx, cfg.InstanceKey)
+					close(processSpecificStopChan)
+				} else {
+					log.Printf("[StartAll GOROUTINE %d - %s] SELECT CASE: processSpecificStopChan is nil, not closing.", idx, cfg.InstanceKey)
 				}
+				log.Printf("[StartAll GOROUTINE %d - %s] SELECT CASE: RETURN after globalStopChan.", idx, cfg.InstanceKey)
 				return
-			case <-processSpecificStopChan: // This case might not be strictly necessary if StartAndManage handles its own termination logging
-				// The process stopped on its own (e.g. error, or client-go internal issue)
-				// updateFn inside StartAndManageIndividualPortForward should have already reported this.
+			case <-processSpecificStopChan:
+				log.Printf("[StartAll GOROUTINE %d - %s] SELECT CASE: Received from processSpecificStopChan. Process stopped on its own.", idx, cfg.InstanceKey)
+				log.Printf("[StartAll GOROUTINE %d - %s] SELECT CASE: RETURN after processSpecificStopChan.", idx, cfg.InstanceKey)
 				return
 			}
-		}(pfConfig)
+		}(pfConfig, i)
 	}
 
 	go func() {
+		log.Printf("[StartAll wg.Wait GOROUTINE] Waiting on wg.Wait().")
 		wg.Wait()
+		log.Printf("[StartAll wg.Wait GOROUTINE] wg.Wait() completed. Closing resultsChan and errorsChan.")
 		close(resultsChan)
 		close(errorsChan)
 	}()
 
-	var firstError error
+	var firstError error // Declare firstError here, once.
+	log.Printf("[StartAll] Reading from resultsChan...")
 	for res := range resultsChan {
+		log.Printf("[StartAll] Received from resultsChan: %+v", res)
 		startedPfs = append(startedPfs, res)
-		if res.InitialError != nil && firstError == nil {
-			firstError = res.InitialError // Capture the first error encountered during startup
+		if res.InitialError != nil && firstError == nil { // firstError is now in scope
+			firstError = res.InitialError
 		}
 	}
+	log.Printf("[StartAll] Finished reading from resultsChan. Num startedPfs: %d", len(startedPfs))
 
-	// Check for errors sent explicitly to errorsChan as well
+	log.Printf("[StartAll] Reading from errorsChan...")
 	for err := range errorsChan {
-		if err != nil && firstError == nil {
+		log.Printf("[StartAll] Received from errorsChan: %v", err)
+		if err != nil && firstError == nil { // firstError is in scope
 			firstError = err
 		}
-		// Optionally collect all errors if needed
 	}
+	log.Printf("[StartAll] Finished reading from errorsChan.")
 
+	log.Printf("[StartAll] END. Returning %d startedPfs, error: %v", len(startedPfs), firstError)
 	return startedPfs, firstError
 }
 

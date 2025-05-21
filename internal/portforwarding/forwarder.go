@@ -6,6 +6,9 @@ import (
 	"strings"
 )
 
+// KubeStartPortForwardClientGoFn allows mocking of kube.StartPortForwardClientGo for testing.
+var KubeStartPortForwardFn = kube.StartPortForwardClientGo
+
 // StartAndManageIndividualPortForward starts a single port-forward using the Kubernetes Go
 // client via the internal kube package.
 // It does not spawn any external processes.
@@ -47,7 +50,7 @@ func StartAndManageIndividualPortForward(
 
 	portMap := fmt.Sprintf("%s:%s", cfg.LocalPort, cfg.RemotePort)
 
-	stop, initialStatus, err := kube.StartPortForwardClientGo(
+	stop, initialStatus, err := KubeStartPortForwardFn(
 		cfg.KubeContext,
 		cfg.Namespace,
 		cfg.ServiceName,
