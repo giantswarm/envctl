@@ -59,36 +59,11 @@ var (
 	LogPanelTitleStyle = lipgloss.NewStyle().Bold(true).Padding(0, 1).MarginBottom(1).Foreground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"})
 
 	// --- Help Overlay Styles ---
-	// Help overlay style for the main container
-	HelpOverlayStyle = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}).
-				Background(lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#222222"}).
-				Foreground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}).
-				Padding(1, 2).
-				Margin(2, 4)
-
 	// Help overlay title style (re-added for bubbles/help container)
 	HelpTitleStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}).
-			Background(lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#1E1E1E"}).
 			MarginBottom(1).
 			Align(lipgloss.Center)
-
-	// Help section title style
-	HelpSectionStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}).
-				MarginTop(1).
-				MarginBottom(1)
-
-	// Help key style for keyboard shortcut keys
-	HelpKeyStyle = lipgloss.NewStyle().
-			Background(lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#1E1E1E"}).
-			Foreground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}).
-			Padding(0, 1).
-			Margin(0, 1, 0, 0)
 
 	// --- Log Overlay Styles (similar to Help Overlay) ---
 	LogOverlayStyle = lipgloss.NewStyle().
@@ -179,9 +154,7 @@ var (
 	CenteredOverlayContainerStyle = lipgloss.NewStyle().
 						Border(lipgloss.RoundedBorder()).
 						BorderForeground(lipgloss.AdaptiveColor{Light: "#AAAAAA", Dark: "#666666"}).
-						// Background for the container itself. The actual help bubble will have its own bg.
-						// This style is for the box that lipgloss.Place will draw.
-						Background(lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#2A2A2A"}). // Re-enable solid background
+						Background(HelpOverlayBgColor).
 						Padding(1, 2)
 
 	// --- Status Bar Styles ---

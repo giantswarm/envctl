@@ -6,9 +6,17 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/help"
+	// "github.com/charmbracelet/bubbles/help" // No longer needed
 	"github.com/charmbracelet/lipgloss"
 )
+
+// max helper function (consider moving to a utility package if used elsewhere)
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
 
 // Render renders the UI according to the current model state.
 func Render(m *model.Model) string {
@@ -99,20 +107,84 @@ func Render(m *model.Model) string {
 		return color.AppStyle.Width(m.Width).Render(mainView)
 
 	case model.ModeHelpOverlay:
-		// Configure help styles just before rendering it
-		m.Help.Styles = help.Styles{
-			Ellipsis:       lipgloss.NewStyle().Foreground(color.HelpOverlayEllipsisFgColor).Background(color.HelpOverlayBgColor),
-			FullDesc:       lipgloss.NewStyle().Foreground(color.HelpOverlayDescFgColor).Background(color.HelpOverlayBgColor),
-			FullKey:        lipgloss.NewStyle().Foreground(color.HelpOverlayKeyFgColor).Bold(true),
-			ShortDesc:      lipgloss.NewStyle().Foreground(color.HelpOverlayDescFgColor).Background(color.HelpOverlayBgColor),
-			ShortKey:       lipgloss.NewStyle().Foreground(color.HelpOverlayKeyFgColor).Bold(true),
-			ShortSeparator: lipgloss.NewStyle().Foreground(color.HelpOverlaySeparatorFgColor).Background(color.HelpOverlayBgColor).SetString(" • "),
-		}
 		titleView := color.HelpTitleStyle.Render("KEYBOARD SHORTCUTS")
-		helpContentView := m.Help.View(m.Keys)
-		content := lipgloss.JoinVertical(lipgloss.Left, titleView, helpContentView)
-		style := color.McpConfigOverlayStyle.Copy().Padding(1, 2)
-		container := style.Render(content)
+
+		var helpLines []string
+
+		columnSeparator := "  "
+		interColumnGap := "   " // Space between logical columns (key+desc pairs)
+		descColumnWidth := 20      // Approximate width for description text for inter-column padding
+
+		keyBindingColumns := m.Keys.FullHelp() // [][]key.Binding, outer slice is columns
+
+		if len(keyBindingColumns) == 0 {
+			helpLines = append(helpLines, "No keybindings configured.")
+		} else {
+			// Pre-calculate the maximum width needed for keys IN EACH COLUMN
+			maxKeyWidths := make([]int, len(keyBindingColumns))
+			for c, column := range keyBindingColumns {
+				currentMax := 0
+				for _, binding := range column {
+					keyWidth := lipgloss.Width(binding.Help().Key)
+					if keyWidth > currentMax {
+						currentMax = keyWidth
+					}
+				}
+				maxKeyWidths[c] = currentMax
+			}
+
+			maxRows := 0
+			for _, column := range keyBindingColumns {
+				if len(column) > maxRows {
+					maxRows = len(column)
+				}
+			}
+
+			for r := 0; r < maxRows; r++ { // Iterate down the visual rows
+				var currentLineStrBuilder strings.Builder
+				for c := 0; c < len(keyBindingColumns); c++ { // Iterate across the columns
+					if r < len(keyBindingColumns[c]) { // Check if current column has a binding for this row
+						binding := keyBindingColumns[c][r]
+						keyText := binding.Help().Key
+						descText := binding.Help().Desc
+
+						currentColKeyDisplayWidth := maxKeyWidths[c]
+						currentKeyActualWidth := lipgloss.Width(keyText) 
+						paddingForKey := ""
+						if currentKeyActualWidth < currentColKeyDisplayWidth {
+							paddingForKey = strings.Repeat(" ", currentColKeyDisplayWidth-currentKeyActualWidth)
+						}
+						currentLineStrBuilder.WriteString(keyText)
+						currentLineStrBuilder.WriteString(paddingForKey)
+						currentLineStrBuilder.WriteString(columnSeparator)
+						currentLineStrBuilder.WriteString(descText)
+						
+						if c < len(keyBindingColumns)-1 {
+							currentDescActualWidth := lipgloss.Width(descText)
+							paddingForDesc := ""
+							if currentDescActualWidth < descColumnWidth {
+								paddingForDesc = strings.Repeat(" ", descColumnWidth-currentDescActualWidth)
+							}
+							currentLineStrBuilder.WriteString(paddingForDesc)
+							currentLineStrBuilder.WriteString(interColumnGap)
+						}
+					} else {
+						if c < len(keyBindingColumns)-1 {
+							fullCellWidthEstimate := maxKeyWidths[c] + len(columnSeparator) + descColumnWidth + len(interColumnGap)
+							currentLineStrBuilder.WriteString(strings.Repeat(" ", fullCellWidthEstimate))
+						}
+					}
+				}
+				helpLines = append(helpLines, currentLineStrBuilder.String())
+			}
+		}
+
+		helpContent := strings.Join(helpLines, "\n")
+		
+		finalContentString := titleView + "\n" + helpContent
+		
+		container := color.CenteredOverlayContainerStyle.Render(finalContentString)
+
 		return lipgloss.Place(m.Width, m.Height, lipgloss.Center, lipgloss.Center, container, lipgloss.WithWhitespaceBackground(lipgloss.AdaptiveColor{Light: "rgba(0,0,0,0.1)", Dark: "rgba(0,0,0,0.6)"}))
 
 	case model.ModeLogOverlay:

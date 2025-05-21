@@ -72,7 +72,13 @@ func handleKeyMsgGlobal(m *model.Model, keyMsg tea.KeyMsg, existingCmds []tea.Cm
 	}
 
 	if m.CurrentAppMode == model.ModeHelpOverlay {
-		return m, nil // Help overlay handled elsewhere
+		// If help overlay is active, Esc should close it.
+		// The 'h' key (m.Keys.Help) is handled in the switch below to toggle.
+		if key.Matches(keyMsg, m.Keys.Esc) {
+			m.CurrentAppMode = model.ModeMainDashboard
+			return m, nil
+		}
+		// Allow other keys (like 'h' itself) to be processed by the switch below.
 	}
 
 	// --- Check against m.Keys for bubbletea/keys standard handling ---
