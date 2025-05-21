@@ -17,25 +17,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// getManagementClusterContextIdentifier generates the MC part of a kube context name.
-// func (m *model) getManagementClusterContextIdentifier() string {
-//     return m.managementCluster
-// }
-
-// getWorkloadClusterContextIdentifier generates the WC context identifier based on MC and WC names.
-// func (m *model) getWorkloadClusterContextIdentifier() string {
-//     if m.workloadCluster == "" {
-//         return ""
-//     }
-//     if m.managementCluster != "" && strings.HasPrefix(m.workloadCluster, m.managementCluster+"-") {
-//         return m.workloadCluster
-//     }
-//     if m.managementCluster != "" {
-//         return m.managementCluster + "-" + m.workloadCluster
-//     }
-//     return m.workloadCluster
-// }
-
 // DefaultKeyMap returns a KeyMap with the default bindings used by the TUI.
 // Moved from controller package.
 func DefaultKeyMap() KeyMap { // Returns model.KeyMap (KeyMap is in this package)

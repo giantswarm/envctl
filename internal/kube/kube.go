@@ -386,7 +386,7 @@ func DetermineClusterProvider(contextName string) (string, error) {
 		return "", fmt.Errorf("failed to create Kubernetes clientset for context '%s': %w", k8sContextName, err)
 	}
 
-	nodes, err := clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{Limit: 1})
+	nodes, err := clientset.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{Limit: 1})
 	if err != nil {
 		return "", fmt.Errorf("failed to list nodes in context '%s': %w", k8sContextName, err)
 	}

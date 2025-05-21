@@ -3,6 +3,7 @@ package model_test
 import (
 	"context"
 	"envctl/internal/k8smanager" // NEW: for KubeManagerAPI and its types
+
 	// For ServiceManagerAPI if needed (nil for now)
 	"envctl/internal/mcpserver"
 
@@ -343,7 +344,6 @@ func TestMessageHandling(t *testing.T) {
 			},
 			description: "SetStatusMessage should update message, type, and manage cancellation channel.",
 		},
-		// TODO: Add test for other relevant messages mentioned in the issue
 	}
 
 	for _, tt := range tests {

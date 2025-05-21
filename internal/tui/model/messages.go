@@ -107,5 +107,3 @@ type ServiceStopResultMsg struct {
 	Label string
 	Err   error // nil if successful
 }
-
-// TODO: Add more message types as needed for TUI interactions.

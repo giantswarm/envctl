@@ -190,7 +190,6 @@ func TestKubeManager_ListClusters(t *testing.T) {
 	if !reflect.DeepEqual(cl.WorkloadClusters, expectedWCs) {
 		t.Errorf("WorkloadClusters mismatch:\nGot:  %v\nWant: %v", cl.WorkloadClusters, expectedWCs)
 	}
-	// TODO: Test AllClusters and ContextNames fields
 }
 
 func TestKubeManager_GetCurrentContext(t *testing.T) {

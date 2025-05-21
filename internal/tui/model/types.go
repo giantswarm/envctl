@@ -261,44 +261,6 @@ type McpServerProcess struct { // Renamed from mcpServerProcess
 	StatusMsg string        // Exported, Detailed status message for display.
 }
 
-// -----------------------------------------------------------------------------
-// Cluster context helpers (REMOVED as per refactoring plan)
-// -----------------------------------------------------------------------------
-
-// ClusterContextKind indicates whether a context belongs to a Management
-// Cluster or a Workload Cluster.
-// type ClusterContextKind int // REMOVED
-
-// const ( // REMOVED
-// 	ContextMC ClusterContextKind = iota
-// 	ContextWC
-// )
-
-// ClusterContext wraps the most important derived strings for a specific
-// cluster.
-// // REMOVED
-// //   Kind        → MC or WC
-// //   Identifier  → canonical cluster identifier used inside Teleport ("ghost" or
-// //                 "ghost-acme")
-// //   FullContext → full kube-context as it appears in kubeconfig
-// //                 ("teleport.giantswarm.io-ghost[-acme]")
-// type ClusterContext struct { // REMOVED
-// 	Kind        ClusterContextKind
-// 	Identifier  string
-// 	FullContext string
-// }
-
-// McContext returns the fully-qualified context information for the currently
-// configured Management Cluster. If no MC is configured the Identifier /
-// FullContext strings will be empty.
-// func (m *model) McContext() ClusterContext { // REMOVED
-// }
-
-// WcContext returns the context information for the currently configured
-// Workload Cluster. The second return value is false when no WC is configured.
-// func (m *model) WcContext() (ClusterContext, bool) { // REMOVED
-// }
-
 // SetStatusMessage updates the status bar message and schedules clearing it after the given duration.
 func (m *Model) SetStatusMessage(message string, msgType MessageType, clearAfter time.Duration) tea.Cmd {
 	m.StatusBarMessage = message

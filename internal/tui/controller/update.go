@@ -16,7 +16,6 @@ import (
 // based on the message type and current application mode.
 // It's responsible for updating the model and queuing up any necessary commands.
 func mainControllerDispatch(m *model.Model, msg tea.Msg) (*model.Model, tea.Cmd) {
-	// recordMsgSample(msg) // This was in model.Update, model can do it or controller if msg is passed through
 	var cmds []tea.Cmd
 	var cmd tea.Cmd
 
@@ -217,6 +216,9 @@ func handleServiceUpdateMsg(m *model.Model, msg model.ServiceUpdateMsg) (*model.
 			if update.OutputLog != "" {
 				mcpProcess.Output = append(mcpProcess.Output, update.OutputLog)
 				// TODO: Limit McpServerProcess output log size similarly to PortForwards
+				if len(mcpProcess.Output) > model.MaxPanelLogLines {
+					mcpProcess.Output = mcpProcess.Output[len(mcpProcess.Output)-model.MaxPanelLogLines:]
+				}
 			}
 			LogDebug(m, "[Controller] Updated McpServer '%s': Status=%s", update.Label, mcpProcess.StatusMsg)
 		} else {
