@@ -1,10 +1,12 @@
 package model
 
 import (
+	"envctl/internal/k8smanager"
+	"envctl/internal/managers"
 	"envctl/internal/mcpserver"
 	"envctl/internal/portforwarding"
-	"envctl/internal/service"
 	"fmt"
+	"sync"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
@@ -106,7 +108,14 @@ func DefaultKeyMap() KeyMap { // Returns model.KeyMap (KeyMap is in this package
 }
 
 // InitialModel constructs the initial model with sensible defaults.
-func InitialModel(mcName, wcName, kubeContext string, tuiDebug bool, mcpServerConfig []mcpserver.MCPServerConfig, portForwardingConfig []portforwarding.PortForwardingConfig) *Model {
+func InitialModel(
+	mcName, wcName, kubeContext string, 
+	tuiDebug bool, 
+	mcpServerConfig []mcpserver.MCPServerConfig, 
+	portForwardingConfig []portforwarding.PortForwardingConfig, 
+	serviceMgr managers.ServiceManagerAPI,
+	kubeMgr k8smanager.KubeManagerAPI,
+) *Model {
 	ti := textinput.New()
 	ti.Placeholder = "Management Cluster"
 	ti.CharLimit = 156
@@ -131,6 +140,8 @@ func InitialModel(mcName, wcName, kubeContext string, tuiDebug bool, mcpServerCo
 		CurrentKubeContext:       kubeContext,
 		MCPServerConfig:          mcpServerConfig,
 		PortForwardingConfig:     portForwardingConfig,
+		ServiceManager:           serviceMgr,
+		KubeMgr:                  kubeMgr,
 		PortForwards:             make(map[string]*PortForwardProcess),
 		PortForwardOrder:         make([]string, 0),
 		McpServers:               make(map[string]*McpServerProcess),
@@ -152,7 +163,6 @@ func InitialModel(mcName, wcName, kubeContext string, tuiDebug bool, mcpServerCo
 		Keys:                     DefaultKeyMap(),
 		Help:                     help.New(),
 		McpConfigViewport:        viewport.New(0, 0),
-		Services:                 service.Default(),
 		StashedMcName:            "",
 		ClusterInfo:              nil,
 		DependencyGraph:          nil,
@@ -185,21 +195,74 @@ func channelReaderCmd(ch chan tea.Msg) tea.Cmd {
 	}
 }
 
-// Init implements tea.Model and starts asynchronous bootstrap tasks for the model itself.
-// Controller-level command dispatch will be handled by controller.AppModel.Init().
+// Init implements tea.Model and starts asynchronous bootstrap tasks.
+// It now also starts the port forwarding and MCP services using the ServiceManager.
 func (m *Model) Init() tea.Cmd {
 	var cmds []tea.Cmd
 
-	// Listen for async messages on the model's TUIChannel (if model directly uses it for internal ops)
-	if m.TUIChannel != nil { // Check if TUIChannel is part of model's direct responsibility
+	if m.ServiceManager == nil {
+		// This should not happen if InitialModel and NewProgram are correctly wired
+		errMsg := "ServiceManager not initialized in TUI model"
+		m.ActivityLog = append(m.ActivityLog, errMsg)
+		m.QuittingMessage = errMsg
+		return tea.Quit // or some error message
+	}
+
+	// 1. Prepare ManagedServiceConfig slice
+	var managedServiceConfigs []managers.ManagedServiceConfig
+	for _, pfCfg := range m.PortForwardingConfig { // These are populated by InitialModel
+		managedServiceConfigs = append(managedServiceConfigs, managers.ManagedServiceConfig{
+			Type:   managers.ServiceTypePortForward,
+			Label:  pfCfg.Label,
+			Config: pfCfg,
+		})
+	}
+	for _, mcpCfg := range m.MCPServerConfig { // These are populated by InitialModel
+		managedServiceConfigs = append(managedServiceConfigs, managers.ManagedServiceConfig{
+			Type:   managers.ServiceTypeMCPServer,
+			Label:  mcpCfg.Name,
+			Config: mcpCfg,
+		})
+	}
+
+	// 2. Define the TUI service update callback
+	tuiServiceUpdateCb := func(update managers.ManagedServiceUpdate) {
+		if m.TUIChannel != nil {
+			// Send the update to the TUI's main channel to be processed in Model.Update
+			// This runs in the goroutine of the service manager, so it must not block.
+			// Ensure TUIChannel is buffered or consumed promptly.
+			m.TUIChannel <- ServiceUpdateMsg{Update: update}
+		}
+	}
+
+	// 3. Create a command to start all services
+	if len(managedServiceConfigs) > 0 {
+		startServicesCmd := func() tea.Msg {
+			// The WaitGroup here is for the ServiceManager's internal goroutines.
+			// The TUI model might have its own WaitGroup for other async tasks if needed.
+			var wg sync.WaitGroup 
+			_, startupErrors := m.ServiceManager.StartServices(managedServiceConfigs, tuiServiceUpdateCb, &wg)
+			
+			// We need a way to signal the TUI that all services have been *attempted* to start
+			// and to pass any initial startup errors. Using AllServicesStartedMsg for this.
+			// Note: This message is sent after StartServices returns. Individual updates
+			// will arrive via tuiServiceUpdateCb.
+			return AllServicesStartedMsg{InitialStartupErrors: startupErrors}
+		}
+		cmds = append(cmds, startServicesCmd)
+	}
+
+	// Listen for async messages on the model's TUIChannel
+	if m.TUIChannel != nil {
 		cmds = append(cmds, channelReaderCmd(m.TUIChannel))
 	}
 
-	// Spinner tick is closely tied to model's IsLoading state view
+	// Spinner tick
 	cmds = append(cmds, m.Spinner.Tick)
 
-	// Initial commands related to fetching cluster info, health, port-forwards, MCPs
-	// are now dispatched by controller.AppModel.Init() after this model.Init() completes.
+	// Any other initial commands previously dispatched by controller.AppModel.Init() 
+	// or specific to the model's setup would go here.
+	// For example, fetching initial cluster health, etc. (These might also become services managed by ServiceManager if complex)
 
 	return tea.Batch(cmds...)
 }

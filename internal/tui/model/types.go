@@ -2,10 +2,10 @@ package model
 
 import (
 	"envctl/internal/dependency"
+	"envctl/internal/k8smanager"
+	"envctl/internal/managers"
 	"envctl/internal/mcpserver"
 	"envctl/internal/portforwarding"
-	"envctl/internal/service"
-	"envctl/internal/utils"
 	"time"
 
 	"github.com/charmbracelet/bubbles/help"
@@ -172,7 +172,22 @@ func (k KeyMap) InputModeHelp() [][]key.Binding {
 // model represents the state of the entire TUI application. Keeping this definition
 // close to the basic types makes it easier to reason about the data structure.
 type Model struct {
-	// --- Cluster Information ---
+	// Terminal dimensions
+	width  int
+	height int
+
+	// Global application state
+	QuitApp              bool
+	IsLoading            bool
+	CurrentAppMode       AppMode
+	LastAppMode          AppMode // To return to after modal dialogs
+	FocusedPanelKey      string  // Tracks which major panel (e.g. port forward, mcp server, log) has focus
+	DebugMode            bool
+	ColorMode            string                 // Stores info about current color profile and dark mode
+	ServiceManager       managers.ServiceManagerAPI
+	KubeMgr              k8smanager.KubeManagerAPI
+
+	// Cluster and Connection Info
 	ManagementClusterName string
 	WorkloadClusterName   string
 	CurrentKubeContext    string
@@ -183,7 +198,6 @@ type Model struct {
 	PortForwardingConfig []portforwarding.PortForwardingConfig
 	PortForwards         map[string]*PortForwardProcess
 	PortForwardOrder     []string
-	FocusedPanelKey      string
 	McpProxyOrder        []string
 	McpServers           map[string]*McpServerProcess
 	MCPServerConfig      []mcpserver.MCPServerConfig
@@ -194,27 +208,21 @@ type Model struct {
 	MainLogViewportLastWidth int
 	Width, Height            int
 	// Re-export fields that were unexported due to ViewModel conflict
-	DebugMode            bool   // Re-exported (was debugMode)
-	ColorMode            string // Re-exported (was colorMode)
 	LogViewport          viewport.Model
 	MainLogViewport      viewport.Model
 	McpConfigViewport    viewport.Model
+	Spinner              spinner.Model
+	NewConnectionInput   textinput.Model
+	CurrentInputStep     InputStep
+	StashedMcName        string
+	ClusterInfo          *k8smanager.ClusterList
+	Keys                 KeyMap
+	Help                 help.Model
+	TUIChannel           chan tea.Msg
+	DependencyGraph      *dependency.Graph
 	StatusBarMessage     string
 	StatusBarMessageType MessageType
 	StatusBarClearCancel chan struct{}
-	IsLoading            bool          // Re-exported (was isLoading)
-	Spinner              spinner.Model // Re-exported (was spinner)
-	CurrentAppMode       AppMode
-	DependencyGraph      *dependency.Graph
-	// Re-export fields that were unexported due to ViewModel conflict
-	NewConnectionInput textinput.Model // Re-exported (was newConnectionInput)
-	CurrentInputStep   InputStep       // Re-exported (was currentInputStep)
-	StashedMcName      string          // Re-exported (was stashedMcName)
-	ClusterInfo        *utils.ClusterInfo
-	Keys               KeyMap
-	Help               help.Model
-	TUIChannel         chan tea.Msg
-	Services           service.Services
 }
 
 // Other structs that might need field export if used cross-package

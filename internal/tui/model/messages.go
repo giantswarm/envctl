@@ -1,8 +1,8 @@
 package model
 
 import (
-	"envctl/internal/portforwarding"
-	"envctl/internal/utils"
+	"envctl/internal/k8smanager"
+	"envctl/internal/managers"
 )
 
 // ---- New connection flow messages ----
@@ -46,7 +46,7 @@ type KubeContextSwitchedMsg struct {
 }
 
 type ClusterListResultMsg struct {
-	Info *utils.ClusterInfo
+	Info *k8smanager.ClusterList
 	Err  error
 }
 
@@ -70,33 +70,7 @@ type RequestClusterHealthUpdate struct{}
 
 // ---- Port-forward messages ----
 
-type PortForwardCoreUpdateMsg struct {
-	Update portforwarding.PortForwardProcessUpdate
-}
-
-type PortForwardSetupResultMsg struct {
-	InstanceKey string
-	StopChan    chan struct{}
-	Err         error
-}
-
 // ---- MCP proxy messages ----
-
-type McpServerSetupCompletedMsg struct {
-	Label    string
-	StopChan chan struct{}
-	PID      int
-	Status   string
-	Err      error
-}
-
-type McpServerStatusUpdateMsg struct {
-	Label     string
-	PID       int
-	Status    string
-	OutputLog string
-	Err       error
-}
 
 type RestartMcpServerMsg struct {
 	Label string
@@ -109,5 +83,29 @@ type ClearStatusBarMsg struct{}
 // NopMsg is a message that performs no operation, useful for testing
 // or triggering updates without specific side effects.
 type NopMsg struct{}
+
+// ---- ServiceManager related messages (NEW - KEEP THESE) ----
+type ServiceUpdateMsg struct {
+	Update managers.ManagedServiceUpdate
+}
+
+// ServiceErrorMsg is a more specific message for critical errors from a service,
+// though ServiceUpdateMsg can also carry error information.
+// This could be used for errors that need special handling or distinct logging.
+type ServiceErrorMsg struct {
+	Label string
+	Err   error
+}
+
+// AllServicesStartedMsg can be sent after the initial batch of services has been processed by StartServices.
+type AllServicesStartedMsg struct {
+	InitialStartupErrors []error
+}
+
+// ServiceStopResultMsg is sent after an attempt to stop a service.
+type ServiceStopResultMsg struct {
+	Label string
+	Err   error // nil if successful
+}
 
 // TODO: Add more message types as needed for TUI interactions.

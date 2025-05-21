@@ -4,7 +4,6 @@ import (
 	// For mcpserver.MCPServerConfig type if needed by other funcs in this pkg
 	"envctl/internal/tui/model"
 	"envctl/internal/tui/view"
-	"envctl/internal/utils"
 
 	"time"
 
@@ -55,36 +54,31 @@ func NewAppModel(m *model.Model, mcName, wcName string) *AppModel {
 func (a *AppModel) Init() tea.Cmd {
 	var modelCmds tea.Cmd
 	if a.model != nil {
-		modelCmds = a.model.Init() // Call model's own Init first
+		modelCmds = a.model.Init() // This now starts services via ServiceManager
 	}
 
 	var controllerCmds []tea.Cmd
 
-	// Commands previously in model.Init, now dispatched by controller
-	controllerCmds = append(controllerCmds, GetCurrentKubeContextCmd(a.model.Services.Cluster))
-	controllerCmds = append(controllerCmds, FetchClusterListCmd())
+	if a.model.KubeMgr == nil { // Guard against nil KubeMgr
+		LogInfo(a.model, "KubeManager not available in AppModel.Init, skipping some initial commands.")
+		// Potentially return an error or a message to display to the user
+	} else {
+		controllerCmds = append(controllerCmds, GetCurrentKubeContextCmd(a.model.KubeMgr))
+		controllerCmds = append(controllerCmds, FetchClusterListCmd(a.model.KubeMgr))
 
-	if a.model.ManagementClusterName != "" {
-		mcTargetContext := utils.BuildMcContext(a.model.ManagementClusterName)
-		controllerCmds = append(controllerCmds, FetchNodeStatusCmd(mcTargetContext, true, a.model.ManagementClusterName))
-	}
-	if a.model.WorkloadClusterName != "" && a.model.ManagementClusterName != "" {
-		wcTargetContext := utils.BuildWcContext(a.model.ManagementClusterName, a.model.WorkloadClusterName)
-		controllerCmds = append(controllerCmds, FetchNodeStatusCmd(wcTargetContext, false, a.model.WorkloadClusterName))
-	}
-
-	// SetupPortForwards and BuildDependencyGraph were already moved to NewAppModel for initial setup.
-	// GetInitialPortForwardCmds should operate on the now configured model.
-	controllerCmds = append(controllerCmds, GetInitialPortForwardCmds(a.model)...)
-
-	if proxyCmds := StartMcpProxiesCmd(a.model.MCPServerConfig, a.model.Services.Proxy, a.model.TUIChannel); len(proxyCmds) > 0 { // Use renamed field
-		controllerCmds = append(controllerCmds, proxyCmds...)
+		if a.model.ManagementClusterName != "" {
+			mcTargetContext := a.model.KubeMgr.BuildMcContextName(a.model.ManagementClusterName)
+			controllerCmds = append(controllerCmds, FetchNodeStatusCmd(a.model.KubeMgr, mcTargetContext, true, a.model.ManagementClusterName))
+		}
+		if a.model.WorkloadClusterName != "" && a.model.ManagementClusterName != "" {
+			wcTargetContext := a.model.KubeMgr.BuildWcContextName(a.model.ManagementClusterName, a.model.WorkloadClusterName)
+			controllerCmds = append(controllerCmds, FetchNodeStatusCmd(a.model.KubeMgr, wcTargetContext, false, a.model.WorkloadClusterName))
+		}
 	}
 
 	tickCmd := tea.Tick(HealthUpdateInterval, func(t time.Time) tea.Msg { return model.RequestClusterHealthUpdate{} })
 	controllerCmds = append(controllerCmds, tickCmd)
 
-	// Combine model's own init commands (if any) with controller's commands
 	finalCmds := []tea.Cmd{modelCmds}
 	finalCmds = append(finalCmds, controllerCmds...)
 

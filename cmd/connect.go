@@ -2,7 +2,8 @@ package cmd
 
 import (
 	"envctl/internal/color"
-	"envctl/internal/kube"
+	"envctl/internal/k8smanager"
+	"envctl/internal/managers"
 	"envctl/internal/mcpserver"
 	"envctl/internal/portforwarding"
 	"envctl/internal/tui/controller"
@@ -10,7 +11,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -63,12 +63,13 @@ Arguments:
 			fullWorkloadClusterIdentifier = managementClusterArg + "-" + workloadClusterArg
 		}
 
+		kubeMgr := k8smanager.NewKubeManager()
+
 		fmt.Println("--- Kubernetes Login ---")
 
-		// Login to Management Cluster if specified
 		if managementClusterArg != "" {
 			fmt.Printf("Attempting to login to Management Cluster: %s\n", managementClusterArg)
-			mcLoginStdout, mcLoginStderr, err := utils.LoginToKubeCluster(managementClusterArg)
+			mcLoginStdout, mcLoginStderr, err := kubeMgr.Login(managementClusterArg)
 			if mcLoginStdout != "" {
 				fmt.Print(mcLoginStdout)
 			}
@@ -80,10 +81,9 @@ Arguments:
 			}
 		}
 
-		// Login to Workload Cluster if specified
 		if fullWorkloadClusterIdentifier != "" {
 			fmt.Printf("Attempting to login to Workload Cluster: %s\n", fullWorkloadClusterIdentifier)
-			wcLoginStdout, wcLoginStderr, wcErr := utils.LoginToKubeCluster(fullWorkloadClusterIdentifier)
+			wcLoginStdout, wcLoginStderr, wcErr := kubeMgr.Login(fullWorkloadClusterIdentifier)
 			if wcLoginStdout != "" {
 				fmt.Print(wcLoginStdout)
 			}
@@ -95,7 +95,7 @@ Arguments:
 			}
 		}
 
-		currentKubeContextAfterLogin, ctxErr := kube.GetCurrentKubeContext()
+		currentKubeContextAfterLogin, ctxErr := kubeMgr.GetCurrentContext()
 		if ctxErr != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to get current Kubernetes context after login: %v\n", ctxErr)
 			currentKubeContextAfterLogin = ""
@@ -103,136 +103,83 @@ Arguments:
 		fmt.Printf("Actual Kubernetes context after login: %s\n", currentKubeContextAfterLogin)
 		fmt.Println("--------------------------")
 
-		if noTUI {
-			fmt.Println("Skipping TUI. Setting up port forwarding and MCP proxies in the background...")
+		portForwardingConfig := portforwarding.GetPortForwardConfig(managementClusterArg, workloadClusterArg)
+		mcpServerConfig := mcpserver.GetMCPServerConfig()
 
-			portForwardingConfig := portforwarding.GetPortForwardConfig(managementClusterArg, workloadClusterArg)
+		if noTUI {
+			fmt.Println("Skipping TUI. Setting up services in the background...")
 
 			var wg sync.WaitGroup
-			allPortForwardsStopChan := make(chan struct{})
-			mcpStopChans := make(map[string]chan struct{})
+			serviceMgr := managers.NewServiceManager()
 
-			portForwardsStarted := false
-			if len(portForwardingConfig) > 0 {
-				fmt.Println("--- Port Forwarding ---")
-				portForwardsStarted = true
-				for _, pfCfg := range portForwardingConfig {
-					wg.Add(1)
-					config := pfCfg
-					go func() {
-						defer wg.Done()
-						fmt.Printf("Attempting to start port-forward for %s on %s to %s:%s (context: %s)...\n",
-							config.Label, config.ServiceName, config.LocalPort, config.RemotePort, config.KubeContext)
-
-						sendUpdateFunc := func(status, outputLog string, isError, isReady bool) {
-							logPrefix := fmt.Sprintf("[%s] ", config.Label)
-							if isError {
-								fmt.Printf("%sERROR: %s %s\n", logPrefix, status, outputLog)
-							} else if isReady {
-								fmt.Printf("%sREADY: %s %s\n", logPrefix, status, outputLog)
-							} else if outputLog != "" {
-								fmt.Printf("%sLOG: %s\n", logPrefix, outputLog)
-							} else if status != "" {
-								fmt.Printf("%sSTATUS: %s\n", logPrefix, status)
-							}
-						}
-
-						portSpec := fmt.Sprintf("%s:%s", config.LocalPort, config.RemotePort)
-						individualStopChan, initialStatus, initialErr := kube.StartPortForwardClientGo(
-							config.KubeContext,
-							config.Namespace,
-							config.ServiceName,
-							portSpec,
-							config.Label,
-							sendUpdateFunc,
-						)
-
-						if initialErr != nil {
-							fmt.Fprintf(os.Stderr, "[%s] Failed to start port-forward: %v. Initial Status: %s\n", config.Label, initialErr, initialStatus)
-							return
-						}
-						if individualStopChan == nil && initialErr == nil {
-							fmt.Fprintf(os.Stderr, "[%s] Port-forward setup returned no error but stop channel is nil. Initial Status: %s\n", config.Label, initialStatus)
-							return
-						}
-
-						fmt.Printf("[%s] Port-forwarding setup initiated. Initial TUI status: %s\n", config.Label, initialStatus)
-
-						select {
-						case <-individualStopChan:
-							fmt.Printf("[%s] Port-forwarding stopped (individual signal).\n", config.Label)
-						case <-allPortForwardsStopChan:
-							fmt.Printf("[%s] Stopping port-forwarding (global signal)...\n", config.Label)
-							close(individualStopChan)
-							fmt.Printf("[%s] Port-forwarding stopped (global signal processed).\n", config.Label)
-						}
-					}()
-				}
-			} else {
-				fmt.Println("No port forwarding configurations found or defined.")
+			var managedServiceConfigs []managers.ManagedServiceConfig
+			for _, pfCfg := range portForwardingConfig {
+				managedServiceConfigs = append(managedServiceConfigs, managers.ManagedServiceConfig{
+					Type:   managers.ServiceTypePortForward,
+					Label:  pfCfg.Label,
+					Config: pfCfg,
+				})
+			}
+			for _, mcpCfg := range mcpServerConfig {
+				managedServiceConfigs = append(managedServiceConfigs, managers.ManagedServiceConfig{
+					Type:   managers.ServiceTypeMCPServer,
+					Label:  mcpCfg.Name,
+					Config: mcpCfg,
+				})
 			}
 
-			fmt.Println("--- MCP Proxies ---")
+			consoleServiceUpdateFn := func(update managers.ManagedServiceUpdate) {
+				logPrefix := fmt.Sprintf("[%s] ", update.Label)
+				serviceTypePrefix := ""
+				if update.Type == managers.ServiceTypePortForward {
+					serviceTypePrefix = "[Port Forward] "
+				} else if update.Type == managers.ServiceTypeMCPServer {
+					serviceTypePrefix = "[MCP Proxy] "
+				}
+				fullPrefix := serviceTypePrefix + logPrefix
 
-			// Define the console update function for MCP servers
-			consoleMcpUpdateFn := func(update mcpserver.McpProcessUpdate) {
-				if update.OutputLog != "" {
-					// OutputLog from StartAndManageIndividualMcpServer includes prefixes and full messages
-					if strings.Contains(update.OutputLog, "STDERR]") || update.IsError {
-						fmt.Fprintln(os.Stderr, update.OutputLog)
+				if update.IsError {
+					errMsg := update.Status
+					if update.OutputLog != "" { errMsg = fmt.Sprintf("%s: %s", errMsg, update.OutputLog) }
+					if update.Error != nil { errMsg = fmt.Sprintf("%s (Error: %v)", errMsg, update.Error) }
+					fmt.Fprintf(os.Stderr, "%sERROR: %s\n", fullPrefix, errMsg)
+				} else if update.IsReady {
+					readyMsg := update.Status
+					if update.OutputLog != "" { readyMsg = fmt.Sprintf("%s: %s", readyMsg, update.OutputLog) }
+					fmt.Printf("%sREADY: %s\n", fullPrefix, readyMsg)
+				} else if update.OutputLog != "" {
+					if update.Status != "" {
+						fmt.Printf("%sLOG: %s - %s\n", fullPrefix, update.Status, update.OutputLog)
 					} else {
-						fmt.Println(update.OutputLog)
+						fmt.Printf("%sLOG: %s\n", fullPrefix, update.OutputLog)
+					}
+				} else if update.Status != "" {
+					fmt.Printf("%sSTATUS: %s\n", fullPrefix, update.Status)
+				}
+			}
+
+			if len(managedServiceConfigs) > 0 {
+				fmt.Println("--- Starting Background Services ---")
+				_, startupErrors := serviceMgr.StartServices(managedServiceConfigs, consoleServiceUpdateFn, &wg)
+				if len(startupErrors) > 0 {
+					fmt.Fprintln(os.Stderr, "Errors during service startup:")
+					for _, err := range startupErrors {
+						fmt.Fprintf(os.Stderr, "- %v\n", err)
 					}
 				}
-			}
-
-			mcpServerConfig := mcpserver.GetMCPServerConfig()
-			managedMcpChan := mcpserver.StartAllMCPServers(mcpServerConfig, consoleMcpUpdateFn, &wg)
-			mcpServersAttempted := false
-			if len(mcpServerConfig) > 0 {
-				mcpServersAttempted = true
-			}
-
-			hasSuccessfullyStartedMcps := false
-			for serverInfo := range managedMcpChan {
-				hasSuccessfullyStartedMcps = true
-				if serverInfo.Err != nil {
-					fmt.Fprintf(os.Stderr, "[MCP Proxy %s] Failed to initialize: %v\n", serverInfo.Label, serverInfo.Err)
-				} else if serverInfo.StopChan != nil {
-					mcpStopChans[serverInfo.Label] = serverInfo.StopChan
-				} else {
-					fmt.Fprintf(os.Stderr, "[MCP Proxy %s] Started without error but StopChan is nil.\n", serverInfo.Label)
-				}
-			}
-			if mcpServersAttempted && !hasSuccessfullyStartedMcps {
-				mcpServersAttempted = false
-			}
-
-			if portForwardsStarted || mcpServersAttempted {
-				fmt.Println("All background processes initiated. Press Ctrl+C to stop.")
+				fmt.Println("All background services initiated. Press Ctrl+C to stop.")
 			} else {
-				fmt.Println("No background processes (port-forwards or MCP proxies) were started. Exiting.")
+				fmt.Println("No background services (port-forwards or MCP proxies) were configured. Exiting.")
 				return nil
 			}
 
 			sigChan := make(chan os.Signal, 1)
 			signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-			select {
-			case <-sigChan:
-				fmt.Println("\nReceived interrupt signal. Shutting down...")
-				if portForwardsStarted {
-					fmt.Println("Stopping port forwards...")
-					close(allPortForwardsStopChan)
-				}
-				if mcpServersAttempted {
-					fmt.Println("Stopping MCP proxies...")
-					for name, stopChan := range mcpStopChans {
-						fmt.Printf("[MCP Proxy %s] Signaling proxy to stop...\n", name)
-						close(stopChan)
-					}
-				}
-			}
+			<-sigChan
+
+			fmt.Println("\nReceived interrupt signal. Shutting down services...")
+			serviceMgr.StopAllServices()
 
 			waitGroupDone := make(chan struct{})
 			go func() {
@@ -242,23 +189,29 @@ Arguments:
 
 			select {
 			case <-waitGroupDone:
-				fmt.Println("All background processes gracefully shut down.")
-			case <-time.After(5 * time.Second):
-				fmt.Println("Timeout waiting for background processes to shut down. Forcing exit.")
+				fmt.Println("All background services gracefully shut down.")
+			case <-time.After(10 * time.Second):
+				fmt.Println("Timeout waiting for background services to shut down. Forcing exit.")
 			}
 
 			return nil
 
 		} else {
 			fmt.Println("Setup complete. Starting TUI...")
-
-			// Initialize color profile for TUI (force dark mode for now)
 			color.Initialize(true)
 
-			mcpServerConfig := mcpserver.GetMCPServerConfig()
-			portForwardingConfig := portforwarding.GetPortForwardConfig(managementClusterArg, workloadClusterArg)
+			serviceMgr := managers.NewServiceManager()
 
-			p := controller.NewProgram(managementClusterArg, workloadClusterArg, currentKubeContextAfterLogin, tuiDebugMode, mcpServerConfig, portForwardingConfig)
+			p := controller.NewProgram(
+				managementClusterArg, 
+				workloadClusterArg, 
+				currentKubeContextAfterLogin, 
+				tuiDebugMode, 
+				mcpServerConfig,      
+				portForwardingConfig, 
+				serviceMgr,
+				kubeMgr,
+			)
 			if _, err := p.Run(); err != nil {
 				fmt.Fprintf(os.Stderr, "Error running TUI: %v\n", err)
 				return err
@@ -297,3 +250,4 @@ func newConnectCmd() *cobra.Command {
 }
 
 // Removed init() function as MCP server config is no longer initialized here.
+

@@ -51,3 +51,35 @@ func StartAllMCPServers(mcpServerConfigs []MCPServerConfig, updateFn McpUpdateFu
 
 	return infoChan
 }
+
+// StartAndManageMCPServersFunc is the type for the StartAndManageMCPServers function, for mocking.
+var StartAndManageMCPServers = defaultStartAndManageMCPServers
+
+// defaultStartAndManageMCPServers is the actual implementation.
+func defaultStartAndManageMCPServers(
+	configs []MCPServerConfig,
+	mcpUpdateFn McpUpdateFunc,
+	wg *sync.WaitGroup,
+) (map[string]chan struct{}, []error) {
+	stopChans := make(map[string]chan struct{})
+	var startupErrors []error
+
+	if len(configs) == 0 {
+		return stopChans, startupErrors
+	}
+
+	managedMcpChan := StartAllMCPServers(configs, mcpUpdateFn, wg)
+
+	for serverInfo := range managedMcpChan {
+		if serverInfo.Err != nil {
+			startupErrors = append(startupErrors, serverInfo.Err)
+		}
+		if serverInfo.StopChan != nil {
+			stopChans[serverInfo.Label] = serverInfo.StopChan
+		} else if serverInfo.Err == nil {
+			// This case (no error but nil stopChan) should ideally not happen.
+		}
+	}
+
+	return stopChans, startupErrors
+}

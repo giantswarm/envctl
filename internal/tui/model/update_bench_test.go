@@ -32,10 +32,15 @@ var benchmarkMsgs = func() []tea.Msg {
 // It mirrors the production InitialModel but disables debug logging to focus
 // on Update-loop cost alone.
 func newBenchModel() tea.Model {
-	mCore := model.InitialModel("mc", "wc", "mc", false, mcpserver.GetMCPServerConfig(), nil)
+	mCore := model.InitialModel("mc", "wc", "mc", false, mcpserver.GetMCPServerConfig(), nil, nil, nil)
 	// Seed terminal dimensions
 	mCore.Width = 120
 	mCore.Height = 40
+
+	// The newBenchModel used by benchmarks should not rely on m.Services being set up with mocks
+	// if the benchmarked Update function doesn't directly use m.KubeMgr methods.
+	// If it does, a mockKubeManager would be needed here too.
+	// For now, assuming KubeMgr methods aren't hit directly in the benchmarked Update paths.
 
 	app := controller.NewAppModel(mCore, "mc", "wc")
 	return app

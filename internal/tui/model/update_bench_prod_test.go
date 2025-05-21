@@ -13,7 +13,8 @@ import (
 // distribution captured from a real session (see msg_sample.json).
 func buildProductionMsgs() []tea.Msg {
 	msgs := make([]tea.Msg, 0,
-		408+4+15+1+2+1+2+1+3+3+2+5+3+1) // preallocate exact capacity
+		// Adjusted capacity estimate after removing old messages
+		408+4+15+1+2+1+2+1+2+1) // Removed counts for McpServerSetup, McpServerStatus, PortForwardCore, PortForwardSetup
 
 	appendN := func(n int, m tea.Msg) {
 		for i := 0; i < n; i++ {
@@ -29,12 +30,14 @@ func buildProductionMsgs() []tea.Msg {
 	appendN(1, model.ClusterListResultMsg{})
 	appendN(2, model.KubeContextResultMsg{})
 	appendN(1, model.KubeContextSwitchedMsg{})
-	appendN(3, model.McpServerSetupCompletedMsg{})
-	appendN(3, model.McpServerStatusUpdateMsg{})
+	// appendN(3, model.McpServerSetupCompletedMsg{}) // COMMENTED OUT - Undefined type
+	// appendN(3, model.McpServerStatusUpdateMsg{})   // COMMENTED OUT - Undefined type
 	appendN(2, model.NodeStatusMsg{})
-	appendN(5, model.PortForwardCoreUpdateMsg{})
-	appendN(3, model.PortForwardSetupResultMsg{})
+	// appendN(5, model.PortForwardCoreUpdateMsg{})  // COMMENTED OUT - Undefined type
+	// appendN(3, model.PortForwardSetupResultMsg{}) // COMMENTED OUT - Undefined type
 	appendN(1, model.RequestClusterHealthUpdate{})
+
+	// TODO: Add new ServiceUpdateMsg, AllServicesStartedMsg, ServiceStopResultMsg to benchmark if desired
 
 	return msgs
 }

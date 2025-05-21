@@ -19,7 +19,7 @@ type ClusterInfo struct {
 // The parsing logic attempts to distinguish between management clusters (e.g., "ceres") and
 // workload clusters (e.g., "ceres-bobcat") based on naming conventions (presence of a hyphen).
 // It returns a pointer to the populated ClusterInfo struct and an error if `tsh kube ls` fails or parsing encounters issues.
-func GetClusterInfo() (*ClusterInfo, error) {
+var GetClusterInfo = func() (*ClusterInfo, error) {
 	cmd := exec.Command("tsh", "kube", "ls")
 	var out bytes.Buffer
 	var stderr bytes.Buffer

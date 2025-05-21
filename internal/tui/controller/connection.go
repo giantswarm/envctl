@@ -1,10 +1,13 @@
 package controller
 
 import (
+	"envctl/internal/managers"
+	"envctl/internal/mcpserver"
+	"envctl/internal/portforwarding"
 	"envctl/internal/tui/model"
-	"envctl/internal/utils"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -92,7 +95,11 @@ func handleSubmitNewConnectionMsg(m *model.Model, msg model.SubmitNewConnectionM
 	m.SetStatusMessage(fmt.Sprintf("Login to %s...", msg.MC), model.StatusBarInfo, 2*time.Second)
 
 	LogInfo(m, "Step 1: Logging into Management Cluster: %s...", msg.MC)
-	return m, PerformKubeLoginCmd(msg.MC, true, msg.WC)
+	if m.KubeMgr == nil {
+		LogInfo(m, "KubeManager not available in handleSubmitNewConnectionMsg")
+		return m, m.SetStatusMessage("KubeManager error", model.StatusBarError, 5*time.Second)
+	}
+	return m, PerformKubeLoginCmd(m.KubeMgr, msg.MC, true, msg.WC)
 }
 
 // handleKubeLoginResultMsg processes the outcome of a `tsh kube login` attempt (performKubeLoginCmd).
@@ -136,11 +143,14 @@ func handleKubeLoginResultMsg(m *model.Model, msg model.KubeLoginResultMsg, cmds
 				wcIdentifierForLogin = desiredMcForNextStep + "-" + desiredWcForNextStep
 			}
 			LogInfo(m, "Step 2: Logging into Workload Cluster: %s...", wcIdentifierForLogin)
-			nextCmds = append(nextCmds, PerformKubeLoginCmd(wcIdentifierForLogin, false, ""))
+			nextCmds = append(nextCmds, PerformKubeLoginCmd(m.KubeMgr, wcIdentifierForLogin, false, ""))
 		} else {
 			LogInfo(m, "Step 2: No Workload Cluster specified. Proceeding to context switch for MC.")
-			targetKubeContext := utils.BuildMcContext(desiredMcForNextStep)
-			nextCmds = append(nextCmds, PerformPostLoginOperationsCmd(targetKubeContext, desiredMcForNextStep, ""))
+			if m.KubeMgr == nil {
+				return m, m.SetStatusMessage("KubeManager error", model.StatusBarError, 5*time.Second)
+			}
+			targetKubeContext := m.KubeMgr.BuildMcContextName(desiredMcForNextStep)
+			nextCmds = append(nextCmds, PerformPostLoginOperationsCmd(m.KubeMgr, targetKubeContext, desiredMcForNextStep, ""))
 		}
 	} else {
 		finalMcName := m.ManagementClusterName
@@ -154,8 +164,11 @@ func handleKubeLoginResultMsg(m *model.Model, msg model.KubeLoginResultMsg, cmds
 		m.WorkloadClusterName = shortWcName
 
 		LogInfo(m, "Step 3: Workload Cluster login successful. Proceeding to context switch for WC.")
-		targetKubeContext := utils.BuildWcContext(m.ManagementClusterName, m.WorkloadClusterName)
-		nextCmds = append(nextCmds, PerformPostLoginOperationsCmd(targetKubeContext, m.ManagementClusterName, m.WorkloadClusterName))
+		if m.KubeMgr == nil {
+			return m, m.SetStatusMessage("KubeManager error", model.StatusBarError, 5*time.Second)
+		}
+		targetKubeContext := m.KubeMgr.BuildWcContextName(m.ManagementClusterName, m.WorkloadClusterName)
+		nextCmds = append(nextCmds, PerformPostLoginOperationsCmd(m.KubeMgr, targetKubeContext, m.ManagementClusterName, m.WorkloadClusterName))
 	}
 	finalCmds := append(cmds, nextCmds...)
 	finalCmds = append(finalCmds, clearStatusCmd)
@@ -190,19 +203,28 @@ func handleContextSwitchAndReinitializeResultMsg(m *model.Model, msg model.Conte
 		LogInfo(m, "--- End Diagnostic Log ---")
 	}
 	if msg.Err != nil {
-		LogError(m, "Context switch/re-init failed: %v. MCP PROXIES WILL NOT START.", msg.Err)
+		LogError(m, "Context switch/re-init failed: %v.", msg.Err)
 		m.IsLoading = false
-		clearCmd := m.SetStatusMessage("Context switch/re-init failed.", model.StatusBarError, 5*time.Second)
-		return m, clearCmd
+		return m, m.SetStatusMessage("Context switch/re-init failed.", model.StatusBarError, 5*time.Second)
 	}
 
-	LogDebug(m, "Entered handleContextSwitchAndReinitializeResultMsg (after error check).")
-	LogInfo(m, "Successfully switched context. Target was: %s. Re-initializing TUI.", msg.SwitchedContext)
-	clearStatusCmd := m.SetStatusMessage(fmt.Sprintf("Target: %s. Re-initializing...", msg.SwitchedContext), model.StatusBarSuccess, 3*time.Second)
+	LogInfo(m, "Successfully switched context to: %s. Re-initializing TUI services.", msg.SwitchedContext)
+	m.IsLoading = true // Indicate loading during re-init
 
+	// 1. Stop all current services
+	if m.ServiceManager != nil {
+		m.ServiceManager.StopAllServices()
+	} else {
+		LogInfo(m, "ServiceManager is nil, cannot stop services during re-initialize.")
+		// This is a problematic state, should not happen if TUI is initialized correctly.
+	}
+
+	// 2. Update model with new cluster names & context
 	m.ManagementClusterName = msg.DesiredMCName
 	m.WorkloadClusterName = msg.DesiredWCName
+	m.CurrentKubeContext = msg.SwitchedContext // Use the actually switched context
 
+	// 3. Reset health information
 	m.MCHealth = model.ClusterHealthInfo{IsLoading: true}
 	if m.WorkloadClusterName != "" {
 		m.WCHealth = model.ClusterHealthInfo{IsLoading: true}
@@ -210,8 +232,25 @@ func handleContextSwitchAndReinitializeResultMsg(m *model.Model, msg model.Conte
 		m.WCHealth = model.ClusterHealthInfo{}
 	}
 
-	SetupPortForwards(m, m.ManagementClusterName, m.WorkloadClusterName)
-	m.DependencyGraph = BuildDependencyGraph(m, m.MCPServerConfig)
+	// 4. Re-fetch/Re-generate Service Configs for the new context
+	m.PortForwardingConfig = portforwarding.GetPortForwardConfig(m.ManagementClusterName, m.WorkloadClusterName)
+	m.MCPServerConfig = mcpserver.GetMCPServerConfig() // This is static but good to re-assign
+
+	// 5. Clear Old TUI State for services and re-setup display structures
+	m.PortForwards = make(map[string]*model.PortForwardProcess)
+	m.McpServers = make(map[string]*model.McpServerProcess)
+	SetupPortForwards(m, m.ManagementClusterName, m.WorkloadClusterName) // Re-populates PortForwardOrder and initializes PortForwards map entries
+
+	m.McpProxyOrder = nil // Re-initialize McpProxyOrder
+	for _, cfg := range m.MCPServerConfig {
+		m.McpProxyOrder = append(m.McpProxyOrder, cfg.Name)
+		// Initialize McpServers map entries for display
+		m.McpServers[cfg.Name] = &model.McpServerProcess{
+			Label:     cfg.Name,
+			Active:    true, // Assume active by default, ServiceManager will update actual state
+			StatusMsg: "Awaiting Setup...",
+		}
+	}
 
 	if len(m.PortForwardOrder) > 0 {
 		m.FocusedPanelKey = m.PortForwardOrder[0]
@@ -221,44 +260,63 @@ func handleContextSwitchAndReinitializeResultMsg(m *model.Model, msg model.Conte
 		m.FocusedPanelKey = ""
 	}
 
-	m.McpProxyOrder = nil
-	for _, cfg := range m.MCPServerConfig {
-		m.McpProxyOrder = append(m.McpProxyOrder, cfg.Name)
-	}
-
 	var newInitCmds []tea.Cmd
-	newInitCmds = append(newInitCmds, GetCurrentKubeContextCmd(m.Services.Cluster))
-
-	if m.ManagementClusterName != "" {
-		mcTargetContext := utils.BuildMcContext(m.ManagementClusterName)
-		newInitCmds = append(newInitCmds, FetchNodeStatusCmd(mcTargetContext, true, m.ManagementClusterName))
-	}
-	if m.WorkloadClusterName != "" && m.ManagementClusterName != "" {
-		wcTargetContext := utils.BuildWcContext(m.ManagementClusterName, m.WorkloadClusterName)
-		newInitCmds = append(newInitCmds, FetchNodeStatusCmd(wcTargetContext, false, m.WorkloadClusterName))
-	}
-
-	initialPfCmds := GetInitialPortForwardCmds(m)
-	newInitCmds = append(newInitCmds, initialPfCmds...)
-
-	LogInfo(m, "Initializing predefined MCP proxies (kubernetes, prometheus, grafana)...")
-	mcpProxyStartupCmds := StartMcpProxiesCmd(m.MCPServerConfig, m.Services.Proxy, m.TUIChannel)
-	if mcpProxyStartupCmds == nil {
-		LogDebug(m, "StartMcpProxiesCmd returned nil. No MCP commands generated.")
+	if m.KubeMgr == nil {
+		LogInfo(m, "KubeManager not available in handleContextSwitchAndReinitializeResultMsg, cannot re-init fully.")
+		// This is a problem, ideally return an error message to TUI
 	} else {
-		LogDebug(m, "Generated %d MCP proxy startup commands.", len(mcpProxyStartupCmds))
-		if len(mcpProxyStartupCmds) > 0 {
-			newInitCmds = append(newInitCmds, mcpProxyStartupCmds...)
+		newInitCmds = append(newInitCmds, GetCurrentKubeContextCmd(m.KubeMgr)) // Corrected: pass m.KubeMgr
+
+		if m.ManagementClusterName != "" {
+			mcTargetContext := m.KubeMgr.BuildMcContextName(m.ManagementClusterName)
+			newInitCmds = append(newInitCmds, FetchNodeStatusCmd(m.KubeMgr, mcTargetContext, true, m.ManagementClusterName)) // Corrected
+		}
+		if m.WorkloadClusterName != "" && m.ManagementClusterName != "" {
+			wcTargetContext := m.KubeMgr.BuildWcContextName(m.ManagementClusterName, m.WorkloadClusterName)
+			newInitCmds = append(newInitCmds, FetchNodeStatusCmd(m.KubeMgr, wcTargetContext, false, m.WorkloadClusterName)) // Corrected
+		}
+
+		// Trigger Service Start (logic as previously refactored, using m.ServiceManager and m.KubeMgr as needed by its internals indirectly)
+		var managedServiceConfigs []managers.ManagedServiceConfig
+		for _, pfCfg := range m.PortForwardingConfig {
+			managedServiceConfigs = append(managedServiceConfigs, managers.ManagedServiceConfig{
+				Type:   managers.ServiceTypePortForward,
+				Label:  pfCfg.Label,
+				Config: pfCfg,
+			})
+		}
+		for _, mcpCfg := range m.MCPServerConfig {
+			managedServiceConfigs = append(managedServiceConfigs, managers.ManagedServiceConfig{
+				Type:   managers.ServiceTypeMCPServer,
+				Label:  mcpCfg.Name,
+				Config: mcpCfg,
+			})
+		}
+
+		tuiServiceUpdateCb := func(update managers.ManagedServiceUpdate) {
+			if m.TUIChannel != nil {
+				m.TUIChannel <- model.ServiceUpdateMsg{Update: update}
+			}
+		}
+
+		if len(managedServiceConfigs) > 0 && m.ServiceManager != nil {
+			startServicesCmd := func() tea.Msg {
+				var wg sync.WaitGroup
+				_, startupErrors := m.ServiceManager.StartServices(managedServiceConfigs, tuiServiceUpdateCb, &wg)
+				return model.AllServicesStartedMsg{InitialStartupErrors: startupErrors}
+			}
+			newInitCmds = append(newInitCmds, startServicesCmd)
+		} else if m.ServiceManager == nil {
+			LogInfo(m, "ServiceManager is nil in handleContextSwitchAndReinitializeResultMsg, cannot start services.")
 		}
 	}
 
-	tickCmd := tea.Tick(HealthUpdateInterval, func(t time.Time) tea.Msg {
-		return model.RequestClusterHealthUpdate{}
-	})
+	tickCmd := tea.Tick(HealthUpdateInterval, func(t time.Time) tea.Msg { return model.RequestClusterHealthUpdate{} })
 	newInitCmds = append(newInitCmds, tickCmd)
 
+	statusCmd := m.SetStatusMessage(fmt.Sprintf("Context: %s. Initializing...", msg.SwitchedContext), model.StatusBarSuccess, 3*time.Second)
 	finalCmdsToBatch := append(existingCmds, newInitCmds...)
-	finalCmdsToBatch = append(finalCmdsToBatch, clearStatusCmd)
-	m.IsLoading = false
+	finalCmdsToBatch = append(finalCmdsToBatch, statusCmd)
+
 	return m, tea.Batch(finalCmdsToBatch...)
 }

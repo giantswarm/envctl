@@ -13,10 +13,11 @@ import (
 	"testing"
 	"time"
 
-	"envctl/internal/color"
+	"envctl/internal/color" // For ServiceManagerAPI if needed by tests (nil for now)
+	// Added for KubeManagerAPI type for nil
+	"envctl/internal/k8smanager"     // Using k8smanager
 	"envctl/internal/mcpserver"      // For mcpserver.MCPServerConfig
 	"envctl/internal/portforwarding" // For portforwarding.PortForwardingConfig
-	"envctl/internal/service"        // For service.Services struct
 	"envctl/internal/tui/model"
 
 	"github.com/charmbracelet/lipgloss"
@@ -25,30 +26,25 @@ import (
 // updateGoldenFiles is a flag to indicate that golden files should be updated.
 var updateGoldenFiles = flag.Bool("update", false, "Update golden files")
 
-// mockClusterService, mockPFService, mockProxyService for model setup
-type mockClusterService struct{}
+// mockKubeManager is a mock for KubeManagerAPI, implementing only what view tests might need indirectly.
+// For view tests, we mostly care that model fields (like MCHealth) are populated correctly prior to rendering.
+// The actual KubeManagerAPI calls usually happen in the controller/model updates, not in view.Render.
 
-func (m *mockClusterService) CurrentContext() (string, error)   { return "test-context", nil }
-func (m *mockClusterService) SwitchContext(mc, wc string) error { return nil }
-func (m *mockClusterService) Health(ctx context.Context, cluster string) (service.ClusterHealthInfo, error) {
-	return service.ClusterHealthInfo{IsLoading: false, Error: nil}, nil
+type mockKubeManager struct{} // This mock will implement k8smanager.KubeManagerAPI
+
+func (m *mockKubeManager) Login(clusterName string) (stdout string, stderr string, err error) { return "", "", nil }
+func (m *mockKubeManager) ListClusters() (*k8smanager.ClusterList, error) { return &k8smanager.ClusterList{}, nil }
+func (m *mockKubeManager) GetCurrentContext() (string, error)   { return "test-context", nil }
+func (m *mockKubeManager) SwitchContext(targetContextName string) error { return nil }
+func (m *mockKubeManager) GetAvailableContexts() ([]string, error) { return []string{"test-context"}, nil }
+func (m *mockKubeManager) BuildMcContextName(mcShortName string) string { return "teleport.giantswarm.io-" + mcShortName }
+func (m *mockKubeManager) BuildWcContextName(mcShortName, wcShortName string) string { return "teleport.giantswarm.io-" + mcShortName + "-" + wcShortName }
+func (m *mockKubeManager) StripTeleportPrefix(contextName string) string { return strings.TrimPrefix(contextName, "teleport.giantswarm.io-") }
+func (m *mockKubeManager) HasTeleportPrefix(contextName string) bool { return strings.HasPrefix(contextName, "teleport.giantswarm.io-") }
+func (m *mockKubeManager) GetClusterNodeHealth(ctx context.Context, kubeContextName string) (k8smanager.NodeHealth, error) {
+	// Return a default healthy state for tests, or vary based on kubeContextName if needed for specific tests.
+	return k8smanager.NodeHealth{ReadyNodes: 1, TotalNodes: 1, Error: nil}, nil
 }
-
-type mockPFService struct{}
-
-func (m *mockPFService) Start(cfg portforwarding.PortForwardingConfig, cb portforwarding.PortForwardUpdateFunc) (stopChan chan struct{}, err error) {
-	return make(chan struct{}), nil
-}
-func (m *mockPFService) Status(id string) portforwarding.PortForwardProcessUpdate {
-	return portforwarding.PortForwardProcessUpdate{InstanceKey: id, StatusMsg: "mocked pf status", Running: true}
-}
-
-type mockProxyService struct{}
-
-func (m *mockProxyService) Start(cfg mcpserver.MCPServerConfig, updateFn func(mcpserver.McpProcessUpdate)) (stopChan chan struct{}, pid int, err error) {
-	return make(chan struct{}), 0, nil
-}
-func (m *mockProxyService) Status(name string) (running bool, err error) { return true, nil }
 
 // checkGoldenFile compares the actual output with the golden file.
 // If -update flag is set, it updates the golden file.
@@ -145,7 +141,7 @@ func TestRenderHeader_Simple(t *testing.T) {
 
 	initialTime := time.Date(2024, 1, 1, 10, 30, 0, 0, time.UTC)
 
-	m := model.InitialModel("MCmgmt", "WCwork", "test-context", false, mcpserver.GetMCPServerConfig(), nil)
+	m := model.InitialModel("MCmgmt", "WCwork", "test-context", false, mcpserver.GetMCPServerConfig(), nil, nil, &mockKubeManager{})
 	m.CurrentAppMode = model.ModeMainDashboard
 	m.Width = 100 // Provide a fixed width for consistent rendering
 	m.MCHealth = model.ClusterHealthInfo{ReadyNodes: 3, TotalNodes: 3, LastUpdated: initialTime}
@@ -154,13 +150,6 @@ func TestRenderHeader_Simple(t *testing.T) {
 	m.ActivityLog = []string{"log1", "log2"}
 	m.ColorMode = "TestColorMode (Dark: true)" // Simulate a color mode string
 	m.FocusedPanelKey = model.McPaneFocusKey
-
-	// Set up mock services as controller does
-	m.Services = service.Services{
-		Cluster: &mockClusterService{},
-		PF:      &mockPFService{},
-		Proxy:   &mockProxyService{},
-	}
 
 	// Force dark background for consistent testing of adaptive colors
 	originalHasDarkBackground := lipgloss.HasDarkBackground()
@@ -180,18 +169,13 @@ func TestRenderContextPanesRow_Simple(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 
 	initialTime := time.Date(2024, 1, 1, 10, 30, 0, 0, time.UTC)
-	m := model.InitialModel("MCmgmt", "WCwork", "test-context", false, mcpserver.GetMCPServerConfig(), nil)
+	m := model.InitialModel("MCmgmt", "WCwork", "test-context", false, mcpserver.GetMCPServerConfig(), nil, nil, &mockKubeManager{})
 	m.CurrentAppMode = model.ModeMainDashboard
 	m.Width = 120
 	m.Height = 30
 	m.MCHealth = model.ClusterHealthInfo{ReadyNodes: 3, TotalNodes: 3, LastUpdated: initialTime, StatusError: nil}
 	m.WCHealth = model.ClusterHealthInfo{ReadyNodes: 1, TotalNodes: 2, LastUpdated: initialTime, StatusError: nil}
 	m.FocusedPanelKey = model.McPaneFocusKey
-	m.Services = service.Services{
-		Cluster: &mockClusterService{},
-		PF:      &mockPFService{},
-		Proxy:   &mockProxyService{},
-	}
 
 	// Force dark background for consistent testing of adaptive colors
 	originalHasDarkBackground := lipgloss.HasDarkBackground()
@@ -218,15 +202,10 @@ func TestRenderPortForwardingRow_Simple(t *testing.T) {
 		{Label: "Service One", InstanceKey: "svc/service1-8080", ServiceName: "svc/service1", LocalPort: "8080", RemotePort: "80", KubeContext: "test-context", Namespace: "default"},
 		{Label: "My Pod", InstanceKey: "pod/mypod-9090", ServiceName: "pod/mypod", LocalPort: "9090", RemotePort: "3000", KubeContext: "test-context", Namespace: "default"},
 	}
-	m := model.InitialModel("MCmgmt", "", "test-context", false, mcpserver.GetMCPServerConfig(), pfConfigs)
+	m := model.InitialModel("MCmgmt", "", "test-context", false, mcpserver.GetMCPServerConfig(), pfConfigs, nil, &mockKubeManager{})
 	m.CurrentAppMode = model.ModeMainDashboard
 	m.Width = 120
 	m.Height = 30
-	m.Services = service.Services{
-		Cluster: &mockClusterService{},
-		PF:      &mockPFService{},
-		Proxy:   &mockProxyService{},
-	}
 
 	m.PortForwards = map[string]*model.PortForwardProcess{
 		"svc/service1-8080": {
@@ -274,15 +253,10 @@ func TestRenderPortForwardingRow_Simple(t *testing.T) {
 func TestRenderMcpProxiesRow_Simple(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 
-	m := model.InitialModel("MCmgmt", "WCwork", "test-context", false, mcpserver.GetMCPServerConfig(), nil)
+	m := model.InitialModel("MCmgmt", "WCwork", "test-context", false, mcpserver.GetMCPServerConfig(), nil, nil, &mockKubeManager{})
 	m.CurrentAppMode = model.ModeMainDashboard
 	m.Width = 120
 	m.Height = 30
-	m.Services = service.Services{
-		Cluster: &mockClusterService{},
-		PF:      &mockPFService{},
-		Proxy:   &mockProxyService{},
-	}
 
 	// Define some MCP servers
 	mcpKey1 := "k8s-api"
@@ -330,7 +304,7 @@ func TestRenderMcpProxiesRow_Simple(t *testing.T) {
 func TestRenderStatusBar_Simple(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 
-	m := model.InitialModel("MC", "WC", "ctx", false, mcpserver.GetMCPServerConfig(), nil)
+	m := model.InitialModel("MC", "WC", "ctx", false, mcpserver.GetMCPServerConfig(), nil, nil, &mockKubeManager{})
 	m.Width = 80
 	m.CurrentAppMode = model.ModeMainDashboard // Or any mode that shows status bar
 	m.StatusBarMessage = "This is an INFO message."
@@ -361,7 +335,7 @@ func TestRenderStatusBar_Simple(t *testing.T) {
 func TestRender_HelpOverlay(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 
-	m := model.InitialModel("MC", "WC", "ctx", false, mcpserver.GetMCPServerConfig(), nil)
+	m := model.InitialModel("MC", "WC", "ctx", false, mcpserver.GetMCPServerConfig(), nil, nil, &mockKubeManager{})
 	m.Width = 100
 	m.Height = 30
 	m.CurrentAppMode = model.ModeHelpOverlay
@@ -384,7 +358,7 @@ func TestRender_HelpOverlay(t *testing.T) {
 func TestRender_LogOverlay(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 
-	m := model.InitialModel("MC", "WC", "ctx", false, mcpserver.GetMCPServerConfig(), nil)
+	m := model.InitialModel("MC", "WC", "ctx", false, mcpserver.GetMCPServerConfig(), nil, nil, &mockKubeManager{})
 	m.Width = 100
 	m.Height = 30
 	m.CurrentAppMode = model.ModeLogOverlay
@@ -405,11 +379,6 @@ func TestRender_LogOverlay(t *testing.T) {
 	m.LogViewport.SetContent(strings.Join(m.ActivityLog, "\n"))
 
 	m.Keys = model.DefaultKeyMap() // For status bar
-	m.Services = service.Services{
-		Cluster: &mockClusterService{},
-		PF:      &mockPFService{},
-		Proxy:   &mockProxyService{},
-	}
 
 	// Force dark background for consistent testing
 	originalHasDarkBackground := lipgloss.HasDarkBackground()
@@ -428,7 +397,7 @@ func TestRender_LogOverlay(t *testing.T) {
 func TestRender_McpConfigOverlay(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 
-	m := model.InitialModel("MC", "WC", "ctx", false, mcpserver.GetMCPServerConfig(), nil)
+	m := model.InitialModel("MC", "WC", "ctx", false, mcpserver.GetMCPServerConfig(), nil, nil, &mockKubeManager{})
 	m.Width = 100
 	m.Height = 30
 	m.CurrentAppMode = model.ModeMcpConfigOverlay
@@ -437,11 +406,6 @@ func TestRender_McpConfigOverlay(t *testing.T) {
 	// Or, pre-populate for more control, but let's test the default generation path.
 
 	m.Keys = model.DefaultKeyMap() // For status bar
-	m.Services = service.Services{
-		Cluster: &mockClusterService{},
-		PF:      &mockPFService{},
-		Proxy:   &mockProxyService{},
-	}
 
 	// Force dark background for consistent testing
 	originalHasDarkBackground := lipgloss.HasDarkBackground()
@@ -460,7 +424,7 @@ func TestRender_McpConfigOverlay(t *testing.T) {
 func TestRenderCombinedLogPanel_Simple(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 
-	m := model.InitialModel("MC", "WC", "ctx", false, mcpserver.GetMCPServerConfig(), nil)
+	m := model.InitialModel("MC", "WC", "ctx", false, mcpserver.GetMCPServerConfig(), nil, nil, &mockKubeManager{})
 	m.Width = 100
 	m.Height = 40 // Need enough height for this panel to be rendered
 	m.CurrentAppMode = model.ModeMainDashboard
@@ -483,12 +447,6 @@ func TestRenderCombinedLogPanel_Simple(t *testing.T) {
 	m.ActivityLogDirty = false // Assume content is processed
 	m.MainLogViewportLastWidth = m.MainLogViewport.Width
 
-	m.Services = service.Services{
-		Cluster: &mockClusterService{},
-		PF:      &mockPFService{},
-		Proxy:   &mockProxyService{},
-	}
-
 	// Force dark background for consistent testing
 	originalHasDarkBackground := lipgloss.HasDarkBackground()
 	lipgloss.SetHasDarkBackground(true)
@@ -505,7 +463,7 @@ func TestRenderCombinedLogPanel_Simple(t *testing.T) {
 
 func TestRender_ModeQuitting(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
-	m := model.InitialModel("", "", "", false, mcpserver.GetMCPServerConfig(), nil)
+	m := model.InitialModel("", "", "", false, mcpserver.GetMCPServerConfig(), nil, nil, &mockKubeManager{})
 	m.Width = 80
 	m.Height = 24
 	m.CurrentAppMode = model.ModeQuitting
@@ -529,7 +487,7 @@ func TestRender_ModeInitializing(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 
 	t.Run("NoSize", func(t *testing.T) {
-		m := model.InitialModel("", "", "", false, mcpserver.GetMCPServerConfig(), nil)
+		m := model.InitialModel("", "", "", false, mcpserver.GetMCPServerConfig(), nil, nil, &mockKubeManager{})
 		m.Width = 0 // Critical: test case for when window size is not yet known
 		m.Height = 0
 		m.CurrentAppMode = model.ModeInitializing
@@ -548,7 +506,7 @@ func TestRender_ModeInitializing(t *testing.T) {
 	})
 
 	t.Run("WithSize", func(t *testing.T) {
-		m := model.InitialModel("", "", "", false, mcpserver.GetMCPServerConfig(), nil)
+		m := model.InitialModel("", "", "", false, mcpserver.GetMCPServerConfig(), nil, nil, &mockKubeManager{})
 		m.Width = 80
 		m.Height = 24
 		m.CurrentAppMode = model.ModeInitializing
@@ -569,7 +527,7 @@ func TestRender_ModeInitializing(t *testing.T) {
 
 func TestRender_ModeUnknown(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
-	m := model.InitialModel("", "", "", false, mcpserver.GetMCPServerConfig(), nil)
+	m := model.InitialModel("", "", "", false, mcpserver.GetMCPServerConfig(), nil, nil, &mockKubeManager{})
 	m.Width = 80
 	m.Height = 24
 	m.CurrentAppMode = model.AppMode(999) // An undefined AppMode value
@@ -595,7 +553,7 @@ func TestRender_MainDashboard_Full(t *testing.T) {
 	wcShortName := "WCwork"
 	portForwardingConfig := portforwarding.GetPortForwardConfig(mcName, wcShortName)
 
-	m := model.InitialModel(mcName, wcShortName, "test-context", false, mcpserver.GetMCPServerConfig(), portForwardingConfig)
+	m := model.InitialModel(mcName, wcShortName, "test-context", false, mcpserver.GetMCPServerConfig(), portForwardingConfig, nil, &mockKubeManager{})
 	m.CurrentAppMode = model.ModeMainDashboard
 	m.Width = 120 // Sufficient width
 	m.Height = 50 // Sufficient height for all sections including main log panel
@@ -633,12 +591,6 @@ func TestRender_MainDashboard_Full(t *testing.T) {
 	m.Keys = model.DefaultKeyMap()
 	m.StatusBarMessage = "Main dashboard ready."
 	m.StatusBarMessageType = model.StatusBarSuccess
-
-	m.Services = service.Services{
-		Cluster: &mockClusterService{},
-		PF:      &mockPFService{},
-		Proxy:   &mockProxyService{},
-	}
 
 	// Force dark background for consistent testing
 	originalHasDarkBackground := lipgloss.HasDarkBackground()

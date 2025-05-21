@@ -1,47 +1,41 @@
 package model_test
 
 import (
-	"context" // Required for mockClusterService.Health
+	"context"
+	"envctl/internal/k8smanager" // NEW: for KubeManagerAPI and its types
+	// For ServiceManagerAPI if needed (nil for now)
 	"envctl/internal/mcpserver"
-	"envctl/internal/portforwarding"
-	"envctl/internal/service" // For service.Services and sub-interfaces
+
+	// "envctl/internal/portforwarding" // Already commented out
+	// "envctl/internal/service" // REMOVED
 	"envctl/internal/tui/controller"
 	"envctl/internal/tui/model"
-	"envctl/internal/utils" // Ensure this is present
 	"os"
+	"strings"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// --- Mock Service Implementations ---
+// Mock for KubeManagerAPI, implementing only what's needed by these tests
+// (which is likely nothing as tests operate on model state after updates)
+type mockKubeManagerForModelTest struct{}
 
-type mockClusterService struct{}
-
-func (m *mockClusterService) CurrentContext() (string, error)   { return "test-context", nil }
-func (m *mockClusterService) SwitchContext(mc, wc string) error { return nil }
-func (m *mockClusterService) Health(ctx context.Context, cluster string) (service.ClusterHealthInfo, error) {
-	return service.ClusterHealthInfo{IsLoading: false, Error: nil}, nil
+func (m *mockKubeManagerForModelTest) Login(clusterName string) (stdout string, stderr string, err error) { return "", "", nil }
+func (m *mockKubeManagerForModelTest) ListClusters() (*k8smanager.ClusterList, error) { return &k8smanager.ClusterList{}, nil }
+func (m *mockKubeManagerForModelTest) GetCurrentContext() (string, error)   { return "test-context", nil }
+func (m *mockKubeManagerForModelTest) SwitchContext(targetContextName string) error { return nil }
+func (m *mockKubeManagerForModelTest) GetAvailableContexts() ([]string, error) { return []string{"test-context"}, nil }
+func (m *mockKubeManagerForModelTest) BuildMcContextName(mcShortName string) string { return "teleport.giantswarm.io-" + mcShortName }
+func (m *mockKubeManagerForModelTest) BuildWcContextName(mcShortName, wcShortName string) string { return "teleport.giantswarm.io-" + mcShortName + "-" + wcShortName }
+func (m *mockKubeManagerForModelTest) StripTeleportPrefix(contextName string) string { return strings.TrimPrefix(contextName, "teleport.giantswarm.io-") }
+func (m *mockKubeManagerForModelTest) HasTeleportPrefix(contextName string) bool { return strings.HasPrefix(contextName, "teleport.giantswarm.io-") }
+func (m *mockKubeManagerForModelTest) GetClusterNodeHealth(ctx context.Context, kubeContextName string) (k8smanager.NodeHealth, error) {
+	return k8smanager.NodeHealth{ReadyNodes: 1, TotalNodes: 1, Error: nil}, nil
 }
 
-type mockPFService struct{}
-
-func (m *mockPFService) Start(cfg portforwarding.PortForwardingConfig, cb portforwarding.PortForwardUpdateFunc) (stopChan chan struct{}, err error) {
-	return make(chan struct{}), nil
-}
-func (m *mockPFService) Status(id string) portforwarding.PortForwardProcessUpdate {
-	return portforwarding.PortForwardProcessUpdate{InstanceKey: id, StatusMsg: "mocked pf status", Running: true}
-}
-
-type mockProxyService struct{}
-
-func (m *mockProxyService) Start(cfg mcpserver.MCPServerConfig, updateFn func(mcpserver.McpProcessUpdate)) (stopChan chan struct{}, pid int, err error) {
-	return make(chan struct{}), 0, nil
-}
-func (m *mockProxyService) Status(name string) (running bool, err error) { return true, nil }
-
-// --- Tests ---
+// REMOVED: mockClusterService, mockPFService, mockProxyService as m.Services is replaced by m.KubeMgr
 
 func TestAppModeTransitions(t *testing.T) {
 	tests := []struct {
@@ -236,18 +230,12 @@ func TestAppModeTransitions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			coreModel := model.InitialModel("test-mc", "test-wc", "test-context", false, mcpserver.GetMCPServerConfig(), nil)
+			coreModel := model.InitialModel("test-mc", "test-wc", "test-context", false, mcpserver.GetMCPServerConfig(), nil, nil, &mockKubeManagerForModelTest{})
 			coreModel.CurrentAppMode = tt.initialAppMode
 
 			// Apply test-specific initial model setup
 			if tt.initialModelSetup != nil {
 				tt.initialModelSetup(coreModel)
-			}
-
-			coreModel.Services = service.Services{
-				Cluster: &mockClusterService{},
-				PF:      &mockPFService{},
-				Proxy:   &mockProxyService{},
 			}
 
 			appModel := controller.NewAppModel(coreModel, coreModel.ManagementClusterName, coreModel.WorkloadClusterName)
@@ -285,15 +273,9 @@ func TestMessageHandling(t *testing.T) {
 		{
 			name: "ClearStatusBarMsg clears status bar",
 			initialModel: func() *model.Model {
-				m := model.InitialModel("mc", "wc", "ctx", false, mcpserver.GetMCPServerConfig(), nil)
+				m := model.InitialModel("mc", "wc", "ctx", false, mcpserver.GetMCPServerConfig(), nil, nil, &mockKubeManagerForModelTest{})
 				m.StatusBarMessage = "Initial message"
 				m.StatusBarMessageType = model.StatusBarInfo
-				// Setup mock services
-				m.Services = service.Services{
-					Cluster: &mockClusterService{},
-					PF:      &mockPFService{},
-					Proxy:   &mockProxyService{},
-				}
 				return m
 			},
 			msg: model.ClearStatusBarMsg{},
@@ -305,56 +287,9 @@ func TestMessageHandling(t *testing.T) {
 			description: "ClearStatusBarMsg should reset the StatusBarMessage.",
 		},
 		{
-			name: "PortForwardCoreUpdateMsg updates existing port-forward process",
-			initialModel: func() *model.Model {
-				// For this test, we want actual port forward configs so SetupPortForwards can work.
-				pfCfgs := []portforwarding.PortForwardingConfig{
-					{Label: "Prometheus (MC)", InstanceKey: "Prometheus (MC)", ServiceName: "service/mimir-query-frontend", Namespace: "mimir", LocalPort: "8080", RemotePort: "8080", KubeContext: utils.BuildMcContext("mc")},
-				}
-				m := model.InitialModel("mc", "wc", "ctx", false, mcpserver.GetMCPServerConfig(), pfCfgs)
-				m.Services = service.Services{
-					Cluster: &mockClusterService{},
-					PF:      &mockPFService{},
-					Proxy:   &mockProxyService{},
-				}
-				return m
-			},
-			msg: model.PortForwardCoreUpdateMsg{
-				Update: portforwarding.PortForwardProcessUpdate{
-					InstanceKey: "Prometheus (MC)",
-					StatusMsg:   "Updated Prometheus Status",
-					OutputLog:   "New Prometheus log line",
-					Running:     true,
-					Error:       nil,
-				},
-			},
-			assert: func(t *testing.T, m *model.Model) {
-				pfKey := "Prometheus (MC)"
-				updatedPf, ok := m.PortForwards[pfKey]
-				if !ok {
-					t.Fatalf("PortForward process '%s' not found in model. Available: %v", pfKey, getMapKeys(m.PortForwards))
-				}
-				if updatedPf.StatusMsg != "Updated Prometheus Status" {
-					t.Errorf("expected StatusMsg 'Updated Prometheus Status', got '%s'", updatedPf.StatusMsg)
-				}
-				if len(updatedPf.Log) != 1 || updatedPf.Log[0] != "New Prometheus log line" {
-					t.Errorf("expected log to contain 'New Prometheus log line', got %v", updatedPf.Log)
-				}
-				if !updatedPf.Running {
-					t.Errorf("expected port-forward '%s' to be running", pfKey)
-				}
-			},
-			description: "PortForwardCoreUpdateMsg should update a pre-defined PortForwardProcess.",
-		},
-		{
 			name: "SetStatusMessage updates status bar and handles cancellation channel",
 			initialModel: func() *model.Model {
-				m := model.InitialModel("mc", "wc", "ctx", false, mcpserver.GetMCPServerConfig(), nil)
-				m.Services = service.Services{
-					Cluster: &mockClusterService{},
-					PF:      &mockPFService{},
-					Proxy:   &mockProxyService{},
-				}
+				m := model.InitialModel("mc", "wc", "ctx", false, mcpserver.GetMCPServerConfig(), nil, nil, &mockKubeManagerForModelTest{})
 				return m
 			},
 			// No specific message, we will call the method directly on the model in assert.
@@ -414,15 +349,6 @@ func TestMessageHandling(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			coreModel := tt.initialModel()
-			// Ensure services are set up if not done in initialModel func
-			if coreModel.Services.Cluster == nil { // Basic check, assumes partial setup if one is nil
-				coreModel.Services = service.Services{
-					Cluster: &mockClusterService{},
-					PF:      &mockPFService{},
-					Proxy:   &mockProxyService{},
-				}
-			}
-
 			appModel := controller.NewAppModel(coreModel, coreModel.ManagementClusterName, coreModel.WorkloadClusterName)
 			updatedTeaModel, _ := appModel.Update(tt.msg)
 

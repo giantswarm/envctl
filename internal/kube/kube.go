@@ -291,9 +291,7 @@ func getPodNameForPortForward(clientset kubernetes.Interface, namespace, service
 }
 
 // GetNodeStatusClientGo retrieves the number of ready and total nodes in a cluster using client-go.
-// - clientset: An initialized Kubernetes clientset.
-// Returns the count of ready nodes, total nodes, and an error if any occurs.
-func GetNodeStatusClientGo(clientset kubernetes.Interface) (readyNodes int, totalNodes int, err error) {
+var GetNodeStatusClientGo = func(clientset kubernetes.Interface) (readyNodes int, totalNodes int, err error) {
 	// No longer needs to create clientset from kubeContext here
 	// Assumes clientset is already configured for the correct context.
 
@@ -301,11 +299,9 @@ func GetNodeStatusClientGo(clientset kubernetes.Interface) (readyNodes int, tota
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	nodeList, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
-	if err != nil {
-		// To provide a more useful error, we might want to know which context this clientset was for,
-		// but the clientset itself doesn't easily expose this. The caller should handle context in errors.
-		return 0, 0, fmt.Errorf("failed to list nodes: %w", err)
+	nodeList, errList := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	if errList != nil {
+		return 0, 0, fmt.Errorf("failed to list nodes: %w", errList)
 	}
 
 	totalNodes = len(nodeList.Items)
@@ -313,11 +309,10 @@ func GetNodeStatusClientGo(clientset kubernetes.Interface) (readyNodes int, tota
 		for _, condition := range node.Status.Conditions {
 			if condition.Type == corev1.NodeReady && condition.Status == corev1.ConditionTrue {
 				readyNodes++
-				break // Found a ready condition, move to the next node
+				break
 			}
 		}
 	}
-
 	return readyNodes, totalNodes, nil
 }
 
@@ -404,19 +399,15 @@ func DetermineClusterProvider(contextName string) (string, error) {
 }
 
 // GetCurrentKubeContext retrieves the name of the currently active Kubernetes context
-// using the Kubernetes Go client.
-// Returns the context name and an error if it fails.
-func GetCurrentKubeContext() (string, error) {
+var GetCurrentKubeContext = func() (string, error) {
 	pathOptions := clientcmd.NewDefaultPathOptions()
 	if pathOptions == nil {
 		return "", fmt.Errorf("failed to get default kubeconfig path options")
 	}
-
 	config, err := pathOptions.GetStartingConfig()
 	if err != nil {
 		return "", fmt.Errorf("failed to get starting kubeconfig: %w", err)
 	}
-
 	if config.CurrentContext == "" {
 		return "", fmt.Errorf("current kubeconfig context is not set")
 	}
@@ -424,40 +415,25 @@ func GetCurrentKubeContext() (string, error) {
 }
 
 // SwitchKubeContext changes the active Kubernetes context to the specified context name
-// using the Kubernetes Go client, ensuring the full config is preserved.
-// - contextName: The name of the Kubernetes context to switch to.
-// Returns an error if the command fails.
-func SwitchKubeContext(contextName string) error {
+var SwitchKubeContext = func(contextName string) error {
 	pathOptions := clientcmd.NewDefaultPathOptions()
 	if pathOptions == nil {
 		return fmt.Errorf("failed to get default kubeconfig path options for switching context")
 	}
-
-	// Load the raw config, which preserves all existing data.
 	config, err := pathOptions.GetStartingConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load kubeconfig: %w", err)
 	}
-
-	// Check if the target context exists.
 	if _, exists := config.Contexts[contextName]; !exists {
 		return fmt.Errorf("context '%s' does not exist in kubeconfig", contextName)
 	}
-
-	// Modify only the CurrentContext field.
 	config.CurrentContext = contextName
-
-	// Get the primary kubeconfig file path.
-	// If ExplicitPath is set in pathOptions, it will be used, otherwise the default.
 	kubeconfigFilePath := pathOptions.GetDefaultFilename()
 	if pathOptions.IsExplicitFile() {
 		kubeconfigFilePath = pathOptions.GetExplicitFile()
 	}
-
-	// Write the entire modified config back to the file.
 	if err := clientcmd.WriteToFile(*config, kubeconfigFilePath); err != nil {
 		return fmt.Errorf("failed to write updated kubeconfig to '%s': %w", kubeconfigFilePath, err)
 	}
-
 	return nil
 }

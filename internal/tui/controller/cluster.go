@@ -1,8 +1,8 @@
 package controller
 
 import (
+	"envctl/internal/k8smanager"
 	"envctl/internal/tui/model"
-	"envctl/internal/utils"
 	"fmt"
 	"time"
 
@@ -41,6 +41,24 @@ func handleKubeContextResultMsg(m *model.Model, msg model.KubeContextResultMsg) 
 			}
 		}
 	}
+
+	if m.CurrentAppMode == model.ModeInitializing || m.MCHealth.LastUpdated.IsZero() {
+		LogInfo(m, "[Controller] Initial KubeContext received (%s), triggering initial health checks.", m.CurrentKubeContext)
+		var cmds []tea.Cmd
+		if m.KubeMgr == nil {
+			LogInfo(m, "[Controller] KubeManager not available for initial health check.")
+		} else {
+			if m.ManagementClusterName != "" {
+				mcTargetContext := m.KubeMgr.BuildMcContextName(m.ManagementClusterName)
+				cmds = append(cmds, FetchNodeStatusCmd(m.KubeMgr, mcTargetContext, true, m.ManagementClusterName))
+			}
+			if m.WorkloadClusterName != "" && m.ManagementClusterName != "" {
+				wcTargetContext := m.KubeMgr.BuildWcContextName(m.ManagementClusterName, m.WorkloadClusterName)
+				cmds = append(cmds, FetchNodeStatusCmd(m.KubeMgr, wcTargetContext, false, m.WorkloadClusterName))
+			}
+		}
+		return m, tea.Batch(cmds...)
+	}
 	return m, nil
 }
 
@@ -51,22 +69,27 @@ func handleRequestClusterHealthUpdate(m *model.Model) (*model.Model, tea.Cmd) {
 	LogDebug(m, "Health check cycle starting: MCName=%s, WCName=%s, CurrentContext=%s",
 		m.ManagementClusterName, m.WorkloadClusterName, m.CurrentKubeContext)
 
+	if m.KubeMgr == nil {
+		LogInfo(m, "[Controller] KubeManager not available for health update.")
+		return m, nil
+	}
+
 	if m.ManagementClusterName != "" {
 		m.MCHealth.IsLoading = true
-		mcTargetContext := utils.BuildMcContext(m.ManagementClusterName)
+		mcTargetContext := m.KubeMgr.BuildMcContextName(m.ManagementClusterName)
 		LogDebug(m, "Scheduling MC health check: cluster=%s, targetCtx=%s, lastUpdated=%v",
 			m.ManagementClusterName, mcTargetContext, m.MCHealth.LastUpdated)
-		cmds = append(cmds, FetchNodeStatusCmd(mcTargetContext, true, m.ManagementClusterName))
+		cmds = append(cmds, FetchNodeStatusCmd(m.KubeMgr, mcTargetContext, true, m.ManagementClusterName))
 	} else {
 		LogDebug(m, "SKIPPED MC health check: No management cluster configured")
 	}
 
 	if m.WorkloadClusterName != "" && m.ManagementClusterName != "" {
 		m.WCHealth.IsLoading = true
-		wcTargetContext := utils.BuildWcContext(m.ManagementClusterName, m.WorkloadClusterName)
+		wcTargetContext := m.KubeMgr.BuildWcContextName(m.ManagementClusterName, m.WorkloadClusterName)
 		LogDebug(m, "Scheduling WC health check: cluster=%s, targetCtx=%s, lastUpdated=%v",
 			m.WorkloadClusterName, wcTargetContext, m.WCHealth.LastUpdated)
-		cmds = append(cmds, FetchNodeStatusCmd(wcTargetContext, false, m.WorkloadClusterName))
+		cmds = append(cmds, FetchNodeStatusCmd(m.KubeMgr, wcTargetContext, false, m.WorkloadClusterName))
 	} else {
 		LogDebug(m, "SKIPPED WC health check: No workload cluster (and/or MC) configured")
 	}
@@ -82,19 +105,22 @@ func handleRequestClusterHealthUpdate(m *model.Model) (*model.Model, tea.Cmd) {
 
 // handleNodeStatusMsg applies the node-status result to the appropriate health struct.
 func handleNodeStatusMsg(m *model.Model, msg model.NodeStatusMsg) (*model.Model, tea.Cmd) {
-	LogDebug(m, "[HEALTH STATUS RECV] For: %s, IsMC: %v, Ready: %d, Total: %d, Err: %v, Debug: %s", msg.ClusterShortName, msg.ForMC, msg.ReadyNodes, msg.TotalNodes, msg.Err, msg.DebugInfo)
+	LogDebug(m, "[Controller] Handling NodeStatusMsg for %s (isMC: %v): Ready=%d, Total=%d, Err=%v", msg.ClusterShortName, msg.ForMC, msg.ReadyNodes, msg.TotalNodes, msg.Err)
+	LogDebug(m, "[Controller] NodeStatusMsg Full DebugInfo:\n%s", msg.DebugInfo)
 
 	if msg.ForMC {
 		m.MCHealth.IsLoading = false
 		m.MCHealth.ReadyNodes = msg.ReadyNodes
 		m.MCHealth.TotalNodes = msg.TotalNodes
 		m.MCHealth.StatusError = msg.Err
+		m.MCHealth.LastUpdated = time.Now()
 		m.MCHealth.DebugLog = msg.DebugInfo
 	} else {
 		m.WCHealth.IsLoading = false
 		m.WCHealth.ReadyNodes = msg.ReadyNodes
 		m.WCHealth.TotalNodes = msg.TotalNodes
 		m.WCHealth.StatusError = msg.Err
+		m.WCHealth.LastUpdated = time.Now()
 		m.WCHealth.DebugLog = msg.DebugInfo
 	}
 
@@ -114,34 +140,27 @@ func handleNodeStatusMsg(m *model.Model, msg model.NodeStatusMsg) (*model.Model,
 
 // handleClusterListResultMsg stores fetched cluster lists for autocomplete.
 func handleClusterListResultMsg(m *model.Model, msg model.ClusterListResultMsg) *model.Model {
+	LogDebug(m, "[Controller] Handling ClusterListResultMsg, Error: %v", msg.Err)
 	if msg.Err != nil {
 		LogError(m, "Failed to fetch cluster list: %v", msg.Err)
-	} else {
-		m.ClusterInfo = msg.Info
+		m.ClusterInfo = &k8smanager.ClusterList{}
+		return m
 	}
+	m.ClusterInfo = msg.Info
+	LogDebug(m, "[Controller] Updated m.ClusterInfo. MCs: %d", len(m.ClusterInfo.ManagementClusters))
 	return m
 }
 
 // handleKubeContextSwitchedMsg processes the result of performSwitchKubeContextCmd.
 func handleKubeContextSwitchedMsg(m *model.Model, msg model.KubeContextSwitchedMsg) (*model.Model, tea.Cmd) {
-	LogDebug(m, "[handleKubeContextSwitchedMsg] Received: TargetContext='%s', err=%v", msg.TargetContext, msg.Err)
-	LogDebug(m, "[handleKubeContextSwitchedMsg] Full DebugInfo from msg: %s", msg.DebugInfo)
+	LogDebug(m, "[Controller] Handling KubeContextSwitchedMsg. Target: %s, Err: %v. Debug: %s", msg.TargetContext, msg.Err, msg.DebugInfo)
 
 	if msg.Err != nil {
-		LogError(m, "Failed to switch Kubernetes context to '%s': %s", msg.TargetContext, msg.Err.Error())
-		LogDebug(m, "Context switch error details: target=%s, error=%v", msg.TargetContext, msg.Err)
-		return m, m.SetStatusMessage(fmt.Sprintf("Failed to switch context: %s", msg.TargetContext), model.StatusBarError, 5*time.Second)
+		LogError(m, "Failed to switch kube context to %s: %v", msg.TargetContext, msg.Err)
+		return m, m.SetStatusMessage(fmt.Sprintf("Ctx switch to %s failed!", msg.TargetContext), model.StatusBarError, 5*time.Second)
 	}
 	m.CurrentKubeContext = msg.TargetContext
-	LogInfo(m, "Successfully switched Kubernetes context. Target was: %s", msg.TargetContext)
-	LogDebug(m, "Context switch successful: %s", msg.TargetContext)
+	m.SetStatusMessage(fmt.Sprintf("Context switched to %s", msg.TargetContext), model.StatusBarSuccess, 3*time.Second)
 
-	var cmds []tea.Cmd
-	cmds = append(cmds, m.SetStatusMessage(fmt.Sprintf("Switched context to: %s", msg.TargetContext), model.StatusBarSuccess, 3*time.Second))
-
-	if m.WorkloadClusterName != "" {
-		wcCtx := utils.BuildWcContext(m.ManagementClusterName, m.WorkloadClusterName)
-		cmds = append(cmds, FetchNodeStatusCmd(wcCtx, false, m.WorkloadClusterName))
-	}
-	return m, tea.Batch(cmds...)
+	return m, nil
 }

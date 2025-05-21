@@ -13,7 +13,7 @@ import (
 // if `tsh` prompts for interactive input (e.g., 2FA) in a non-interactive environment like the TUI.
 // - clusterName: The name of the Teleport Kubernetes cluster to log into.
 // Returns the stdout string, stderr string, and an error if the command execution fails.
-func LoginToKubeCluster(clusterName string) (stdout string, stderr string, err error) {
+var LoginToKubeCluster = func(clusterName string) (stdout string, stderr string, err error) {
 	cmd := exec.Command("tsh", "kube", "login", clusterName)
 
 	var stdoutBuf, stderrBuf bytes.Buffer
