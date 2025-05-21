@@ -50,33 +50,36 @@ Dark mode provides optimal visibility in low-light environments and reduced eye 
 
 ## Architecture
 
-The TUI follows the Model-View-Update (MVU) architecture pattern as implemented by Bubble Tea:
+The TUI follows the Model-View-Update (MVU) architecture pattern, as commonly implemented in Bubble Tea applications, with a clear separation into Model, View, and Controller (MVC) components:
 
-### Model
+### Model (`internal/tui/model/`)
 
-The core state is maintained in the `model` struct (in `internal/tui/model.go`), which contains:
+The core application state and data structures are maintained in the `model` package. Key files include:
+- `types.go`: Defines the main `Model` struct holding all TUI state (cluster information, health, port forwarding status, UI elements like viewports, input fields, current app mode, etc.), along with important enums (`AppMode`, `MessageType`, `OverallAppStatus`) and data-holding structs.
+- `messages.go`: Defines all custom message types used for communication within the TUI (e.g., `PortForwardSetupResultMsg`, `NodeStatusMsg`, `ClearStatusBarMsg`).
+- `init.go`: Contains the `InitialModel` function to set up the default state.
 
-- **Cluster Information**: Management/workload cluster names and contexts
-- **Health Information**: Node status for each cluster
-- **Port Forwarding State**: Active processes, their status, and output
-- **UI State**: Window dimensions, viewport positions, focus state, etc.
+The Model package is responsible for holding the state and does not contain business logic for how the state changes, nor how it is rendered.
 
-### View
+### View (`internal/tui/view/`)
 
-The `View()` method (in `model.go`) renders the current state as a string for display:
+The `view` package is responsible for rendering the current state of the `model.Model` into a string for display in the terminal.
+- `render.go`: Contains the main `Render(m *model.Model)` function, which acts as a switchboard to call specific rendering functions based on the `CurrentAppMode`.
+- Various other files like `context.go`, `portforward.go`, `mcp.go`, `log.go`, `status.go` contain helper functions to render specific parts of the UI (e.g., cluster panes, port forward panels, log views, status bar).
+- `styles.go`: Centralizes all `lipgloss` styling definitions for consistent appearance.
 
-- It constructs the layout by dividing the screen into sections
-- Each section is rendered by helper functions in `view_helpers.go`
-- The overall app has a consistent color scheme and styling
+The `controller.AppModel`'s `View()` method calls `view.Render()` with the current model to get the UI string. The View package only reads from the model and should not modify it or contain business logic.
 
-### Update
+### Controller (`internal/tui/controller/`)
 
-The `Update()` method (in `model.go`) handles all events and messages:
+The `controller` package orchestrates the application, handles user input, manages application flow, and updates the model.
+- `app.go`: Defines `AppModel`, which is the top-level `tea.Model` for the application. Its `Init()` method sets up initial commands, `Update()` delegates message handling, and `View()` delegates rendering.
+- `update.go`: Contains `mainControllerDispatch(m *model.Model, msg tea.Msg)`, which is the central message handling switch. It routes messages to specific handler functions within the controller package.
+- Handler files (e.g., `keyglobal.go`, `keyinput.go`, `connection.go`, `cluster.go`, `portforward.go`, `mcpserver.go`): Contain functions that process specific `tea.Msg` types or user actions (like key presses), perform business logic, and update the `model.Model`.
+- `commands.go`: Defines functions that return `tea.Cmd` for performing asynchronous operations (e.g., fetching cluster status, logging into clusters, managing port forwards).
+- `logger.go`: Provides logging helper functions that write to the TUI's activity log within the model.
 
-- Key presses are routed to handlers in `handlers.go`
-- Asynchronous messages (like port-forward status updates) are handled by specific functions
-- Window size changes trigger layout recalculations
-- All state changes happen through this method
+This separation ensures that user interactions, state updates, and rendering logic are distinct and managed within their respective components.
 
 ## Component Structure
 
@@ -177,13 +180,27 @@ The TUI includes debugging capabilities:
 
 ## File Structure
 
-- `model.go`: Core model definition, Update() and View() methods
-- `view_helpers.go`: Helper functions for rendering UI components
-- `handlers.go`: Key press and event handlers
-- `styles.go`: UI styling definitions
-- `portforward_handlers.go`: Port forwarding logic
-- `connection_flow.go`: Cluster connection handling
-- `message_types.go`: Custom message type definitions
+The TUI codebase is organized into the following main packages and key files within `internal/tui/`:
+
+- **`model/`**: Contains the application's state and data structures.
+    - `types.go`: Core `Model` struct, enums, and other data types.
+    - `messages.go`: All `tea.Msg` type definitions for TUI internal communication.
+    - `init.go`: `InitialModel()` constructor.
+    - `export.go`: Types that might be needed by other TUI sub-packages but are fundamentally model types.
+- **`view/`**: Responsible for rendering the UI based on the model.
+    - `render.go`: Main `Render()` function.
+    - `styles.go`: All `lipgloss` UI styling definitions.
+    - `context.go`, `portforward.go`, `mcp.go`, `log.go`, `status.go`, `misc.go`, `icons.go`: Helper functions for rendering specific UI components.
+- **`controller/`**: Handles user input, application logic, and model updates.
+    - `app.go`: `AppModel` (the main `tea.Model` for Bubble Tea).
+    - `update.go`: `mainControllerDispatch()` for central message routing.
+    - `commands.go`: Functions that generate `tea.Cmd` for asynchronous operations.
+    - `keyglobal.go`, `keyinput.go`: Handlers for global and input-mode key presses.
+    - `connection.go`, `cluster.go`, `portforward.go`, `mcpserver.go`: Handlers and logic for managing cluster connections, health checks, port forwards, and MCP servers.
+    - `logger.go`: TUI-specific logging helpers.
+    - `program.go`: `NewProgram()` to initialize and return the `tea.Program`.
+
+This structure aims to clearly separate the concerns of state management (Model), presentation (View), and application logic (Controller).
 
 ## Design Decisions
 

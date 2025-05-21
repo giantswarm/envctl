@@ -9,7 +9,7 @@ It automates the process of logging into clusters via Teleport (`tsh`) and setti
 ## Features ✨
 
 *   **Simplified Connection:** Connect to management and workload clusters with a single command.
-*   **Automatic Context Switching:** Sets your `kubectl` context correctly.
+*   **Automatic Context Switching:** Sets your Kubernetes context correctly.
 *   **Port-Forwarding Management:** 
     *   Prometheus and Grafana services (always from the Management Cluster)
     *   Alloy Metrics (from the Workload Cluster if specified, otherwise from the Management Cluster)
@@ -31,7 +31,12 @@ Before using `envctl`, ensure you have the following installed and configured:
 
 1.  **Go:** Version 1.21 or later ([Installation Guide](https://go.dev/doc/install)).
 2.  **Teleport Client (`tsh`):** You need `tsh` installed and logged into your Giant Swarm Teleport proxy.
-3.  **`kubectl`:** The Kubernetes command-line tool.
+3.  **`mcp-proxy`:** This tool is used by `envctl` to proxy your actual MCP servers. ([Installation Guide](https://github.com/sparfenyuk/mcp-proxy#installation)).
+4.  **Underlying MCP Server Executables:** `envctl` expects specific MCP server commands to be available in your PATH, as it will invoke them via `mcp-proxy`. These are typically:
+    *   For Kubernetes: `npx mcp-server-kubernetes` (requires Node.js and `npx`)
+    *   For Prometheus: `uvx mcp-server-prometheus` (requires `uv` and the Python-based `mcp-server-prometheus`)
+    *   For Grafana: `uvx mcp-server-grafana` (requires `uv` and the Python-based `mcp-server-grafana` - if you use a Grafana MCP).
+    (Ensure `uv` is installed if you intend to use `uvx` for these servers: [uv Installation](https://github.com/astral-sh/uv#installation)).
 
 ## Installation 🛠️
 
@@ -90,7 +95,7 @@ envctl self-update
 # Use the CLI mode without TUI (for scripts or CI environments)
 # This mode will:
 # - Log into the specified cluster(s) via tsh.
-# - Set the kubectl context.
+# - Sets the Kubernetes context.
 # - Start port-forwarding for:
 #   - Prometheus (MC) on localhost:8080
 #   - Grafana (MC) on localhost:3000
@@ -116,7 +121,7 @@ envctl connect <management-cluster> [workload-cluster-shortname] --no-tui
 
     *   Launches an interactive terminal UI
     *   Logs into `myinstallation` via `tsh kube login myinstallation`.
-    *   Sets the current `kubectl` context to `teleport.giantswarm.io-myinstallation`.
+    *   Sets the current Kubernetes context to `teleport.giantswarm.io-myinstallation`.
     *   Starts port-forwarding for Prometheus (MC) on `localhost:8080`, Grafana (MC) on `localhost:3000`, and Alloy Metrics (MC) on `localhost:12345`.
     *   Displays cluster health and connection status
     *   Allows management of port-forwards and contexts
@@ -129,7 +134,7 @@ envctl connect <management-cluster> [workload-cluster-shortname] --no-tui
 
     *   Logs into `myinstallation` via `tsh kube login myinstallation`.
     *   Logs into the *full* workload cluster name (`myinstallation-myworkloadcluster`) via `tsh`.
-    *   Sets the current `kubectl` context to the *full* workload cluster name (`teleport.giantswarm.io-myinstallation-myworkloadcluster`).
+    *   Sets the current Kubernetes context to the *full* workload cluster name (`teleport.giantswarm.io-myinstallation-myworkloadcluster`).
     *   Starts port-forwarding for Prometheus using the *management cluster* context (`teleport.giantswarm.io-myinstallation`) to `localhost:8080`.
     *   Starts port-forwarding for Grafana using the *management cluster* context (`teleport.giantswarm.io-myinstallation`) to `localhost:3000`.
     *   Starts port-forwarding for Alloy metrics using the *workload cluster* context (`teleport.giantswarm.io-myinstallation-myworkloadcluster`) to `localhost:12345`.
@@ -153,17 +158,19 @@ When running `envctl connect`, the Terminal User Interface (TUI) provides a visu
 
 | Key          | Action                                   |
 |--------------|------------------------------------------|
-| Tab          | Navigate to next panel                   |
-| Shift+Tab    | Navigate to previous panel               |
+| Tab / j / ↓  | Navigate to next panel                   |
+| Shift+Tab / k / ↑ | Navigate to previous panel               |
 | q / Ctrl+C   | Quit the application                     |
 | r            | Restart port forwarding for focused panel|
 | s            | Switch Kubernetes context                |
 | N            | Start new connection                     |
 | h            | Toggle help overlay                      |
 | L            | Toggle log overlay                       |
+| C            | Toggle MCP config overlay                |
 | D            | Toggle dark/light mode                   |
 | z            | Toggle debug information                 |
-| Esc          | Close help/log overlay                   |
+| y            | Copy logs/config (when in overlay)       |
+| Esc          | Close help/log/config overlay            |
 
 For more details on the implementation and architecture of the TUI, see the [TUI documentation](docs/tui.md).
 
@@ -203,32 +210,41 @@ envctl connect myinstallation <TAB>      # Shows short names of workload cluster
 
 ## MCP Integration Notes 💡
 
-*   After running `envctl connect`, services should be available at:
-    *   Prometheus: `http://localhost:8080/prometheus` (context: Management Cluster)
-    *   Grafana: `http://localhost:3000` (context: Management Cluster)
-    *   Alloy Metrics: `http://localhost:12345` (context depends on your connection type):
-        *   If you specified both a Management Cluster and a Workload Cluster, the Alloy Metrics port-forward uses the Workload Cluster context.
-        *   If you specified only a Management Cluster, the Alloy Metrics port-forward uses that Management Cluster context.
-*   Ensure your `mcp.json` (e.g., `~/.cursor/mcp.json`) has the correct `PROMETHEUS_URL` for the Prometheus MCP server:
-    ```json
-    {
-      "mcpServers": {
-        "kubernetes": {
-          "command": "npx",
-          "args": ["mcp-server-kubernetes"]
-        },
-        "prometheus": {
-          "command": "uv", // Or your specific command
-          "args": [ ... ], // Your specific args
-          "env": {
-            "PROMETHEUS_URL": "http://localhost:8080/prometheus"
-          }
-        }
-        // ... other servers ...
-      }
-    }
-    ```
-*   You may need to **restart your MCP servers** or your IDE after running `envctl connect` for them to pick up the new Kubernetes context and Prometheus connection.
+*   `envctl connect` uses `mcp-proxy` to manage connections for the following predefined MCP services:
+    *   **Kubernetes**: Proxied on `http://localhost:8001/sse` (underlying command: `npx mcp-server-kubernetes`)
+    *   **Prometheus**: Proxied on `http://localhost:8002/sse` (underlying command: `uvx mcp-server-prometheus`, expects Prometheus port-forward on `localhost:8080` via `PROMETHEUS_URL` env var)
+    *   **Grafana**: Proxied on `http://localhost:8003/sse` (underlying command: `uvx mcp-server-grafana`, expects Grafana port-forward on `localhost:3000` via `GRAFANA_URL` env var - this is started if you have a Grafana MCP server with this name and command).
+*   `envctl` no longer reads `~/.cursor/mcp.json` to determine how to start these servers. The commands listed above are hardcoded.
+*   You must have `mcp-proxy` installed and the respective underlying MCP server executables (e.g., `mcp-server-kubernetes`, `mcp-server-prometheus`) available in your system's PATH.
+*   **IDE Configuration (Cursor/VSCode):** Update your IDE's MCP settings to point to these SSE endpoints:
+    *   Kubernetes: `http://localhost:8001/sse`
+    *   Prometheus: `http://localhost:8002/sse`
+    *   Grafana: `http://localhost:8003/sse` (if you use a Grafana MCP server)
+*   Port-forwarded services (like Prometheus on `localhost:8080` and Grafana on `localhost:3000`) are started by `envctl` as before. The `mcp-proxy` instances for Prometheus and Grafana will use these via environment variables.
+*   You may need to **restart your IDE** after running `envctl connect` and configuring these `mcp-proxy` SSE endpoints for changes to take effect.
+
+### Customizing MCP Server Configuration
+
+If you need to customize how MCP servers are run, you can use environment variables to override the default configurations:
+
+* Each MCP server's configuration can be customized using environment variables with the pattern:
+  * `ENVCTL_MCP_<SERVER>_COMMAND`: Override the command (e.g., `ENVCTL_MCP_PROMETHEUS_COMMAND=uvx`)
+  * `ENVCTL_MCP_<SERVER>_ARGS`: Override the command arguments (e.g., `ENVCTL_MCP_PROMETHEUS_ARGS="mcp-server-prometheus --debug"`)
+  * `ENVCTL_MCP_<SERVER>_ENV_<KEY>`: Set an environment variable for the command (e.g., `ENVCTL_MCP_PROMETHEUS_ENV_PROMETHEUS_URL=http://localhost:9090`)
+
+For example, to use a custom Prometheus MCP server installation:
+
+```bash
+export ENVCTL_MCP_PROMETHEUS_COMMAND="python3"
+export ENVCTL_MCP_PROMETHEUS_ARGS="-m custom_prometheus_mcp_server"
+export ENVCTL_MCP_PROMETHEUS_ENV_PROMETHEUS_URL="http://localhost:9090"
+export ENVCTL_MCP_PROMETHEUS_ENV_DEBUG="true"
+
+# Then run envctl as usual
+envctl connect myinstallation
+```
+
+These environment variables will be detected automatically at startup, allowing you to customize the MCP server configurations without modifying the source code.
 
 ## Future Development 🔮
 
