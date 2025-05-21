@@ -50,9 +50,9 @@ func renderCombinedLogPanel(m *model.Model, availableWidth int, logSectionHeight
 	return rendered
 }
 
-// prepareLogContent truncates long lines to avoid viewport wrapping and applies
+// PrepareLogContent truncates long lines to avoid viewport wrapping and applies
 // color styles based on log level keywords.
-func prepareLogContent(lines []string, maxWidth int) string {
+func PrepareLogContent(lines []string, maxWidth int) string {
 	if maxWidth <= 0 {
 		return strings.Join(applyStyling(lines), "\n")
 	}

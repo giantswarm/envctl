@@ -86,7 +86,7 @@ func Render(m *model.Model) string {
 			// Refresh content only when new lines arrived or width changed.
 			mlvWidthChanged := m.MainLogViewportLastWidth != m.MainLogViewport.Width
 			if m.ActivityLogDirty || mlvWidthChanged {
-				trunc := prepareLogContent(m.ActivityLog, m.MainLogViewport.Width)
+				trunc := PrepareLogContent(m.ActivityLog, m.MainLogViewport.Width)
 				m.MainLogViewport.SetContent(trunc)
 				m.ActivityLogDirty = false
 				m.MainLogViewportLastWidth = m.MainLogViewport.Width

@@ -3,6 +3,7 @@ package controller
 import (
 	"envctl/internal/managers"
 	"envctl/internal/tui/model"
+	"envctl/internal/tui/view"
 	"fmt"
 	"time"
 
@@ -165,10 +166,10 @@ func mainControllerDispatch(m *model.Model, msg tea.Msg) (*model.Model, tea.Cmd)
 	// For now, keep it, but it might need to move or be triggered differently.
 	widthChanged := m.LogViewportLastWidth != m.LogViewport.Width
 	if m.ActivityLogDirty || widthChanged {
-		// prepared := view.PrepareLogContent(m.ActivityLog, m.LogViewport.Width) // This would be view.PrepareLogContent
-		// m.LogViewport.SetContent(prepared)
+		prepared := view.PrepareLogContent(m.ActivityLog, m.LogViewport.Width)
+		m.LogViewport.SetContent(prepared)
 		if m.CurrentAppMode == model.ModeLogOverlay && m.LogViewport.YOffset == 0 {
-			// m.LogViewport.GotoBottom() // This returns a tea.Cmd, should be handled
+			m.LogViewport.GotoBottom()
 		}
 		m.ActivityLogDirty = false
 		m.LogViewportLastWidth = m.LogViewport.Width
