@@ -67,11 +67,11 @@ var (
 
 	// --- Log Overlay Styles (similar to Help Overlay) ---
 	LogOverlayStyle = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}).
-				Background(lipgloss.AdaptiveColor{Light: "#F8F8F8", Dark: "#2A2A3A"}). // Similar to combinedLogPanel background
-				Foreground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}).
-				Padding(1, 2)
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}).
+			Background(lipgloss.AdaptiveColor{Light: "#F8F8F8", Dark: "#2A2A3A"}). // Similar to combinedLogPanel background
+			Foreground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"}).
+			Padding(1, 2)
 
 	// --- MCP Config Overlay Style ---
 	McpConfigOverlayStyle = lipgloss.NewStyle().
@@ -94,26 +94,26 @@ var (
 	// --- Focused Panel Background Styles based on Status ---
 	// Similar to the above, but these apply when a panel is focused.
 	FocusedPanelStatusDefaultStyle = PanelStatusDefaultStyle.Copy().
-						Inherit(FocusedPanelStyle).
-						Background(lipgloss.AdaptiveColor{Light: "#F0F8FF", Dark: "#252525"})
+					Inherit(FocusedPanelStyle).
+					Background(lipgloss.AdaptiveColor{Light: "#F0F8FF", Dark: "#252525"})
 
 	FocusedPanelStatusInitializingStyle = PanelStatusInitializingStyle.Copy().
-							Inherit(FocusedPanelStyle).
-							Background(lipgloss.AdaptiveColor{Light: "#E0E8FF", Dark: "#2F3D54"})
+						Inherit(FocusedPanelStyle).
+						Background(lipgloss.AdaptiveColor{Light: "#E0E8FF", Dark: "#2F3D54"})
 
 	FocusedPanelStatusAttemptingStyle = FocusedPanelStatusInitializingStyle.Copy()
 
 	FocusedPanelStatusRunningStyle = PanelStatusRunningStyle.Copy().
-						Inherit(FocusedPanelStyle).
-						Background(lipgloss.AdaptiveColor{Light: "#D4FFDF", Dark: "#1F4420"})
+					Inherit(FocusedPanelStyle).
+					Background(lipgloss.AdaptiveColor{Light: "#D4FFDF", Dark: "#1F4420"})
 
 	FocusedPanelStatusErrorStyle = PanelStatusErrorStyle.Copy().
-						Inherit(FocusedPanelStyle).
-						Background(lipgloss.AdaptiveColor{Light: "#FFDBDB", Dark: "#582F2F"})
+					Inherit(FocusedPanelStyle).
+					Background(lipgloss.AdaptiveColor{Light: "#FFDBDB", Dark: "#582F2F"})
 
 	FocusedPanelStatusExitedStyle = PanelStatusExitedStyle.Copy().
-						Inherit(FocusedPanelStyle).
-						Background(lipgloss.AdaptiveColor{Light: "#FFF3CF", Dark: "#574F2F"})
+					Inherit(FocusedPanelStyle).
+					Background(lipgloss.AdaptiveColor{Light: "#FFF3CF", Dark: "#574F2F"})
 
 	// --- Text Styles for Status Messages within Port Forward Panels ---
 	// These define the foreground color for status messages with higher contrast in both modes
@@ -139,8 +139,8 @@ var (
 				Background(lipgloss.AdaptiveColor{Light: "#F0F0FF", Dark: "#2A385D"}) // Slightly blueish background when focused
 
 	FocusedAndActiveContextPaneStyle = ActiveContextPaneStyle.Copy().
-							Inherit(FocusedPanelStyle).
-							Background(lipgloss.AdaptiveColor{Light: "#E0E8FF", Dark: "#30406B"}) // More saturated blue background when focused and active
+						Inherit(FocusedPanelStyle).
+						Background(lipgloss.AdaptiveColor{Light: "#E0E8FF", Dark: "#30406B"}) // More saturated blue background when focused and active
 
 	// --- Health Status Text Styles (used within Context Panes) ---
 	HealthLoadingStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#303030", Dark: "#F0F0F0"}).Bold(true) // Bolder and brighter in dark mode
@@ -152,10 +152,10 @@ var (
 	QuitKeyStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#990000", Dark: "#FF8787"}).Bold(true)
 
 	CenteredOverlayContainerStyle = lipgloss.NewStyle().
-						Border(lipgloss.RoundedBorder()).
-						BorderForeground(lipgloss.AdaptiveColor{Light: "#AAAAAA", Dark: "#666666"}).
-						Background(HelpOverlayBgColor).
-						Padding(1, 2)
+					Border(lipgloss.RoundedBorder()).
+					BorderForeground(lipgloss.AdaptiveColor{Light: "#AAAAAA", Dark: "#666666"}).
+					Background(HelpOverlayBgColor).
+					Padding(1, 2)
 
 	// --- Status Bar Styles ---
 	// Exported color constants for status bar backgrounds
@@ -185,9 +185,9 @@ var (
 
 	// Shared overlay colour palette (Help & MCP Config)
 	HelpOverlayBgColor          = lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#1E1E1E"} // Renamed to avoid conflict
-	HelpOverlayDescFgColor      = lipgloss.Color("#C0C0C0") // Renamed
-	HelpOverlayEllipsisFgColor  = lipgloss.Color("#777777") // Renamed
-	HelpOverlaySeparatorFgColor = lipgloss.Color("#777777") // Renamed
+	HelpOverlayDescFgColor      = lipgloss.Color("#C0C0C0")                                 // Renamed
+	HelpOverlayEllipsisFgColor  = lipgloss.Color("#777777")                                 // Renamed
+	HelpOverlaySeparatorFgColor = lipgloss.Color("#777777")                                 // Renamed
 	HelpOverlayKeyFgColor       = lipgloss.AdaptiveColor{Light: "#000000", Dark: "#FFFFFF"} // Renamed
 )
 
@@ -195,4 +195,4 @@ var (
 // For now, it just configures lipgloss's dark background detection.
 func Initialize(isDarkMode bool) {
 	lipgloss.SetHasDarkBackground(isDarkMode)
-} 
+}

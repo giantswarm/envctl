@@ -14,6 +14,12 @@
 
 ### What is needed from the reviewers?
 
+### Testing
+
+- [ ] New functionality is covered by unit/integration tests.
+- [ ] Existing tests have been updated to reflect changes.
+- [ ] For UI changes involving golden files (e.g., in `internal/tui/view/testdata/`), new files have been generated/updated (e.g., by running `go test ./internal/tui/view/... -update`) and meticulously verified.
+
 ### Do the docs need to be updated?
 
 ### Should this change be mentioned in the release notes?

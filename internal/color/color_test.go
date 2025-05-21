@@ -27,4 +27,4 @@ func TestInitialize(t *testing.T) {
 
 	// Styles are global vars, their non-zero value is guaranteed by declaration.
 	// A more involved test might check specific properties if needed.
-} 
+}

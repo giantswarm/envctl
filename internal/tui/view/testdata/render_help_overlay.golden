@@ -1,0 +1,30 @@
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+ ╭────────────────────────────────────────────────────────────────────────────────────────────────╮ 
+ │                                                                                                │ 
+ │  KEYBOARD SHORTCUTS                                                                            │ 
+ │                                                                                                │ 
+ │  ↑/k        navigate up            n  new connection         h         toggle help             │ 
+ │  ↓/j        navigate down          r  restart forwarder      L         toggle log overlay      │ 
+ │  tab        next panel             s  switch k8s context     C         show MCP config         │ 
+ │  shift+tab  previous panel         y  copy logs              D         toggle dark/light mode  │ 
+ │                                                              z         toggle debug info       │ 
+ │                                                              q/ctrl+c  quit                    │ 
+ │                                                                                                │ 
+ ╰────────────────────────────────────────────────────────────────────────────────────────────────╯ 
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    

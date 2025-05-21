@@ -57,6 +57,13 @@ check: lint-yaml ## Run YAML linter
 
 ##@ Testing
 
+.PHONY: test
+test: ## Run go test and go vet
+	@echo "Running Go tests (with NO_COLOR=true)..."
+	@NO_COLOR=true go test -cover ./...
+	@echo "Running go vet..."
+	@go vet ./...
+
 # Note: These targets require Docker and 'act' to be installed.
 # See: https://github.com/nektos/act#installation
 

@@ -18,6 +18,12 @@ type AppModel struct {
 	// or are part of a separate Controller struct embedded/held here.
 }
 
+// GetModel returns the internal model.Model instance.
+// This is useful for testing or specific scenarios where direct access is needed.
+func (a *AppModel) GetModel() *model.Model {
+	return a.model
+}
+
 // NewAppModel creates a new AppModel.
 func NewAppModel(m *model.Model, mcName, wcName string) *AppModel {
 	app := &AppModel{model: m}

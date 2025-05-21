@@ -10,6 +10,8 @@ import (
 
 type StartNewConnectionInputMsg struct{}
 
+// SubmitNewConnectionMsg signals that new MC/WC names have been submitted.
+// Controller will use this to (re)initialize contexts, PFs, etc.
 type SubmitNewConnectionMsg struct {
 	MC string
 	WC string
@@ -106,3 +108,9 @@ type RestartMcpServerMsg struct {
 // ---- Misc overlay / status bar ----
 
 type ClearStatusBarMsg struct{}
+
+// NopMsg is a message that performs no operation, useful for testing
+// or triggering updates without specific side effects.
+type NopMsg struct{}
+
+// TODO: Add more message types as needed for TUI interactions.

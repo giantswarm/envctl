@@ -66,7 +66,7 @@ func GetNodeStatusClientGo(kubeContext string) (readyNodes int, totalNodes int, 
 	kubeConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
 
 	// USE THE MOCKABLE HELPER HERE
-	// restConfig, err := kubeConfig.ClientConfig() 
+	// restConfig, err := kubeConfig.ClientConfig()
 	restConfig, err := kubeConfigClientConfig(kubeConfig)
 	if err != nil {
 		return 0, 0, fmt.Errorf("failed to get REST config for context %q: %w", kubeContext, err)
@@ -87,4 +87,4 @@ func GetNodeStatusClientGo(kubeContext string) (readyNodes int, totalNodes int, 
 	// ... rest of function
 	return readyNodes, totalNodes, nil
 }
-*/ 
+*/

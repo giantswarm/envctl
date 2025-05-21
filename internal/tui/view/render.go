@@ -113,7 +113,7 @@ func Render(m *model.Model) string {
 
 		columnSeparator := "  "
 		interColumnGap := "   " // Space between logical columns (key+desc pairs)
-		descColumnWidth := 20      // Approximate width for description text for inter-column padding
+		descColumnWidth := 20   // Approximate width for description text for inter-column padding
 
 		keyBindingColumns := m.Keys.FullHelp() // [][]key.Binding, outer slice is columns
 
@@ -149,7 +149,7 @@ func Render(m *model.Model) string {
 						descText := binding.Help().Desc
 
 						currentColKeyDisplayWidth := maxKeyWidths[c]
-						currentKeyActualWidth := lipgloss.Width(keyText) 
+						currentKeyActualWidth := lipgloss.Width(keyText)
 						paddingForKey := ""
 						if currentKeyActualWidth < currentColKeyDisplayWidth {
 							paddingForKey = strings.Repeat(" ", currentColKeyDisplayWidth-currentKeyActualWidth)
@@ -158,7 +158,7 @@ func Render(m *model.Model) string {
 						currentLineStrBuilder.WriteString(paddingForKey)
 						currentLineStrBuilder.WriteString(columnSeparator)
 						currentLineStrBuilder.WriteString(descText)
-						
+
 						if c < len(keyBindingColumns)-1 {
 							currentDescActualWidth := lipgloss.Width(descText)
 							paddingForDesc := ""
@@ -180,9 +180,9 @@ func Render(m *model.Model) string {
 		}
 
 		helpContent := strings.Join(helpLines, "\n")
-		
+
 		finalContentString := titleView + "\n" + helpContent
-		
+
 		container := color.CenteredOverlayContainerStyle.Render(finalContentString)
 
 		return lipgloss.Place(m.Width, m.Height, lipgloss.Center, lipgloss.Center, container, lipgloss.WithWhitespaceBackground(lipgloss.AdaptiveColor{Light: "rgba(0,0,0,0.1)", Dark: "rgba(0,0,0,0.6)"}))
