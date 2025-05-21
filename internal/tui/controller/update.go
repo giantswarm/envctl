@@ -5,6 +5,7 @@ import (
 	"envctl/internal/tui/model"
 	"envctl/internal/tui/view"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -140,7 +141,9 @@ func mainControllerDispatch(m *model.Model, msg tea.Msg) (*model.Model, tea.Cmd)
 		cmds = append(cmds, spinCmd)
 
 	case reporting.ReporterUpdateMsg:
-		return handleReporterUpdate(m, msg.Update)
+		m, cmd = handleReporterUpdate(m, msg.Update)
+		// Always re-queue ChannelReaderCmd to process next message from TUIChannel
+		return m, tea.Batch(cmd, model.ChannelReaderCmd(m.TUIChannel))
 
 	case model.AllServicesStartedMsg:
 		return handleAllServicesStartedMsg(m, msg)
@@ -315,81 +318,75 @@ func handleRestartMcpServerMsg(m *model.Model, msg model.RestartMcpServerMsg) (*
 }
 
 func handleReporterUpdate(m *model.Model, update reporting.ManagedServiceUpdate) (*model.Model, tea.Cmd) {
-	// Extremely simplified version for testing channel throughput
-	fmt.Printf("DEBUG_TUI_HANDLER_SIMPLIFIED: Received: %s - %s: %s\n", update.SourceType, update.SourceLabel, update.Message)
+	// 1. Format and append to ActivityLog
+	var logParts []string
+	logParts = append(logParts, fmt.Sprintf("[%s]", update.Timestamp.Format("15:04:05.000")))
+	if update.Level != "" {
+		logParts = append(logParts, fmt.Sprintf("[%s]", strings.ToUpper(string(update.Level))))
+	}
 
-	// Comment out all previous work:
-	/*
-		// 1. Format and append to ActivityLog
-		var logParts []string
-		logParts = append(logParts, fmt.Sprintf("[%s]", update.Timestamp.Format("15:04:05.000")))
-		if update.Level != "" {
-			logParts = append(logParts, fmt.Sprintf("[%s]", strings.ToUpper(string(update.Level))))
-		}
-
-		var sourceDisplay strings.Builder
-		if update.SourceType != "" {
-			sourceDisplay.WriteString(string(update.SourceType))
-		}
-		if update.SourceLabel != "" {
-			if sourceDisplay.Len() > 0 {
-				sourceDisplay.WriteString(" - ")
-			}
-			sourceDisplay.WriteString(update.SourceLabel)
-		}
+	var sourceDisplay strings.Builder
+	if update.SourceType != "" {
+		sourceDisplay.WriteString(string(update.SourceType))
+	}
+	if update.SourceLabel != "" {
 		if sourceDisplay.Len() > 0 {
-			logParts = append(logParts, fmt.Sprintf("[%s]", sourceDisplay.String()))
+			sourceDisplay.WriteString(" - ")
 		}
+		sourceDisplay.WriteString(update.SourceLabel)
+	}
+	if sourceDisplay.Len() > 0 {
+		logParts = append(logParts, fmt.Sprintf("[%s]", sourceDisplay.String()))
+	}
 
-		logParts = append(logParts, update.Message)
+	logParts = append(logParts, update.Message)
 
-		if strings.TrimSpace(update.Details) != "" && update.Details != update.Message {
-			detailLines := strings.Split(strings.TrimSuffix(update.Details, "\n"), "\n")
-			for i, line := range detailLines {
-				if i == 0 {
-					logParts = append(logParts, fmt.Sprintf("\n  Details: %s", line))
-				} else {
-					logParts = append(logParts, fmt.Sprintf("\n           %s", line))
+	if strings.TrimSpace(update.Details) != "" && update.Details != update.Message {
+		detailLines := strings.Split(strings.TrimSuffix(update.Details, "\n"), "\n")
+		for i, line := range detailLines {
+			if i == 0 {
+				logParts = append(logParts, fmt.Sprintf("\n  Details: %s", line))
+			} else {
+				logParts = append(logParts, fmt.Sprintf("\n           %s", line))
+			}
+		}
+	}
+
+	if update.ErrorDetail != nil {
+		if update.Message != update.ErrorDetail.Error() {
+			logParts = append(logParts, fmt.Sprintf("\n  ErrorDetail: %v", update.ErrorDetail))
+		}
+	}
+	model.AppendActivityLog(m, strings.Join(logParts, " "))
+	m.ActivityLogDirty = true
+
+	// 2. Update specific model state
+	switch update.SourceType {
+	case reporting.ServiceTypePortForward:
+		if pfProcess, exists := m.PortForwards[update.SourceLabel]; exists {
+			pfProcess.StatusMsg = update.Message
+			pfProcess.Running = update.IsReady
+			pfProcess.Err = update.ErrorDetail
+			if (update.Level == reporting.LogLevelStdout || update.Level == reporting.LogLevelStderr) && update.Details != "" {
+				pfProcess.Log = append(pfProcess.Log, strings.Split(update.Details, "\n")...)
+				if len(pfProcess.Log) > model.MaxPanelLogLines {
+					pfProcess.Log = pfProcess.Log[len(pfProcess.Log)-model.MaxPanelLogLines:]
 				}
 			}
 		}
-
-		if update.ErrorDetail != nil {
-			if update.Message != update.ErrorDetail.Error() {
-				logParts = append(logParts, fmt.Sprintf("\n  ErrorDetail: %v", update.ErrorDetail))
-			}
-		}
-		model.AppendActivityLog(m, strings.Join(logParts, " "))
-		m.ActivityLogDirty = true
-
-		// 2. Update specific model state
-		switch update.SourceType {
-		case reporting.ServiceTypePortForward:
-			if pfProcess, exists := m.PortForwards[update.SourceLabel]; exists {
-				pfProcess.StatusMsg = update.Message
-				pfProcess.Running = update.IsReady
-				pfProcess.Err = update.ErrorDetail
-				if (update.Level == reporting.LogLevelStdout || update.Level == reporting.LogLevelStderr) && update.Details != "" {
-					pfProcess.Log = append(pfProcess.Log, strings.Split(update.Details, "\n")...)
-					if len(pfProcess.Log) > model.MaxPanelLogLines {
-						pfProcess.Log = pfProcess.Log[len(pfProcess.Log)-model.MaxPanelLogLines:]
-					}
-				}
-			}
-		case reporting.ServiceTypeMCPServer:
-			if mcpProcess, exists := m.McpServers[update.SourceLabel]; exists {
-				mcpProcess.StatusMsg = update.Message
-				mcpProcess.Active = update.IsReady
-				mcpProcess.Err = update.ErrorDetail
-				if (update.Level == reporting.LogLevelStdout || update.Level == reporting.LogLevelStderr) && update.Details != "" {
-					mcpProcess.Output = append(mcpProcess.Output, strings.Split(update.Details, "\n")...)
-					if len(mcpProcess.Output) > model.MaxPanelLogLines {
-						mcpProcess.Output = mcpProcess.Output[len(mcpProcess.Output)-model.MaxPanelLogLines:]
-					}
+	case reporting.ServiceTypeMCPServer:
+		if mcpProcess, exists := m.McpServers[update.SourceLabel]; exists {
+			mcpProcess.StatusMsg = update.Message
+			mcpProcess.Active = update.IsReady
+			mcpProcess.Err = update.ErrorDetail
+			if (update.Level == reporting.LogLevelStdout || update.Level == reporting.LogLevelStderr) && update.Details != "" {
+				mcpProcess.Output = append(mcpProcess.Output, strings.Split(update.Details, "\n")...)
+				if len(mcpProcess.Output) > model.MaxPanelLogLines {
+					mcpProcess.Output = mcpProcess.Output[len(mcpProcess.Output)-model.MaxPanelLogLines:]
 				}
 			}
 		}
-	*/
+	}
 
 	return m, nil
 }

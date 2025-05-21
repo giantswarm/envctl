@@ -74,13 +74,11 @@ type UpdateFunc func(label, status, outputLog string, isError, isReady bool)
 // StartPortForwardsFunc is the type for the StartPortForwards function, for mocking.
 var StartPortForwards = StartPortForwardings // Points to the exported function
 
-// DefaultStartPortForwards is the actual implementation, now exported.
 func StartPortForwardings(
 	configs []PortForwardingConfig,
-	updateCb UpdateFunc, // Now old signature
+	updateCb UpdateFunc,
 	wg *sync.WaitGroup,
 ) map[string]chan struct{} {
-
 	if updateCb != nil {
 		// Log entry using old signature
 		updateCb("PortForwardingSys", "TRACE", fmt.Sprintf(">>> ENTERED REAL DefaultStartPortForwards. Configs: %d", len(configs)), false, false)

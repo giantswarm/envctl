@@ -176,12 +176,10 @@ func InitialModel(
 	return &m
 }
 
-// channelReaderCmd returns a Bubbletea command that forwards messages from the given channel.
-func channelReaderCmd(ch chan tea.Msg) tea.Cmd {
+// ChannelReaderCmd returns a Bubbletea command that forwards messages from the given channel.
+func ChannelReaderCmd(ch chan tea.Msg) tea.Cmd {
 	return func() tea.Msg {
-		// fmt.Println("DEBUG_TUI_CHANNEL: Attempting to read from TUIChannel...") // REMOVED
 		msg := <-ch
-		// fmt.Printf("DEBUG_TUI_CHANNEL: Read message from TUIChannel: %T\n", msg) // REMOVED
 		return msg
 	}
 }
@@ -231,7 +229,7 @@ func (m *Model) Init() tea.Cmd {
 	}
 
 	if m.TUIChannel != nil {
-		cmds = append(cmds, channelReaderCmd(m.TUIChannel))
+		cmds = append(cmds, ChannelReaderCmd(m.TUIChannel))
 	}
 
 	cmds = append(cmds, m.Spinner.Tick)

@@ -164,16 +164,14 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 				IsError:     isErrorFlag,
 				IsReady:     isReadyFlag,
 				Level:       level,
-				// ErrorDetail will be set below if isErrorFlag is true
 			}
 			if isErrorFlag {
-				// If detailsMsg contains the actual error text from the port forward attempt
 				if detailsMsg != "" {
 					updateForReporter.ErrorDetail = errors.New(detailsMsg)
-				} else if statusMsg != "" && statusMsg != "Error" { // If statusMsg has specific error but detailsMsg is empty
+				} else if statusMsg != "" && statusMsg != "Error" {
 					updateForReporter.ErrorDetail = errors.New(statusMsg)
 				} else {
-					updateForReporter.ErrorDetail = errors.New("port-forward operation failed") // Generic fallback
+					updateForReporter.ErrorDetail = errors.New("port-forward operation failed")
 				}
 			}
 
@@ -184,15 +182,6 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 		}
 
 		pfStopChans := portforwarding.StartPortForwardings(pfConfigs, pfUpdateAdapter, wg)
-		if sm.reporter != nil {
-			sm.reporter.Report(reporting.ManagedServiceUpdate{
-				Timestamp:   time.Now(),
-				SourceType:  reporting.ServiceTypeSystem,
-				SourceLabel: "ServiceManager",
-				Level:       reporting.LogLevelDebug,
-				Message:     fmt.Sprintf("Returned from portforwarding.StartPortForwardings. Stop chans count: %d", len(pfStopChans)),
-			})
-		}
 
 		sm.mu.Lock()
 		for label, ch := range pfStopChans {
