@@ -16,7 +16,6 @@ type ServiceManagerAPI interface { // Renamed from ServiceManager
 	// Returns a map of service labels to their individual stop channels, and a slice of startup errors.
 	StartServices(
 		configs []ManagedServiceConfig, // Defined in types.go in the same package
-		// updateCb ServiceUpdateFunc, // REMOVED: Replaced by injected ServiceReporter
 		wg *sync.WaitGroup,
 	) (map[string]chan struct{}, []error)
 

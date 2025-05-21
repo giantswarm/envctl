@@ -53,10 +53,10 @@ func StartAllMCPServers(mcpServerConfigs []MCPServerConfig, updateFn McpUpdateFu
 }
 
 // StartAndManageMCPServersFunc is the type for the StartAndManageMCPServers function, for mocking.
-var StartAndManageMCPServers = defaultStartAndManageMCPServers
+var StartAndManageMCPServers = StartMCPServers
 
 // defaultStartAndManageMCPServers is the actual implementation.
-func defaultStartAndManageMCPServers(
+func StartMCPServers(
 	configs []MCPServerConfig,
 	mcpUpdateFn McpUpdateFunc,
 	wg *sync.WaitGroup,

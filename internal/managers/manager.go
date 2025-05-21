@@ -14,9 +14,8 @@ import (
 // ServiceManager implements the ServiceManagerAPI interface.
 // Struct name changed to ServiceManager.
 type ServiceManager struct { // Renamed from DefaultServiceManager
-	activeServices   map[string]chan struct{} // Map of service label to its stop channel
-	mu               sync.Mutex
-	pfGlobalStopChan chan struct{} // Global stop channel for port forwarding services
+	activeServices map[string]chan struct{} // Map of service label to its stop channel
+	mu             sync.Mutex
 	// Store original configs to allow for restarts
 	serviceConfigs map[string]ManagedServiceConfig // Map label to its original ManagedServiceConfig
 	// Track services pending restart after they stop
@@ -94,12 +93,10 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 	pfOriginalLabels := make(map[string]string)
 	mcpOriginalLabels := make(map[string]string)
 
-	hasPortForwards := false
 	for _, cfg := range configs {
 		// cfg.Type is now reporting.ServiceType
 		switch cfg.Type {
 		case reporting.ServiceTypePortForward:
-			hasPortForwards = true
 			if pfConfig, ok := cfg.Config.(portforwarding.PortForwardingConfig); ok {
 				actualPfConfig := pfConfig
 				actualPfConfig.Label = cfg.Label
@@ -131,9 +128,6 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 		}
 	}
 
-	if hasPortForwards && sm.pfGlobalStopChan == nil {
-		sm.pfGlobalStopChan = make(chan struct{})
-	}
 	sm.mu.Unlock()
 
 	if len(pfConfigs) > 0 {
@@ -143,7 +137,7 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 				SourceType:  reporting.ServiceTypeSystem,
 				SourceLabel: "ServiceManager",
 				Level:       reporting.LogLevelDebug,
-				Message:     fmt.Sprintf("Processing %d port forward configs. About to call portforwarding.DefaultStartPortForwards.", len(pfConfigs)),
+				Message:     fmt.Sprintf("Processing %d port forward configs. About to call portforwarding.StartPortForwardings.", len(pfConfigs)),
 			})
 		}
 
@@ -189,15 +183,14 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 			sm.checkAndProcessRestart(updateForReporter)
 		}
 
-		currentPfGlobalStopChan := sm.pfGlobalStopChan
-		pfStopChans := portforwarding.DefaultStartPortForwards(pfConfigs, pfUpdateAdapter, currentPfGlobalStopChan, wg)
+		pfStopChans := portforwarding.StartPortForwardings(pfConfigs, pfUpdateAdapter, wg)
 		if sm.reporter != nil {
 			sm.reporter.Report(reporting.ManagedServiceUpdate{
 				Timestamp:   time.Now(),
 				SourceType:  reporting.ServiceTypeSystem,
 				SourceLabel: "ServiceManager",
 				Level:       reporting.LogLevelDebug,
-				Message:     fmt.Sprintf("Returned from portforwarding.DefaultStartPortForwards. Stop chans count: %d", len(pfStopChans)),
+				Message:     fmt.Sprintf("Returned from portforwarding.StartPortForwardings. Stop chans count: %d", len(pfStopChans)),
 			})
 		}
 
@@ -242,7 +235,7 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 			}
 			sm.checkAndProcessRestart(updateForReporter)
 		}
-		mcpStopChans, mcpErrs := mcpserver.StartAndManageMCPServers(mcpConfigs, mcpUpdateAdapter, wg)
+		mcpStopChans, mcpErrs := mcpserver.StartMCPServers(mcpConfigs, mcpUpdateAdapter, wg)
 		startupErrors = append(startupErrors, mcpErrs...)
 
 		sm.mu.Lock()
@@ -318,16 +311,6 @@ func (sm *ServiceManager) StopAllServices() {
 		}
 	}
 	sm.activeServices = make(map[string]chan struct{}) // Clear the map
-
-	// Close the global port forward stop channel if it was initialized
-	if sm.pfGlobalStopChan != nil {
-		select {
-		case <-sm.pfGlobalStopChan:
-		default:
-			close(sm.pfGlobalStopChan)
-		}
-		sm.pfGlobalStopChan = nil // Reset for potential future StartServices calls
-	}
 }
 
 // RestartService signals a specific service to stop and then start again.

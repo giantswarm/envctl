@@ -12,8 +12,6 @@ type PortForwardingConfig struct {
 	KubeContext    string // Kubernetes context to use
 	BindAddress    string // Address to bind to locally (e.g., "127.0.0.1", "0.0.0.0")
 	InstanceKey    string // A unique key to identify this port-forward instance
-	StopChan       chan struct{}
-	ReadyChan      chan struct{}
 	KubeConfigPath string // Path to the kubeconfig file
 }
 

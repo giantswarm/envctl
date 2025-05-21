@@ -72,13 +72,12 @@ func GetPortForwardConfig(mcShortName, workloadClusterArg string) []PortForwardi
 type UpdateFunc func(label, status, outputLog string, isError, isReady bool)
 
 // StartPortForwardsFunc is the type for the StartPortForwards function, for mocking.
-var StartPortForwards = DefaultStartPortForwards // Points to the exported function
+var StartPortForwards = StartPortForwardings // Points to the exported function
 
 // DefaultStartPortForwards is the actual implementation, now exported.
-func DefaultStartPortForwards(
+func StartPortForwardings(
 	configs []PortForwardingConfig,
 	updateCb UpdateFunc, // Now old signature
-	globalStopChan <-chan struct{},
 	wg *sync.WaitGroup,
 ) map[string]chan struct{} {
 
@@ -171,13 +170,6 @@ func DefaultStartPortForwards(
 				}
 				if updateCb != nil {
 					updateCb(config.Label, "Stopped (caller signal).", "", false, false)
-				}
-			case <-globalStopChan:
-				if pfStopChan != nil {
-					close(pfStopChan)
-				}
-				if updateCb != nil {
-					updateCb(config.Label, "Stopping (global signal).", "", false, false)
 				}
 			}
 		}()
