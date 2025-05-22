@@ -28,6 +28,8 @@ func Render(m *model.Model) string {
 			return color.StatusStyle.Render("Initializing... (waiting for window size)")
 		}
 		return color.StatusStyle.Render("Initializing...")
+	case model.ModeNewConnectionInput:
+		return renderNewConnectionInputView(m, m.Width)
 	case model.ModeMainDashboard:
 		contentWidth := m.Width - color.AppStyle.GetHorizontalFrameSize()
 		totalAvailableHeight := m.Height - color.AppStyle.GetVerticalFrameSize()
