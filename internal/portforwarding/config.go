@@ -142,9 +142,9 @@ func startPortForwardingsInternal(
 			}
 
 			portSpec := fmt.Sprintf("%s:%s", config.LocalPort, config.RemotePort)
-			logging.Debug(serviceSubsystem, "Initiating kube.StartPortForwardClientGo for %s with spec %s", config.Label, portSpec)
+			logging.Debug(serviceSubsystem, "Initiating kube.StartPortForward for %s with spec %s", config.Label, portSpec)
 
-			pfStopChan, initialStatus, initialErr := kube.StartPortForwardClientGo(
+			pfStopChan, initialStatus, initialErr := kube.StartPortForward(
 				config.KubeContext,
 				config.Namespace,
 				config.ServiceName,
@@ -153,7 +153,7 @@ func startPortForwardingsInternal(
 				kubeUpdateCallback,
 			)
 
-			logging.Debug(serviceSubsystem, "kube.StartPortForwardClientGo returned. InitialStatus: '%s', InitialErr: %v, pfStopChan_is_nil: %t", initialStatus, initialErr, pfStopChan == nil)
+			logging.Debug(serviceSubsystem, "kube.StartPortForward returned. InitialStatus: '%s', InitialErr: %v, pfStopChan_is_nil: %t", initialStatus, initialErr, pfStopChan == nil)
 
 			if initialErr != nil {
 				logging.Error(serviceSubsystem, initialErr, "Failed to start port-forward. Initial output: %s", initialStatus)

@@ -66,15 +66,11 @@ func PrepareLogContent(lines []string, maxWidth int) string {
 // styleLogLine returns the line wrapped in appropriate lipgloss style depending
 // on markers contained in the text.
 func styleLogLine(l string) string {
-	// Removed temporary debug:
-	// if strings.Contains(l, "DEBUG_KUBE_PF: Enter StartPortForwardClientGo") {
-	// 	return l
-	// }
 
 	switch {
-	case strings.Contains(l, "[SYSTEM ERROR]") || strings.Contains(l, "[ERROR]"):
+	case strings.Contains(l, "[ERROR]"):
 		return color.LogErrorStyle.Render(l)
-	case strings.Contains(l, "[SYSTEM WARNING]") || strings.Contains(l, "[WARN]"):
+	case strings.Contains(l, "[WARN]"):
 		return color.LogWarnStyle.Render(l)
 	case strings.Contains(l, "[DEBUG]"):
 		return color.LogDebugStyle.Render(l)

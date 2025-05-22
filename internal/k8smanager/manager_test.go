@@ -255,12 +255,12 @@ func TestKubeManager_GetClusterNodeHealth_Success(t *testing.T) {
 	// Better to restore to the global original at the end of test.
 	defer func() { k8smanager.K8sNewNonInteractiveDeferredLoadingClientConfig = currentOriginalLoader }()
 
-	originalGetNodeStatus := kube.GetNodeStatusClientGo
-	kube.GetNodeStatusClientGo = func(clientset kubernetes.Interface) (readyNodes int, totalNodes int, err error) {
-		t.Log("mock GetNodeStatusClientGo called for success test")
+	originalGetNodeStatus := kube.GetNodeStatus
+	kube.GetNodeStatus = func(clientset kubernetes.Interface) (readyNodes int, totalNodes int, err error) {
+		t.Log("mock GetNodeStatus called for success test")
 		return 3, 5, nil
 	}
-	defer func() { kube.GetNodeStatusClientGo = originalGetNodeStatus }()
+	defer func() { kube.GetNodeStatus = originalGetNodeStatus }()
 
 	km := newTestKubeManager()
 	health, err := km.GetClusterNodeHealth(context.Background(), "test-ctx-success")
@@ -320,13 +320,13 @@ func TestKubeManager_GetClusterNodeHealth_NodeStatusError(t *testing.T) {
 	}
 	defer func() { k8smanager.K8sNewNonInteractiveDeferredLoadingClientConfig = currentOriginalLoader }()
 
-	expectedStatusErr := fmt.Errorf("kube API error from GetNodeStatusClientGo")
-	originalGetNodeStatus := kube.GetNodeStatusClientGo
-	kube.GetNodeStatusClientGo = func(clientset kubernetes.Interface) (readyNodes int, totalNodes int, err error) {
-		t.Log("mock GetNodeStatusClientGo called, returning specific error")
+	expectedStatusErr := fmt.Errorf("kube API error from GetNodeStatus")
+	originalGetNodeStatus := kube.GetNodeStatus
+	kube.GetNodeStatus = func(clientset kubernetes.Interface) (readyNodes int, totalNodes int, err error) {
+		t.Log("mock GetNodeStatus called, returning specific error")
 		return 1, 2, expectedStatusErr
 	}
-	defer func() { kube.GetNodeStatusClientGo = originalGetNodeStatus }()
+	defer func() { kube.GetNodeStatus = originalGetNodeStatus }()
 
 	km := newTestKubeManager()
 	health, err := km.GetClusterNodeHealth(context.Background(), "test-ctx-nodestatus-error")

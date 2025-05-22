@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"envctl/pkg/logging"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -19,54 +21,64 @@ import (
 )
 
 // SendUpdateFunc defines a callback function signature used by port-forwarding logic.
-// Reverted to old signature: status, outputLog string, isError, isReady bool
+// status: A string indicating the state (e.g., "Initializing", "ForwardingActive", "Failed", "Stopped")
+// outputLog: A brief detail accompanying the status, not for verbose line-by-line logging.
+// isError: True if this status represents an error condition.
+// isReady: True if the port-forward is actively forwarding.
 type SendUpdateFunc func(status, outputLog string, isError, isReady bool)
 
-// tuiLogWriter is an io.Writer implementation that wraps the SendUpdateFunc.
-type tuiLogWriter struct {
-	label      string
-	sendUpdate SendUpdateFunc
-	asError    bool
+// directLogger is an io.Writer that logs lines directly using pkg/logging.Debug.
+// It's used to capture raw stdout/stderr from the port-forwarding process for debugging.
+type directLogger struct {
+	subsystem string // e.g., "PortForward-MyPF-kube-ops"
+	isError   bool   // True if this logger is for stderr, false for stdout
 }
 
-// Write processes the byte slice p, splits it into lines, and sends each line
-// via the sendUpdate callback.
-func (w *tuiLogWriter) Write(p []byte) (n int, err error) {
+func (dl *directLogger) Write(p []byte) (n int, err error) {
 	lines := strings.Split(strings.TrimSuffix(string(p), "\n"), "\n")
 	for _, line := range lines {
 		if line != "" {
 			cleanLine := line
-			if strings.Contains(cleanLine, "I") && strings.Contains(cleanLine, "client-go") {
-				parts := strings.SplitN(cleanLine, " ", 3)
-				if len(parts) >= 3 {
-					cleanLine = parts[2]
+			// Temporarily simplify condition for diagnosis of client-go prefix stripping
+			if strings.HasPrefix(cleanLine, "I") { // Condition simplified for testing
+				if closingBracketIndex := strings.Index(cleanLine, "]"); closingBracketIndex != -1 {
+					potentialMessage := cleanLine[closingBracketIndex+1:]
+					cleanLine = strings.TrimSpace(potentialMessage)
+				} 
+			}
+
+			if dl.isError {
+				logging.Debug(dl.subsystem, "[PF_STDERR_RAW] %s", cleanLine)
+			} else {
+				if !strings.HasPrefix(cleanLine, "Forwarding from") && 
+				   !strings.HasPrefix(line, "Forwarding from") { 
+					logging.Debug(dl.subsystem, "[PF_STDOUT_RAW] %s", cleanLine)
 				}
 			}
-			// For plain log output, status is empty, isReady is false.
-			w.sendUpdate("", cleanLine, w.asError, false)
 		}
 	}
 	return len(p), nil
 }
 
-// StartPortForwardClientGo establishes a port-forward to a Kubernetes pod using the client-go library.
-// ... (rest of the function documentation as it was)
-func StartPortForwardClientGo(
+// StartPortForward establishes a port-forward to a Kubernetes pod using the client-go library.
+func StartPortForward(
 	kubeContext string,
 	namespace string,
 	serviceArg string, // e.g., "service/my-svc" or "pod/my-pod"
 	portString string, // e.g., "8080:8080"
 	pfLabel string,
-	sendUpdate SendUpdateFunc, // Now old signature func(status, outputLog string, isError, isReady bool)
+	sendUpdate SendUpdateFunc, // For state transitions
 ) (chan struct{}, string, error) {
-	sendUpdate("", fmt.Sprintf("DEBUG_KUBE_PF: Enter StartPortForwardClientGo for %s. Context: %s, Service: %s/%s", pfLabel, kubeContext, namespace, serviceArg), false, false)
+	opsSubsystem := fmt.Sprintf("PortForward-%s-kube-ops", pfLabel)
+
+	logging.Debug(opsSubsystem, "Enter StartPortForward. Context: %s, Service: %s/%s, Ports: %s", kubeContext, namespace, serviceArg, portString)
 
 	// 1. Parse Ports
 	portParts := strings.Split(portString, ":")
 	if len(portParts) != 2 {
 		errMsg := fmt.Errorf("invalid port string %q, expected format local:remote", portString)
-		// sendUpdate for early errors is good for logging, but TUI state might be better set by direct return
-		return nil, "", errMsg
+		logging.Error(opsSubsystem, errMsg, "Port parsing failed: %s", portString)
+		return nil, "", errMsg // No sendUpdate, immediate error return
 	}
 	localPortStr, remotePortStr := portParts[0], portParts[1]
 
@@ -74,48 +86,55 @@ func StartPortForwardClientGo(
 	if err != nil {
 		return nil, "", fmt.Errorf("invalid local port %q: %w", localPortStr, err)
 	}
-	remotePort, err := strconv.ParseUint(remotePortStr, 10, 16)
+	remotePortVal, err := strconv.ParseUint(remotePortStr, 10, 16)
 	if err != nil {
 		return nil, "", fmt.Errorf("invalid remote port %q: %w", remotePortStr, err)
 	}
-	ports := []string{fmt.Sprintf("%d:%d", localPort, remotePort)}
+	ports := []string{fmt.Sprintf("%d:%d", localPort, remotePortVal)}
+
+	initialStatusMsg := fmt.Sprintf("Setup for %s:%s to %s/%s", localPortStr, remotePortStr, namespace, serviceArg)
+	sendUpdate("Initializing", initialStatusMsg, false, false)
+	initialStatusForCaller := "Initializing" // String to return to caller
 
 	// 2. Kubernetes Config
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
-	// ExplicitPath can be set here if envctl uses a specific kubeconfig path
-	// loadingRules.ExplicitPath = clientcmd.RecommendedHomeFile
 	configOverrides := &clientcmd.ConfigOverrides{CurrentContext: kubeContext}
 	kubeConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
 
-	sendUpdate("", fmt.Sprintf("Attempting to get REST config..."), false, false)
+	logging.Debug(opsSubsystem, "Attempting to get REST config...")
 	restConfig, err := kubeConfig.ClientConfig()
 	if err != nil {
-		sendUpdate("ERROR", fmt.Sprintf("Error getting REST config: %v", err), true, false)
-		return nil, "", fmt.Errorf("failed to get REST config for context %q: %w", kubeContext, err)
+		detail := "Error getting REST config"
+		logging.Error(opsSubsystem, err, "%s", detail)
+		sendUpdate("Failed", fmt.Sprintf("%s: %v", detail, err), true, false)
+		return nil, initialStatusForCaller, fmt.Errorf("failed to get REST config for context %q: %w", kubeContext, err)
 	}
-	sendUpdate("", fmt.Sprintf("Got REST config. Timeout: %s", restConfig.Timeout.String()), false, false)
-	restConfig.Timeout = 30 * time.Second // Example timeout for connection attempts
+	logging.Debug(opsSubsystem, "Got REST config. Timeout: %s", restConfig.Timeout.String())
+	restConfig.Timeout = 30 * time.Second
 
 	// 3. Kubernetes Clientset
-	sendUpdate("", fmt.Sprintf("Attempting to create clientset..."), false, false)
+	logging.Debug(opsSubsystem, "Attempting to create clientset...")
 	clientset, err := kubernetes.NewForConfig(restConfig)
 	if err != nil {
-		sendUpdate("ERROR", fmt.Sprintf("Error creating clientset: %v", err), true, false)
-		return nil, "", fmt.Errorf("failed to create Kubernetes clientset: %w", err)
+		detail := "Error creating clientset"
+		logging.Error(opsSubsystem, err, "%s", detail)
+		sendUpdate("Failed", fmt.Sprintf("%s: %v", detail, err), true, false)
+		return nil, initialStatusForCaller, fmt.Errorf("failed to create Kubernetes clientset: %w", err)
 	}
-	sendUpdate("", fmt.Sprintf("Clientset created."), false, false)
+	logging.Debug(opsSubsystem, "Clientset created.")
 
 	// 4. Determine Target Pod
-	sendUpdate("", fmt.Sprintf("Attempting to determine target pod..."), false, false)
-	podName, err := getPodNameForPortForward(clientset, namespace, serviceArg, uint16(remotePort))
+	logging.Debug(opsSubsystem, "Attempting to determine target pod for service %s, remote port %d...", serviceArg, remotePortVal)
+	podName, err := getPodNameForPortForward(clientset, namespace, serviceArg, uint16(remotePortVal))
 	if err != nil {
-		sendUpdate("ERROR", fmt.Sprintf("Error determining target pod: %v", err), true, false)
-		return nil, "", fmt.Errorf("failed to determine target pod for %q in %q: %w", serviceArg, namespace, err)
+		detail := fmt.Sprintf("Error determining target pod for %s in %s", serviceArg, namespace)
+		logging.Error(opsSubsystem, err, "%s", detail)
+		sendUpdate("Failed", fmt.Sprintf("%s: %v", detail, err), true, false)
+		return nil, initialStatusForCaller, fmt.Errorf("failed to determine target pod for %q in %q: %w", serviceArg, namespace, err)
 	}
-	sendUpdate("", fmt.Sprintf("Target pod determined: %s", podName), false, false)
+	logging.Debug(opsSubsystem, "Target pod determined: %s", podName)
 
 	// 5. Create PortForwarder URL
-	// Example URL: POST https://<server>/api/v1/namespaces/<namespace>/pods/<pod>/portforward
 	reqURL := clientset.CoreV1().RESTClient().Post().
 		Resource("pods").
 		Namespace(namespace).
@@ -124,102 +143,99 @@ func StartPortForwardClientGo(
 		URL()
 
 	// 6. Create Dialer & PortForwarder
-	sendUpdate("", fmt.Sprintf("Attempting to create SPDY round tripper..."), false, false)
+	logging.Debug(opsSubsystem, "Attempting to create SPDY round tripper...")
 	transport, upgrader, err := spdy.RoundTripperFor(restConfig)
 	if err != nil {
-		sendUpdate("ERROR", fmt.Sprintf("Error creating SPDY round tripper: %v", err), true, false)
-		return nil, "", fmt.Errorf("failed to create SPDY round tripper: %w", err)
+		detail := "Error creating SPDY round tripper"
+		logging.Error(opsSubsystem, err, "%s", detail)
+		sendUpdate("Failed", fmt.Sprintf("%s: %v", detail, err), true, false)
+		return nil, initialStatusForCaller, fmt.Errorf("failed to create SPDY round tripper: %w", err)
 	}
-	sendUpdate("", fmt.Sprintf("SPDY round tripper created. Creating dialer..."), false, false)
+	logging.Debug(opsSubsystem, "SPDY round tripper created. Creating dialer...")
 	dialer := spdy.NewDialer(upgrader, &http.Client{Transport: transport}, http.MethodPost, reqURL)
 
-	stopChan := make(chan struct{}, 1) // Buffered to allow send without immediate receive
+	stopChan := make(chan struct{}, 1)
 	readyChan := make(chan struct{})
 
-	stdOutWriter := &tuiLogWriter{label: pfLabel, sendUpdate: sendUpdate, asError: false}
-	stdErrWriter := &tuiLogWriter{label: pfLabel, sendUpdate: sendUpdate, asError: true}
+	stdOutWriter := &directLogger{subsystem: opsSubsystem, isError: false}
+	stdErrWriter := &directLogger{subsystem: opsSubsystem, isError: true}
 
-	// Using NewOnAddresses to specify listen on 127.0.0.1
-	// localPort can be 0 to pick a random available port.
-	// If localPort is 0, GetPorts() must be used after ready.
-	addresses := []string{"127.0.0.1"} // Listen on localhost
+	addresses := []string{"127.0.0.1"}
 
-	sendUpdate("", fmt.Sprintf("Attempting to create port forwarder object (NewOnAddresses)..."), false, false)
+	logging.Debug(opsSubsystem, "Attempting to create port forwarder object (NewOnAddresses)...")
 	forwarder, err := portforward.NewOnAddresses(dialer, addresses, ports, stopChan, readyChan, stdOutWriter, stdErrWriter)
 	if err != nil {
-		sendUpdate("ERROR", fmt.Sprintf("Error creating port forwarder object: %v", err), true, false)
-		return nil, "", fmt.Errorf("failed to create port forwarder: %w", err)
+		detail := "Error creating port forwarder object"
+		logging.Error(opsSubsystem, err, "%s", detail)
+		sendUpdate("Failed", fmt.Sprintf("%s: %v", detail, err), true, false)
+		return nil, initialStatusForCaller, fmt.Errorf("failed to create port forwarder: %w", err)
 	}
-	sendUpdate("", fmt.Sprintf("Port forwarder object created."), false, false)
-
-	initialStatusLog := fmt.Sprintf("Initializing %s:%s -> %s/%s (pod %s)...", localPortStr, remotePortStr, namespace, serviceArg, podName)
-	sendUpdate(initialStatusLog, "", false, false)
-
-	// Send useful debug messages without overwhelming the log
-	sendUpdate("", fmt.Sprintf("Starting port forward to pod %s", podName), false, false)
+	logging.Debug(opsSubsystem, "Port forwarder object created.")
+	logging.Debug(opsSubsystem, "Starting port forward to pod %s, ports %v", podName, ports)
 
 	// 7. Run Asynchronously
 	go func() {
-		sendUpdate("", "DEBUG: Goroutine for ForwardPorts starting...", false, false)
-		sendUpdate("", "DEBUG: Starting ForwardPorts process...", false, false)
+		logging.Debug(opsSubsystem, "Goroutine for ForwardPorts starting...")
 		if err = forwarder.ForwardPorts(); err != nil {
-			sendUpdate("ERROR", fmt.Sprintf("forwarder.ForwardPorts() returned error: %v", err), true, false)
-			sendUpdate("ERROR", fmt.Sprintf("ForwardPorts error: %v", err), true, false)
+			logging.Error(opsSubsystem, err, "ForwardPorts processing loop error")
 			select {
 			case <-stopChan:
-				sendUpdate("Stopped.", "Port forwarding terminated by request after error.", false, false)
+				logging.Info(opsSubsystem, "ForwardPorts loop error likely due to stop signal.")
+				sendUpdate("Stopped", "Forwarding error concurrent with stop", true, false)
 			default:
-				sendUpdate("Error.", fmt.Sprintf("Forwarding failed: %v", err), true, false)
+				sendUpdate("Failed", fmt.Sprintf("Forwarding loop error: %v", err), true, false)
 			}
 		} else {
-			sendUpdate("", "DEBUG: forwarder.ForwardPorts() completed without error.", false, false)
-			sendUpdate("", "DEBUG: ForwardPorts completed gracefully", false, false)
-			sendUpdate("Stopped.", "Port forwarding connection closed.", false, false)
+			logging.Info(opsSubsystem, "ForwardPorts loop completed gracefully.")
+			sendUpdate("Stopped", "Connection closed gracefully", false, false)
 		}
-		sendUpdate("", "DEBUG: Goroutine for ForwardPorts finished.", false, false)
+		logging.Debug(opsSubsystem, "Goroutine for ForwardPorts finished.")
 	}()
 
 	go func() {
-		sendUpdate("", "DEBUG: Goroutine for ready/stop monitoring starting...", false, false)
-		sendUpdate("", "DEBUG: Monitoring ready/stop channels...", false, false)
+		logging.Debug(opsSubsystem, "Goroutine for ready/stop monitoring starting...")
 		select {
 		case <-stopChan:
-			sendUpdate("", "DEBUG: Received on stopChan in ready/stop monitor.", false, false)
-			sendUpdate("", "Stop signal received in ready/stop monitor.", false, false)
+			logging.Info(opsSubsystem, "Stop signal received before port-forward was ready.")
+			sendUpdate("Stopped", "Stopped before ready", false, false)
 			return
 		case <-readyChan:
-			sendUpdate("", "DEBUG: Received on readyChan!", false, false)
-			sendUpdate("", "Ready signal received!", false, true)
+			logging.Info(opsSubsystem, "Port-forward ready signal received.")
 			actualPorts, portErr := forwarder.GetPorts()
 			var fwdDetail string
-			readyMessageIsError := false // To flag if the main ready message should also indicate an error/warning
+			pfIsErrorOverall := false
 
 			if portErr == nil && len(actualPorts) > 0 {
 				fwdDetail = fmt.Sprintf("Forwarding from 127.0.0.1:%d to pod port %d", actualPorts[0].Local, actualPorts[0].Remote)
 			} else {
-				fwdDetail = fmt.Sprintf("Forwarding from 127.0.0.1:%s to pod port %s", localPortStr, remotePortStr)
+				fwdDetail = fmt.Sprintf("Forwarding from 127.0.0.1:%s to pod port %s (actual local port might differ or failed to get)", localPortStr, remotePortStr)
 				if portErr != nil {
-					sendUpdate("WARN", fmt.Sprintf("Warning: could not get bound local port: %v", portErr), true, false)
-					readyMessageIsError = true // The main forwarding message will also be an error type status
+					logging.Warn(opsSubsystem, "Could not get bound local port after ready: %v", portErr)
+					pfIsErrorOverall = true
 				}
 			}
-			// Send the primary forwarding detail. Mark as error if portErr occurred, but still ready=true because PF is up.
-			sendUpdate(fwdDetail, "", readyMessageIsError, true)
+			logging.Info(opsSubsystem, "%s", fwdDetail) // Log the key forwarding info with format string
+			sendUpdate("ForwardingActive", fwdDetail, pfIsErrorOverall, true)
 
-			sendUpdate("", fmt.Sprintf("Waiting for stop signal (port-forward is active)"), false, false)
+			logging.Debug(opsSubsystem, "Waiting for stop signal (port-forward is active)")
 			<-stopChan
-			sendUpdate("", "DEBUG: Received on stopChan after ready.", false, false)
-			sendUpdate("", "Stop signal received after port-forward was active.", false, false)
+			logging.Info(opsSubsystem, "Stop signal received after port-forward was active.")
+			sendUpdate("Stopped", "Stopped after active", false, false)
 			return
 		case <-time.After(60 * time.Second):
-			sendUpdate("Timeout.", "Timeout (60s) waiting for readyChan.", true, false)
-			sendUpdate("Timeout.", "Timeout (60s) waiting for ready signal.", true, false)
-			sendUpdate("Timeout.", "Timeout.", true, false)
+			detail := "Timeout (60s) waiting for port-forward ready signal"
+			logging.Error(opsSubsystem, nil, "%s", detail)
+			sendUpdate("Failed", detail, true, false)
+			select {
+			case <-stopChan:
+			default:
+				close(stopChan)
+			}
 			return
 		}
 	}()
 
-	return stopChan, initialStatusLog, nil
+	return stopChan, initialStatusForCaller, nil
 }
 
 // getPodNameForPortForward resolves a service argument (like "service/my-svc" or "pod/my-pod")
@@ -307,8 +323,8 @@ func getPodNameForPortForward(clientset kubernetes.Interface, namespace, service
 	return "", fmt.Errorf("unsupported resource type %q in %q", resourceType, serviceArg)
 }
 
-// GetNodeStatusClientGo retrieves the number of ready and total nodes in a cluster using client-go.
-var GetNodeStatusClientGo = func(clientset kubernetes.Interface) (readyNodes int, totalNodes int, err error) {
+// GetNodeStatus retrieves the number of ready and total nodes in a cluster using client-go.
+var GetNodeStatus = func(clientset kubernetes.Interface) (readyNodes int, totalNodes int, err error) {
 	// No longer needs to create clientset from kubeContext here
 	// Assumes clientset is already configured for the correct context.
 

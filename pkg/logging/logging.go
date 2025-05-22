@@ -64,6 +64,7 @@ var (
 	defaultLogger *slog.Logger
 	tuiLogChannel chan LogEntry
 	isTuiMode     bool
+	// globalHandlerSlogLevel slog.Level // No longer needed with defaultLogger.Enabled()
 )
 
 const tuiChannelBufferSize = 2048
@@ -72,7 +73,7 @@ const tuiChannelBufferSize = 2048
 // This should be called once at application startup.
 func Initcommon(mode string, level LogLevel, output io.Writer, channelBufferSize int) <-chan LogEntry {
 	opts := &slog.HandlerOptions{
-		Level: level.SlogLevel(),
+		Level: level.SlogLevel(), // This sets the minimum level for the handler
 	}
 
 	var handler slog.Handler
@@ -82,19 +83,12 @@ func Initcommon(mode string, level LogLevel, output io.Writer, channelBufferSize
 			channelBufferSize = tuiChannelBufferSize
 		}
 		tuiLogChannel = make(chan LogEntry, channelBufferSize)
-		// For TUI, we primarily send to the channel.
-		// We could also have a fallback handler for TUI initialization phase if needed,
-		// or if some logs shouldn't go to the TUI display but to a file.
-		// For now, TUI mode means logs are formatted and sent via tuiLogChannel.
-		// The actual slog handler for TUI mode will be a custom one if we want
-		// slog to directly send to our channel.
-		// As a simpler start, the logging functions will manually send to tuiLogChannel.
-		// And we can still set up a defaultLogger that might write to stderr during TUI init.
-		handler = slog.NewTextHandler(os.Stderr, opts) // Fallback/debug handler for TUI mode
+		// For TUI, even if a handler is set up for defaultLogger,
+		// logInternal will primarily send to tuiLogChannel.
+		// A default handler can be useful for any direct slog calls during TUI init.
+		handler = slog.NewTextHandler(io.Discard, opts) // TUI logs via channel; discard direct slog output from defaultLogger
 	} else { // cli mode
 		isTuiMode = false
-		// For CLI, we log directly to the provided output (e.g., os.Stdout, os.Stderr)
-		// We can enhance this to support JSON later if outputFormat demands it.
 		handler = slog.NewTextHandler(output, opts)
 	}
 	defaultLogger = slog.New(handler)
@@ -107,24 +101,31 @@ func Initcommon(mode string, level LogLevel, output io.Writer, channelBufferSize
 }
 
 // InitForTUI initializes the logging system for TUI mode.
-// It sets up a channel that the TUI will listen to for log entries.
 func InitForTUI(filterLevel LogLevel) <-chan LogEntry {
-	return Initcommon("tui", filterLevel, os.Stderr, tuiChannelBufferSize)
+	// For TUI, Initcommon will set up the channel. The filterLevel passed here
+	// sets the minimum level for any *direct* output from defaultLogger in TUI mode,
+	// which we now set to io.Discard. The TUI itself will filter from the channel.
+	return Initcommon("tui", filterLevel, io.Discard, tuiChannelBufferSize)
 }
 
 // InitForCLI initializes the logging system for CLI mode.
-// Logs will be written to os.Stdout or os.Stderr based on level or configuration.
-// outputFormat can be "text" or "json" in the future.
 func InitForCLI(filterLevel LogLevel, output io.Writer) {
 	Initcommon("cli", filterLevel, output, 0)
 }
 
 func logInternal(level LogLevel, subsystem string, err error, messageFmt string, args ...interface{}) {
+	// For CLI mode, check if the level is enabled by the configured handler before proceeding.
+	// For TUI mode, we always send to the channel; TUI will do its own filtering/display logic.
+	if !isTuiMode {
+		if defaultLogger == nil || !defaultLogger.Enabled(context.Background(), level.SlogLevel()) {
+			return // Suppress log if not in TUI mode and level is not enabled for CLI
+		}
+	}
+
 	msg := messageFmt
 	if len(args) > 0 {
 		msg = fmt.Sprintf(messageFmt, args...)
 	}
-
 	now := time.Now()
 
 	if isTuiMode {
@@ -136,22 +137,24 @@ func logInternal(level LogLevel, subsystem string, err error, messageFmt string,
 				Message:   msg,
 				Err:       err,
 			}
-			// Blocking send to ensure FIFO and no loss, assuming TUI processes.
-			// The channel is buffered, so it will only block if the buffer is full.
-			tuiLogChannel <- entry
+			select {
+			case tuiLogChannel <- entry:
+				// Sent successfully
+			default:
+				// Channel full or closed, log to stderr as fallback for TUI log loss
+				fmt.Fprintf(os.Stderr, "[LOGGING_CRITICAL] TUI log channel full/closed. Dropping: %s [%s] %s\n", now.Format(time.RFC3339), level, msg)
+			}
 		} else {
-			// This case (TUI mode but channel is nil) should ideally not happen if InitForTUI was called.
-			// Log to os.Stderr as an emergency fallback.
 			fmt.Fprintf(os.Stderr, "[LOGGING_CRITICAL] TUI mode active but tuiLogChannel is nil. Log: %s [%s] %s\n", now.Format(time.RFC3339), level, msg)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "  Error: %v\n", err)
 			}
 		}
-		return // Primary output for TUI mode is the channel.
+		return // In TUI mode, primary path is the channel, even if defaultLogger is set.
 	}
 
-	// CLI mode logging
-	if defaultLogger == nil {
+	// CLI mode logging (only reached if level was enabled)
+	if defaultLogger == nil { // Should not happen if level was enabled, but as a safeguard.
 		fmt.Fprintf(os.Stderr, "[LOGGING_ERROR] Logger not initialized. Log: %s [%s] %s\n", now.Format(time.RFC3339), level, msg)
 		return
 	}
@@ -188,6 +191,11 @@ func Error(subsystem string, err error, messageFmt string, args ...interface{}) 
 // CloseTUIChannel closes the TUI log channel. Should be called on application shutdown.
 func CloseTUIChannel() {
 	if tuiLogChannel != nil {
+		// Check if channel is already closed to prevent panic
+		// This is a bit tricky. A select with a default is one way.
+		// For simplicity, we assume it's called once correctly.
+		// If TUI is robust, it stops reading when its main loop ends.
 		close(tuiLogChannel)
+		tuiLogChannel = nil // Prevent further use
 	}
 }

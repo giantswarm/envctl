@@ -72,33 +72,18 @@ Arguments:
 			appLogLevel = logging.LevelDebug
 		}
 
-		// Initialize logger early, before any potential logging action.
-		// For noTUI (CLI) mode, init CLI logger. For TUI mode, init happens later.
-		if noTUI {
-			logging.InitForCLI(appLogLevel, os.Stdout)
-		} // For TUI mode, InitForTUI is called further down.
+		logging.InitForCLI(appLogLevel, os.Stdout)
 
 		tempConsoleReporterForKubeMgr := reporting.NewConsoleReporter()
 		kubeMgr := k8smanager.NewKubeManager(tempConsoleReporterForKubeMgr)
 
 		initialKubeContext, err := kubeMgr.GetCurrentContext()
 		if err != nil {
-			if noTUI {
-				logging.Warn("CLI", "Could not get initial Kubernetes context: %v", err)
-			} else {
-				// In TUI mode, logging will be set up later, direct print for this early error.
-				fmt.Fprintf(os.Stderr, "Warning: could not get initial Kubernetes context: %v\n", err)
-			}
+			logging.Warn("CLI", "Could not get initial Kubernetes context: %v", err)
 			initialKubeContext = "unknown"
 		}
 		// Log initial context using the appropriate logger if initialized
-		if noTUI {
-			logging.Info("CLI", "Initial Kubernetes context: %s", initialKubeContext)
-		} else {
-			// For TUI, this info will be part of initial model and potentially logged once TUI logger is up.
-			// Direct print for now as TUI logger is not yet up.
-			// fmt.Printf("Initial Kubernetes context: %s\n", initialKubeContext)
-		}
+		logging.Info("CLI", "Initial Kubernetes context: %s", initialKubeContext)
 
 		portForwardingConfig := portforwarding.GetPortForwardConfig(managementClusterArg, workloadClusterArg)
 		mcpServerConfig := mcpserver.GetMCPServerConfig()
@@ -151,14 +136,10 @@ Arguments:
 
 		} else { // TUI Mode
 			// This fmt.Println is pre-TUI initialization, so it's acceptable.
-			fmt.Println("Starting TUI mode...")
+			logging.Info("CLI", "Starting TUI mode...")
 			color.Initialize(true)
 
-			tuiLogLevel := appLogLevel
-			if tuiDebugMode && appLogLevel != logging.LevelDebug {
-				tuiLogLevel = logging.LevelDebug
-			}
-			logChan := logging.InitForTUI(tuiLogLevel)
+			logChan := logging.InitForTUI(appLogLevel)
 			defer logging.CloseTUIChannel()
 
 			// Pass the TUI reporter to KubeManager for TUI mode

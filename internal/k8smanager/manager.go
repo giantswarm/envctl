@@ -270,7 +270,7 @@ func (km *kubeManager) GetClusterNodeHealth(ctx context.Context, kubeContextName
 		return NodeHealth{Error: wrappedErr}, wrappedErr
 	}
 
-	ready, total, statusErr := kube.GetNodeStatusClientGo(clientset)
+	ready, total, statusErr := kube.GetNodeStatus(clientset)
 	if statusErr != nil {
 		logging.Error(debugOperation, statusErr, "Failed to get node status")
 		km.reporter.Report(reporting.ManagedServiceUpdate{

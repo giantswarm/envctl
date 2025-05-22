@@ -189,8 +189,10 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 				logMessage := fmt.Sprintf("Service %s (PortForward) state changed to: %s", originalLabel, state)
 				if state == reporting.StateFailed || operationErr != nil {
 					logging.Error("ServiceManager", operationErr, "%s", logMessage)
-				} else {
+				} else if state == reporting.StateRunning || state == reporting.StateStopped {
 					logging.Info("ServiceManager", "%s", logMessage)
+				} else {
+					logging.Debug("ServiceManager", "%s", logMessage) // For transient states
 				}
 
 				if sm.reporter != nil {
@@ -263,8 +265,10 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 				logMessage := fmt.Sprintf("Service %s (MCPServer) state changed to: %s", originalLabel, state)
 				if state == reporting.StateFailed || mcpStatusUpdate.ProcessErr != nil {
 					logging.Error("ServiceManager", mcpStatusUpdate.ProcessErr, "%s", logMessage)
-				} else {
+				} else if state == reporting.StateRunning || state == reporting.StateStopped {
 					logging.Info("ServiceManager", "%s", logMessage)
+				} else {
+					logging.Debug("ServiceManager", "%s", logMessage) // For transient states
 				}
 
 				if sm.reporter != nil {
