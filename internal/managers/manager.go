@@ -22,8 +22,9 @@ type ServiceManager struct { // Renamed from DefaultServiceManager
 	pendingRestarts map[string]bool // Map label to true if restart is pending
 	// Store the original update callback and WaitGroup from the initial StartServices call
 	// This assumes one main StartServices call, or needs more complex management if multiple overlapping calls.
-	initialWg *sync.WaitGroup
-	reporter  reporting.ServiceReporter
+	initialWg     *sync.WaitGroup
+	reporter      reporting.ServiceReporter
+	serviceStates map[string]reporting.ServiceState // Added to track current state of services
 }
 
 // NewServiceManager creates a new instance of ServiceManager and returns it as a ServiceManagerAPI interface.
@@ -42,6 +43,7 @@ func NewServiceManager(reporter reporting.ServiceReporter) ServiceManagerAPI {
 		pendingRestarts: make(map[string]bool),
 		initialWg:       &sync.WaitGroup{},
 		reporter:        reporter,
+		serviceStates:   make(map[string]reporting.ServiceState), // Initialize the new map
 	}
 }
 
@@ -135,6 +137,8 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 	if len(pfConfigs) > 0 {
 		logging.Debug("ServiceManager", "Processing %d port forward configs.", len(pfConfigs))
 		pfUpdateAdapter := func(serviceLabel string, statusDetail portforwarding.PortForwardStatusDetail, isOpReady bool, operationErr error) {
+			sm.mu.Lock() // Lock early to protect serviceStates access
+
 			originalLabel, ok := pfOriginalLabels[serviceLabel]
 			if !ok {
 				originalLabel = serviceLabel // Fallback
@@ -153,7 +157,6 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 						state = reporting.StateRunning
 						level = reporting.LogLevelInfo
 					} else {
-						// This case might indicate a brief period where status is active but not fully ready, treat as Starting.
 						state = reporting.StateStarting
 						level = reporting.LogLevelInfo
 					}
@@ -170,27 +173,18 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 					state = reporting.StateUnknown
 					level = reporting.LogLevelWarn
 				default:
-					// If isOpReady is true, default to Running for any other positive-like status.
 					if isOpReady {
 						state = reporting.StateRunning
 						level = reporting.LogLevelInfo
 					} else {
-						state = reporting.StateUnknown // Or StateStarting if that feels more appropriate for unmapped non-error states
+						state = reporting.StateUnknown
 						level = reporting.LogLevelDebug
 						logging.Debug("ServiceManager", "Unmapped PortForwardStatusDetail '%s' for service %s. isOpReady: %t", statusDetail, originalLabel, isOpReady)
 					}
 				}
 			}
 
-			// Log the state change
-			logMessage := fmt.Sprintf("Service %s (PortForward) state: %s", originalLabel, state)
-
-			if state == reporting.StateFailed || operationErr != nil {
-				logging.Error("ServiceManager", operationErr, "%s", logMessage)
-			} else {
-				logging.Info("ServiceManager", "%s", logMessage)
-			}
-
+			lastReportedState, known := sm.serviceStates[originalLabel]
 			updateForReporter := reporting.ManagedServiceUpdate{
 				Timestamp:    time.Now(),
 				SourceType:   reporting.ServiceTypePortForward,
@@ -201,10 +195,25 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 				ServiceLevel: level,
 			}
 
-			if sm.reporter != nil {
-				sm.reporter.Report(updateForReporter)
+			if !known || state != lastReportedState {
+				sm.serviceStates[originalLabel] = state
+
+				logMessage := fmt.Sprintf("Service %s (PortForward) state changed to: %s", originalLabel, state)
+				if state == reporting.StateFailed || operationErr != nil {
+					logging.Error("ServiceManager", operationErr, "%s", logMessage)
+				} else {
+					logging.Info("ServiceManager", "%s", logMessage)
+				}
+
+				if sm.reporter != nil {
+					fmt.Printf("DEBUG_PF_ADAPTER: Attempting to report state '%s' for '%s'\n", updateForReporter.State, updateForReporter.SourceLabel)
+					sm.reporter.Report(updateForReporter)
+				}
+				sm.mu.Unlock() // Unlock before calling checkAndProcessRestart
+				sm.checkAndProcessRestart(updateForReporter)
+			} else {
+				sm.mu.Unlock() // Unlock if no state change
 			}
-			sm.checkAndProcessRestart(updateForReporter)
 		}
 
 		pfStopChans := portforwarding.StartPortForwardings(pfConfigs, pfUpdateAdapter, wg)
@@ -224,6 +233,8 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 	if len(mcpConfigs) > 0 {
 		logging.Debug("ServiceManager", "Processing %d MCP server configs.", len(mcpConfigs))
 		mcpUpdateAdapter := func(mcpStatusUpdate mcpserver.McpDiscreteStatusUpdate) {
+			sm.mu.Lock() // Lock early
+
 			originalLabel, ok := mcpOriginalLabels[mcpStatusUpdate.Label]
 			if !ok {
 				originalLabel = mcpStatusUpdate.Label // Fallback
@@ -232,9 +243,8 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 			var state reporting.ServiceState
 			var level reporting.LogLevel
 
-			// Example mapping from mcpStatusUpdate.ProcessStatus string to reporting.ServiceState
-			switch mcpStatusUpdate.ProcessStatus { // ProcessStatus is a string like "NpxStarting", "NpxRunning"
-			case "NpxStarting", "Initializing": // Define these constants in mcpserver if not already
+			switch mcpStatusUpdate.ProcessStatus {
+			case "NpxStarting", "Initializing", "NpxInitializing":
 				state = reporting.StateStarting
 				level = reporting.LogLevelInfo
 			case "NpxRunning":
@@ -248,22 +258,15 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 				level = reporting.LogLevelError
 			default:
 				state = reporting.StateUnknown
-				level = reporting.LogLevelWarn // Unknown state might be a warning
+				level = reporting.LogLevelWarn
 			}
 
 			if mcpStatusUpdate.ProcessErr != nil {
-				state = reporting.StateFailed // Override if there's an explicit error
+				state = reporting.StateFailed
 				level = reporting.LogLevelError
 			}
 
-			// Log the state change
-			logMessage := fmt.Sprintf("Service %s (MCPServer) state: %s", originalLabel, state)
-
-			if state == reporting.StateFailed || mcpStatusUpdate.ProcessErr != nil {
-				logging.Error("ServiceManager", mcpStatusUpdate.ProcessErr, "%s", logMessage)
-			} else {
-				logging.Info("ServiceManager", "%s", logMessage)
-			}
+			lastReportedState, known := sm.serviceStates[originalLabel]
 
 			updateForReporter := reporting.ManagedServiceUpdate{
 				Timestamp:    time.Now(),
@@ -275,10 +278,25 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 				ServiceLevel: level,
 			}
 
-			if sm.reporter != nil {
-				sm.reporter.Report(updateForReporter)
+			if !known || state != lastReportedState {
+				sm.serviceStates[originalLabel] = state
+
+				logMessage := fmt.Sprintf("Service %s (MCPServer) state changed to: %s", originalLabel, state)
+				if state == reporting.StateFailed || mcpStatusUpdate.ProcessErr != nil {
+					logging.Error("ServiceManager", mcpStatusUpdate.ProcessErr, "%s", logMessage)
+				} else {
+					logging.Info("ServiceManager", "%s", logMessage)
+				}
+
+				if sm.reporter != nil {
+					fmt.Printf("DEBUG_MCP_ADAPTER: Attempting to report state '%s' for '%s'\n", updateForReporter.State, updateForReporter.SourceLabel)
+					sm.reporter.Report(updateForReporter)
+				}
+				sm.mu.Unlock() // Unlock before calling checkAndProcessRestart
+				sm.checkAndProcessRestart(updateForReporter)
+			} else {
+				sm.mu.Unlock() // Unlock if no state change
 			}
-			sm.checkAndProcessRestart(updateForReporter)
 		}
 		mcpStopChans, mcpErrs := mcpserver.StartMCPServers(mcpConfigs, mcpUpdateAdapter, wg)
 		startupErrors = append(startupErrors, mcpErrs...)
@@ -382,29 +400,31 @@ func (sm *ServiceManager) RestartService(label string) error {
 		// If not active, it might already be stopped or failed. Report it as 'Stopped' to trigger restart sequence if pending.
 		// checkAndProcessRestart will pick this up.
 		logging.Info("ServiceManager", "Service %s not active, reporting as stopped to potentially trigger pending restart.", label)
-		if sm.reporter != nil {
-			sm.reporter.Report(reporting.ManagedServiceUpdate{
-				Timestamp:    time.Now(),
-				SourceType:   originalCfg.Type,
-				SourceLabel:  label,
-				State:        reporting.StateStopped,
-				IsReady:      false,
-				ServiceLevel: reporting.LogLevelInfo,
-			})
+
+		updateForRestart := reporting.ManagedServiceUpdate{
+			Timestamp:    time.Now(),
+			SourceType:   originalCfg.Type,
+			SourceLabel:  label,
+			State:        reporting.StateStopped,
+			IsReady:      false,
+			ServiceLevel: reporting.LogLevelInfo,
 		}
-		// The checkAndProcessRestart will handle the actual restart if pending.
+		if sm.reporter != nil {
+			sm.reporter.Report(updateForRestart)
+		}
+		// Explicitly call checkAndProcessRestart here to trigger the pending restart logic
+		sm.checkAndProcessRestart(updateForRestart)
 		return nil
 	}
 	return sm.StopService(label) // This will eventually lead to a "Stopped" state update, triggering restart via checkAndProcessRestart
 }
 
-// checkAndProcessRestart is called by the update adapters.
+// checkAndProcessRestart is called by the update adapters and now also by RestartService.
 // It now uses reporting.ManagedServiceUpdate.State to determine if a service is stopped.
 func (sm *ServiceManager) checkAndProcessRestart(update reporting.ManagedServiceUpdate) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	// A service is considered stopped if its state is Stopped or Failed.
 	isConsideredStopped := update.State == reporting.StateStopped || update.State == reporting.StateFailed
 
 	if isConsideredStopped {
@@ -415,25 +435,48 @@ func (sm *ServiceManager) checkAndProcessRestart(update reporting.ManagedService
 
 			cfg, exists := sm.serviceConfigs[update.SourceLabel]
 			if exists {
-				logging.Info("ServiceManager", "Pending restart: Starting service %s again.", cfg.Label)
-				// Report "Restarting..." state before actually starting
-				if sm.reporter != nil {
-					sm.reporter.Report(reporting.ManagedServiceUpdate{
-						Timestamp:    time.Now(),
-						SourceType:   cfg.Type,
-						SourceLabel:  cfg.Label,
-						State:        reporting.StateStarting, // Changed from "Restarting..." message to StateStarting
-						IsReady:      false,
-						ServiceLevel: reporting.LogLevelInfo,
-					})
+				logging.Info("ServiceManager", "Pending restart: Preparing to start service %s again.", cfg.Label)
+
+				// Report "StateStarting" if it's a new state for this service instance before actually starting
+				if sm.serviceStates[cfg.Label] != reporting.StateStarting {
+					sm.serviceStates[cfg.Label] = reporting.StateStarting
+					if sm.reporter != nil {
+						fmt.Printf("DEBUG_CHECK_RESTART: Attempting to report StateStarting for '%s'\n", cfg.Label)
+						sm.reporter.Report(reporting.ManagedServiceUpdate{
+							Timestamp:    time.Now(),
+							SourceType:   cfg.Type,
+							SourceLabel:  cfg.Label,
+							State:        reporting.StateStarting,
+							IsReady:      false,
+							ServiceLevel: reporting.LogLevelInfo,
+						})
+					}
+					logging.Info("ServiceManager", "Service %s (restarting) state changed to: %s", cfg.Label, reporting.StateStarting)
 				}
-				var restartWg sync.WaitGroup
-				// Increment initialWg if it's used globally for all service goroutines.
-				// Or, manage wg per restart. For now, using a local wg for the goroutine itself.
-				go sm.startSpecificServicesLogic([]ManagedServiceConfig{cfg}, &restartWg) // Pass the original config
+
+				// var restartWg sync.WaitGroup // Removed as it's unused
+				// Consider if initialWg needs incrementing if it's for overall app completion.
+				// For now, restartWg manages this specific goroutine.
+				// If sm.initialWg is used, it should be sm.initialWg.Add(1) before goroutine
+				// and sm.initialWg.Done() in the goroutine.
+				// For simplicity, this example uses a local wg for the restart goroutine.
+				if sm.initialWg != nil { // Assuming sm.initialWg is the global WaitGroup
+					sm.initialWg.Add(1)
+				}
+				go func(localWg *sync.WaitGroup) {
+					if localWg != nil { // Check if using a local waitgroup (restartWg in this case, but passed as initialWg to startSpecificServicesLogic)
+						// if sm.initialWg was used above, then this should be sm.initialWg.Done()
+						defer localWg.Done() // If this is the global initialWg
+					}
+					sm.startSpecificServicesLogic([]ManagedServiceConfig{cfg}, localWg) // Pass the original config and appropriate wg
+				}(sm.initialWg) // Pass the global WaitGroup, or manage a separate one for restarts
 			} else {
-				logging.Warn("ServiceManager", "Pending restart for %s, but no config found.", update.SourceLabel)
+				logging.Warn("ServiceManager", "Pending restart for %s, but no config found. Removing from tracked states.", update.SourceLabel)
+				delete(sm.serviceStates, update.SourceLabel) // Clean up state map
 			}
+		} else { // Service stopped/failed and no restart is pending for it
+			logging.Info("ServiceManager", "Service %s stopped/failed and no restart pending. Removing from tracked states.", update.SourceLabel)
+			delete(sm.serviceStates, update.SourceLabel) // Clean up state map
 		}
 	}
 }

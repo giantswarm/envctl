@@ -52,11 +52,11 @@ func StartAllMCPServers(mcpServerConfigs []MCPServerConfig, updateFn McpUpdateFu
 	return infoChan
 }
 
-// StartAndManageMCPServersFunc is the type for the StartAndManageMCPServers function, for mocking.
-var StartAndManageMCPServers = StartMCPServers
+// StartMCPServers is an exported variable so it can be replaced for testing.
+var StartMCPServers = startMCPServersInternal
 
-// defaultStartAndManageMCPServers is the actual implementation.
-func StartMCPServers(
+// startMCPServersInternal is the actual implementation for starting MCP servers.
+func startMCPServersInternal(
 	configs []MCPServerConfig,
 	mcpUpdateFn McpUpdateFunc,
 	wg *sync.WaitGroup,

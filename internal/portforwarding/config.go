@@ -72,10 +72,11 @@ func GetPortForwardConfig(mcShortName, workloadClusterArg string) []PortForwardi
 // UpdateFunc defines the callback for port forwarding status updates.
 // Signature changed to: serviceLabel, statusDetail string, isOpReady bool, operationErr error
 
-// StartPortForwardsFunc is the type for the StartPortForwards function, for mocking.
-var StartPortForwards = StartPortForwardings // Points to the exported function
+// StartPortForwardings is an exported variable so it can be replaced for testing.
+var StartPortForwardings = startPortForwardingsInternal
 
-func StartPortForwardings(
+// startPortForwardingsInternal is the actual implementation.
+func startPortForwardingsInternal(
 	configs []PortForwardingConfig,
 	updateCb PortForwardUpdateFunc,
 	wg *sync.WaitGroup,
