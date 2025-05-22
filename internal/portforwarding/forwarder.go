@@ -68,7 +68,7 @@ func StartAndManageIndividualPortForward(
 					logging.Debug(subsystem, "Unknown kubeStatus received: '%s', IsReady: %t, IsError: %t", kubeStatus, kubeIsReady, kubeIsError)
 				}
 			}
-			
+
 			if operationErr != nil {
 				statusDetail = StatusDetailFailed
 			} else if kubeIsReady {

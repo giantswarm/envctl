@@ -183,15 +183,12 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 			}
 
 			// Log the state change
-			baseLogMessage := fmt.Sprintf("Service %s (PortForward) state: %s", originalLabel, state)
-			finalLogMessage := baseLogMessage
-			if statusDetail != "" && string(statusDetail) != string(state) { // Ensure statusDetail is converted to string for comparison if state is also string
-				finalLogMessage = fmt.Sprintf("%s (Detail: %s)", baseLogMessage, statusDetail)
-			}
+			logMessage := fmt.Sprintf("Service %s (PortForward) state: %s", originalLabel, state)
+
 			if state == reporting.StateFailed || operationErr != nil {
-				logging.Error("ServiceManager", operationErr, "%s", finalLogMessage)
+				logging.Error("ServiceManager", operationErr, "%s", logMessage)
 			} else {
-				logging.Info("ServiceManager", "%s", finalLogMessage)
+				logging.Info("ServiceManager", "%s", logMessage)
 			}
 
 			updateForReporter := reporting.ManagedServiceUpdate{
@@ -260,15 +257,12 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 			}
 
 			// Log the state change
-			baseLogMessage := fmt.Sprintf("Service %s (MCPServer) state: %s", originalLabel, state)
-			finalLogMessage := baseLogMessage
-			if mcpStatusUpdate.ProcessStatus != string(state) {
-				finalLogMessage = fmt.Sprintf("%s (RawStatus: %s)", baseLogMessage, mcpStatusUpdate.ProcessStatus)
-			}
+			logMessage := fmt.Sprintf("Service %s (MCPServer) state: %s", originalLabel, state)
+
 			if state == reporting.StateFailed || mcpStatusUpdate.ProcessErr != nil {
-				logging.Error("ServiceManager", mcpStatusUpdate.ProcessErr, "%s", finalLogMessage)
+				logging.Error("ServiceManager", mcpStatusUpdate.ProcessErr, "%s", logMessage)
 			} else {
-				logging.Info("ServiceManager", "%s", finalLogMessage)
+				logging.Info("ServiceManager", "%s", logMessage)
 			}
 
 			updateForReporter := reporting.ManagedServiceUpdate{
@@ -354,13 +348,18 @@ func (sm *ServiceManager) StopAllServices() {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	for _, stopChan := range sm.activeServices {
+	logging.Debug("ServiceManager", "StopAllServices: Attempting to stop %d active services.", len(sm.activeServices))
+	for label, stopChan := range sm.activeServices {
+		logging.Debug("ServiceManager", "StopAllServices: Processing service '%s' for stop.", label)
 		select {
 		case <-stopChan:
+			logging.Debug("ServiceManager", "StopAllServices: Channel for '%s' was already closed or signaled.", label)
 		default:
+			logging.Info("ServiceManager", "StopAllServices: Closing channel for service '%s'.", label)
 			close(stopChan)
 		}
 	}
+	logging.Debug("ServiceManager", "StopAllServices: Finished closing channels, clearing activeServices map.")
 	sm.activeServices = make(map[string]chan struct{}) // Clear the map
 }
 

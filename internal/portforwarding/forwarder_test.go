@@ -3,7 +3,6 @@ package portforwarding
 import (
 	"envctl/internal/kube"
 	"errors"
-	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -13,10 +12,9 @@ import (
 // Adjusted to match the new PortForwardUpdateFunc signature implicitly.
 type testPortForwardUpdate struct {
 	Label        string
-	StatusDetail string // Renamed from StatusMsg
-	IsOpReady    bool   // Renamed from IsReady
-	OperationErr error  // New field for the error object
-	// OutputLog is removed as it's now logged directly by the forwarder via pkg/logging
+	StatusDetail PortForwardStatusDetail
+	IsOpReady    bool
+	OperationErr error
 }
 
 // TestStartAndManageIndividualPortForward_Success tests the successful startup of a port forward.
@@ -61,7 +59,7 @@ func TestStartAndManageIndividualPortForward_Success(t *testing.T) {
 	var updates []testPortForwardUpdate
 	var mu sync.Mutex
 	// updateFn now matches the new PortForwardUpdateFunc signature
-	updateFn := func(serviceLabel, statusDetail string, isOpReady bool, operationErr error) {
+	updateFn := func(serviceLabel string, statusDetail PortForwardStatusDetail, isOpReady bool, operationErr error) {
 		mu.Lock()
 		defer mu.Unlock()
 		update := testPortForwardUpdate{Label: serviceLabel, StatusDetail: statusDetail, IsOpReady: isOpReady, OperationErr: operationErr}
@@ -92,7 +90,7 @@ func TestStartAndManageIndividualPortForward_Success(t *testing.T) {
 				// The forwarder's bridgeCallback translates kube's (status, outputLog, isError, isReady)
 				// to the new (serviceLabel, statusDetail, isOpReady, operationErr).
 				// The kubeStatus "Forwarding from..." becomes statusDetail.
-				if u.IsOpReady && u.StatusDetail == "Forwarding from 127.0.0.1:8080 to 80" && u.Label == cfg.Label && u.OperationErr == nil {
+				if u.IsOpReady && u.StatusDetail == StatusDetailForwardingActive && u.Label == cfg.Label && u.OperationErr == nil {
 					readyFound = true
 					break
 				}
@@ -118,11 +116,11 @@ func TestStartAndManageIndividualPortForward_Success(t *testing.T) {
 	// Expected updates reflect the new signature and behavior.
 	// OutputLog is no longer part of testPortForwardUpdate as it's logged directly.
 	expectedUpdates := []testPortForwardUpdate{
-		{Label: "test-label", StatusDetail: "Starting", IsOpReady: false, OperationErr: nil},
+		{Label: "test-label", StatusDetail: StatusDetailInitializing, IsOpReady: false, OperationErr: nil},
 		// The direct initialStatus from kube.StartPortForwardClientGo is not directly passed to PortForwardUpdateFunc in the same way.
 		// The bridgeCallback will be the one sending updates based on what kube.SendUpdateFunc provides.
 		// The mock kube.SendUpdateFunc directly sends "Forwarding from..."
-		{Label: "test-label", StatusDetail: "Forwarding from 127.0.0.1:8080 to 80", IsOpReady: true, OperationErr: nil},
+		{Label: "test-label", StatusDetail: StatusDetailForwardingActive, IsOpReady: true, OperationErr: nil},
 	}
 
 	t.Logf("TestStartAndManageIndividualPortForward_Success: Comparing %d actual updates with %d expected updates for '%s'", len(updates), len(expectedUpdates), cfg.Label)
@@ -131,10 +129,10 @@ func TestStartAndManageIndividualPortForward_Success(t *testing.T) {
 	foundStarting := false
 	foundRunning := false
 	for _, u := range updates {
-		if u.Label == "test-label" && u.StatusDetail == "Starting" && !u.IsOpReady && u.OperationErr == nil {
+		if u.Label == "test-label" && u.StatusDetail == StatusDetailInitializing && !u.IsOpReady && u.OperationErr == nil {
 			foundStarting = true
 		}
-		if u.Label == "test-label" && u.StatusDetail == "Forwarding from 127.0.0.1:8080 to 80" && u.IsOpReady && u.OperationErr == nil {
+		if u.Label == "test-label" && u.StatusDetail == StatusDetailForwardingActive && u.IsOpReady && u.OperationErr == nil {
 			foundRunning = true
 		}
 	}
@@ -175,7 +173,7 @@ func TestStartAndManageIndividualPortForward_KubeError(t *testing.T) {
 	var updates []testPortForwardUpdate
 	var mu sync.Mutex
 	// updateFn now matches the new PortForwardUpdateFunc signature
-	updateFn := func(serviceLabel, statusDetail string, isOpReady bool, operationErr error) {
+	updateFn := func(serviceLabel string, statusDetail PortForwardStatusDetail, isOpReady bool, operationErr error) {
 		mu.Lock()
 		defer mu.Unlock()
 		update := testPortForwardUpdate{Label: serviceLabel, StatusDetail: statusDetail, IsOpReady: isOpReady, OperationErr: operationErr}
@@ -202,8 +200,8 @@ func TestStartAndManageIndividualPortForward_KubeError(t *testing.T) {
 
 	// Expected updates: Initial "Starting", then the "Failed" update due to initialErr
 	expectedUpdates := []testPortForwardUpdate{
-		{Label: "error-label", StatusDetail: "Starting", IsOpReady: false, OperationErr: nil},
-		{Label: "error-label", StatusDetail: fmt.Sprintf("Failed: %v", expectedKubeErr), IsOpReady: false, OperationErr: expectedKubeErr},
+		{Label: "error-label", StatusDetail: StatusDetailInitializing, IsOpReady: false, OperationErr: nil},
+		{Label: "error-label", StatusDetail: StatusDetailFailed, IsOpReady: false, OperationErr: expectedKubeErr},
 	}
 
 	if len(updates) != len(expectedUpdates) {
