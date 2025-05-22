@@ -62,6 +62,7 @@ func (dl *directLogger) Write(p []byte) (n int, err error) {
 
 // StartPortForward establishes a port-forward to a Kubernetes pod using the client-go library.
 func StartPortForward(
+	ctx context.Context,
 	kubeContext string,
 	namespace string,
 	serviceArg string, // e.g., "service/my-svc" or "pod/my-pod"
@@ -125,7 +126,7 @@ func StartPortForward(
 
 	// 4. Determine Target Pod
 	logging.Debug(opsSubsystem, "Attempting to determine target pod for service %s, remote port %d...", serviceArg, remotePortVal)
-	podName, err := getPodNameForPortForward(clientset, namespace, serviceArg, uint16(remotePortVal))
+	podName, err := resolveServiceToPodNameForPortForward(ctx, clientset, namespace, serviceArg, uint16(remotePortVal))
 	if err != nil {
 		detail := fmt.Sprintf("Error determining target pod for %s in %s", serviceArg, namespace)
 		logging.Error(opsSubsystem, err, "%s", detail)
@@ -238,10 +239,10 @@ func StartPortForward(
 	return stopChan, initialStatusForCaller, nil
 }
 
-// getPodNameForPortForward resolves a service argument (like "service/my-svc" or "pod/my-pod")
+// resolveServiceToPodNameForPortForward resolves a service argument (like "service/my-svc" or "pod/my-pod")
 // to a specific, preferably ready, pod name that can be used as a target for port forwarding.
 // ... (rest of the function documentation as it was)
-func getPodNameForPortForward(clientset kubernetes.Interface, namespace, serviceArg string, remotePodTargetPort uint16) (string, error) {
+func resolveServiceToPodNameForPortForward(ctx context.Context, clientset kubernetes.Interface, namespace, serviceArg string, remotePodTargetPort uint16) (string, error) {
 	parts := strings.SplitN(serviceArg, "/", 2)
 	if len(parts) != 2 {
 		return "", fmt.Errorf("invalid service/pod string %q, expected type/name (e.g., pod/my-pod or service/my-service)", serviceArg)
@@ -253,7 +254,7 @@ func getPodNameForPortForward(clientset kubernetes.Interface, namespace, service
 		// We could verify the pod exists, but port-forward will fail if not.
 		return resourceName, nil
 	} else if strings.ToLower(resourceType) == "service" {
-		svc, err := clientset.CoreV1().Services(namespace).Get(context.TODO(), resourceName, metav1.GetOptions{})
+		svc, err := clientset.CoreV1().Services(namespace).Get(ctx, resourceName, metav1.GetOptions{})
 		if err != nil {
 			return "", fmt.Errorf("failed to get service %s/%s: %w", namespace, resourceName, err)
 		}
@@ -281,7 +282,7 @@ func getPodNameForPortForward(clientset kubernetes.Interface, namespace, service
 		}
 
 		selector := labels.SelectorFromSet(svc.Spec.Selector)
-		podList, err := clientset.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: selector.String()})
+		podList, err := clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: selector.String()})
 		if err != nil {
 			return "", fmt.Errorf("failed to list pods for service %s/%s: %w", namespace, resourceName, err)
 		}

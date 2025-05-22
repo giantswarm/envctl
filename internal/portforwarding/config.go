@@ -1,6 +1,7 @@
 package portforwarding
 
 import (
+	"context"
 	"envctl/internal/kube"
 	"envctl/internal/utils"
 	"envctl/pkg/logging"
@@ -145,6 +146,7 @@ func startPortForwardingsInternal(
 			logging.Debug(serviceSubsystem, "Initiating kube.StartPortForward for %s with spec %s", config.Label, portSpec)
 
 			pfStopChan, initialStatus, initialErr := kube.StartPortForward(
+				context.Background(),
 				config.KubeContext,
 				config.Namespace,
 				config.ServiceName,

@@ -2,6 +2,7 @@ package managers
 
 import (
 	// Standard library imports
+	"context"
 	"fmt"
 	"sync"
 	"testing"
@@ -33,7 +34,7 @@ func setupServiceManagerTestMocks(t *testing.T) func() {
 	originalMCPServerStarter := mcpserver.StartMCPServers
 
 	t.Logf("SETUP_MOCK: Overriding portforwarding.KubeStartPortForwardFn (kube.StartPortForwardClientGo)")
-	portforwarding.KubeStartPortForwardFn = func(kubeContext string, namespace string, serviceName string, portMap string, label string, bridgeFn kube.SendUpdateFunc) (chan struct{}, string, error) {
+	portforwarding.KubeStartPortForwardFn = func(ctx context.Context, kubeContext, namespace, serviceName, portMap, label string, bridgeFn kube.SendUpdateFunc) (chan struct{}, string, error) {
 		t.Logf("MOCK_EXEC: mock kube.StartPortForwardClientGo called for label: %s", label)
 		mStopChans := make(chan struct{})
 		go func() {

@@ -1,6 +1,7 @@
 package portforwarding
 
 import (
+	"context"
 	"envctl/internal/kube"
 	"envctl/pkg/logging"
 	"errors"
@@ -110,6 +111,7 @@ func StartAndManageIndividualPortForward(
 	portMap := fmt.Sprintf("%s:%s", cfg.LocalPort, cfg.RemotePort)
 
 	stopChan, initialStatusFromKube, initialErr := KubeStartPortForwardFn(
+		context.Background(),
 		cfg.KubeContext,
 		cfg.Namespace,
 		cfg.ServiceName,

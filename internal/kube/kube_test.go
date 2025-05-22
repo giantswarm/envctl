@@ -105,7 +105,7 @@ func GetNodeStatus(kubeContext string) (readyNodes int, totalNodes int, err erro
 }
 */
 
-func TestGetPodNameForPortForward(t *testing.T) {
+func Test_resolveServiceToPodNameForPortForward(t *testing.T) {
 	tests := []struct {
 		name                string
 		namespace           string
@@ -250,14 +250,14 @@ func TestGetPodNameForPortForward(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			clientset := fake.NewSimpleClientset(tt.initialObjects...)
-			podName, err := getPodNameForPortForward(clientset, tt.namespace, tt.serviceArg, tt.remotePodTargetPort)
+			podName, err := resolveServiceToPodNameForPortForward(context.Background(), clientset, tt.namespace, tt.serviceArg, tt.remotePodTargetPort)
 
 			if (err != nil) != tt.wantErr {
-				t.Errorf("%s: getPodNameForPortForward() error = %v, wantErr %v", tt.desc, err, tt.wantErr)
+				t.Errorf("%s: resolveServiceToPodNameForPortForward() error = %v, wantErr %v", tt.desc, err, tt.wantErr)
 				return
 			}
 			if !tt.wantErr && podName != tt.wantPodName {
-				t.Errorf("%s: getPodNameForPortForward() podName = %q, want %q", tt.desc, podName, tt.wantPodName)
+				t.Errorf("%s: resolveServiceToPodNameForPortForward() podName = %q, want %q", tt.desc, podName, tt.wantPodName)
 			}
 		})
 	}
@@ -323,7 +323,7 @@ func TestStartPortForward_InputValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			stopChan, _, err := StartPortForward(tt.kubeContext, tt.namespace, tt.serviceArg, tt.portString, tt.pfLabel, mockSendUpdate)
+			stopChan, _, err := StartPortForward(context.Background(), tt.kubeContext, tt.namespace, tt.serviceArg, tt.portString, tt.pfLabel, mockSendUpdate)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("%s: StartPortForward() error = %v, wantErr %v", tt.desc, err, tt.wantErr)
 			}
