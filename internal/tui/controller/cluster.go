@@ -12,7 +12,7 @@ import (
 
 const (
 	// HealthUpdateInterval defines how often cluster health is polled.
-	HealthUpdateInterval = 15 * time.Second // Exported
+	HealthUpdateInterval       = 15 * time.Second    // Exported
 	clusterControllerSubsystem = "ClusterController" // Define a subsystem for this controller's logs
 )
 

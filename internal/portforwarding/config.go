@@ -99,7 +99,7 @@ func StartPortForwardings(
 		config := pfCfg // Capture range variable
 		serviceSubsystem := "PortForward-" + config.Label
 		logging.Debug(serviceSubsystem, "Looping for: %s", config.Label)
-		
+
 		wg.Add(1)
 		individualStopChan := make(chan struct{})
 		individualStopChans[config.Label] = individualStopChan

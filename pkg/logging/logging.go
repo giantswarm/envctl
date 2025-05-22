@@ -138,7 +138,7 @@ func logInternal(level LogLevel, subsystem string, err error, messageFmt string,
 			}
 			// Blocking send to ensure FIFO and no loss, assuming TUI processes.
 			// The channel is buffered, so it will only block if the buffer is full.
-			tuiLogChannel <- entry 
+			tuiLogChannel <- entry
 		} else {
 			// This case (TUI mode but channel is nil) should ideally not happen if InitForTUI was called.
 			// Log to os.Stderr as an emergency fallback.
@@ -155,7 +155,7 @@ func logInternal(level LogLevel, subsystem string, err error, messageFmt string,
 		fmt.Fprintf(os.Stderr, "[LOGGING_ERROR] Logger not initialized. Log: %s [%s] %s\n", now.Format(time.RFC3339), level, msg)
 		return
 	}
-	
+
 	var slogAttrs []slog.Attr
 	slogAttrs = append(slogAttrs, slog.String("subsystem", subsystem))
 	if err != nil {
@@ -185,25 +185,9 @@ func Error(subsystem string, err error, messageFmt string, args ...interface{}) 
 	logInternal(LevelError, subsystem, err, messageFmt, args...)
 }
 
-// Helper to convert our LogLevel to slog.Level
-func (l LogLevel) toSlogLevel() slog.Level {
-	switch l {
-	case LevelDebug:
-		return slog.LevelDebug
-	case LevelInfo:
-		return slog.LevelInfo
-	case LevelWarn:
-		return slog.LevelWarn
-	case LevelError:
-		return slog.LevelError
-	default:
-		return slog.LevelInfo // Default for safety
-	}
-}
-
 // CloseTUIChannel closes the TUI log channel. Should be called on application shutdown.
 func CloseTUIChannel() {
 	if tuiLogChannel != nil {
 		close(tuiLogChannel)
 	}
-} 
+}

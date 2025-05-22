@@ -66,9 +66,9 @@ Arguments:
 			workloadClusterArg = args[1]
 		}
 
-		// Determine global log level based on debug flag 
+		// Determine global log level based on debug flag
 		appLogLevel := logging.LevelInfo
-		if debug { 
+		if debug {
 			appLogLevel = logging.LevelDebug
 		}
 
@@ -90,7 +90,7 @@ Arguments:
 				fmt.Fprintf(os.Stderr, "Warning: could not get initial Kubernetes context: %v\n", err)
 			}
 			initialKubeContext = "unknown"
-		} 
+		}
 		// Log initial context using the appropriate logger if initialized
 		if noTUI {
 			logging.Info("CLI", "Initial Kubernetes context: %s", initialKubeContext)
@@ -106,11 +106,11 @@ Arguments:
 		if noTUI {
 			// logging.InitForCLI was already called above.
 			logging.Info("CLI", "Running in no-TUI mode.")
-			
-			consoleReporter := reporting.NewConsoleReporter() 
+
+			consoleReporter := reporting.NewConsoleReporter()
 			kubeMgr.SetReporter(consoleReporter) // Ensure KubeMgr uses the main console reporter for CLI
 			serviceMgr := managers.NewServiceManager(consoleReporter)
-			
+
 			// ... (rest of CLI mode logic using logging.* for its own messages) ...
 			if managementClusterArg != "" {
 				logging.Info("CLI", "Attempting login to Management Cluster: %s (via KubeManager)", managementClusterArg)
@@ -120,7 +120,7 @@ Arguments:
 				} else {
 					currentKubeContextAfterLogin, _ := kubeMgr.GetCurrentContext()
 					logging.Info("CLI", "Context after login to %s: %s", managementClusterArg, currentKubeContextAfterLogin)
-					initialKubeContext = currentKubeContextAfterLogin 
+					initialKubeContext = currentKubeContextAfterLogin
 				}
 			}
 
@@ -152,11 +152,11 @@ Arguments:
 		} else { // TUI Mode
 			// This fmt.Println is pre-TUI initialization, so it's acceptable.
 			fmt.Println("Starting TUI mode...")
-			color.Initialize(true) 
+			color.Initialize(true)
 
 			tuiLogLevel := appLogLevel
 			if tuiDebugMode && appLogLevel != logging.LevelDebug {
-				tuiLogLevel = logging.LevelDebug 
+				tuiLogLevel = logging.LevelDebug
 			}
 			logChan := logging.InitForTUI(tuiLogLevel)
 			defer logging.CloseTUIChannel()
@@ -170,15 +170,15 @@ Arguments:
 				managementClusterArg,
 				workloadClusterArg,
 				initialKubeContext,
-				debug, 
+				debug,
 				mcpServerConfig,
 				portForwardingConfig,
-				kubeMgr, 
+				kubeMgr,
 				logChan,
 			)
 
 			appModel := controller.NewAppModel(coreModel, managementClusterArg, workloadClusterArg)
-			
+
 			program := tea.NewProgram(appModel, tea.WithAltScreen(), tea.WithMouseCellMotion())
 
 			if _, err := program.Run(); err != nil {

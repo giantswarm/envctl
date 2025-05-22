@@ -84,12 +84,12 @@ func TestStartAndManageIndividualPortForward_Success(t *testing.T) {
 	syncChan := make(chan bool)
 	t.Logf("TestStartAndManageIndividualPortForward_Success: Waiting for ready update signal via syncChan for '%s'", cfg.Label)
 	go func() {
-		for i := 0; i < 200; i++ { 
+		for i := 0; i < 200; i++ {
 			mu.Lock()
 			readyFound := false
 			for _, u := range updates {
 				// Check for the specific ready message from the mock KubeStartPortForwardFn via bridge
-				// The forwarder's bridgeCallback translates kube's (status, outputLog, isError, isReady) 
+				// The forwarder's bridgeCallback translates kube's (status, outputLog, isError, isReady)
 				// to the new (serviceLabel, statusDetail, isOpReady, operationErr).
 				// The kubeStatus "Forwarding from..." becomes statusDetail.
 				if u.IsOpReady && u.StatusDetail == "Forwarding from 127.0.0.1:8080 to 80" && u.Label == cfg.Label && u.OperationErr == nil {
@@ -126,7 +126,7 @@ func TestStartAndManageIndividualPortForward_Success(t *testing.T) {
 	}
 
 	t.Logf("TestStartAndManageIndividualPortForward_Success: Comparing %d actual updates with %d expected updates for '%s'", len(updates), len(expectedUpdates), cfg.Label)
-	
+
 	// Check a subset or key updates due to async nature and internal logging not captured here.
 	foundStarting := false
 	foundRunning := false
@@ -199,7 +199,7 @@ func TestStartAndManageIndividualPortForward_KubeError(t *testing.T) {
 	defer mu.Unlock()
 
 	t.Logf("TestStartAndManageIndividualPortForward_KubeError: Comparing actual updates with expected for '%s'", cfg.Label)
-	
+
 	// Expected updates: Initial "Starting", then the "Failed" update due to initialErr
 	expectedUpdates := []testPortForwardUpdate{
 		{Label: "error-label", StatusDetail: "Starting", IsOpReady: false, OperationErr: nil},
@@ -212,10 +212,10 @@ func TestStartAndManageIndividualPortForward_KubeError(t *testing.T) {
 
 	for i, expected := range expectedUpdates {
 		actual := updates[i]
-		if actual.Label != expected.Label || 
-		   actual.StatusDetail != expected.StatusDetail || 
-		   actual.IsOpReady != expected.IsOpReady || 
-		   !errors.Is(actual.OperationErr, expected.OperationErr) { // Use errors.Is for error comparison
+		if actual.Label != expected.Label ||
+			actual.StatusDetail != expected.StatusDetail ||
+			actual.IsOpReady != expected.IsOpReady ||
+			!errors.Is(actual.OperationErr, expected.OperationErr) { // Use errors.Is for error comparison
 			t.Errorf("Update %d for '%s': expected %+v, got %+v", i, cfg.Label, expected, actual)
 		}
 	}

@@ -124,6 +124,11 @@ func InitialModel(
 	// Create ServiceManager, now passing the reporter.
 	serviceMgr := managers.NewServiceManager(tuiReporter)
 
+	// Initialize viewports - ScrollStep is handled internally by the viewport by default
+	logVP := viewport.New(0, 0)
+	mainLogVP := viewport.New(0, 0)
+	mcpConfigVP := viewport.New(0, 0)
+
 	m := Model{
 		Width:                    80, // Default width
 		Height:                   24, // Default height
@@ -149,13 +154,13 @@ func InitialModel(
 		TUIChannel:               tuiMsgChannel,
 		DebugMode:                tuiDebug,
 		ColorMode:                colorMode,
-		LogViewport:              viewport.New(0, 0),
-		MainLogViewport:          viewport.New(0, 0),
+		LogViewport:              logVP,
+		MainLogViewport:          mainLogVP,
+		McpConfigViewport:        mcpConfigVP,
 		Spinner:                  s,
 		IsLoading:                true,
 		Keys:                     DefaultKeyMap(),
 		Help:                     help.New(),
-		McpConfigViewport:        viewport.New(0, 0),
 		StashedMcName:            "",
 		ClusterInfo:              nil,
 		DependencyGraph:          nil,

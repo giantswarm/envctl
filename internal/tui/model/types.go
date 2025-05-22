@@ -280,9 +280,9 @@ func (m *Model) SetStatusMessage(message string, msgType MessageType, clearAfter
 	estimatedRightW := int(float64(m.Width) * 0.35)
 	estimatedCenterW := m.Width - estimatedLeftW - estimatedRightW
 
-	const iconBuffer = 2       // Approximate for icon and a space
-	const ellipsisBuffer = 3   // For "..."
-	const paddingBuffer = 2    // General padding
+	const iconBuffer = 2     // Approximate for icon and a space
+	const ellipsisBuffer = 3 // For "..."
+	const paddingBuffer = 2  // General padding
 	totalBuffer := iconBuffer + ellipsisBuffer + paddingBuffer
 
 	maxLen := estimatedCenterW - totalBuffer
@@ -308,8 +308,10 @@ func (m *Model) SetStatusMessage(message string, msgType MessageType, clearAfter
 			// A rune-aware approach would be: string([]rune(message)[:someRuneCount])
 			// but calculating someRuneCount to fit maxLen bytes is complex without rune width metrics.
 			truncateAt := maxLen - ellipsisBuffer
-			if truncateAt < 0 { truncateAt = 0 } // Should not happen if maxLen > ellipsisBuffer
-			
+			if truncateAt < 0 {
+				truncateAt = 0
+			} // Should not happen if maxLen > ellipsisBuffer
+
 			// Ensure we don't slice beyond the actual length of the message if it's short but still needs ellipsis space
 			if len(message) > truncateAt {
 				truncatedMessage = message[:truncateAt] + "..."
@@ -318,7 +320,7 @@ func (m *Model) SetStatusMessage(message string, msgType MessageType, clearAfter
 				// This implies maxLen is very small, just show what fits without ellipsis.
 				if len(message) > maxLen {
 					truncatedMessage = message[:maxLen]
-				} 
+				}
 				// else message is already short enough, no truncation or ellipsis needed (covered by outer if)
 			}
 		}

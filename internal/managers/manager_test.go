@@ -6,6 +6,8 @@ import (
 	"envctl/internal/mcpserver"
 	"envctl/internal/portforwarding"
 	"envctl/internal/reporting"
+	"envctl/pkg/logging"
+	"io"
 	"sync"
 	"testing"
 	"time"
@@ -18,8 +20,8 @@ import (
 // from portforwarding and mcpserver packages with mocks for testing ServiceManager.
 // It returns a cleanup function that must be deferred by the caller to restore originals.
 func setupServiceManagerTestMocks(t *testing.T) func() {
-	// Mock kube.StartPortForwardClientGo via portforwarding.KubeStartPortForwardFn
 	originalKubeStartFn := portforwarding.KubeStartPortForwardFn
+	// Save the original value of the package-level variable StartAndManageMCPServers
 	originalMCPServerStarter := mcpserver.StartAndManageMCPServers
 
 	t.Logf("SETUP_MOCK: Overriding portforwarding.KubeStartPortForwardFn (kube.StartPortForwardClientGo)")
@@ -39,7 +41,8 @@ func setupServiceManagerTestMocks(t *testing.T) func() {
 		return mStopChans, "Mock Kube Init", nil // initialStatus and error
 	}
 
-	t.Logf("SETUP_MOCK: Overriding mcpserver.StartAndManageMCPServers")
+	t.Logf("SETUP_MOCK: Overriding mcpserver.StartAndManageMCPServers variable")
+	// Assign the mock function to the package-level variable StartAndManageMCPServers
 	mcpserver.StartAndManageMCPServers = func(configs []mcpserver.MCPServerConfig, mcpUpdateFn mcpserver.McpUpdateFunc, wg *sync.WaitGroup) (map[string]chan struct{}, []error) {
 		t.Logf("MOCK_EXEC: mock mcpserver.StartAndManageMCPServers called with %d configs", len(configs))
 		mStopChans := make(map[string]chan struct{})
@@ -52,7 +55,6 @@ func setupServiceManagerTestMocks(t *testing.T) func() {
 				}
 				time.Sleep(1 * time.Millisecond)
 				if mcpUpdateFn != nil {
-					// This mcpUpdateFn is mcpUpdateAdapter, which now expects mcpserver.McpDiscreteStatusUpdate
 					mcpUpdateFn(mcpserver.McpDiscreteStatusUpdate{Label: c.Name, ProcessStatus: "NpxRunning", PID: 123})
 				}
 			}(cfg)
@@ -64,13 +66,21 @@ func setupServiceManagerTestMocks(t *testing.T) func() {
 		t.Logf("CLEANUP_MOCK: Restoring originalKubeStartFn to portforwarding.KubeStartPortForwardFn")
 		portforwarding.KubeStartPortForwardFn = originalKubeStartFn
 		t.Logf("CLEANUP_MOCK: Restoring originalMCPServerStarter to mcpserver.StartAndManageMCPServers")
+		// Restore the original function to the package-level variable
 		mcpserver.StartAndManageMCPServers = originalMCPServerStarter
 	}
 }
 
+// initLoggingForTests initializes the logger for CLI mode, discarding output.
+// Call this at the beginning of test functions that might trigger logging.
+func initLoggingForTests() {
+	logging.InitForCLI(logging.LevelDebug, io.Discard)
+}
+
 func TestServiceManager_StartServices_EmptyConfig(t *testing.T) {
+	initLoggingForTests() // Initialize logger
 	consoleReporter := reporting.NewConsoleReporter()
-	sm := managers.NewServiceManager(consoleReporter) // Pass reporter
+	sm := managers.NewServiceManager(consoleReporter)
 	var configs []managers.ManagedServiceConfig
 	var wg sync.WaitGroup
 
@@ -85,6 +95,7 @@ func TestServiceManager_StartServices_EmptyConfig(t *testing.T) {
 }
 
 func TestServiceManager_StartServices_StartsServices(t *testing.T) {
+	initLoggingForTests() // Initialize logger
 	t.Skip("Skipping TestServiceManager_StartServices_StartsServices due to persistent issues with mocking portforwarding.KubeStartPortForwardFn. Requires a more robust mocking strategy (e.g., interface injection) or re-design as an integration test.")
 
 	// cleanup := setupServiceManagerTestMocks(t)
@@ -93,6 +104,7 @@ func TestServiceManager_StartServices_StartsServices(t *testing.T) {
 }
 
 func TestServiceManager_StopService(t *testing.T) {
+	initLoggingForTests() // Initialize logger
 	cleanup := setupServiceManagerTestMocks(t)
 	defer cleanup()
 	consoleReporter := reporting.NewConsoleReporter()
@@ -137,6 +149,7 @@ func TestServiceManager_StopService(t *testing.T) {
 }
 
 func TestServiceManager_StopAllServices(t *testing.T) {
+	initLoggingForTests() // Initialize logger
 	cleanup := setupServiceManagerTestMocks(t)
 	defer cleanup()
 	consoleReporter := reporting.NewConsoleReporter()

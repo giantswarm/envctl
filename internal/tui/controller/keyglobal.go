@@ -30,6 +30,8 @@ func handleKeyMsgGlobal(m *model.Model, keyMsg tea.KeyMsg, existingCmds []tea.Cm
 
 	// --- Overlay-specific key handling --------------------------------------
 	if m.CurrentAppMode == model.ModeMcpConfigOverlay {
+		// Pass all unhandled keys to McpConfigViewport for its own handling (like scrolling)
+		var vpCmd tea.Cmd
 		switch keyMsg.String() {
 		case "C", "esc":
 			m.CurrentAppMode = model.ModeMainDashboard
@@ -41,16 +43,29 @@ func handleKeyMsgGlobal(m *model.Model, keyMsg tea.KeyMsg, existingCmds []tea.Cm
 				return m, m.SetStatusMessage("Copy MCP config failed", model.StatusBarError, 3*time.Second)
 			}
 			return m, m.SetStatusMessage("MCP config copied", model.StatusBarSuccess, 3*time.Second)
-		case "k", "up", "j", "down", "pgup", "pgdown", "home", "end":
-			var vpCmd tea.Cmd
+		// k, up, j, down, etc. are handled by the default case below for this overlay
+		default:
+			// TEMPORARY DEBUG for McpConfigOverlay key presses
+			LogDebug(m, keyGlobalSubsystem, "McpConfigOverlay KeyPress: Type=%v, String='%s', Runes=%+q", keyMsg.Type, keyMsg.String(), keyMsg.Runes)
 			m.McpConfigViewport, vpCmd = m.McpConfigViewport.Update(keyMsg)
 			return m, vpCmd
-		default:
-			return m, nil
 		}
 	}
 
 	if m.CurrentAppMode == model.ModeLogOverlay {
+		// TEMPORARY TEST FOR HORIZONTAL SCROLLING
+		if keyMsg.Type == tea.KeyRunes && keyMsg.String() == "H" { // Using Shift+H for test trigger
+			longLine := "1234567890abcdefghijklmnopqrstuvwxyz" +
+				"1234567890abcdefghijklmnopqrstuvwxyz" +
+				"1234567890abcdefghijklmnopqrstuvwxyz" +
+				"1234567890abcdefghijklmnopqrstuvwxyz"
+			m.LogViewport.SetContent(longLine + "\n" + "short line")
+			m.LogViewport.GotoTop()
+			LogInfo(keyGlobalSubsystem, "LogViewport content set to test string. VP Width: %d, VP Height: %d, Content Line0 Len: %d", m.LogViewport.Width, m.LogViewport.Height, len(longLine))
+			return m, nil
+		}
+
+		// Original logic for ModeLogOverlay
 		switch keyMsg.String() {
 		case "L", "esc":
 			m.CurrentAppMode = model.ModeMainDashboard
@@ -61,12 +76,13 @@ func handleKeyMsgGlobal(m *model.Model, keyMsg tea.KeyMsg, existingCmds []tea.Cm
 				return m, m.SetStatusMessage("Copy logs failed", model.StatusBarError, 3*time.Second)
 			}
 			return m, m.SetStatusMessage("Logs copied to clipboard", model.StatusBarSuccess, 3*time.Second)
-		case "k", "up", "j", "down", "pgup", "pgdown", "home", "end":
+		// Let other keys, including arrows for scrolling, be handled by the viewport's Update method.
+		default:
+			// TEMPORARY DEBUG for LogOverlay key presses
+			LogDebug(m, keyGlobalSubsystem, "LogOverlay KeyPress: Type=%v, String='%s', Runes=%+q", keyMsg.Type, keyMsg.String(), keyMsg.Runes)
 			var vpCmd tea.Cmd
 			m.LogViewport, vpCmd = m.LogViewport.Update(keyMsg)
 			return m, vpCmd
-		default:
-			return m, nil
 		}
 	}
 

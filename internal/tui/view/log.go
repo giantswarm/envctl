@@ -1,12 +1,15 @@
 package view
 
 import (
+	// "envctl/internal/color" // color styles will be bypassed for this test
 	"envctl/internal/color"
 	"envctl/internal/tui/model"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 )
+
+// var rawStyleForDebug = lipgloss.NewStyle() // Remove this if no longer needed
 
 // renderLogOverlay (moved from view_helpers.go)
 func renderLogOverlay(m *model.Model, width, height int) string {
@@ -50,24 +53,24 @@ func renderCombinedLogPanel(m *model.Model, availableWidth int, logSectionHeight
 }
 
 // PrepareLogContent applies color styles based on log level keywords.
-// Line truncation has been removed to allow viewport to handle horizontal scrolling.
 func PrepareLogContent(lines []string, maxWidth int) string {
-	// maxWidth is no longer used for truncation here, but kept for signature compatibility
-	// in case other parts of the view logic depend on it for different purposes, or for future use.
-	// The viewport itself will handle content wider than its display width.
-	
+	// maxWidth is conceptually available if styling needed to be width-aware,
+	// but styling itself shouldn't truncate. Viewport handles overflow.
 	out := make([]string, len(lines))
 	for i, rawLine := range lines {
-		// Apply styling directly to the raw (potentially long) line.
-		out[i] = styleLogLine(rawLine) 
+		out[i] = styleLogLine(rawLine)
 	}
 	return strings.Join(out, "\n")
 }
 
 // styleLogLine returns the line wrapped in appropriate lipgloss style depending
-// on markers contained in the text. The check order is from more specific to
-// more general to avoid false positives.
+// on markers contained in the text.
 func styleLogLine(l string) string {
+	// Removed temporary debug:
+	// if strings.Contains(l, "DEBUG_KUBE_PF: Enter StartPortForwardClientGo") {
+	// 	return l
+	// }
+
 	switch {
 	case strings.Contains(l, "[SYSTEM ERROR]") || strings.Contains(l, "[ERROR]"):
 		return color.LogErrorStyle.Render(l)
@@ -76,7 +79,6 @@ func styleLogLine(l string) string {
 	case strings.Contains(l, "[DEBUG]"):
 		return color.LogDebugStyle.Render(l)
 	case strings.Contains(l, "[HEALTH"):
-		// Further classify health lines
 		switch {
 		case strings.Contains(l, "Error"):
 			return color.LogHealthErrStyle.Render(l)
@@ -93,13 +95,13 @@ func styleLogLine(l string) string {
 }
 
 // applyStyling is a helper to map all lines through styleLogLine.
-func applyStyling(lines []string) []string {
-	styled := make([]string, len(lines))
-	for i, l := range lines {
-		styled[i] = styleLogLine(l)
-	}
-	return styled
-}
+// func applyStyling(lines []string) []string { // This function is not directly called anymore by PrepareLogContent if styleLogLine is inlined
+// 	styled := make([]string, len(lines))
+// 	for i, l := range lines {
+// 		styled[i] = styleLogLine(l)
+// 	}
+// 	return styled
+// }
 
 // generateMcpConfigJson has been moved to internal/tui/controller/mcpserver.go
 

@@ -57,10 +57,10 @@ func (km *kubeManager) Login(clusterName string) (string, string, error) {
 	logging.Info(subsystem, "Attempting to login to cluster: %s", clusterName)
 	// Reporter update for TUI (state change)
 	km.reporter.Report(reporting.ManagedServiceUpdate{
-		Timestamp:   time.Now(),
-		SourceType:  reporting.ServiceTypeKube,
-		SourceLabel: "Login-" + clusterName,
-		State:       reporting.StateStarting, // Or a custom "LoginAttempting" state
+		Timestamp:    time.Now(),
+		SourceType:   reporting.ServiceTypeKube,
+		SourceLabel:  "Login-" + clusterName,
+		State:        reporting.StateStarting, // Or a custom "LoginAttempting" state
 		ServiceLevel: reporting.LogLevelInfo,
 	})
 
@@ -69,12 +69,12 @@ func (km *kubeManager) Login(clusterName string) (string, string, error) {
 	if err != nil {
 		logging.Error(subsystem, err, "Login failed. Stdout: %s, Stderr: %s", stdout, stderr)
 		km.reporter.Report(reporting.ManagedServiceUpdate{
-			Timestamp:   time.Now(),
-			SourceType:  reporting.ServiceTypeKube,
-			SourceLabel: "Login-" + clusterName,
-			State:       reporting.StateFailed,
+			Timestamp:    time.Now(),
+			SourceType:   reporting.ServiceTypeKube,
+			SourceLabel:  "Login-" + clusterName,
+			State:        reporting.StateFailed,
 			ServiceLevel: reporting.LogLevelError,
-			ErrorDetail: err,
+			ErrorDetail:  err,
 		})
 		// Log stdout/stderr from tsh as separate log entries if they contain useful info
 		if stdout != "" {
@@ -82,19 +82,19 @@ func (km *kubeManager) Login(clusterName string) (string, string, error) {
 		}
 		if stderr != "" {
 			// Stderr from tsh might not be a Go 'error' per se but still error-indicative output
-			logging.Warn(subsystem+"-stderr", "tsh stderr: %s", stderr) 
+			logging.Warn(subsystem+"-stderr", "tsh stderr: %s", stderr)
 		}
 		return stdout, stderr, err
 	}
 
 	logging.Info(subsystem, "Login successful. Stdout: %s, Stderr: %s", stdout, stderr)
 	km.reporter.Report(reporting.ManagedServiceUpdate{
-		Timestamp:   time.Now(),
-		SourceType:  reporting.ServiceTypeKube,
-		SourceLabel: "Login-" + clusterName,
-		State:       reporting.StateRunning, // Or a custom "LoginSuccessful" state
+		Timestamp:    time.Now(),
+		SourceType:   reporting.ServiceTypeKube,
+		SourceLabel:  "Login-" + clusterName,
+		State:        reporting.StateRunning, // Or a custom "LoginSuccessful" state
 		ServiceLevel: reporting.LogLevelInfo,
-		IsReady:     true,
+		IsReady:      true,
 	})
 	// Log stdout/stderr from tsh. These are not errors but command output.
 	// ServiceManager used to send these via reporter with Details, now we log directly.
@@ -166,10 +166,10 @@ func (km *kubeManager) SwitchContext(targetContextName string) error {
 	subsystem := "KubeSwitchContext-" + targetContextName
 	logging.Info(subsystem, "Attempting to switch Kubernetes context to: %s", targetContextName)
 	km.reporter.Report(reporting.ManagedServiceUpdate{
-		Timestamp:   time.Now(),
-		SourceType:  reporting.ServiceTypeKube,
-		SourceLabel: "SwitchContext-" + targetContextName,
-		State:       reporting.StateStarting, // Or "ContextSwitching"
+		Timestamp:    time.Now(),
+		SourceType:   reporting.ServiceTypeKube,
+		SourceLabel:  "SwitchContext-" + targetContextName,
+		State:        reporting.StateStarting, // Or "ContextSwitching"
 		ServiceLevel: reporting.LogLevelInfo,
 	})
 
@@ -177,24 +177,24 @@ func (km *kubeManager) SwitchContext(targetContextName string) error {
 	if err != nil {
 		logging.Error(subsystem, err, "Failed to switch context")
 		km.reporter.Report(reporting.ManagedServiceUpdate{
-			Timestamp:   time.Now(),
-			SourceType:  reporting.ServiceTypeKube,
-			SourceLabel: "SwitchContext-" + targetContextName,
-			State:       reporting.StateFailed,
+			Timestamp:    time.Now(),
+			SourceType:   reporting.ServiceTypeKube,
+			SourceLabel:  "SwitchContext-" + targetContextName,
+			State:        reporting.StateFailed,
 			ServiceLevel: reporting.LogLevelError,
-			ErrorDetail: err,
+			ErrorDetail:  err,
 		})
 		return err
 	}
 
 	logging.Info(subsystem, "Successfully switched Kubernetes context")
 	km.reporter.Report(reporting.ManagedServiceUpdate{
-		Timestamp:   time.Now(),
-		SourceType:  reporting.ServiceTypeKube,
-		SourceLabel: "SwitchContext-" + targetContextName,
-		State:       reporting.StateRunning, // Or "ContextSwitched"
+		Timestamp:    time.Now(),
+		SourceType:   reporting.ServiceTypeKube,
+		SourceLabel:  "SwitchContext-" + targetContextName,
+		State:        reporting.StateRunning, // Or "ContextSwitched"
 		ServiceLevel: reporting.LogLevelInfo,
-		IsReady:     true, // Assuming context switch implies readiness for operations in that context
+		IsReady:      true, // Assuming context switch implies readiness for operations in that context
 	})
 	return nil
 }
@@ -237,10 +237,10 @@ func (km *kubeManager) GetClusterNodeHealth(ctx context.Context, kubeContextName
 	logging.Debug(debugOperation, "Fetching node health for context: %s", kubeContextName)
 	// Reporter update for TUI (state change)
 	km.reporter.Report(reporting.ManagedServiceUpdate{
-		Timestamp:   time.Now(),
-		SourceType:  reporting.ServiceTypeKube,
-		SourceLabel: debugOperation,
-		State:       reporting.StateStarting, // Or "FetchingHealth"
+		Timestamp:    time.Now(),
+		SourceType:   reporting.ServiceTypeKube,
+		SourceLabel:  debugOperation,
+		State:        reporting.StateStarting, // Or "FetchingHealth"
 		ServiceLevel: reporting.LogLevelDebug, // Since it's a debug-level operation for logging
 	})
 
@@ -253,12 +253,12 @@ func (km *kubeManager) GetClusterNodeHealth(ctx context.Context, kubeContextName
 		wrappedErr := fmt.Errorf("failed to get REST config for context %s: %w", kubeContextName, err)
 		logging.Error(debugOperation, wrappedErr, "Failed to get REST config")
 		km.reporter.Report(reporting.ManagedServiceUpdate{
-			Timestamp:   time.Now(),
-			SourceType:  reporting.ServiceTypeKube,
-			SourceLabel: debugOperation,
-			State:       reporting.StateFailed,
+			Timestamp:    time.Now(),
+			SourceType:   reporting.ServiceTypeKube,
+			SourceLabel:  debugOperation,
+			State:        reporting.StateFailed,
 			ServiceLevel: reporting.LogLevelError,
-			ErrorDetail: wrappedErr,
+			ErrorDetail:  wrappedErr,
 		})
 		return NodeHealth{Error: wrappedErr}, wrappedErr
 	}
@@ -269,12 +269,12 @@ func (km *kubeManager) GetClusterNodeHealth(ctx context.Context, kubeContextName
 		wrappedErr := fmt.Errorf("failed to create Kubernetes clientset for context %s: %w", kubeContextName, err)
 		logging.Error(debugOperation, wrappedErr, "Failed to create Kubernetes clientset")
 		km.reporter.Report(reporting.ManagedServiceUpdate{
-			Timestamp:   time.Now(),
-			SourceType:  reporting.ServiceTypeKube,
-			SourceLabel: debugOperation,
-			State:       reporting.StateFailed,
+			Timestamp:    time.Now(),
+			SourceType:   reporting.ServiceTypeKube,
+			SourceLabel:  debugOperation,
+			State:        reporting.StateFailed,
 			ServiceLevel: reporting.LogLevelError,
-			ErrorDetail: wrappedErr,
+			ErrorDetail:  wrappedErr,
 		})
 		return NodeHealth{Error: wrappedErr}, wrappedErr
 	}
@@ -283,24 +283,24 @@ func (km *kubeManager) GetClusterNodeHealth(ctx context.Context, kubeContextName
 	if statusErr != nil {
 		logging.Error(debugOperation, statusErr, "Failed to get node status")
 		km.reporter.Report(reporting.ManagedServiceUpdate{
-			Timestamp:   time.Now(),
-			SourceType:  reporting.ServiceTypeKube,
-			SourceLabel: debugOperation,
-			State:       reporting.StateFailed,
+			Timestamp:    time.Now(),
+			SourceType:   reporting.ServiceTypeKube,
+			SourceLabel:  debugOperation,
+			State:        reporting.StateFailed,
 			ServiceLevel: reporting.LogLevelError,
-			ErrorDetail: statusErr,
+			ErrorDetail:  statusErr,
 		})
 		return NodeHealth{ReadyNodes: ready, TotalNodes: total, Error: statusErr}, statusErr
 	}
 
 	logging.Debug(debugOperation, "Node health for %s: %d/%d ready", kubeContextName, ready, total)
 	km.reporter.Report(reporting.ManagedServiceUpdate{
-		Timestamp:   time.Now(),
-		SourceType:  reporting.ServiceTypeKube,
-		SourceLabel: debugOperation,
-		State:       reporting.StateRunning, // Or "HealthRetrieved"
+		Timestamp:    time.Now(),
+		SourceType:   reporting.ServiceTypeKube,
+		SourceLabel:  debugOperation,
+		State:        reporting.StateRunning, // Or "HealthRetrieved"
 		ServiceLevel: reporting.LogLevelInfo, // Changed from Debug for a successful outcome
-		IsReady:     ready == total && total > 0, 
+		IsReady:      ready == total && total > 0,
 	})
 	return NodeHealth{ReadyNodes: ready, TotalNodes: total, Error: nil}, nil
 }
@@ -309,10 +309,10 @@ func (km *kubeManager) DetermineClusterProvider(ctx context.Context, kubeContext
 	subsystem := "DetermineClusterProvider-" + kubeContextName
 	logging.Debug(subsystem, "Determining cluster provider for context: %s", kubeContextName)
 	km.reporter.Report(reporting.ManagedServiceUpdate{
-		Timestamp:   time.Now(),
-		SourceType:  reporting.ServiceTypeKube,
-		SourceLabel: subsystem,
-		State:       reporting.StateStarting, // Or "DeterminingProvider"
+		Timestamp:    time.Now(),
+		SourceType:   reporting.ServiceTypeKube,
+		SourceLabel:  subsystem,
+		State:        reporting.StateStarting, // Or "DeterminingProvider"
 		ServiceLevel: reporting.LogLevelDebug,
 	})
 
@@ -320,21 +320,21 @@ func (km *kubeManager) DetermineClusterProvider(ctx context.Context, kubeContext
 	if err != nil {
 		logging.Error(subsystem, err, "Failed to determine cluster provider")
 		km.reporter.Report(reporting.ManagedServiceUpdate{
-			Timestamp:   time.Now(),
-			SourceType:  reporting.ServiceTypeKube,
-			SourceLabel: subsystem,
-			State:       reporting.StateFailed,
+			Timestamp:    time.Now(),
+			SourceType:   reporting.ServiceTypeKube,
+			SourceLabel:  subsystem,
+			State:        reporting.StateFailed,
 			ServiceLevel: reporting.LogLevelError,
-			ErrorDetail: err,
+			ErrorDetail:  err,
 		})
 		return provider, err
 	}
 	logging.Info(subsystem, "Determined cluster provider for %s: %s", kubeContextName, provider)
 	km.reporter.Report(reporting.ManagedServiceUpdate{
-		Timestamp:   time.Now(),
-		SourceType:  reporting.ServiceTypeKube,
-		SourceLabel: subsystem,
-		State:       reporting.StateRunning, // Or "ProviderDetermined"
+		Timestamp:    time.Now(),
+		SourceType:   reporting.ServiceTypeKube,
+		SourceLabel:  subsystem,
+		State:        reporting.StateRunning, // Or "ProviderDetermined"
 		ServiceLevel: reporting.LogLevelInfo,
 		// IsReady not directly applicable here, but the operation succeeded.
 	})

@@ -70,7 +70,7 @@ func StartAndManageIndividualMcpServer(
 		logging.Error(subsystem, err, "Failed to start mcp-proxy process")
 		stdoutPipe.Close()
 		stderrPipe.Close()
-		close(currentStopChan) 
+		close(currentStopChan)
 		if updateFn != nil {
 			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "NpxStartFailed", ProcessErr: err, PID: 0})
 		}
@@ -132,7 +132,7 @@ func StartAndManageIndividualMcpServer(
 			logging.Info(subsystem, "Received stop signal for PID %d", processPid)
 			finalProcessStatus := "NpxStoppedByUser"
 			var stopErr error
-			if cmd.ProcessState == nil || !cmd.ProcessState.Exited() { 
+			if cmd.ProcessState == nil || !cmd.ProcessState.Exited() {
 				if err := syscall.Kill(-processPid, syscall.SIGKILL); err != nil {
 					logging.Error(subsystem, err, "Failed to kill process group for PID %d", processPid)
 					finalProcessStatus = "NpxKillFailed"
@@ -140,7 +140,7 @@ func StartAndManageIndividualMcpServer(
 				} else {
 					logging.Info(subsystem, "Successfully sent SIGKILL to process group for PID %d", processPid)
 				}
-				<-processDone 
+				<-processDone
 			} else {
 				logging.Info(subsystem, "Process PID %d already exited before stop signal processing.", processPid)
 				finalProcessStatus = "NpxAlreadyExited"

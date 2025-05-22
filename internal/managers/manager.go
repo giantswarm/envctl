@@ -117,13 +117,13 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 		default:
 			if sm.reporter != nil {
 				sm.reporter.Report(reporting.ManagedServiceUpdate{
-					Timestamp:   time.Now(),
-					SourceType:  reporting.ServiceTypeSystem,
-					SourceLabel: "ServiceManager",
-					State:       reporting.StateFailed,
+					Timestamp:    time.Now(),
+					SourceType:   reporting.ServiceTypeSystem,
+					SourceLabel:  "ServiceManager",
+					State:        reporting.StateFailed,
 					ServiceLevel: reporting.LogLevelError,
-					ErrorDetail: fmt.Errorf("Unknown service type in ManagedServiceConfig for label %s: %s", cfg.Label, cfg.Type),
-					IsReady:     false,
+					ErrorDetail:  fmt.Errorf("Unknown service type in ManagedServiceConfig for label %s: %s", cfg.Label, cfg.Type),
+					IsReady:      false,
 				})
 			}
 			startupErrors = append(startupErrors, fmt.Errorf("unknown service type %q for label %q", string(cfg.Type), cfg.Label))
@@ -175,12 +175,12 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 			}
 
 			updateForReporter := reporting.ManagedServiceUpdate{
-				Timestamp:   time.Now(),
-				SourceType:  reporting.ServiceTypePortForward,
-				SourceLabel: originalLabel,
-				State:       state,
-				IsReady:     (state == reporting.StateRunning),
-				ErrorDetail: operationErr,
+				Timestamp:    time.Now(),
+				SourceType:   reporting.ServiceTypePortForward,
+				SourceLabel:  originalLabel,
+				State:        state,
+				IsReady:      (state == reporting.StateRunning),
+				ErrorDetail:  operationErr,
 				ServiceLevel: level,
 			}
 
@@ -238,12 +238,12 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 				state = reporting.StateFailed // Override if there's an explicit error
 				level = reporting.LogLevelError
 			}
-			
+
 			// Log the state change
 			baseLogMessage := fmt.Sprintf("Service %s (MCPServer) state: %s", originalLabel, state)
 			finalLogMessage := baseLogMessage
-			if mcpStatusUpdate.ProcessStatus != string(state) { 
-			    finalLogMessage = fmt.Sprintf("%s (RawStatus: %s)", baseLogMessage, mcpStatusUpdate.ProcessStatus)
+			if mcpStatusUpdate.ProcessStatus != string(state) {
+				finalLogMessage = fmt.Sprintf("%s (RawStatus: %s)", baseLogMessage, mcpStatusUpdate.ProcessStatus)
 			}
 			if state == reporting.StateFailed || mcpStatusUpdate.ProcessErr != nil {
 				logging.Error("ServiceManager", mcpStatusUpdate.ProcessErr, "%s", finalLogMessage)
@@ -365,11 +365,11 @@ func (sm *ServiceManager) RestartService(label string) error {
 		logging.Info("ServiceManager", "Service %s not active, reporting as stopped to potentially trigger pending restart.", label)
 		if sm.reporter != nil {
 			sm.reporter.Report(reporting.ManagedServiceUpdate{
-				Timestamp:   time.Now(),
-				SourceType:  originalCfg.Type,
-				SourceLabel: label,
-				State:       reporting.StateStopped,
-				IsReady:     false,
+				Timestamp:    time.Now(),
+				SourceType:   originalCfg.Type,
+				SourceLabel:  label,
+				State:        reporting.StateStopped,
+				IsReady:      false,
 				ServiceLevel: reporting.LogLevelInfo,
 			})
 		}
@@ -400,11 +400,11 @@ func (sm *ServiceManager) checkAndProcessRestart(update reporting.ManagedService
 				// Report "Restarting..." state before actually starting
 				if sm.reporter != nil {
 					sm.reporter.Report(reporting.ManagedServiceUpdate{
-						Timestamp:   time.Now(),
-						SourceType:  cfg.Type,
-						SourceLabel: cfg.Label,
-						State:       reporting.StateStarting, // Changed from "Restarting..." message to StateStarting
-						IsReady:     false,
+						Timestamp:    time.Now(),
+						SourceType:   cfg.Type,
+						SourceLabel:  cfg.Label,
+						State:        reporting.StateStarting, // Changed from "Restarting..." message to StateStarting
+						IsReady:      false,
 						ServiceLevel: reporting.LogLevelInfo,
 					})
 				}

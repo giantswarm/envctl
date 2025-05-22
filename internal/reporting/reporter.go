@@ -47,13 +47,13 @@ func (ll LogLevel) String() string {
 type ServiceState string
 
 const (
-	StateUnknown   ServiceState = "Unknown"
-	StateStarting  ServiceState = "Starting"
-	StateRunning   ServiceState = "Running"
-	StateStopping  ServiceState = "Stopping"
-	StateStopped   ServiceState = "Stopped"
-	StateFailed    ServiceState = "Failed"
-	StateRetrying  ServiceState = "Retrying" // If a service has retry logic
+	StateUnknown  ServiceState = "Unknown"
+	StateStarting ServiceState = "Starting"
+	StateRunning  ServiceState = "Running"
+	StateStopping ServiceState = "Stopping"
+	StateStopped  ServiceState = "Stopped"
+	StateFailed   ServiceState = "Failed"
+	StateRetrying ServiceState = "Retrying" // If a service has retry logic
 	// Add more states as needed, e.g., StateDegraded, StateConnected, StateDisconnected
 )
 

@@ -80,7 +80,7 @@ func TestMainControllerDispatch_ReporterUpdateMsg_GeneratesLog(t *testing.T) {
 
 	// Initialize logging for TUI mode for this test
 	// Ensure this is the *only* logger initialization for this test execution path.
-	logChan := logging.InitForTUI(logging.LevelDebug) 
+	logChan := logging.InitForTUI(logging.LevelDebug)
 	// No defer logging.CloseTUIChannel() here, as the test might finish before async operations using it complete.
 	// Let the test runner handle teardown or rely on garbage collection if channel is not globally problematic.
 
@@ -93,7 +93,7 @@ func TestMainControllerDispatch_ReporterUpdateMsg_GeneratesLog(t *testing.T) {
 		Timestamp:    time.Now(),
 		SourceType:   reporting.ServiceTypeSystem,
 		SourceLabel:  "TestService1",
-		State:        reporting.StateRunning, 
+		State:        reporting.StateRunning,
 		ServiceLevel: reporting.LogLevelInfo,
 		IsReady:      true,
 	}
@@ -101,7 +101,7 @@ func TestMainControllerDispatch_ReporterUpdateMsg_GeneratesLog(t *testing.T) {
 	// --- Simulate processing the first message ---
 	t.Log("Simulating send of ReporterUpdateMsg to TUIChannel")
 	// Send and immediately try to process any resulting logs. This needs to be more controlled.
-	
+
 	// Step 1: Dispatch the ReporterUpdateMsg
 	// This call to mainControllerDispatch will internally call LogDebug if m.DebugMode is true.
 	// That LogDebug should send a LogEntry to logChan.
@@ -150,18 +150,18 @@ func TestMainControllerDispatch_NewLogEntryMsg_UpdatesLogViewport(t *testing.T) 
 
 	m := model.InitialModel("mc1", "wc1", "test-context", true /*debugMode On*/, nil, nil, mockKubeMgr, logChan)
 	m.LogChannel = logChan
-	m.Width = 80  
-	m.Height = 24 
+	m.Width = 80
+	m.Height = 24
 
 	// Setup LogViewport dimensions as if the overlay were active
 	// This ensures its Width and Height are set for PrepareLogContent and SetContent.
-	overlayContentWidth := int(float64(m.Width) * 0.8) - 2 // Typical overlay width calc
-	overlayContentHeight := int(float64(m.Height) * 0.7) - 2 - lipgloss.Height(color.LogPanelTitleStyle.Render(" ")) // Approx height after title and borders
+	overlayContentWidth := int(float64(m.Width)*0.8) - 2                                                           // Typical overlay width calc
+	overlayContentHeight := int(float64(m.Height)*0.7) - 2 - lipgloss.Height(color.LogPanelTitleStyle.Render(" ")) // Approx height after title and borders
 	if overlayContentHeight < 0 {
 		overlayContentHeight = 1 // Ensure at least 1 line for content
 	}
 	m.LogViewport.Width = overlayContentWidth
-	m.LogViewport.Height = overlayContentHeight 
+	m.LogViewport.Height = overlayContentHeight
 	// t.Logf("Test calculated LogViewport dimensions: W=%d, H=%d", m.LogViewport.Width, m.LogViewport.Height) // For debugging test
 
 	logEntry := logging.LogEntry{

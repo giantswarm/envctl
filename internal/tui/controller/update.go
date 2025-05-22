@@ -175,7 +175,7 @@ func mainControllerDispatch(m *model.Model, msg tea.Msg) (*model.Model, tea.Cmd)
 			m.LogViewport, unhandledCmd = m.LogViewport.Update(msg)
 		} else if m.CurrentAppMode == model.ModeMcpConfigOverlay {
 			m.McpConfigViewport, unhandledCmd = m.McpConfigViewport.Update(msg)
-		} 
+		}
 		// Removed the 'else { m.Spinner, unhandledCmd = m.Spinner.Update(msg) }' from original, as spinner update is handled via TickMsg.
 		cmds = append(cmds, unhandledCmd)
 	}
@@ -213,12 +213,12 @@ func mainControllerDispatch(m *model.Model, msg tea.Msg) (*model.Model, tea.Cmd)
 func handleAllServicesStartedMsg(m *model.Model, msg model.AllServicesStartedMsg) (*model.Model, tea.Cmd) {
 	if m.Reporter != nil {
 		m.Reporter.Report(reporting.ManagedServiceUpdate{
-			Timestamp:   time.Now(),
-			SourceType:  reporting.ServiceTypeSystem,
-			SourceLabel: "ServiceManager",
-			State:       reporting.StateRunning, // Assuming 'all services started' means the system is running
+			Timestamp:    time.Now(),
+			SourceType:   reporting.ServiceTypeSystem,
+			SourceLabel:  "ServiceManager",
+			State:        reporting.StateRunning, // Assuming 'all services started' means the system is running
 			ServiceLevel: reporting.LogLevelInfo,
-			IsReady:     true,
+			IsReady:      true,
 		})
 	} else {
 		// Fallback if reporter is somehow nil. This should use pkg/logging now.
@@ -235,13 +235,13 @@ func handleAllServicesStartedMsg(m *model.Model, msg model.AllServicesStartedMsg
 		for _, err := range msg.InitialStartupErrors {
 			if m.Reporter != nil {
 				m.Reporter.Report(reporting.ManagedServiceUpdate{
-					Timestamp:   time.Now(),
-					SourceType:  reporting.ServiceTypeSystem,
-					SourceLabel: "ServiceManagerInit",
-					State:       reporting.StateFailed, // Or a specific 'PartialFailure' state if we define one
+					Timestamp:    time.Now(),
+					SourceType:   reporting.ServiceTypeSystem,
+					SourceLabel:  "ServiceManagerInit",
+					State:        reporting.StateFailed, // Or a specific 'PartialFailure' state if we define one
 					ServiceLevel: reporting.LogLevelError,
-					ErrorDetail: err,
-					IsReady:     false, // Or true if some services are up despite errors
+					ErrorDetail:  err,
+					IsReady:      false, // Or true if some services are up despite errors
 				})
 			} else {
 				// Fallback logging, same note as above, should ideally not be needed.
@@ -255,7 +255,7 @@ func handleAllServicesStartedMsg(m *model.Model, msg model.AllServicesStartedMsg
 func handleServiceStopResultMsg(m *model.Model, msg model.ServiceStopResultMsg) (*model.Model, tea.Cmd) {
 	var state reporting.ServiceState
 	var level reporting.LogLevel
-	
+
 	if msg.Err != nil {
 		state = reporting.StateFailed // Or a more specific "StopFailed" state
 		level = reporting.LogLevelError
@@ -266,13 +266,13 @@ func handleServiceStopResultMsg(m *model.Model, msg model.ServiceStopResultMsg) 
 
 	if m.Reporter != nil {
 		m.Reporter.Report(reporting.ManagedServiceUpdate{
-			Timestamp:   time.Now(),
-			SourceType:  reporting.ServiceTypeSystem, // Or determine actual type if service is known
-			SourceLabel: msg.Label,                   // Label of the service being stopped
-			State:       state,
+			Timestamp:    time.Now(),
+			SourceType:   reporting.ServiceTypeSystem, // Or determine actual type if service is known
+			SourceLabel:  msg.Label,                   // Label of the service being stopped
+			State:        state,
 			ServiceLevel: level,
-			IsReady:     false, // A stopped/failed service is not ready
-			ErrorDetail: msg.Err,
+			IsReady:      false, // A stopped/failed service is not ready
+			ErrorDetail:  msg.Err,
 		})
 	} else {
 		// Fallback logging, should ideally not be needed.

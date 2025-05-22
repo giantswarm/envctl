@@ -10,7 +10,7 @@ import (
 
 // ConsoleReporter is an implementation of ServiceReporter that prints updates to the console
 // by leveraging the centralized logging package.
-type ConsoleReporter struct {}
+type ConsoleReporter struct{}
 
 // NewConsoleReporter creates a new ConsoleReporter.
 func NewConsoleReporter() *ConsoleReporter {
@@ -51,7 +51,7 @@ func (cr *ConsoleReporter) Report(update ManagedServiceUpdate) {
 			logging.Debug(subsystem, "%s", logMessage)
 		case LogLevelTrace:
 			// Assuming pkg/logging might not have Trace, map to Debug or handle if it does.
-			logging.Debug(subsystem, "%s (Trace)", logMessage) 
+			logging.Debug(subsystem, "%s (Trace)", logMessage)
 		default: // LogLevelInfo, LogLevelStdout, LogLevelStderr, or unknown
 			logging.Info(subsystem, "%s", logMessage)
 		}

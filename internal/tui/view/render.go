@@ -188,22 +188,89 @@ func Render(m *model.Model) string {
 		return lipgloss.Place(m.Width, m.Height, lipgloss.Center, lipgloss.Center, container, lipgloss.WithWhitespaceBackground(lipgloss.AdaptiveColor{Light: "rgba(0,0,0,0.1)", Dark: "rgba(0,0,0,0.6)"}))
 
 	case model.ModeLogOverlay:
-		overlayWidth := int(float64(m.Width) * 0.8)
-		overlayHeight := int(float64(m.Height) * 0.7)
-		m.LogViewport.Width = overlayWidth - color.LogOverlayStyle.GetHorizontalFrameSize()
-		m.LogViewport.Height = overlayHeight - color.LogOverlayStyle.GetVerticalFrameSize()
-		logOverlay := renderLogOverlay(m, overlayWidth, overlayHeight)
+		titleText := SafeIcon(IconScroll) + " Activity Log  (↑/↓ scroll  •  y copy  •  Esc close)"
+		titleView := color.LogPanelTitleStyle.Render(titleText)
+		titleHeight := lipgloss.Height(titleView)
+
+		overlayTotalWidth := int(float64(m.Width) * 0.8)
+		overlayTotalHeight := int(float64(m.Height) * 0.7)
+
+		// Calculate actual content area for the viewport within the overlay
+		newViewportWidth := overlayTotalWidth - color.LogOverlayStyle.GetHorizontalFrameSize()
+		newViewportHeight := overlayTotalHeight - color.LogOverlayStyle.GetVerticalFrameSize() - titleHeight
+
+		if newViewportWidth < 0 {
+			newViewportWidth = 0
+		}
+		if newViewportHeight < 0 {
+			newViewportHeight = 0
+		}
+
+		// Check if viewport dimensions or content needs updating
+		dimensionsChanged := m.LogViewport.Width != newViewportWidth || m.LogViewport.Height != newViewportHeight
+
+		m.LogViewport.Width = newViewportWidth
+		m.LogViewport.Height = newViewportHeight
+
+		// If dimensions changed OR if the activity log itself is dirty (new content from controller),
+		// then re-prepare and re-set the content for the LogViewport.
+		// The m.LogViewportLastWidth check might not be needed here if we always do it on dimension change.
+		if m.ActivityLogDirty || dimensionsChanged {
+			preparedLogOverlayContent := PrepareLogContent(m.ActivityLog, m.LogViewport.Width)
+			m.LogViewport.SetContent(preparedLogOverlayContent)
+			// m.ActivityLogDirty should be set to false by mainControllerDispatch after it runs this view logic effectively
+			// However, if we set content here, it means the viewport is up-to-date for this render pass.
+			// The original ActivityLogDirty reset is at the end of mainControllerDispatch.
+		}
+
+		// Ensure scrolling to bottom if it's newly populated or user hasn't scrolled up
+		// This might need to be smarter, e.g., only if it was previously AtBottom or just became active.
+		// For now, let's assume controller handles initial scroll position logic if needed.
+		// If m.LogViewport.ScrollPercent() >= 1.0 || m.LogViewport.YOffset == 0 { // A common heuristic
+		// 	m.LogViewport.GotoBottom()
+		// }
+
+		logOverlay := renderLogOverlay(m, overlayTotalWidth, overlayTotalHeight) // renderLogOverlay now just uses m.LogViewport.View()
 		overlayCanvas := lipgloss.Place(m.Width, m.Height-1, lipgloss.Center, lipgloss.Center, logOverlay, lipgloss.WithWhitespaceBackground(lipgloss.AdaptiveColor{Light: "rgba(0,0,0,0.1)", Dark: "rgba(0,0,0,0.6)"}))
 		statusBar := renderStatusBar(m, m.Width)
 		return lipgloss.JoinVertical(lipgloss.Left, overlayCanvas, statusBar)
 
 	case model.ModeMcpConfigOverlay:
-		cfgW := int(float64(m.Width) * 0.8)
-		cfgH := int(float64(m.Height) * 0.7)
-		m.McpConfigViewport.Width = cfgW - color.McpConfigOverlayStyle.GetHorizontalFrameSize()
-		m.McpConfigViewport.Height = cfgH - color.McpConfigOverlayStyle.GetVerticalFrameSize()
-		// Content is now set by the controller when entering this mode.
-		cfgOverlay := renderMcpConfigOverlay(m, cfgW, cfgH)
+		// Similar logic for McpConfigViewport if it also shows dynamic, potentially long content
+		cfgTitleText := SafeIcon(IconGear) + " MCP Configuration  (↑/↓ scroll  •  y copy  •  Esc close)"
+		cfgTitleView := color.LogPanelTitleStyle.Render(cfgTitleText) // Can reuse LogPanelTitleStyle or a specific one
+		cfgTitleHeight := lipgloss.Height(cfgTitleView)
+
+		cfgOverlayTotalWidth := int(float64(m.Width) * 0.8)
+		cfgOverlayTotalHeight := int(float64(m.Height) * 0.7)
+
+		newMcpViewportWidth := cfgOverlayTotalWidth - color.McpConfigOverlayStyle.GetHorizontalFrameSize()
+		newMcpViewportHeight := cfgOverlayTotalHeight - color.McpConfigOverlayStyle.GetVerticalFrameSize() - cfgTitleHeight
+
+		if newMcpViewportWidth < 0 {
+			newMcpViewportWidth = 0
+		}
+		if newMcpViewportHeight < 0 {
+			newMcpViewportHeight = 0
+		}
+
+		// If McpConfig content is static (set once by controller), we might only need to update Width/Height.
+		// But if it could change or needs re-wrapping on resize, re-setting content is safer.
+		mcpDimensionsChanged := m.McpConfigViewport.Width != newMcpViewportWidth || m.McpConfigViewport.Height != newMcpViewportHeight
+
+		m.McpConfigViewport.Width = newMcpViewportWidth
+		m.McpConfigViewport.Height = newMcpViewportHeight
+
+		// Assuming content for MCP config is set by controller when mode changes.
+		// If it needs re-wrapping on Width change:
+		if mcpDimensionsChanged { // Or some other dirty flag for MCP config content
+			// Example: Re-fetch or re-format and SetContent if necessary
+			// configJSON := GenerateMcpConfigJson(m.MCPServerConfig) // This is in controller
+			// m.McpConfigViewport.SetContent(configJSON)
+			// For now, assume controller sets it and it doesn't need re-wrapping here, only dimension update.
+		}
+
+		cfgOverlay := renderMcpConfigOverlay(m, cfgOverlayTotalWidth, cfgOverlayTotalHeight)
 		overlayCanvas := lipgloss.Place(m.Width, m.Height-1, lipgloss.Center, lipgloss.Center, cfgOverlay, lipgloss.WithWhitespaceBackground(lipgloss.AdaptiveColor{Light: "rgba(0,0,0,0.1)", Dark: "rgba(0,0,0,0.6)"}))
 		statusBar := renderStatusBar(m, m.Width)
 		return lipgloss.JoinVertical(lipgloss.Left, overlayCanvas, statusBar)
