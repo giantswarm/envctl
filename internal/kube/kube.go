@@ -379,8 +379,6 @@ func determineProviderFromNode(node *corev1.Node) string {
 // - contextName: The Kubernetes context to use. If empty, the current context is used.
 // Returns the determined provider name (e.g., "aws") or "unknown", and an error if API calls fail.
 func DetermineClusterProvider(ctx context.Context, contextName string) (string, error) {
-	fmt.Println("Determining cluster provider using Go client...")
-
 	// Use Teleport prefix for context name if not already prefixed and contextName is provided.
 	k8sContextName := contextName
 	if contextName != "" && !strings.HasPrefix(contextName, "teleport.giantswarm.io-") {

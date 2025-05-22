@@ -5,6 +5,7 @@ import (
 	"envctl/pkg/logging"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 )
 
@@ -66,11 +67,16 @@ func StartAndManageIndividualPortForward(
 	reportIfChanged(cfg.Label, StatusDetailInitializing, false, nil)
 
 	var bridgeCallback kube.SendUpdateFunc = func(kubeStatus, kubeOutputLog string, kubeIsError, kubeIsReady bool) {
+		subsystem := "PortForward-" + cfg.Label + "-kube"
 		if kubeOutputLog != "" {
 			if kubeIsError {
-				logging.Error(subsystem, nil, "kubectl: %s", kubeOutputLog)
+				logging.Error(subsystem, nil, "%s", kubeOutputLog)
 			} else {
-				logging.Info(subsystem, "kubectl: %s", kubeOutputLog)
+				if strings.HasPrefix(kubeOutputLog, "Forwarding from") {
+					logging.Info(subsystem, "%s", kubeOutputLog)
+				} else {
+					logging.Debug(subsystem, "%s", kubeOutputLog)
+				}
 			}
 		}
 

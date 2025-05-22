@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"syscall"
 )
@@ -78,7 +79,7 @@ func StartAndManageIndividualMcpServer(
 	}
 
 	processPid := cmd.Process.Pid
-	logging.Info(subsystem, "Process started successfully with PID %d", processPid)
+	logging.Debug(subsystem, "Process started successfully with PID %d", processPid)
 
 	if updateFn != nil {
 		updateFn(McpDiscreteStatusUpdate{
@@ -104,10 +105,26 @@ func StartAndManageIndividualMcpServer(
 		}()
 
 		go func() {
+			if wg != nil {
+				// wg.Add(1) // No, this Add should be done by the caller of StartAndManageIndividualMcpServer for this goroutine
+				// defer wg.Done() // And this Done too
+			}
 			scanner := bufio.NewScanner(stderrPipe)
 			for scanner.Scan() {
-				logLine := scanner.Text()
-				logging.Error(subsystem+"-stderr", nil, "%s", logLine)
+				line := scanner.Text()
+				// Log stderr from the process.
+				// Specific informational messages from stderr are logged as INFO or DEBUG.
+				// Other stderr lines are logged as ERROR.
+				if strings.Contains(line, "Uvicorn running on") || strings.Contains(line, "Application startup complete.") || strings.Contains(line, "StreamableHTTP session manager started") || strings.Contains(line, "Application started with StreamableHTTP session manager!") {
+					logging.Info(subsystem+"-stderr", "%s", line)
+				} else if strings.HasPrefix(line, "INFO:") || strings.HasPrefix(line, "[I ") {
+					logging.Debug(subsystem+"-stderr", "%s", line)
+				} else {
+					logging.Error(subsystem+"-stderr", nil, "%s", line)
+				}
+			}
+			if err := scanner.Err(); err != nil {
+				logging.Error(subsystem+"-stderr", err, "Error reading stderr")
 			}
 		}()
 
@@ -129,16 +146,21 @@ func StartAndManageIndividualMcpServer(
 			}
 
 		case <-currentStopChan:
-			logging.Info(subsystem, "Received stop signal for PID %d", processPid)
+			logging.Debug(subsystem, "Received stop signal for PID %d", processPid)
 			finalProcessStatus := "NpxStoppedByUser"
 			var stopErr error
 			if cmd.ProcessState == nil || !cmd.ProcessState.Exited() {
 				if err := syscall.Kill(-processPid, syscall.SIGKILL); err != nil {
-					logging.Error(subsystem, err, "Failed to kill process group for PID %d", processPid)
-					finalProcessStatus = "NpxKillFailed"
-					stopErr = err
+					logging.Error(subsystem, err, "Failed to kill process group for PID %d, attempting to kill main process", processPid)
+					if mainProcessKillErr := cmd.Process.Kill(); mainProcessKillErr != nil {
+						logging.Error(subsystem, mainProcessKillErr, "Failed to kill main process PID %d after group kill attempt failed", processPid)
+						finalProcessStatus = "NpxKillFailed"
+						stopErr = mainProcessKillErr
+					} else {
+						logging.Debug(subsystem, "Successfully sent SIGKILL to main process PID %d (fallback)", processPid)
+					}
 				} else {
-					logging.Info(subsystem, "Successfully sent SIGKILL to process group for PID %d", processPid)
+					logging.Debug(subsystem, "Successfully sent SIGKILL to process group for PID %d", processPid)
 				}
 				<-processDone
 			} else {

@@ -97,7 +97,7 @@ Arguments:
 		} else {
 			// For TUI, this info will be part of initial model and potentially logged once TUI logger is up.
 			// Direct print for now as TUI logger is not yet up.
-			fmt.Printf("Initial Kubernetes context: %s\n", initialKubeContext)
+			// fmt.Printf("Initial Kubernetes context: %s\n", initialKubeContext)
 		}
 
 		portForwardingConfig := portforwarding.GetPortForwardConfig(managementClusterArg, workloadClusterArg)

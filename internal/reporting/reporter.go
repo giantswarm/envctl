@@ -71,17 +71,15 @@ type ManagedServiceUpdate struct {
 	SourceLabel string
 	State       ServiceState // The current discrete state of the service.
 
-	// ServiceLevel reflects the severity of the current State (e.g., StateFailed implies LogLevelError).
-	ServiceLevel LogLevel
-	IsReady      bool // Derived from State (e.g., true if State == StateRunning).
+	IsReady bool // Derived from State (e.g., true if State == StateRunning).
 
 	ErrorDetail error // Associated Go error if State is Failed or a warning state has an error.
 }
 
 // String provides a simple string representation for debugging the update itself.
 func (msu ManagedServiceUpdate) String() string {
-	return fmt.Sprintf("StateUpdate(TS: %s, Source: %s-%s, State: %s, Level: %s, Ready: %t, ErrDetail: %v)",
-		msu.Timestamp.Format(time.RFC3339), msu.SourceType, msu.SourceLabel, msu.State, msu.ServiceLevel, msu.IsReady, msu.ErrorDetail)
+	return fmt.Sprintf("StateUpdate(TS: %s, Source: %s-%s, State: %s, Ready: %t, ErrDetail: %v)",
+		msu.Timestamp.Format(time.RFC3339), msu.SourceType, msu.SourceLabel, msu.State, msu.IsReady, msu.ErrorDetail)
 }
 
 // ServiceReporter defines a unified interface for reporting service/component state updates.

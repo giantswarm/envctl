@@ -287,13 +287,12 @@ func handleContextSwitchAndReinitializeResultMsg(m *model.Model, msg model.Conte
 		} else if m.ServiceManager == nil {
 			if m.Reporter != nil {
 				m.Reporter.Report(reporting.ManagedServiceUpdate{
-					Timestamp:    time.Now(),
-					SourceType:   reporting.ServiceTypeSystem,
-					SourceLabel:  "ContextSwitch",
-					State:        reporting.StateFailed,
-					ServiceLevel: reporting.LogLevelError,
-					ErrorDetail:  errors.New("ServiceManager is nil, cannot start services"),
-					IsReady:      false,
+					Timestamp:   time.Now(),
+					SourceType:  reporting.ServiceTypeSystem,
+					SourceLabel: "ContextSwitch",
+					State:       reporting.StateFailed,
+					ErrorDetail: errors.New("ServiceManager is nil, cannot start services"),
+					IsReady:     false,
 				})
 			}
 		}

@@ -213,12 +213,11 @@ func mainControllerDispatch(m *model.Model, msg tea.Msg) (*model.Model, tea.Cmd)
 func handleAllServicesStartedMsg(m *model.Model, msg model.AllServicesStartedMsg) (*model.Model, tea.Cmd) {
 	if m.Reporter != nil {
 		m.Reporter.Report(reporting.ManagedServiceUpdate{
-			Timestamp:    time.Now(),
-			SourceType:   reporting.ServiceTypeSystem,
-			SourceLabel:  "ServiceManager",
-			State:        reporting.StateRunning, // Assuming 'all services started' means the system is running
-			ServiceLevel: reporting.LogLevelInfo,
-			IsReady:      true,
+			Timestamp:   time.Now(),
+			SourceType:  reporting.ServiceTypeSystem,
+			SourceLabel: "ServiceManager",
+			State:       reporting.StateRunning, // Assuming 'all services started' means the system is running
+			IsReady:     true,
 		})
 	} else {
 		// Fallback if reporter is somehow nil. This should use pkg/logging now.
@@ -235,13 +234,12 @@ func handleAllServicesStartedMsg(m *model.Model, msg model.AllServicesStartedMsg
 		for _, err := range msg.InitialStartupErrors {
 			if m.Reporter != nil {
 				m.Reporter.Report(reporting.ManagedServiceUpdate{
-					Timestamp:    time.Now(),
-					SourceType:   reporting.ServiceTypeSystem,
-					SourceLabel:  "ServiceManagerInit",
-					State:        reporting.StateFailed, // Or a specific 'PartialFailure' state if we define one
-					ServiceLevel: reporting.LogLevelError,
-					ErrorDetail:  err,
-					IsReady:      false, // Or true if some services are up despite errors
+					Timestamp:   time.Now(),
+					SourceType:  reporting.ServiceTypeSystem,
+					SourceLabel: "ServiceManagerInit",
+					State:       reporting.StateFailed, // Or a specific 'PartialFailure' state if we define one
+					ErrorDetail: err,
+					IsReady:     false, // Or true if some services are up despite errors
 				})
 			} else {
 				// Fallback logging, same note as above, should ideally not be needed.
@@ -254,25 +252,21 @@ func handleAllServicesStartedMsg(m *model.Model, msg model.AllServicesStartedMsg
 
 func handleServiceStopResultMsg(m *model.Model, msg model.ServiceStopResultMsg) (*model.Model, tea.Cmd) {
 	var state reporting.ServiceState
-	var level reporting.LogLevel
 
 	if msg.Err != nil {
 		state = reporting.StateFailed // Or a more specific "StopFailed" state
-		level = reporting.LogLevelError
 	} else {
 		state = reporting.StateStopped
-		level = reporting.LogLevelInfo
 	}
 
 	if m.Reporter != nil {
 		m.Reporter.Report(reporting.ManagedServiceUpdate{
-			Timestamp:    time.Now(),
-			SourceType:   reporting.ServiceTypeSystem, // Or determine actual type if service is known
-			SourceLabel:  msg.Label,                   // Label of the service being stopped
-			State:        state,
-			ServiceLevel: level,
-			IsReady:      false, // A stopped/failed service is not ready
-			ErrorDetail:  msg.Err,
+			Timestamp:   time.Now(),
+			SourceType:  reporting.ServiceTypeSystem, // Or determine actual type if service is known
+			SourceLabel: msg.Label,                   // Label of the service being stopped
+			State:       state,
+			IsReady:     false, // A stopped/failed service is not ready
+			ErrorDetail: msg.Err,
 		})
 	} else {
 		// Fallback logging, should ideally not be needed.
@@ -327,19 +321,12 @@ func handleReporterUpdate(m *model.Model, update reporting.ManagedServiceUpdate)
 			pfProcess.StatusMsg = string(update.State) // Use State for StatusMsg
 			pfProcess.Running = update.IsReady         // IsReady is derived from State
 			pfProcess.Err = update.ErrorDetail
-			// Detailed logs for port-forwards (like kubectl output) now come via pkg/logging,
-			// not through ManagedServiceUpdate.Details.
-			// The pfProcess.Log field might be deprecated or populated by a different mechanism
-			// if we want to show specific, brief, non-activity-log messages in the panel.
-			// For now, we assume ActivityLog is the main place for all logs.
 		}
 	case reporting.ServiceTypeMCPServer:
 		if mcpProcess, exists := m.McpServers[update.SourceLabel]; exists {
 			mcpProcess.StatusMsg = string(update.State) // Use State for StatusMsg
 			mcpProcess.Active = update.IsReady          // IsReady is derived from State
 			mcpProcess.Err = update.ErrorDetail
-			// Similar to PortForwards, mcpProcess.Output for detailed logs is now handled
-			// by pkg/logging. The mcpProcess.Output field might be repurposed or deprecated.
 		}
 	}
 
@@ -348,38 +335,33 @@ func handleReporterUpdate(m *model.Model, update reporting.ManagedServiceUpdate)
 	statusBarMsg := ""
 	statusBarMsgType := model.StatusBarInfo // Default
 
-	// Determine message and type for status bar based on ServiceState and ServiceLevel
 	if update.State != "" { // Only update status bar if there's a meaningful state
 		statusPrefix := fmt.Sprintf("[%s - %s]", update.SourceType, update.SourceLabel)
-		statusBarMsg = fmt.Sprintf("%s %s", statusPrefix, update.State)
 
-		switch update.ServiceLevel { // ServiceLevel reflects the severity of the State
-		case reporting.LogLevelError, reporting.LogLevelFatal:
+		if update.ErrorDetail != nil {
 			statusBarMsgType = model.StatusBarError
-			if update.ErrorDetail != nil {
-				statusBarMsg = fmt.Sprintf("%s %s: %s", statusPrefix, update.State, update.ErrorDetail.Error())
+			statusBarMsg = fmt.Sprintf("%s %s: %s", statusPrefix, update.State, update.ErrorDetail.Error())
+		} else {
+			statusBarMsg = fmt.Sprintf("%s %s", statusPrefix, update.State)
+			switch update.State {
+			case reporting.StateFailed:
+				statusBarMsgType = model.StatusBarError
+			case reporting.StateUnknown:
+				statusBarMsgType = model.StatusBarWarning
+			case reporting.StateRunning:
+				statusBarMsgType = model.StatusBarSuccess
+			case reporting.StateStarting, reporting.StateStopping, reporting.StateRetrying, reporting.StateStopped:
+				statusBarMsgType = model.StatusBarInfo // Default to Info for transient/stopped states
+			default:
+				statusBarMsgType = model.StatusBarInfo
 			}
-		case reporting.LogLevelWarn:
-			statusBarMsgType = model.StatusBarWarning
-			if update.ErrorDetail != nil {
-				statusBarMsg = fmt.Sprintf("%s %s: %s", statusPrefix, update.State, update.ErrorDetail.Error())
-			}
-		case reporting.LogLevelInfo, reporting.LogLevelDebug, reporting.LogLevelTrace:
-			statusBarMsgType = model.StatusBarInfo
-			// For positive states like Running, we might not need ErrorDetail in status bar
-			if update.State == reporting.StateRunning {
-				statusBarMsgType = model.StatusBarSuccess // Example: use Success for Running state
-			}
-		default:
-			statusBarMsgType = model.StatusBarInfo
 		}
 
 		// Filter out less important status updates from the status bar to avoid noise
 		showInStatusBar := true
-		if update.State == reporting.StateStarting && update.ServiceLevel == reporting.LogLevelInfo {
-			// Could choose to not show 'Starting' if it's too frequent, or make it very brief
-		} else if update.ServiceLevel == reporting.LogLevelDebug || update.ServiceLevel == reporting.LogLevelTrace {
-			if !m.DebugMode { // Only show debug/trace in status bar if TUI debug mode is on
+		switch update.State {
+		case reporting.StateStarting, reporting.StateStopping, reporting.StateRetrying:
+			if !m.DebugMode { // Only show these transient states in status bar if TUI debug mode is on
 				showInStatusBar = false
 			}
 		}

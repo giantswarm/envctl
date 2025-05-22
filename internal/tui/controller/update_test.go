@@ -90,12 +90,11 @@ func TestMainControllerDispatch_ReporterUpdateMsg_GeneratesLog(t *testing.T) {
 	assert.NotNil(t, mInitialModel.TUIChannel, "TUIChannel should be initialized")
 
 	msg1Content := reporting.ManagedServiceUpdate{
-		Timestamp:    time.Now(),
-		SourceType:   reporting.ServiceTypeSystem,
-		SourceLabel:  "TestService1",
-		State:        reporting.StateRunning,
-		ServiceLevel: reporting.LogLevelInfo,
-		IsReady:      true,
+		Timestamp:   time.Now(),
+		SourceType:  reporting.ServiceTypeSystem,
+		SourceLabel: "TestService1",
+		State:       reporting.StateRunning,
+		IsReady:     true,
 	}
 
 	// --- Simulate processing the first message ---

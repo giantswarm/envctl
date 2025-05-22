@@ -18,6 +18,7 @@ func NewConsoleReporter() *ConsoleReporter {
 }
 
 // Report translates the ManagedServiceUpdate into a structured log message via the logging package.
+// The log level is inferred from the State and ErrorDetail.
 func (cr *ConsoleReporter) Report(update ManagedServiceUpdate) {
 	// The subsystem for the log message will be composed from SourceType and SourceLabel.
 	subsystem := string(update.SourceType)
@@ -28,31 +29,25 @@ func (cr *ConsoleReporter) Report(update ManagedServiceUpdate) {
 	// The primary message is the state.
 	logMessage := fmt.Sprintf("State: %s", update.State)
 
-	// Determine the log level and function based on update.ServiceLevel and update.ErrorDetail.
 	if update.ErrorDetail != nil {
-		// If ErrorDetail is present, it's definitely an error or a warning with an error.
-		// The ServiceLevel should ideally reflect this.
-		// We pass update.ErrorDetail directly to logging.Error or logging.Warn.
-		if update.ServiceLevel == LogLevelWarn {
-			logging.Warn(subsystem, "%s (Error: %v)", logMessage, update.ErrorDetail)
-		} else {
-			// Default to Error if ErrorDetail is present and not explicitly Warn.
-			logging.Error(subsystem, update.ErrorDetail, "%s", logMessage)
-		}
+		// If ErrorDetail is present, it's an error.
+		logging.Error(subsystem, update.ErrorDetail, "%s", logMessage)
 	} else {
-		// No ErrorDetail, so use ServiceLevel to determine Info, Warn, Debug.
-		switch update.ServiceLevel {
-		case LogLevelError, LogLevelFatal:
-			// This case should ideally have ErrorDetail, but if not, log message as error.
-			logging.Error(subsystem, nil, "%s (Reported as Error/Fatal without details)", logMessage)
-		case LogLevelWarn:
+		// No ErrorDetail, so determine log level based on State.
+		switch update.State {
+		case StateFailed:
+			logging.Error(subsystem, nil, "%s", logMessage)
+		case StateUnknown:
+			// "Unknown" states are often transient or less critical than outright failures without error.
 			logging.Warn(subsystem, "%s", logMessage)
-		case LogLevelDebug:
+		case StateStarting, StateRetrying, StateStopping:
+			// Transient states that can be noisy; log as Debug.
 			logging.Debug(subsystem, "%s", logMessage)
-		case LogLevelTrace:
-			// Assuming pkg/logging might not have Trace, map to Debug or handle if it does.
-			logging.Debug(subsystem, "%s (Trace)", logMessage)
-		default: // LogLevelInfo, LogLevelStdout, LogLevelStderr, or unknown
+		case StateRunning, StateStopped:
+			// Significant, stable states.
+			logging.Info(subsystem, "%s", logMessage)
+		default:
+			// For any other unclassified state, default to Info.
 			logging.Info(subsystem, "%s", logMessage)
 		}
 	}
