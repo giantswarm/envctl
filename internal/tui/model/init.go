@@ -167,6 +167,28 @@ func InitialModel(
 		LogChannel:               logChan,
 	}
 
+	// Populate PortForwards and McpServers with initial placeholder data
+	// This ensures that when status updates arrive, the map entries exist.
+	for _, pfCfg := range m.PortForwardingConfig {
+		m.PortForwardOrder = append(m.PortForwardOrder, pfCfg.Label)
+		m.PortForwards[pfCfg.Label] = &PortForwardProcess{
+			Label:     pfCfg.Label,
+			StatusMsg: "Initializing...", // Or "Awaiting Setup..."
+			Active:    false,             // Initial state, will be updated by ServiceManager
+			Running:   false,             // Initial state
+			Config:    pfCfg,
+		}
+	}
+
+	for _, mcpCfg := range m.MCPServerConfig {
+		m.McpProxyOrder = append(m.McpProxyOrder, mcpCfg.Name) // Ensure McpProxyOrder is also initialized
+		m.McpServers[mcpCfg.Name] = &McpServerProcess{
+			Label:     mcpCfg.Name,
+			StatusMsg: "Initializing...", // Or "Awaiting Setup..."
+			Active:    false,             // Initial state, will be updated by ServiceManager
+		}
+	}
+
 	// m.Help.ShowAll = true // Help styling removed for now
 
 	// Basic initialization that CAN be done within model package:
