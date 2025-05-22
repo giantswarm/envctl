@@ -4,6 +4,7 @@ import (
 	"envctl/internal/reporting"
 	"envctl/internal/tui/model"
 	"envctl/internal/tui/view" // Import for logging.LogEntry
+	"envctl/pkg/logging"
 
 	// Added import for logging.LogEntry
 	// Already imported, ensure it's used or linter will complain
@@ -376,19 +377,21 @@ func handleReporterUpdate(m *model.Model, update reporting.ManagedServiceUpdate)
 
 func handleNewLogEntry(m *model.Model, msg model.NewLogEntryMsg) *model.Model {
 	entry := msg.Entry
-	// Format: HH:MM:SS.mmm [LEVEL] [SUBSYSTEM] Message
-	// Error details will be appended to the same line if present.
-	logLine := fmt.Sprintf("%s [%s] [%s] %s",
-		entry.Timestamp.Format("15:04:05.000"),
-		entry.Level.String(),
-		entry.Subsystem,
-		entry.Message)
 
-	if entry.Err != nil {
-		logLine = fmt.Sprintf("%s -- Error: %v", logLine, entry.Err)
+	// Only add to TUI activity log if the level is INFO or above,
+	// OR if TUI debug mode is enabled (m.DebugMode is true).
+	// Assumes LogLevel enum order: Debug < Info < Warn < Error.
+	if entry.Level >= logging.LevelInfo || m.DebugMode {
+		logLine := fmt.Sprintf("%s [%s] [%s] %s",
+			entry.Timestamp.Format("15:04:05.000"),
+			entry.Level.String(),
+			entry.Subsystem,
+			entry.Message)
+
+		if entry.Err != nil {
+			logLine = fmt.Sprintf("%s -- Error: %v", logLine, entry.Err)
+		}
+		model.AddRawLineToActivityLog(m, logLine)
 	}
-
-	model.AddRawLineToActivityLog(m, logLine)
-
 	return m
 }

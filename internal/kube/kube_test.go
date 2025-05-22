@@ -630,68 +630,68 @@ func TestSwitchKubeContext(t *testing.T) {
 // TestDirectLogger_Write tests the directLogger's Write method.
 func TestDirectLogger_Write(t *testing.T) {
 	tests := []struct {
-		name             string
-		pfLabel          string
-		input            string
-		isError          bool   
-		expectedMsgSubstr  string // Expected substring in the msg="..." part of the log
-		expectLogOutput  bool  
-		expectedLevelStr string 
+		name              string
+		pfLabel           string
+		input             string
+		isError           bool
+		expectedMsgSubstr string // Expected substring in the msg="..." part of the log
+		expectLogOutput   bool
+		expectedLevelStr  string
 	}{
 		{
-			name:             "stdout common line",
-			pfLabel:          "TestPF-Stdout",
-			input:            "Handling connection for 8080\n",
-			isError:          false,
+			name:              "stdout common line",
+			pfLabel:           "TestPF-Stdout",
+			input:             "Handling connection for 8080\n",
+			isError:           false,
 			expectedMsgSubstr: "[PF_STDOUT_RAW] Handling connection for 8080",
-			expectLogOutput:  true,
-			expectedLevelStr: "DEBUG",
+			expectLogOutput:   true,
+			expectedLevelStr:  "DEBUG",
 		},
 		{
-			name:             "stdout 'Forwarding from' line",
-			pfLabel:          "TestPF-StdoutForward",
-			input:            "Forwarding from 127.0.0.1:8080 -> 8080\n",
-			isError:          false,
-			expectedMsgSubstr: "", 
-			expectLogOutput:  false, // directLogger should not log this specific line
-			expectedLevelStr: "",
-		},
-		{
-			name:             "stderr line logged as DEBUG by directLogger",
-			pfLabel:          "TestPF-Stderr",
-			input:            "Some verbose output from stderr\n",
-			isError:          true,
-			expectedMsgSubstr: "[PF_STDERR_RAW] Some verbose output from stderr",
-			expectLogOutput:  true,
-			expectedLevelStr: "DEBUG", 
-		},
-		{
-			name:             "stdout with client-go prefix",
-			pfLabel:          "TestPF-ClientGo",
-			input:            "I1234 12:34:56.789       1 client_go_thing.go:123] Actual message\n",
-			isError:          false,
-			expectedMsgSubstr: "[PF_STDOUT_RAW] Actual message", // Updated to reflect new cleaning logic
-			expectLogOutput:  true,
-			expectedLevelStr: "DEBUG",
-		},
-		{
-			name:             "empty input",
-			pfLabel:          "TestPF-Empty",
-			input:            "\n\n",
-			isError:          false,
+			name:              "stdout 'Forwarding from' line",
+			pfLabel:           "TestPF-StdoutForward",
+			input:             "Forwarding from 127.0.0.1:8080 -> 8080\n",
+			isError:           false,
 			expectedMsgSubstr: "",
-			expectLogOutput:  false,
-			expectedLevelStr: "",
+			expectLogOutput:   false, // directLogger should not log this specific line
+			expectedLevelStr:  "",
 		},
 		{
-			name:             "multiple lines stdout",
-			pfLabel:          "TestPF-MultiStdout",
-			input:            "Line one\nLine two\n",
-			isError:          false,
+			name:              "stderr line logged as DEBUG by directLogger",
+			pfLabel:           "TestPF-Stderr",
+			input:             "Some verbose output from stderr\n",
+			isError:           true,
+			expectedMsgSubstr: "[PF_STDERR_RAW] Some verbose output from stderr",
+			expectLogOutput:   true,
+			expectedLevelStr:  "DEBUG",
+		},
+		{
+			name:              "stdout with client-go prefix",
+			pfLabel:           "TestPF-ClientGo",
+			input:             "I1234 12:34:56.789       1 client_go_thing.go:123] Actual message\n",
+			isError:           false,
+			expectedMsgSubstr: "[PF_STDOUT_RAW] Actual message", // Updated to reflect new cleaning logic
+			expectLogOutput:   true,
+			expectedLevelStr:  "DEBUG",
+		},
+		{
+			name:              "empty input",
+			pfLabel:           "TestPF-Empty",
+			input:             "\n\n",
+			isError:           false,
+			expectedMsgSubstr: "",
+			expectLogOutput:   false,
+			expectedLevelStr:  "",
+		},
+		{
+			name:    "multiple lines stdout",
+			pfLabel: "TestPF-MultiStdout",
+			input:   "Line one\nLine two\n",
+			isError: false,
 			// For multi-line, we'll check for each line's presence individually in the assertions.
 			expectedMsgSubstr: "[PF_STDOUT_RAW] Line one", // We will also check for Line two
-			expectLogOutput:  true,
-			expectedLevelStr: "DEBUG",
+			expectLogOutput:   true,
+			expectedLevelStr:  "DEBUG",
 		},
 	}
 
@@ -703,15 +703,15 @@ func TestDirectLogger_Write(t *testing.T) {
 			tempStdout := os.Stdout // Not a perfect stash, as original might not be os.Stdout
 			// To properly test, we need to know what the global logger level *was*.
 			// For now, assuming it was Info and we restore to that.
-			originalGlobalLevel := logging.LevelInfo 
+			originalGlobalLevel := logging.LevelInfo
 			// It's better if pkg/logging itself has GetLevel() and GetOutput() if we are to manipulate globals.
 			// Without them, this defer is best-effort.
-			defer logging.InitForCLI(originalGlobalLevel, tempStdout) 
-			logging.InitForCLI(logging.LevelDebug, &logBuf) 
+			defer logging.InitForCLI(originalGlobalLevel, tempStdout)
+			logging.InitForCLI(logging.LevelDebug, &logBuf)
 
 			opsSubsystem := fmt.Sprintf("PortForward-%s-kube-ops", tt.pfLabel)
 			writer := &directLogger{subsystem: opsSubsystem, isError: tt.isError}
-			
+
 			_, err := writer.Write([]byte(tt.input))
 			assert.NoError(t, err)
 
@@ -720,7 +720,7 @@ func TestDirectLogger_Write(t *testing.T) {
 			if tt.expectLogOutput {
 				assert.Contains(t, logOutput, fmt.Sprintf("level=%s", tt.expectedLevelStr), "Log output mismatch for expected level")
 				assert.Contains(t, logOutput, fmt.Sprintf("subsystem=%s", opsSubsystem), "Log output mismatch for expected subsystem")
-				
+
 				if tt.name == "multiple lines stdout" {
 					assert.Contains(t, logOutput, "msg=\"[PF_STDOUT_RAW] Line one\"")
 					assert.Contains(t, logOutput, "msg=\"[PF_STDOUT_RAW] Line two\"")
@@ -730,11 +730,11 @@ func TestDirectLogger_Write(t *testing.T) {
 			} else {
 				if tt.name == "stdout 'Forwarding from' line" {
 					assert.NotContains(t, logOutput, "Forwarding from", "Should not log 'Forwarding from' line")
-				} else if strings.TrimSpace(tt.input) != "" { 
-					if logOutput != "" { 
-					    // Check if the specific subsystem for this test call appears. If it does, it means an unexpected log was made.
-					    // This is still a bit weak if other things log to the same buffer with different subsystems.
-					    assert.NotContains(t, logOutput, fmt.Sprintf("subsystem=%s", opsSubsystem), "Expected no specific log output for this directLogger call, but found its subsystem")
+				} else if strings.TrimSpace(tt.input) != "" {
+					if logOutput != "" {
+						// Check if the specific subsystem for this test call appears. If it does, it means an unexpected log was made.
+						// This is still a bit weak if other things log to the same buffer with different subsystems.
+						assert.NotContains(t, logOutput, fmt.Sprintf("subsystem=%s", opsSubsystem), "Expected no specific log output for this directLogger call, but found its subsystem")
 					}
 				}
 			}
@@ -747,15 +747,17 @@ func TestDirectLogger_Write(t *testing.T) {
 // import cycle with k8smanager is kept for now, but might need to be addressed if k8smanager imports kube.
 // If `k8smanager` types are used in signatures (e.g. k8smanager.ClusterList), the import is needed.
 
-type MockKubeManager struct{} 
+type MockKubeManager struct{}
 
 func (m *MockKubeManager) Login(clusterName string) (string, string, error) { return "", "", nil }
-func (m *MockKubeManager) ListClusters() (interface{}, error)   { 
-	return nil, nil 
+func (m *MockKubeManager) ListClusters() (interface{}, error) {
+	return nil, nil
 }
-func (m *MockKubeManager) GetCurrentContext() (string, error)               { return "test-context", nil }
-func (m *MockKubeManager) SwitchContext(targetContextName string) error     { return nil }
-func (m *MockKubeManager) GetAvailableContexts() ([]string, error)       { return []string{"test-context"}, nil }
+func (m *MockKubeManager) GetCurrentContext() (string, error)           { return "test-context", nil }
+func (m *MockKubeManager) SwitchContext(targetContextName string) error { return nil }
+func (m *MockKubeManager) GetAvailableContexts() ([]string, error) {
+	return []string{"test-context"}, nil
+}
 func (m *MockKubeManager) BuildMcContextName(mcShortName string) string { return "mc-" + mcShortName }
 func (m *MockKubeManager) BuildWcContextName(mcShortName, wcShortName string) string {
 	return "wc-" + mcShortName + "-" + wcShortName
@@ -764,8 +766,11 @@ func (m *MockKubeManager) StripTeleportPrefix(contextName string) string { retur
 func (m *MockKubeManager) HasTeleportPrefix(contextName string) bool     { return false }
 func (m *MockKubeManager) GetClusterNodeHealth(ctx context.Context, kubeContextName string) (interface{}, error) {
 	// Return a simple struct that matches basic fields if any test relies on it, or just an empty interface.
-	type fakeNodeHealth struct { ReadyNodes, TotalNodes int; Error error}
-	return fakeNodeHealth{ReadyNodes:1, TotalNodes:1}, nil 
+	type fakeNodeHealth struct {
+		ReadyNodes, TotalNodes int
+		Error                  error
+	}
+	return fakeNodeHealth{ReadyNodes: 1, TotalNodes: 1}, nil
 }
 func (m *MockKubeManager) DetermineClusterProvider(ctx context.Context, kubeContextName string) (string, error) {
 	return "mockProvider", nil

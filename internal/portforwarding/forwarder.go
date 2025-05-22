@@ -125,7 +125,7 @@ func StartAndManageIndividualPortForward(
 		// Ensure a final 'Failed' state is reported if we get an error here.
 		logging.Error(subsystem, initialErr, "Failed to initialize port-forward start sequence for %s. Initial status reported by kube: %s", cfg.Label, initialStatusFromKube)
 		reportIfChanged(cfg.Label, StatusDetailFailed, false, initialErr) // Ensure this reports a failure.
-		return stopChan, initialErr // stopChan might be nil
+		return stopChan, initialErr                                       // stopChan might be nil
 	}
 
 	// StartPortForwardClientGo now sends an "Initializing" status itself.

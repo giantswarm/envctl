@@ -43,7 +43,7 @@ func TestStartAndManageIndividualPortForward_Success(t *testing.T) {
 		// Simulate StartPortForwardClientGo sending "Initializing" first
 		initMsg := fmt.Sprintf("Mock Kube Init for %s", label)
 		bridgeFn("Initializing", initMsg, false, false)
-		
+
 		go func() {
 			t.Logf("[Mock KubeStartPortForwardClientGoFn - Success GOROUTINE %s] Simulating async ready signal by calling bridgeFn", label)
 			time.Sleep(25 * time.Millisecond) // Increased delay slightly to ensure it's processed after init
@@ -74,13 +74,13 @@ func TestStartAndManageIndividualPortForward_Success(t *testing.T) {
 		// but from the KubeStartPortForwardFn mock's call to bridgeFn.
 		// We should capture the outputLog from the *mocked* bridgeFn calls if we want to assert it.
 		// However, testPortForwardUpdate doesn't have OutputLog yet. Let's add it.
-		
+
 		// To correctly test, the `updateFn` here is what `StartAndManageIndividualPortForward` calls.
 		// The `bridgeFn` inside the mocked `KubeStartPortForwardFn` is what `StartPortForwardClientGo` calls.
 		// The `outputLog` from `bridgeFn` is used by `forwarder.go`'s `bridgeCallback` to form `operationErr` or details for `reportIfChanged`.
 		// The `reportIfChanged` then calls this `updateFn`.
 		// For this test, we care about what `updateFn` receives.
-		
+
 		// The outputLog associated with the status detail would be set by the real bridgeCallback.
 		// Our testPortForwardUpdate should capture this.
 		var capturedOutputLog string
@@ -155,10 +155,10 @@ func TestStartAndManageIndividualPortForward_Success(t *testing.T) {
 			assert.Equal(t, expected.StatusDetail, actual.StatusDetail, "Update %d StatusDetail mismatch", i)
 			assert.Equal(t, expected.IsOpReady, actual.IsOpReady, "Update %d IsOpReady mismatch", i)
 			assert.True(t, errors.Is(actual.OperationErr, expected.OperationErr), "Update %d OperationErr mismatch. Got %v, want %v", i, actual.OperationErr, expected.OperationErr)
-			// OutputLog for ForwardingActive might have specific port numbers based on GetPorts(), 
+			// OutputLog for ForwardingActive might have specific port numbers based on GetPorts(),
 			// but our mock sends a fixed string. For Initializing, it's also mocked.
 			assert.Equal(t, expected.OutputLog, actual.OutputLog, "Update %d OutputLog mismatch", i)
-		} 
+		}
 	}
 
 	t.Logf("TestStartAndManageIndividualPortForward_Success: END")
@@ -181,7 +181,7 @@ func TestStartAndManageIndividualPortForward_KubeError(t *testing.T) {
 	) (chan struct{}, string, error) {
 		t.Logf("[Mock KubeStartPortForwardClientGoFn - Error] Called for label '%s', returning error: %v immediately", label, expectedKubeErr)
 		// No call to bridgeFn("Initializing", ...) because the error is immediate
-		return nil, "KubeInitStatus: Immediate Error", expectedKubeErr 
+		return nil, "KubeInitStatus: Immediate Error", expectedKubeErr
 	}
 
 	cfg := PortForwardingConfig{Label: "error-label", ServiceName: "ErrorService", Namespace: "err-ns", LocalPort: "123", RemotePort: "456"}

@@ -44,14 +44,14 @@ func (dl *directLogger) Write(p []byte) (n int, err error) {
 				if closingBracketIndex := strings.Index(cleanLine, "]"); closingBracketIndex != -1 {
 					potentialMessage := cleanLine[closingBracketIndex+1:]
 					cleanLine = strings.TrimSpace(potentialMessage)
-				} 
+				}
 			}
 
 			if dl.isError {
 				logging.Debug(dl.subsystem, "[PF_STDERR_RAW] %s", cleanLine)
 			} else {
-				if !strings.HasPrefix(cleanLine, "Forwarding from") && 
-				   !strings.HasPrefix(line, "Forwarding from") { 
+				if !strings.HasPrefix(cleanLine, "Forwarding from") &&
+					!strings.HasPrefix(line, "Forwarding from") {
 					logging.Debug(dl.subsystem, "[PF_STDOUT_RAW] %s", cleanLine)
 				}
 			}

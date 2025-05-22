@@ -15,10 +15,10 @@ import (
 
 func TestConsoleReporter_Report(t *testing.T) {
 	tests := []struct {
-		name            string
-		update          ManagedServiceUpdate
-		expectedLevel   string // e.g., "DEBUG", "INFO", "WARN", "ERROR"
-		expectedSubstr  string // Substring to find in the log message part
+		name             string
+		update           ManagedServiceUpdate
+		expectedLevel    string // e.g., "DEBUG", "INFO", "WARN", "ERROR"
+		expectedSubstr   string // Substring to find in the log message part
 		expectErrorInLog bool   // Whether the error detail should be in the log message
 	}{
 		{
@@ -28,8 +28,8 @@ func TestConsoleReporter_Report(t *testing.T) {
 				SourceLabel: "PF1",
 				State:       StateStarting,
 			},
-			expectedLevel: "DEBUG", // ConsoleReporter maps Starting to Debug
-			expectedSubstr:  "State: Starting",
+			expectedLevel:  "DEBUG", // ConsoleReporter maps Starting to Debug
+			expectedSubstr: "State: Starting",
 		},
 		{
 			name: "StateRunning - no error",
@@ -39,8 +39,8 @@ func TestConsoleReporter_Report(t *testing.T) {
 				State:       StateRunning,
 				IsReady:     true,
 			},
-			expectedLevel: "INFO",
-			expectedSubstr:  "State: Running",
+			expectedLevel:  "INFO",
+			expectedSubstr: "State: Running",
 		},
 		{
 			name: "StateFailed - with error detail",
@@ -50,8 +50,8 @@ func TestConsoleReporter_Report(t *testing.T) {
 				State:       StateFailed,
 				ErrorDetail: errors.New("epic fail"),
 			},
-			expectedLevel: "ERROR",
-			expectedSubstr:  "State: Failed",
+			expectedLevel:    "ERROR",
+			expectedSubstr:   "State: Failed",
 			expectErrorInLog: true, // ErrorDetail should be logged by logging.Error
 		},
 		{
@@ -61,8 +61,8 @@ func TestConsoleReporter_Report(t *testing.T) {
 				SourceLabel: "SysCheck",
 				State:       StateFailed,
 			},
-			expectedLevel: "ERROR",
-			expectedSubstr:  "State: Failed",
+			expectedLevel:  "ERROR",
+			expectedSubstr: "State: Failed",
 		},
 		{
 			name: "StateUnknown - no error",
@@ -71,8 +71,8 @@ func TestConsoleReporter_Report(t *testing.T) {
 				SourceLabel: "PF-Unknown",
 				State:       StateUnknown,
 			},
-			expectedLevel: "WARN", // ConsoleReporter maps Unknown to Warn
-			expectedSubstr:  "State: Unknown",
+			expectedLevel:  "WARN", // ConsoleReporter maps Unknown to Warn
+			expectedSubstr: "State: Unknown",
 		},
 		{
 			name: "StateStopped - no error",
@@ -81,8 +81,8 @@ func TestConsoleReporter_Report(t *testing.T) {
 				SourceLabel: "MCP-Stopped",
 				State:       StateStopped,
 			},
-			expectedLevel: "INFO",
-			expectedSubstr:  "State: Stopped",
+			expectedLevel:  "INFO",
+			expectedSubstr: "State: Stopped",
 		},
 	}
 
@@ -93,14 +93,14 @@ func TestConsoleReporter_Report(t *testing.T) {
 			// This assumes InitForCLI can be used to redirect a global logger.
 			// For more robust testing, dependency injection for the logger in ConsoleReporter would be better,
 			// or pkg/logging should provide a way to get/set a test logger instance.
-			originalLoggerOut := os.Stdout // Placeholder for actual original output
+			originalLoggerOut := os.Stdout           // Placeholder for actual original output
 			originalLoggerLevel := logging.LevelInfo // Placeholder
 			// Ideally, pkg/logging would have GetLevel() and GetOutput() for proper stashing and restoring.
 			defer logging.InitForCLI(originalLoggerLevel, originalLoggerOut) // Attempt to restore
 
 			// Set level for logging package based on what ConsoleReporter is expected to produce
 			// To capture all levels ConsoleReporter might output based on its internal logic:
-			logging.InitForCLI(logging.LevelDebug, &logBuf) 
+			logging.InitForCLI(logging.LevelDebug, &logBuf)
 
 			reporter := NewConsoleReporter()
 			reporter.Report(tt.update)
@@ -109,7 +109,7 @@ func TestConsoleReporter_Report(t *testing.T) {
 
 			assert.Contains(t, logOutput, fmt.Sprintf("level=%s", tt.expectedLevel), "Expected log level does not match")
 			assert.Contains(t, logOutput, tt.expectedSubstr, "Expected substring not found in log message")
-			
+
 			expectedSubsystem := string(tt.update.SourceType)
 			if tt.update.SourceLabel != "" {
 				expectedSubsystem = fmt.Sprintf("%s-%s", tt.update.SourceType, tt.update.SourceLabel)
@@ -138,7 +138,7 @@ func TestTUIReporter_Report(t *testing.T) {
 		{
 			name: "Valid update, valid channel",
 			update: ManagedServiceUpdate{
-				Timestamp:   time.Now(), 
+				Timestamp:   time.Now(),
 				SourceType:  ServiceTypeSystem,
 				SourceLabel: "Test1",
 				State:       StateRunning,
@@ -167,8 +167,8 @@ func TestTUIReporter_Report(t *testing.T) {
 			update: ManagedServiceUpdate{
 				SourceType: ServiceTypeMCPServer, State: StateStopped,
 			},
-			blockChannel: true, // Make channel unbuffered and don't read
-			expectSend:    false, // Send should fail or timeout (select default)
+			blockChannel: true,  // Make channel unbuffered and don't read
+			expectSend:   false, // Send should fail or timeout (select default)
 		},
 	}
 
@@ -192,7 +192,7 @@ func TestTUIReporter_Report(t *testing.T) {
 				case msg := <-ch:
 					assert.IsType(t, ReporterUpdateMsg{}, msg, "Message should be ReporterUpdateMsg")
 					reportedUpdate := msg.(ReporterUpdateMsg).Update
-					
+
 					// Check if timestamp was set if originally zero
 					if tt.update.Timestamp.IsZero() {
 						assert.False(t, reportedUpdate.Timestamp.IsZero(), "Timestamp should have been set by Report")
@@ -213,4 +213,4 @@ func TestTUIReporter_Report(t *testing.T) {
 			}
 		})
 	}
-} 
+}
