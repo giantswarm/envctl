@@ -134,7 +134,7 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 
 	if len(pfConfigs) > 0 {
 		logging.Debug("ServiceManager", "Processing %d port forward configs.", len(pfConfigs))
-		pfUpdateAdapter := func(serviceLabel, statusDetail string, isOpReady bool, operationErr error) {
+		pfUpdateAdapter := func(serviceLabel string, statusDetail portforwarding.PortForwardStatusDetail, isOpReady bool, operationErr error) {
 			originalLabel, ok := pfOriginalLabels[serviceLabel]
 			if !ok {
 				originalLabel = serviceLabel // Fallback
@@ -146,26 +146,46 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 			if operationErr != nil {
 				state = reporting.StateFailed
 				level = reporting.LogLevelError
-			} else if isOpReady {
-				state = reporting.StateRunning
-				level = reporting.LogLevelInfo
-				// Consider if statusDetail like "Forwarding active" should refine StateRunning, but usually not needed.
-			} else if statusDetail == "Stopped" { // Assuming portforwarding package can report "Stopped"
-				state = reporting.StateStopped
-				level = reporting.LogLevelInfo
-			} else if statusDetail == "Starting" || statusDetail == "Initializing" { // Example mapping
-				state = reporting.StateStarting
-				level = reporting.LogLevelInfo
 			} else {
-				// Default or if statusDetail indicates a transient, non-error, non-ready state
-				state = reporting.StateStarting // Or some other intermediate state
-				level = reporting.LogLevelDebug // Or Info if significant
+				switch statusDetail {
+				case portforwarding.StatusDetailForwardingActive:
+					if isOpReady { // Double check with isOpReady
+						state = reporting.StateRunning
+						level = reporting.LogLevelInfo
+					} else {
+						// This case might indicate a brief period where status is active but not fully ready, treat as Starting.
+						state = reporting.StateStarting
+						level = reporting.LogLevelInfo
+					}
+				case portforwarding.StatusDetailInitializing:
+					state = reporting.StateStarting
+					level = reporting.LogLevelInfo
+				case portforwarding.StatusDetailStopped:
+					state = reporting.StateStopped
+					level = reporting.LogLevelInfo
+				case portforwarding.StatusDetailFailed, portforwarding.StatusDetailError:
+					state = reporting.StateFailed
+					level = reporting.LogLevelError
+				case portforwarding.StatusDetailUnknown:
+					state = reporting.StateUnknown
+					level = reporting.LogLevelWarn
+				default:
+					// If isOpReady is true, default to Running for any other positive-like status.
+					if isOpReady {
+						state = reporting.StateRunning
+						level = reporting.LogLevelInfo
+					} else {
+						state = reporting.StateUnknown // Or StateStarting if that feels more appropriate for unmapped non-error states
+						level = reporting.LogLevelDebug
+						logging.Debug("ServiceManager", "Unmapped PortForwardStatusDetail '%s' for service %s. isOpReady: %t", statusDetail, originalLabel, isOpReady)
+					}
+				}
 			}
 
 			// Log the state change
 			baseLogMessage := fmt.Sprintf("Service %s (PortForward) state: %s", originalLabel, state)
 			finalLogMessage := baseLogMessage
-			if statusDetail != "" && statusDetail != string(state) {
+			if statusDetail != "" && string(statusDetail) != string(state) { // Ensure statusDetail is converted to string for comparison if state is also string
 				finalLogMessage = fmt.Sprintf("%s (Detail: %s)", baseLogMessage, statusDetail)
 			}
 			if state == reporting.StateFailed || operationErr != nil {

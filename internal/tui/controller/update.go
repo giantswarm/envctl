@@ -395,23 +395,18 @@ func handleReporterUpdate(m *model.Model, update reporting.ManagedServiceUpdate)
 func handleNewLogEntry(m *model.Model, msg model.NewLogEntryMsg) *model.Model {
 	entry := msg.Entry
 	// Format: HH:MM:SS.mmm [LEVEL] [SUBSYSTEM] Message
-	// Error details on new lines if present.
+	// Error details will be appended to the same line if present.
 	logLine := fmt.Sprintf("%s [%s] [%s] %s",
 		entry.Timestamp.Format("15:04:05.000"),
 		entry.Level.String(),
 		entry.Subsystem,
 		entry.Message)
 
-	model.AddRawLineToActivityLog(m, logLine) // Assuming AddRawLineToActivityLog exists/will be created
-
 	if entry.Err != nil {
-		// Add error details on a new line, indented
-		errorLine := fmt.Sprintf("%s [%s] [%s]   Error: %v",
-			entry.Timestamp.Format("15:04:05.000"),
-			entry.Level.String(),
-			entry.Subsystem,
-			entry.Err)
-		model.AddRawLineToActivityLog(m, errorLine)
+		logLine = fmt.Sprintf("%s -- Error: %v", logLine, entry.Err)
 	}
+
+	model.AddRawLineToActivityLog(m, logLine)
+
 	return m
 }

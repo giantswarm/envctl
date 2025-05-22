@@ -71,14 +71,13 @@ func GetPortForwardConfig(mcShortName, workloadClusterArg string) []PortForwardi
 
 // UpdateFunc defines the callback for port forwarding status updates.
 // Signature changed to: serviceLabel, statusDetail string, isOpReady bool, operationErr error
-type UpdateFunc func(serviceLabel, statusDetail string, isOpReady bool, operationErr error)
 
 // StartPortForwardsFunc is the type for the StartPortForwards function, for mocking.
 var StartPortForwards = StartPortForwardings // Points to the exported function
 
 func StartPortForwardings(
 	configs []PortForwardingConfig,
-	updateCb UpdateFunc,
+	updateCb PortForwardUpdateFunc,
 	wg *sync.WaitGroup,
 ) map[string]chan struct{} {
 	subsystemBase := "PortForwardingSys"
@@ -109,7 +108,7 @@ func StartPortForwardings(
 
 			logging.Info(serviceSubsystem, "Attempting to start port-forward for %s to %s:%s...", config.ServiceName, config.LocalPort, config.RemotePort)
 			if updateCb != nil {
-				updateCb(config.Label, "Starting", false, nil)
+				updateCb(config.Label, StatusDetailInitializing, false, nil)
 			}
 
 			// kubeUpdateCallback translates kube.SendUpdateFunc to our new UpdateFunc needs
@@ -136,7 +135,8 @@ func StartPortForwardings(
 						}
 					}
 					// Pass kubeStatus as statusDetail. ServiceManager adapter will map this to ServiceState.
-					updateCb(config.Label, kubeStatus, kubeIsReady, opErr)
+					mappedStatusDetail := mapKubeStatusToPortForwardStatusDetail(kubeStatus, kubeIsReady, kubeIsError, serviceSubsystem)
+					updateCb(config.Label, mappedStatusDetail, kubeIsReady, opErr)
 				}
 			}
 
@@ -157,7 +157,7 @@ func StartPortForwardings(
 			if initialErr != nil {
 				logging.Error(serviceSubsystem, initialErr, "Failed to start port-forward. Initial output: %s", initialStatus)
 				if updateCb != nil {
-					updateCb(config.Label, fmt.Sprintf("Failed: %v", initialErr), false, initialErr)
+					updateCb(config.Label, StatusDetailFailed, false, initialErr)
 				}
 				return
 			}
@@ -165,7 +165,7 @@ func StartPortForwardings(
 				critError := fmt.Errorf("critical setup error: stop channel is nil despite no initial error for %s", config.Label)
 				logging.Error(serviceSubsystem, critError, "Critical setup error for port-forward. Initial output: %s", initialStatus)
 				if updateCb != nil {
-					updateCb(config.Label, "Critical setup error", false, critError)
+					updateCb(config.Label, StatusDetailFailed, false, critError)
 				}
 				return
 			}
@@ -178,7 +178,7 @@ func StartPortForwardings(
 			case <-pfStopChan: // Internal stop signal from the port-forwarding goroutine in kube package
 				logging.Info(serviceSubsystem, "Stopped (internal signal from kube forwarder).")
 				if updateCb != nil {
-					updateCb(config.Label, "Stopped", false, nil)
+					updateCb(config.Label, StatusDetailStopped, false, nil)
 				}
 			case <-individualStopChan: // External stop signal from ServiceManager
 				logging.Info(serviceSubsystem, "Stopped (external signal from ServiceManager).")
@@ -186,10 +186,45 @@ func StartPortForwardings(
 					close(pfStopChan)
 				}
 				if updateCb != nil {
-					updateCb(config.Label, "Stopped", false, nil)
+					updateCb(config.Label, StatusDetailStopped, false, nil)
 				}
 			}
 		}()
 	}
 	return individualStopChans
+}
+
+// Helper function to map kubeStatus to PortForwardStatusDetail
+// This should be similar to the logic in forwarder.go's bridgeCallback
+func mapKubeStatusToPortForwardStatusDetail(kubeStatus string, kubeIsReady bool, kubeIsError bool, subsystem string) PortForwardStatusDetail {
+	var statusDetail PortForwardStatusDetail
+	switch kubeStatus {
+	case string(StatusDetailInitializing):
+		statusDetail = StatusDetailInitializing
+	case string(StatusDetailForwardingActive), "Forwarding from":
+		statusDetail = StatusDetailForwardingActive
+	case string(StatusDetailStopped):
+		statusDetail = StatusDetailStopped
+	case string(StatusDetailFailed):
+		statusDetail = StatusDetailFailed
+	case string(StatusDetailError):
+		statusDetail = StatusDetailError
+	default:
+		if kubeIsReady {
+			statusDetail = StatusDetailForwardingActive
+		} else if kubeIsError {
+			statusDetail = StatusDetailFailed
+		} else {
+			statusDetail = StatusDetailUnknown
+			logging.Debug(subsystem, "Unknown kubeStatus in mapKubeStatusToPortForwardStatusDetail: '%s', IsReady: %t, IsError: %t", kubeStatus, kubeIsReady, kubeIsError)
+		}
+	}
+	// If error is present (opErr in the calling context, or implied by kubeIsError), it should be Failed.
+	// This helper only uses kubeIsError. The caller (kubeUpdateCallback) will handle opErr.
+	if kubeIsError {
+		statusDetail = StatusDetailFailed
+	} else if kubeIsReady { // Ensure if kube reports ready, we reflect it as active.
+		statusDetail = StatusDetailForwardingActive
+	}
+	return statusDetail
 }
