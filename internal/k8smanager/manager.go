@@ -7,11 +7,13 @@ import (
 	"envctl/internal/utils"
 	"envctl/pkg/logging" // Added for logging
 	"fmt"                // For GetAvailableContexts error handling
+	"sort"               // Added for sorting contexts
 	"time"               // For restConfig.Timeout
 
-	"k8s.io/client-go/kubernetes"      // For clientset
-	"k8s.io/client-go/rest"            // Added for rest.Config type in function variable
-	"k8s.io/client-go/tools/clientcmd" // For clientcmd
+	"k8s.io/client-go/kubernetes"          // For clientset
+	"k8s.io/client-go/rest"                // Added for rest.Config type in function variable
+	"k8s.io/client-go/tools/clientcmd"     // For clientcmd
+	"k8s.io/client-go/tools/clientcmd/api" // Added for api.Config
 	// kube and other imports will be added as needed
 )
 
@@ -24,6 +26,13 @@ var NewK8sClientsetFromConfig = func(c *rest.Config) (kubernetes.Interface, erro
 // K8sNewNonInteractiveDeferredLoadingClientConfig is a package-level variable to allow mocking of clientcmd.NewNonInteractiveDeferredLoadingClientConfig.
 var K8sNewNonInteractiveDeferredLoadingClientConfig = func(loader clientcmd.ClientConfigLoader, overrides *clientcmd.ConfigOverrides) clientcmd.ClientConfig {
 	return clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loader, overrides)
+}
+
+// K8sGetStartingConfigForList is a package-level variable to allow mocking of the kubeconfig loading mechanism for listing contexts.
+// Exported to allow overriding in tests.
+var K8sGetStartingConfigForList = func() (*api.Config, error) {
+	pathOptions := clientcmd.NewDefaultPathOptions()
+	return pathOptions.GetStartingConfig()
 }
 
 // kubeManager is the concrete implementation of KubeManagerAPI.
@@ -194,11 +203,7 @@ func (km *kubeManager) SwitchContext(targetContextName string) error {
 }
 
 func (km *kubeManager) GetAvailableContexts() ([]string, error) {
-	pathOptions := clientcmd.NewDefaultPathOptions()
-	if pathOptions == nil {
-		return nil, fmt.Errorf("failed to get default kubeconfig path options")
-	}
-	config, err := pathOptions.GetStartingConfig()
+	config, err := K8sGetStartingConfigForList()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get starting kubeconfig: %w", err)
 	}
@@ -207,6 +212,7 @@ func (km *kubeManager) GetAvailableContexts() ([]string, error) {
 	for contextName := range config.Contexts {
 		contexts = append(contexts, contextName)
 	}
+	sort.Strings(contexts) // Sort for predictable order
 	return contexts, nil
 }
 

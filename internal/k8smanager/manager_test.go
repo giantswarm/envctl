@@ -8,6 +8,9 @@ import (
 	"envctl/internal/utils"     // To access original functions for overriding
 	"fmt"
 	"reflect" // For DeepEqual
+
+	// For TestKubeManager_GetAvailableContexts_Success
+	"strings" // For TestKubeManager_GetAvailableContexts_Error
 	"testing"
 
 	"k8s.io/client-go/kubernetes"      // Added for kubernetes.Interface
@@ -33,6 +36,7 @@ var (
 	originalGetNodeStatus                                   func(clientset interface{}) (int, int, error) // Simplified clientset to interface{}
 	originalNewK8sClientsetFromConfig                       func(c *rest.Config) (kubernetes.Interface, error)
 	originalK8sNewNonInteractiveDeferredLoadingClientConfig func(loader clientcmd.ClientConfigLoader, overrides *clientcmd.ConfigOverrides) clientcmd.ClientConfig // Kept this type
+	originalDetermineClusterProvider                        func(ctx context.Context, kubeContextName string) (string, error)
 )
 
 // --- Mock clientcmd.ClientConfig ---
@@ -83,6 +87,9 @@ func (m *mockServiceReporter) Report(update reporting.ManagedServiceUpdate) {
 	}
 }
 
+// Make DetermineClusterProvider mockable for tests
+var mockableDetermineClusterProvider func(ctx context.Context, kubeContextName string) (string, error)
+
 func newTestKubeManager() k8smanager.KubeManagerAPI {
 	// For tests, we can pass a nil reporter, and NewKubeManager will use a ConsoleReporter,
 	// or we can pass a specific mock reporter if we want to assert reporting calls.
@@ -110,6 +117,17 @@ func setupKubeManagerMocks(t *testing.T) {
 	if originalK8sNewNonInteractiveDeferredLoadingClientConfig == nil {
 		originalK8sNewNonInteractiveDeferredLoadingClientConfig = k8smanager.K8sNewNonInteractiveDeferredLoadingClientConfig
 	}
+	// No longer need the mockableDetermineClusterProvider indirection as kube.DetermineClusterProvider is now a var.
+	// if originalDetermineClusterProvider == nil {
+	// 	originalDetermineClusterProvider = kube.DetermineClusterProvider
+	// 	// Assign the initial mockable function to the original one.
+	// 	// Tests can then override mockableDetermineClusterProvider.
+	// 	mockableDetermineClusterProvider = originalDetermineClusterProvider
+	// 	// The actual kube.DetermineClusterProvider will call our mockable one.
+	// 	kube.DetermineClusterProvider = func(ctx context.Context, kubeContextName string) (string, error) {
+	// 		return mockableDetermineClusterProvider(ctx, kubeContextName)
+	// 	}
+	// }
 
 	// Default mocks (can be overridden per test)
 	utils.LoginToKubeCluster = func(clusterName string) (string, string, error) {
@@ -153,6 +171,11 @@ func setupKubeManagerMocks(t *testing.T) {
 			},
 		}
 	}
+
+	// if originalDetermineClusterProvider != nil {
+	// 	kube.DetermineClusterProvider = originalDetermineClusterProvider
+	// 	mockableDetermineClusterProvider = nil // Reset mockable version
+	// }
 }
 
 func restoreKubeManagerOriginals() {
@@ -165,6 +188,10 @@ func restoreKubeManagerOriginals() {
 	if originalK8sNewNonInteractiveDeferredLoadingClientConfig != nil {
 		k8smanager.K8sNewNonInteractiveDeferredLoadingClientConfig = originalK8sNewNonInteractiveDeferredLoadingClientConfig
 	}
+	// if originalDetermineClusterProvider != nil {
+	// 	kube.DetermineClusterProvider = originalDetermineClusterProvider
+	// 	mockableDetermineClusterProvider = nil // Reset mockable version
+	// }
 }
 
 func TestKubeManager_Login(t *testing.T) {
@@ -181,6 +208,39 @@ func TestKubeManager_Login(t *testing.T) {
 	}
 	if stderr != "login-stderr-mycluster" {
 		t.Errorf("Expected stderr %s, got %s", "login-stderr-mycluster", stderr)
+	}
+}
+
+func TestKubeManager_Login_Error(t *testing.T) {
+	setupKubeManagerMocks(t)
+	defer restoreKubeManagerOriginals()
+
+	expectedErr := fmt.Errorf("tsh login error")
+	utils.LoginToKubeCluster = func(clusterName string) (string, string, error) {
+		t.Logf("mock LoginToKubeCluster called for error test with: %s", clusterName)
+		return "", "error details", expectedErr
+	}
+
+	reportedError := false
+	mockReporter := &mockServiceReporter{
+		ReportFunc: func(update reporting.ManagedServiceUpdate) {
+			t.Logf("mockReporter received update: %+v", update)
+			if update.State == reporting.StateFailed && update.ErrorDetail == expectedErr {
+				reportedError = true
+			}
+		},
+	}
+	km := k8smanager.NewKubeManager(mockReporter)
+
+	_, _, err := km.Login("errorcluster")
+	if err == nil {
+		t.Fatal("Login expected an error, but got nil")
+	}
+	if err != expectedErr {
+		t.Errorf("Login expected error %v, got %v", expectedErr, err)
+	}
+	if !reportedError {
+		t.Errorf("Expected reporter to be called with StateFailed and the specific error")
 	}
 }
 
@@ -211,6 +271,27 @@ func TestKubeManager_ListClusters(t *testing.T) {
 	}
 }
 
+func TestKubeManager_ListClusters_Error(t *testing.T) {
+	setupKubeManagerMocks(t)
+	defer restoreKubeManagerOriginals()
+
+	expectedErr := fmt.Errorf("get cluster info error")
+	utils.GetClusterInfo = func() (*utils.ClusterInfo, error) {
+		t.Log("mock GetClusterInfo called for error test")
+		return nil, expectedErr
+	}
+
+	km := newTestKubeManager()
+	_, err := km.ListClusters()
+
+	if err == nil {
+		t.Fatal("ListClusters expected an error, but got nil")
+	}
+	if err != expectedErr {
+		t.Errorf("ListClusters expected error %v, got %v", expectedErr, err)
+	}
+}
+
 func TestKubeManager_GetCurrentContext(t *testing.T) {
 	setupKubeManagerMocks(t)
 	defer restoreKubeManagerOriginals()
@@ -233,6 +314,41 @@ func TestKubeManager_SwitchContext(t *testing.T) {
 	}
 	if err := km.SwitchContext(target); err != nil || switchedTo != target {
 		t.Errorf("SwitchContext(%s) failed or did not switch to target: %v, switchedTo: %s", target, err, switchedTo)
+	}
+}
+
+func TestKubeManager_SwitchContext_Error(t *testing.T) {
+	setupKubeManagerMocks(t)
+	defer restoreKubeManagerOriginals()
+
+	expectedErr := fmt.Errorf("kubectl switch error")
+	kube.SwitchKubeContext = func(target string) error {
+		t.Logf("mock SwitchKubeContext called for error test with: %s", target)
+		return expectedErr
+	}
+
+	reportedError := false
+	mockReporter := &mockServiceReporter{
+		ReportFunc: func(update reporting.ManagedServiceUpdate) {
+			t.Logf("mockReporter received update: %+v", update)
+			if update.State == reporting.StateFailed && update.ErrorDetail == expectedErr {
+				reportedError = true
+			}
+		},
+	}
+	km := k8smanager.NewKubeManager(mockReporter)
+
+	target := "error-context"
+	err := km.SwitchContext(target)
+
+	if err == nil {
+		t.Fatalf("SwitchContext(%s) expected an error, but got nil", target)
+	}
+	if err != expectedErr {
+		t.Errorf("SwitchContext(%s) expected error %v, got %v", target, expectedErr, err)
+	}
+	if !reportedError {
+		t.Errorf("Expected reporter to be called with StateFailed and the specific error")
 	}
 }
 
@@ -347,3 +463,249 @@ func TestKubeManager_GetClusterNodeHealth_NodeStatusError(t *testing.T) {
 // - BuildMcContextName, BuildWcContextName, StripTeleportPrefix, HasTeleportPrefix (these are simple passthroughs, low priority unless logic changes)
 // - GetClusterNodeHealth (this is an integration test if kube.GetNodeStatusClientGo is not easily mockable here)
 // - Error paths for all methods
+
+// --- Additional tests for simple passthrough functions ---
+
+func TestKubeManager_BuildMcContextName(t *testing.T) {
+	km := newTestKubeManager()
+	mcShortName := "mycluster"
+	expected := utils.BuildMcContext(mcShortName) // Uses the actual util function for expected value
+	result := km.BuildMcContextName(mcShortName)
+	if result != expected {
+		t.Errorf("BuildMcContextName(%q) = %q, want %q", mcShortName, result, expected)
+	}
+}
+
+func TestKubeManager_BuildWcContextName(t *testing.T) {
+	km := newTestKubeManager()
+	mcShortName := "mc"
+	wcShortName := "wc"
+	expected := utils.BuildWcContext(mcShortName, wcShortName) // Uses the actual util function
+	result := km.BuildWcContextName(mcShortName, wcShortName)
+	if result != expected {
+		t.Errorf("BuildWcContextName(%q, %q) = %q, want %q", mcShortName, wcShortName, result, expected)
+	}
+}
+
+func TestKubeManager_StripTeleportPrefix(t *testing.T) {
+	km := newTestKubeManager()
+	contextName := "teleport.giantswarm.io-mycluster"
+	expected := utils.StripTeleportPrefix(contextName) // Uses the actual util function
+	result := km.StripTeleportPrefix(contextName)
+	if result != expected {
+		t.Errorf("StripTeleportPrefix(%q) = %q, want %q", contextName, result, expected)
+	}
+
+	contextNameNoPrefix := "mycluster"
+	expectedNoPrefix := utils.StripTeleportPrefix(contextNameNoPrefix)
+	resultNoPrefix := km.StripTeleportPrefix(contextNameNoPrefix)
+	if resultNoPrefix != expectedNoPrefix {
+		t.Errorf("StripTeleportPrefix(%q) = %q, want %q", contextNameNoPrefix, resultNoPrefix, expectedNoPrefix)
+	}
+}
+
+func TestKubeManager_HasTeleportPrefix(t *testing.T) {
+	km := newTestKubeManager()
+
+	contextWithPrefix := "teleport.giantswarm.io-mycluster"
+	if !km.HasTeleportPrefix(contextWithPrefix) {
+		t.Errorf("HasTeleportPrefix(%q) = false, want true", contextWithPrefix)
+	}
+
+	contextWithoutPrefix := "mycluster"
+	if km.HasTeleportPrefix(contextWithoutPrefix) {
+		t.Errorf("HasTeleportPrefix(%q) = true, want false", contextWithoutPrefix)
+	}
+
+	emptyContext := ""
+	if km.HasTeleportPrefix(emptyContext) {
+		t.Errorf("HasTeleportPrefix(%q) = true, want false", emptyContext)
+	}
+}
+
+// --- End of additional tests ---
+
+// --- Tests for GetAvailableContexts ---
+
+func TestKubeManager_GetAvailableContexts_Success(t *testing.T) {
+	setupKubeManagerMocks(t)
+	defer restoreKubeManagerOriginals()
+
+	originalGetStartingConfig := k8smanager.K8sGetStartingConfigForList
+	k8smanager.K8sGetStartingConfigForList = func() (*api.Config, error) {
+		return &api.Config{
+			Contexts: map[string]*api.Context{
+				"ctx-b": {Cluster: "cluster-b"},
+				"ctx-a": {Cluster: "cluster-a"},
+				"ctx-c": {Cluster: "cluster-c"},
+			},
+		}, nil
+	}
+	defer func() { k8smanager.K8sGetStartingConfigForList = originalGetStartingConfig }()
+
+	km := newTestKubeManager()
+	contexts, err := km.GetAvailableContexts()
+
+	if err != nil {
+		t.Fatalf("GetAvailableContexts failed: %v", err)
+	}
+
+	expectedContexts := []string{"ctx-a", "ctx-b", "ctx-c"}
+	// The function sorts them, so we expect sorted order
+	if !reflect.DeepEqual(contexts, expectedContexts) {
+		t.Errorf("Expected contexts %v, got %v", expectedContexts, contexts)
+	}
+}
+
+func TestKubeManager_GetAvailableContexts_Error(t *testing.T) {
+	setupKubeManagerMocks(t)
+	defer restoreKubeManagerOriginals()
+
+	expectedErr := fmt.Errorf("failed to load kubeconfig")
+	originalGetStartingConfig := k8smanager.K8sGetStartingConfigForList
+	k8smanager.K8sGetStartingConfigForList = func() (*api.Config, error) {
+		return nil, expectedErr
+	}
+	defer func() { k8smanager.K8sGetStartingConfigForList = originalGetStartingConfig }()
+
+	km := newTestKubeManager()
+	_, err := km.GetAvailableContexts()
+
+	if err == nil {
+		t.Fatal("GetAvailableContexts expected an error, but got nil")
+	}
+
+	wantErrorMsg := "failed to get starting kubeconfig: " + expectedErr.Error()
+	if !strings.Contains(err.Error(), wantErrorMsg) {
+		t.Errorf("Expected error message containing %q, got %q", wantErrorMsg, err.Error())
+	}
+}
+
+// --- End of GetAvailableContexts tests ---
+
+func TestKubeManager_GetClusterNodeHealth_ClientsetError(t *testing.T) {
+	setupKubeManagerMocks(t)
+	defer restoreKubeManagerOriginals()
+
+	// Mock K8sNewNonInteractiveDeferredLoadingClientConfig to return a working rest.Config
+	currentOriginalLoader := k8smanager.K8sNewNonInteractiveDeferredLoadingClientConfig
+	k8smanager.K8sNewNonInteractiveDeferredLoadingClientConfig = func(loader clientcmd.ClientConfigLoader, overrides *clientcmd.ConfigOverrides) clientcmd.ClientConfig {
+		return &mockClientConfig{
+			clientConfigFuncOverride: func() (*rest.Config, error) {
+				t.Log("mockClientConfig.ClientConfig called for clientset error test")
+				return &rest.Config{Host: "fake-clientset-error-host"}, nil
+			},
+		}
+	}
+	defer func() { k8smanager.K8sNewNonInteractiveDeferredLoadingClientConfig = currentOriginalLoader }()
+
+	expectedErr := fmt.Errorf("clientset creation error")
+	originalNewClientset := k8smanager.NewK8sClientsetFromConfig
+	k8smanager.NewK8sClientsetFromConfig = func(c *rest.Config) (kubernetes.Interface, error) {
+		t.Log("mock NewK8sClientsetFromConfig called for error test")
+		return nil, expectedErr
+	}
+	defer func() { k8smanager.NewK8sClientsetFromConfig = originalNewClientset }()
+
+	reportedError := false
+	mockReporter := &mockServiceReporter{
+		ReportFunc: func(update reporting.ManagedServiceUpdate) {
+			t.Logf("mockReporter received update for GetClusterNodeHealth_ClientsetError: %+v", update)
+			if update.State == reporting.StateFailed && update.ErrorDetail != nil && update.ErrorDetail.Error() == fmt.Errorf("failed to create Kubernetes clientset for context test-ctx-clientset-error: %w", expectedErr).Error() {
+				reportedError = true
+			}
+		},
+	}
+	km := k8smanager.NewKubeManager(mockReporter)
+
+	health, err := km.GetClusterNodeHealth(context.Background(), "test-ctx-clientset-error")
+
+	if err == nil {
+		t.Fatalf("GetClusterNodeHealth expected error from NewK8sClientsetFromConfig, got nil")
+	}
+	if err.Error() != fmt.Errorf("failed to create Kubernetes clientset for context test-ctx-clientset-error: %w", expectedErr).Error() {
+		t.Errorf("Unexpected error message. Got: %v", err)
+	}
+	if health.Error == nil || health.Error.Error() != fmt.Errorf("failed to create Kubernetes clientset for context test-ctx-clientset-error: %w", expectedErr).Error() {
+		t.Errorf("Expected health.Error to be '%v', got '%v'", expectedErr, health.Error)
+	}
+	if !reportedError {
+		t.Errorf("Expected reporter to be called with StateFailed and the specific wrapped error")
+	}
+}
+
+// --- Tests for DetermineClusterProvider ---
+
+func TestKubeManager_DetermineClusterProvider_Success(t *testing.T) {
+	setupKubeManagerMocks(t)
+	defer restoreKubeManagerOriginals()
+
+	expectedProvider := "aws"
+	// Store and defer restore of the actual kube.DetermineClusterProvider
+	originalDCP := kube.DetermineClusterProvider
+	kube.DetermineClusterProvider = func(ctx context.Context, kubeContextName string) (string, error) {
+		t.Logf("mock DetermineClusterProvider called for success test with context: %s", kubeContextName)
+		return expectedProvider, nil
+	}
+	defer func() { kube.DetermineClusterProvider = originalDCP }()
+
+	reportedRunning := false
+	mockReporter := &mockServiceReporter{
+		ReportFunc: func(update reporting.ManagedServiceUpdate) {
+			t.Logf("mockReporter received update: %+v", update)
+			if update.State == reporting.StateRunning {
+				reportedRunning = true
+			}
+		},
+	}
+	km := k8smanager.NewKubeManager(mockReporter)
+	provider, err := km.DetermineClusterProvider(context.Background(), "test-ctx-provider-success")
+
+	if err != nil {
+		t.Fatalf("DetermineClusterProvider failed: %v", err)
+	}
+	if provider != expectedProvider {
+		t.Errorf("Expected provider %s, got %s", expectedProvider, provider)
+	}
+	if !reportedRunning {
+		t.Errorf("Expected reporter to be called with StateRunning")
+	}
+}
+
+func TestKubeManager_DetermineClusterProvider_Error(t *testing.T) {
+	setupKubeManagerMocks(t)
+	defer restoreKubeManagerOriginals()
+
+	expectedErr := fmt.Errorf("determine provider error")
+	// Store and defer restore of the actual kube.DetermineClusterProvider
+	originalDCP := kube.DetermineClusterProvider
+	kube.DetermineClusterProvider = func(ctx context.Context, kubeContextName string) (string, error) {
+		t.Logf("mock DetermineClusterProvider called for error test with context: %s", kubeContextName)
+		return "", expectedErr
+	}
+	defer func() { kube.DetermineClusterProvider = originalDCP }()
+
+	reportedError := false
+	mockReporter := &mockServiceReporter{
+		ReportFunc: func(update reporting.ManagedServiceUpdate) {
+			t.Logf("mockReporter received update: %+v", update)
+			if update.State == reporting.StateFailed && update.ErrorDetail == expectedErr {
+				reportedError = true
+			}
+		},
+	}
+	km := k8smanager.NewKubeManager(mockReporter)
+	_, err := km.DetermineClusterProvider(context.Background(), "test-ctx-provider-error")
+
+	if err == nil {
+		t.Fatal("DetermineClusterProvider expected an error, but got nil")
+	}
+	if err != expectedErr {
+		t.Errorf("DetermineClusterProvider expected error %v, got %v", expectedErr, err)
+	}
+	if !reportedError {
+		t.Errorf("Expected reporter to be called with StateFailed and the specific error")
+	}
+}
+
+// --- End of DetermineClusterProvider tests ---
