@@ -36,6 +36,8 @@ func (tr *TUIReporter) Report(update ManagedServiceUpdate) {
 	}
 
 	if tr.updateChan == nil {
+		// This fallback should ideally use pkg/logging if the TUI channel itself is broken.
+		// However, TUIReporter's role is to send to the TUI. If it can't, a direct print is a last resort.
 		fmt.Fprintf(os.Stderr, "TUIReporter: updateChan is nil. Dropping update: %v\n", update)
 		return
 	}
@@ -44,6 +46,8 @@ func (tr *TUIReporter) Report(update ManagedServiceUpdate) {
 	case tr.updateChan <- ReporterUpdateMsg{Update: update}:
 		// Update sent successfully
 	default:
-		fmt.Fprintf(os.Stderr, "TUIReporter: Failed to send update to TUI channel (full or closed?). Dropping update: %s - %s\n", update.SourceLabel, update.Message)
+		// This fallback also indicates a problem with the TUI consuming messages.
+		// Using update.State for the message part, as update.Message no longer exists.
+		fmt.Fprintf(os.Stderr, "TUIReporter: Failed to send update to TUI channel (full or closed?). Dropping update for %s - %s (State: %s)\n", update.SourceType, update.SourceLabel, update.State)
 	}
 }

@@ -24,7 +24,7 @@ func TestPipeFails(t *testing.T) {
 		Command:   "some-cmd",
 		Args:      []string{"some-arg"},
 	}
-	mockUpdateFn := func(update McpProcessUpdate) { /* no-op, or add assertions if needed */ }
+	mockUpdateFn := func(update McpDiscreteStatusUpdate) { /* no-op, or add assertions if needed */ }
 
 	_, _, err := StartAndManageIndividualMcpServer(serverCfg, mockUpdateFn, nil)
 

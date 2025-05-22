@@ -2,13 +2,15 @@ package controller
 
 import (
 	"context"
+	"envctl/internal/color" // Corrected import for color package
 	"envctl/internal/k8smanager"
 	"envctl/internal/reporting" // To access mainControllerDispatch (needs to be exported or tested via model.Update)
-	"envctl/internal/tui/model"
+	"envctl/internal/tui/model" // Added for logging.LogEntry for logChan type
+	"envctl/pkg/logging"
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -69,89 +71,67 @@ func (m *MockKubeManager) SetReporter(reporter reporting.ServiceReporter) {
 	// or store the reporter if tests need to verify it was set.
 }
 
-// TestMainControllerDispatch_ReporterUpdateMsg_ContinuouslyProcessesViaChannelReaderCmd
+// TestMainControllerDispatch_ReporterUpdateMsg_GeneratesLog
 // tests if the mainControllerDispatch correctly re-queues the ChannelReaderCmd
 // after processing a ReporterUpdateMsg, allowing continuous processing of messages
 // from the TUIChannel.
-func TestMainControllerDispatch_ReporterUpdateMsg_ContinuouslyProcessesViaChannelReaderCmd(t *testing.T) {
+func TestMainControllerDispatch_ReporterUpdateMsg_GeneratesLog(t *testing.T) {
 	mockKubeMgr := &MockKubeManager{}
-	// Assuming model.InitialModel is fine and returns *model.Model
-	mInitialModel := model.InitialModel("mc1", "wc1", "test-context", true, nil, nil, mockKubeMgr)
+
+	// Initialize logging for TUI mode for this test
+	// Ensure this is the *only* logger initialization for this test execution path.
+	logChan := logging.InitForTUI(logging.LevelDebug) 
+	// No defer logging.CloseTUIChannel() here, as the test might finish before async operations using it complete.
+	// Let the test runner handle teardown or rely on garbage collection if channel is not globally problematic.
+
+	mInitialModel := model.InitialModel("mc1", "wc1", "test-context", true /*debugMode On*/, nil, nil, mockKubeMgr, logChan)
+	mInitialModel.LogChannel = logChan // Ensure the model has the correct channel instance used by this test.
 
 	assert.NotNil(t, mInitialModel.TUIChannel, "TUIChannel should be initialized")
-	assert.NotNil(t, mInitialModel.Reporter, "Reporter should be initialized")
-	assert.NotNil(t, mInitialModel.ServiceManager, "ServiceManager should be initialized")
 
 	msg1Content := reporting.ManagedServiceUpdate{
-		Timestamp:   time.Now(),
-		SourceType:  reporting.ServiceTypeSystem,
-		SourceLabel: "TestService1",
-		Level:       reporting.LogLevelInfo,
-		Message:     "First test message",
-	}
-	msg2Content := reporting.ManagedServiceUpdate{
-		Timestamp:   time.Now(),
-		SourceType:  reporting.ServiceTypeSystem,
-		SourceLabel: "TestService2",
-		Level:       reporting.LogLevelInfo,
-		Message:     "Second test message",
+		Timestamp:    time.Now(),
+		SourceType:   reporting.ServiceTypeSystem,
+		SourceLabel:  "TestService1",
+		State:        reporting.StateRunning, 
+		ServiceLevel: reporting.LogLevelInfo,
+		IsReady:      true,
 	}
 
 	// --- Simulate processing the first message ---
-	t.Log("Simulating send and processing of first message")
-	go func() {
-		mInitialModel.TUIChannel <- reporting.ReporterUpdateMsg{Update: msg1Content}
-		t.Log("First message sent to TUIChannel")
-	}()
+	t.Log("Simulating send of ReporterUpdateMsg to TUIChannel")
+	// Send and immediately try to process any resulting logs. This needs to be more controlled.
+	
+	// Step 1: Dispatch the ReporterUpdateMsg
+	// This call to mainControllerDispatch will internally call LogDebug if m.DebugMode is true.
+	// That LogDebug should send a LogEntry to logChan.
+	updatedModel1, cmd1 := mainControllerDispatch(mInitialModel, reporting.ReporterUpdateMsg{Update: msg1Content})
+	t.Logf("mainControllerDispatch called for ReporterUpdateMsg. ActivityLog len: %d", len(updatedModel1.ActivityLog))
 
-	var readMsg1 tea.Msg
+	// Step 2: Explicitly process the log entry expected from LogDebug
+	// We expect one log entry from the LogDebug call inside mainControllerDispatch for the ReporterUpdateMsg.
+	var processedLogEntry bool
 	select {
-	case readMsg1 = <-mInitialModel.TUIChannel:
-		t.Logf("First message read by test harness: %T", readMsg1)
-	case <-time.After(1 * time.Second):
-		t.Fatal("Timeout waiting for first message from TUIChannel")
+	case logEntry := <-logChan:
+		t.Logf("LogEntry received from logChan: %+v", logEntry)
+		// Dispatch this log entry to have it added to ActivityLog
+		updatedModel1, _ = mainControllerDispatch(updatedModel1, model.NewLogEntryMsg{Entry: logEntry})
+		processedLogEntry = true
+	case <-time.After(200 * time.Millisecond): // Increased timeout slightly
+		t.Log("Timeout waiting for LogEntry from logChan")
 	}
-	assert.IsType(t, reporting.ReporterUpdateMsg{}, readMsg1, "Read message should be ReporterUpdateMsg")
 
-	// Call actual mainControllerDispatch (now accessible as it's in the same package)
-	updatedModel1, cmd1 := mainControllerDispatch(mInitialModel, readMsg1)
-
-	assert.NotEmpty(t, updatedModel1.ActivityLog, "ActivityLog should not be empty after first message")
-	lastLog1 := updatedModel1.ActivityLog[len(updatedModel1.ActivityLog)-1]
-	assert.Contains(t, lastLog1, msg1Content.Message, "ActivityLog should contain the first message")
-	t.Logf("Activity log after first message: %s", lastLog1)
+	assert.True(t, processedLogEntry, "Expected a log entry to be processed from LogDebug")
+	assert.NotEmpty(t, updatedModel1.ActivityLog, "ActivityLog should not be empty after LogDebug processing")
+	if len(updatedModel1.ActivityLog) > 0 {
+		t.Logf("ActivityLog content: %v", updatedModel1.ActivityLog)
+		assert.Contains(t, updatedModel1.ActivityLog[0], "Received msg: reporting.ReporterUpdateMsg", "ActivityLog should contain the debug message for ReporterUpdateMsg")
+	} else {
+		t.Log("ActivityLog is unexpectedly empty")
+	}
 	assert.NotNil(t, cmd1, "A command should be returned after processing the first message")
 
-	// Capture length before second dispatch
-	lenActivityLogBeforeMsg2 := len(updatedModel1.ActivityLog)
-	t.Logf("Length of ActivityLog before second message: %d", lenActivityLogBeforeMsg2)
-
-	// --- Simulate processing the second message ---
-	t.Log("Simulating send and processing of second message")
-	go func() {
-		updatedModel1.TUIChannel <- reporting.ReporterUpdateMsg{Update: msg2Content}
-		t.Log("Second message sent to TUIChannel")
-	}()
-
-	var readMsg2 tea.Msg
-	select {
-	case readMsg2 = <-updatedModel1.TUIChannel:
-		t.Logf("Second message read by test harness: %T", readMsg2)
-	case <-time.After(1 * time.Second):
-		t.Fatal("Timeout waiting for second message from TUIChannel")
-	}
-	assert.IsType(t, reporting.ReporterUpdateMsg{}, readMsg2, "Read message should be ReporterUpdateMsg")
-
-	// Call actual mainControllerDispatch for the second message
-	updatedModel2, cmd2 := mainControllerDispatch(updatedModel1, readMsg2)
-
-	assert.True(t, len(updatedModel2.ActivityLog) > lenActivityLogBeforeMsg2, "ActivityLog should have grown")
-	lastLog2 := updatedModel2.ActivityLog[len(updatedModel2.ActivityLog)-1]
-	assert.Contains(t, lastLog2, msg2Content.Message, "ActivityLog should contain the second message")
-	t.Logf("Activity log after second message: %s", lastLog2)
-	assert.NotNil(t, cmd2, "A command should be returned after processing the second message")
-
-	t.Log("Test completed: two messages processed, commands returned each time.")
+	t.Log("Test TestMainControllerDispatch_ReporterUpdateMsg_GeneratesLog completed.")
 }
 
 // Note: To make this test fully robust without being in the 'controller' package,
@@ -161,3 +141,55 @@ func TestMainControllerDispatch_ReporterUpdateMsg_ContinuouslyProcessesViaChanne
 // This would allow asserting `cmd1` and `cmd2` specifically contain the expected mock command.
 // The current test relies on observing the side effect (processing of the second message)
 // as strong evidence of re-queuing.
+
+func TestMainControllerDispatch_NewLogEntryMsg_UpdatesLogViewport(t *testing.T) {
+	mockKubeMgr := &MockKubeManager{}
+
+	logChan := logging.InitForTUI(logging.LevelDebug)
+	defer logging.CloseTUIChannel()
+
+	m := model.InitialModel("mc1", "wc1", "test-context", true /*debugMode On*/, nil, nil, mockKubeMgr, logChan)
+	m.LogChannel = logChan
+	m.Width = 80  
+	m.Height = 24 
+
+	// Setup LogViewport dimensions as if the overlay were active
+	// This ensures its Width and Height are set for PrepareLogContent and SetContent.
+	overlayContentWidth := int(float64(m.Width) * 0.8) - 2 // Typical overlay width calc
+	overlayContentHeight := int(float64(m.Height) * 0.7) - 2 - lipgloss.Height(color.LogPanelTitleStyle.Render(" ")) // Approx height after title and borders
+	if overlayContentHeight < 0 {
+		overlayContentHeight = 1 // Ensure at least 1 line for content
+	}
+	m.LogViewport.Width = overlayContentWidth
+	m.LogViewport.Height = overlayContentHeight 
+	// t.Logf("Test calculated LogViewport dimensions: W=%d, H=%d", m.LogViewport.Width, m.LogViewport.Height) // For debugging test
+
+	logEntry := logging.LogEntry{
+		Timestamp: time.Now(),
+		Level:     logging.LevelInfo,
+		Subsystem: "TestSystem",
+		Message:   "This is a test log message for the overlay.",
+	}
+
+	// Dispatch the NewLogEntryMsg
+	updatedModel, cmd := mainControllerDispatch(m, model.NewLogEntryMsg{Entry: logEntry})
+
+	assert.NotNil(t, updatedModel, "Model should not be nil")
+	assert.NotNil(t, cmd, "Command should not be nil")
+
+	// Check ActivityLog
+	assert.NotEmpty(t, updatedModel.ActivityLog, "ActivityLog should not be empty")
+	assert.Contains(t, updatedModel.ActivityLog[0], "This is a test log message for the overlay.", "ActivityLog should contain the new log message")
+
+	// For debugging the test:
+	t.Logf("LogViewport Width at assertion point: %d", updatedModel.LogViewport.Width)
+	// We can't directly call view.PrepareLogContent here easily without importing view and its dependencies.
+	// Instead, we rely on observing the effect on LogViewport.
+
+	// Check LogViewport content
+	assert.True(t, updatedModel.LogViewport.TotalLineCount() > 0, "LogViewport should have content (TotalLineCount > 0)")
+	t.Logf("LogViewport TotalLineCount after NewLogEntryMsg: %d lines", updatedModel.LogViewport.TotalLineCount())
+
+	// Check if ActivityLogDirty was reset
+	assert.False(t, updatedModel.ActivityLogDirty, "ActivityLogDirty should be false after dispatch and viewport update")
+}

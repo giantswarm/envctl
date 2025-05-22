@@ -1,7 +1,7 @@
 package controller
 
 import (
-	"envctl/internal/tui/model"
+	"envctl/internal/tui/model" // For LogError if we create new errors
 	"fmt"
 	"strings"
 	"time"
@@ -12,6 +12,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
+
+const keyGlobalSubsystem = "KeyGlobal"
 
 // handleKeyMsgGlobal processes global key presses when not in a specific input mode.
 // It governs navigation, restart actions, context switching, etc.
@@ -35,7 +37,7 @@ func handleKeyMsgGlobal(m *model.Model, keyMsg tea.KeyMsg, existingCmds []tea.Cm
 		case "y":
 			configStr := GenerateMcpConfigJson(m.MCPServerConfig)
 			if err := clipboard.WriteAll(configStr); err != nil {
-				LogError(m, "Failed to copy MCP config: %v", err)
+				LogError(keyGlobalSubsystem, err, "Failed to copy MCP config: %v", err)
 				return m, m.SetStatusMessage("Copy MCP config failed", model.StatusBarError, 3*time.Second)
 			}
 			return m, m.SetStatusMessage("MCP config copied", model.StatusBarSuccess, 3*time.Second)
@@ -55,7 +57,7 @@ func handleKeyMsgGlobal(m *model.Model, keyMsg tea.KeyMsg, existingCmds []tea.Cm
 			return m, nil
 		case "y":
 			if err := clipboard.WriteAll(strings.Join(m.ActivityLog, "\n")); err != nil {
-				LogError(m, "Failed to copy logs: %v", err)
+				LogError(keyGlobalSubsystem, err, "Failed to copy logs: %v", err)
 				return m, m.SetStatusMessage("Copy logs failed", model.StatusBarError, 3*time.Second)
 			}
 			return m, m.SetStatusMessage("Logs copied to clipboard", model.StatusBarSuccess, 3*time.Second)
@@ -163,34 +165,27 @@ func handleKeyMsgGlobal(m *model.Model, keyMsg tea.KeyMsg, existingCmds []tea.Cm
 			serviceLabelToRestart = mcp.Label // Use the label from the McpServerProcess struct
 			serviceType = "MCP Server"
 		} else {
-			LogDebug(m, "[Controller] 'r' pressed but no known service focused: %s", m.FocusedPanelKey)
+			LogDebug(m, keyGlobalSubsystem, "'r' pressed but no known service focused: %s", m.FocusedPanelKey)
 			return m, nil
 		}
 
 		if serviceLabelToRestart != "" {
-			LogInfo(m, "[Controller] User requested restart for %s: %s", serviceType, serviceLabelToRestart)
-			model.AppendActivityLog(m, fmt.Sprintf("Initiating restart for %s: %s...", serviceType, serviceLabelToRestart))
-			// The RestartMcpServerMsg is generic enough if its handler uses ServiceManager.RestartService
-			// Or we can make a direct command here.
-			// For consistency with existing MCP restart, let's use RestartMcpServerMsg for both, assuming its handler is generic.
-			// However, handleRestartMcpServerMsg is specific. Let's make a generic restart command.
+			LogInfo(keyGlobalSubsystem, "User requested restart for %s: %s", serviceType, serviceLabelToRestart)
+			// Logging of this action will now happen via pkg/logging, which the TUI will pick up.
 			restartCmd := func() tea.Msg {
 				if m.ServiceManager == nil {
 					return model.ServiceErrorMsg{Label: serviceLabelToRestart, Err: fmt.Errorf("ServiceManager not available")}
 				}
 				err := m.ServiceManager.RestartService(serviceLabelToRestart)
-				// ServiceStopResultMsg can be reused or a new ServiceRestartResultMsg can be created
-				// For now, we rely on status bar + activity log from the handler, and subsequent ServiceUpdateMsgs.
 				if err != nil {
 					return model.ServiceErrorMsg{Label: serviceLabelToRestart, Err: fmt.Errorf("failed to initiate restart: %w", err)}
 				}
-				return model.NopMsg{} // Or a specific "RestartInitiatedMsg"
+				return model.NopMsg{}
 			}
 			cmds = append(cmds, restartCmd)
-			// Update status bar immediately
 			cmds = append(cmds, m.SetStatusMessage(fmt.Sprintf("Restart initiated for %s...", serviceLabelToRestart), model.StatusBarInfo, 3*time.Second))
 		} else {
-			LogDebug(m, "[Controller] 'r' pressed but could not determine service label for focused key: %s", m.FocusedPanelKey)
+			LogDebug(m, keyGlobalSubsystem, "'r' pressed but could not determine service label for focused key: %s", m.FocusedPanelKey)
 		}
 
 	case "x": // STOP focused PF or MCP service (NEW)
@@ -218,8 +213,7 @@ func handleKeyMsgGlobal(m *model.Model, keyMsg tea.KeyMsg, existingCmds []tea.Cm
 		}
 
 		if serviceLabelToStop != "" && stoppable {
-			LogInfo(m, "[Controller] User requested to stop %s: %s", serviceTypeToStop, serviceLabelToStop)
-			model.AppendActivityLog(m, fmt.Sprintf("Attempting to stop %s: %s...", serviceTypeToStop, serviceLabelToStop))
+			LogInfo(keyGlobalSubsystem, "User requested to stop %s: %s", serviceTypeToStop, serviceLabelToStop)
 
 			stopCmd := func() tea.Msg {
 				if m.ServiceManager == nil {
@@ -231,27 +225,27 @@ func handleKeyMsgGlobal(m *model.Model, keyMsg tea.KeyMsg, existingCmds []tea.Cm
 			cmds = append(cmds, stopCmd)
 			cmds = append(cmds, m.SetStatusMessage(fmt.Sprintf("Stopping %s...", serviceLabelToStop), model.StatusBarInfo, 3*time.Second))
 		} else if serviceLabelToStop != "" && !stoppable {
-			LogInfo(m, "[Controller] Service %s is not in a stoppable state.", serviceLabelToStop)
+			LogInfo(keyGlobalSubsystem, "Service %s is not in a stoppable state.", serviceLabelToStop)
 			cmds = append(cmds, m.SetStatusMessage(fmt.Sprintf("%s not running/active.", serviceLabelToStop), model.StatusBarWarning, 3*time.Second))
 		} else {
-			LogDebug(m, "[Controller] 'x' pressed but no known stoppable service focused: %s", m.FocusedPanelKey)
+			LogDebug(m, keyGlobalSubsystem, "'x' pressed but no known stoppable service focused: %s", m.FocusedPanelKey)
 		}
 
 	case "s": // Context switch
 		if m.KubeMgr == nil {
-			LogWarn(m, "Cannot switch context: KubeManager not available.")
+			LogWarn(keyGlobalSubsystem, "Cannot switch context: KubeManager not available.")
 			return m, m.SetStatusMessage("KubeManager error", model.StatusBarError, 3*time.Second)
 		}
 		if m.FocusedPanelKey == model.McPaneFocusKey && m.ManagementClusterName != "" {
 			target := m.KubeMgr.BuildMcContextName(m.ManagementClusterName) // Use KubeMgr
-			LogInfo(m, "Attempting to switch Kubernetes context to: %s (Pane: MC, Target: %s)", target, m.ManagementClusterName)
+			LogInfo(keyGlobalSubsystem, "Attempting to switch Kubernetes context to: %s (Pane: MC, Target: %s)", target, m.ManagementClusterName)
 			cmds = append(cmds, PerformSwitchKubeContextCmd(m.KubeMgr, target))
 		} else if m.FocusedPanelKey == model.WcPaneFocusKey && m.WorkloadClusterName != "" && m.ManagementClusterName != "" {
 			target := m.KubeMgr.BuildWcContextName(m.ManagementClusterName, m.WorkloadClusterName) // Use KubeMgr
-			LogInfo(m, "Attempting to switch Kubernetes context to: %s (Pane: WC, Target: %s-%s)", target, m.ManagementClusterName, m.WorkloadClusterName)
+			LogInfo(keyGlobalSubsystem, "Attempting to switch Kubernetes context to: %s (Pane: WC, Target: %s-%s)", target, m.ManagementClusterName, m.WorkloadClusterName)
 			cmds = append(cmds, PerformSwitchKubeContextCmd(m.KubeMgr, target))
 		} else {
-			LogWarn(m, "Cannot switch context: Focus a valid MC/WC pane with defined cluster names or ensure clusters are set via (n)ew connection.")
+			LogWarn(keyGlobalSubsystem, "Cannot switch context: Focus a valid MC/WC pane with defined cluster names or ensure clusters are set via (n)ew connection.")
 			cmds = append(cmds, m.SetStatusMessage("Focus valid MC/WC to switch context", model.StatusBarWarning, 3*time.Second))
 		}
 	}

@@ -2,28 +2,32 @@ package mcpserver
 
 import (
 	"bufio"
-	// "envctl/internal/reporting" // No longer directly needed by this file if updateFn uses McpProcessUpdate
+	"envctl/pkg/logging" // Added for logging
 	"fmt"
 	"os"
 	"os/exec"
 	"sync"
 	"syscall"
-	// "time" // No longer needed for Timestamps here
 )
 
 var execCommand = exec.Command
 
 // StartAndManageIndividualMcpServer prepares, starts, and manages a single MCP server process.
-// It takes a serverConfig, an updateFn callback, and an optional WaitGroup.
-// It returns the PID, a stop channel for terminating the process, and any initial error during startup.
+// It calls updateFn with McpDiscreteStatusUpdate for state changes and uses pkg/logging for verbose output.
 func StartAndManageIndividualMcpServer(
 	serverConfig MCPServerConfig,
-	updateFn McpUpdateFunc, // This is func(update McpProcessUpdate)
+	updateFn McpUpdateFunc, // Now func(update McpDiscreteStatusUpdate)
 	wg *sync.WaitGroup,
 ) (pid int, stopChan chan struct{}, initialError error) {
 
 	label := serverConfig.Name
 	proxyPort := serverConfig.ProxyPort
+	subsystem := "MCPServer-" + label
+
+	logging.Info(subsystem, "Initializing MCP server %s (underlying: %s %v) on port %d", label, serverConfig.Command, serverConfig.Args, proxyPort)
+	if updateFn != nil {
+		updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "NpxInitializing", PID: 0})
+	}
 
 	// Prepare exec.Cmd for mcp-proxy
 	proxyArgs := []string{
@@ -43,40 +47,47 @@ func StartAndManageIndividualMcpServer(
 
 	stdoutPipe, pipeErr := cmd.StdoutPipe()
 	if pipeErr != nil {
+		logging.Error(subsystem, pipeErr, "Failed to create stdout pipe")
+		if updateFn != nil {
+			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "NpxStartFailed", ProcessErr: pipeErr})
+		}
 		return 0, nil, fmt.Errorf("stdout pipe for %s: %w", label, pipeErr)
 	}
 	stderrPipe, pipeErr := cmd.StderrPipe()
 	if pipeErr != nil {
 		stdoutPipe.Close()
+		logging.Error(subsystem, pipeErr, "Failed to create stderr pipe")
+		if updateFn != nil {
+			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "NpxStartFailed", ProcessErr: pipeErr})
+		}
 		return 0, nil, fmt.Errorf("stderr pipe for %s: %w", label, pipeErr)
 	}
 
-	// Create the stop channel before starting, so it can be returned.
 	currentStopChan := make(chan struct{})
 
 	if err := cmd.Start(); err != nil {
 		errMsg := fmt.Errorf("failed to start mcp-proxy for %s (underlying: %s %v): %w", label, serverConfig.Command, serverConfig.Args, err)
+		logging.Error(subsystem, err, "Failed to start mcp-proxy process")
 		stdoutPipe.Close()
 		stderrPipe.Close()
-		close(currentStopChan) // Close the created stop chan as it won't be used
+		close(currentStopChan) 
+		if updateFn != nil {
+			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "NpxStartFailed", ProcessErr: err, PID: 0})
+		}
 		return 0, nil, errMsg
 	}
 
 	processPid := cmd.Process.Pid
+	logging.Info(subsystem, "Process started successfully with PID %d", processPid)
 
-	// If an update function is provided, send an initial "Running" status update with the PID.
 	if updateFn != nil {
-		// Use McpProcessUpdate as expected by updateFn
-		updateFn(McpProcessUpdate{
-			Label:     label,
-			PID:       processPid,
-			Status:    "Running",
-			OutputLog: fmt.Sprintf("Proxy for %s (PID: %d) with underlying %s %v, listening on http://localhost:%d/sse", label, processPid, serverConfig.Command, serverConfig.Args, proxyPort),
-			// IsError, Err are implicitly false/nil for this initial success message
+		updateFn(McpDiscreteStatusUpdate{
+			Label:         label,
+			PID:           processPid,
+			ProcessStatus: "NpxRunning", // Changed from "Running" Status to ProcessStatus
 		})
 	}
 
-	// Launch the goroutine to manage the running process
 	go func() {
 		if wg != nil {
 			defer wg.Done()
@@ -84,25 +95,19 @@ func StartAndManageIndividualMcpServer(
 		defer stdoutPipe.Close()
 		defer stderrPipe.Close()
 
-		// Goroutine for stdout
 		go func() {
 			scanner := bufio.NewScanner(stdoutPipe)
 			for scanner.Scan() {
 				logLine := scanner.Text()
-				if updateFn != nil {
-					updateFn(McpProcessUpdate{Label: label, PID: processPid, OutputLog: fmt.Sprintf("[%s STDOUT] %s", label, logLine)})
-				}
+				logging.Info(subsystem+"-stdout", "%s", logLine)
 			}
 		}()
 
-		// Goroutine for stderr
 		go func() {
 			scanner := bufio.NewScanner(stderrPipe)
 			for scanner.Scan() {
 				logLine := scanner.Text()
-				if updateFn != nil {
-					updateFn(McpProcessUpdate{Label: label, PID: processPid, OutputLog: fmt.Sprintf("[%s STDERR] %s", label, logLine), IsError: true /* Assume stderr content might imply an error for the service */})
-				}
+				logging.Error(subsystem+"-stderr", nil, "%s", logLine)
 			}
 		}()
 
@@ -111,40 +116,40 @@ func StartAndManageIndividualMcpServer(
 
 		select {
 		case err := <-processDone:
-			status := "Stopped"
-			logMsg := fmt.Sprintf("Proxy for %s (PID: %d, underlying: %s) exited.", label, processPid, serverConfig.Command)
+			status := "NpxExitedGracefully"
 			finalErr := err
-			isErrFlag := false
 			if err != nil {
-				status = "Error"
-				logMsg = fmt.Sprintf("Proxy for %s (PID: %d, underlying: %s) exited with error: %v", label, processPid, serverConfig.Command, err)
-				isErrFlag = true
+				status = "NpxExitedWithError"
+				logging.Error(subsystem, err, "Process exited with error")
+			} else {
+				logging.Info(subsystem, "Process exited gracefully")
 			}
 			if updateFn != nil {
-				updateFn(McpProcessUpdate{Label: label, PID: processPid, Status: status, OutputLog: logMsg, IsError: isErrFlag, Err: finalErr})
+				updateFn(McpDiscreteStatusUpdate{Label: label, PID: processPid, ProcessStatus: status, ProcessErr: finalErr})
 			}
 
-		case <-currentStopChan: // Use the stopChan created and returned by this function
-			finalMsg := ""
-			isErrFlag := false
+		case <-currentStopChan:
+			logging.Info(subsystem, "Received stop signal for PID %d", processPid)
+			finalProcessStatus := "NpxStoppedByUser"
 			var stopErr error
-			if cmd.ProcessState == nil || !cmd.ProcessState.Exited() { // Check if process is still running
+			if cmd.ProcessState == nil || !cmd.ProcessState.Exited() { 
 				if err := syscall.Kill(-processPid, syscall.SIGKILL); err != nil {
-					finalMsg = fmt.Sprintf("Failed to kill proxy for %s (PID: %d): %v", label, processPid, err)
-					isErrFlag = true
+					logging.Error(subsystem, err, "Failed to kill process group for PID %d", processPid)
+					finalProcessStatus = "NpxKillFailed"
 					stopErr = err
 				} else {
-					finalMsg = fmt.Sprintf("Proxy for %s (PID: %d) stopped via signal.", label, processPid)
+					logging.Info(subsystem, "Successfully sent SIGKILL to process group for PID %d", processPid)
 				}
-				<-processDone // Wait for the process to actually exit after kill
+				<-processDone 
 			} else {
-				finalMsg = fmt.Sprintf("Proxy for %s (PID: %d) already exited before stop signal processing.", label, processPid)
+				logging.Info(subsystem, "Process PID %d already exited before stop signal processing.", processPid)
+				finalProcessStatus = "NpxAlreadyExited"
 			}
 			if updateFn != nil {
-				updateFn(McpProcessUpdate{Label: label, PID: processPid, Status: "Stopped", OutputLog: finalMsg, IsError: isErrFlag, Err: stopErr})
+				updateFn(McpDiscreteStatusUpdate{Label: label, PID: processPid, ProcessStatus: finalProcessStatus, ProcessErr: stopErr})
 			}
 		}
-	}() // End of main managing goroutine
+	}()
 
-	return processPid, currentStopChan, nil // Return successfully started PID and its stopChan
+	return processPid, currentStopChan, nil
 }

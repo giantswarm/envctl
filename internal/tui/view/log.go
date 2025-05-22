@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/mattn/go-runewidth"
 )
 
 // renderLogOverlay (moved from view_helpers.go)
@@ -50,20 +49,17 @@ func renderCombinedLogPanel(m *model.Model, availableWidth int, logSectionHeight
 	return rendered
 }
 
-// PrepareLogContent truncates long lines to avoid viewport wrapping and applies
-// color styles based on log level keywords.
+// PrepareLogContent applies color styles based on log level keywords.
+// Line truncation has been removed to allow viewport to handle horizontal scrolling.
 func PrepareLogContent(lines []string, maxWidth int) string {
-	if maxWidth <= 0 {
-		return strings.Join(applyStyling(lines), "\n")
-	}
+	// maxWidth is no longer used for truncation here, but kept for signature compatibility
+	// in case other parts of the view logic depend on it for different purposes, or for future use.
+	// The viewport itself will handle content wider than its display width.
+	
 	out := make([]string, len(lines))
-	for i, raw := range lines {
-		line := raw
-		if runewidth.StringWidth(line) > maxWidth {
-			truncated := runewidth.Truncate(line, maxWidth-1, "")
-			line = truncated + "…"
-		}
-		out[i] = styleLogLine(line)
+	for i, rawLine := range lines {
+		// Apply styling directly to the raw (potentially long) line.
+		out[i] = styleLogLine(rawLine) 
 	}
 	return strings.Join(out, "\n")
 }

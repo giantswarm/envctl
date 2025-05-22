@@ -33,7 +33,7 @@ var benchmarkMsgs = func() []tea.Msg {
 
 // newBenchModel constructs a minimal but functional model for the benchmark.
 func newBenchModel() tea.Model {
-	mCore := model.InitialModel("mc", "wc", "mc", false, mcpserver.GetMCPServerConfig(), nil, (k8smanager.KubeManagerAPI)(nil))
+	mCore := model.InitialModel("mc", "wc", "mc", false, mcpserver.GetMCPServerConfig(), nil, (k8smanager.KubeManagerAPI)(nil), nil)
 
 	mCore.Width = 120
 	mCore.Height = 40
@@ -55,6 +55,7 @@ func BenchmarkModelUpdate(b *testing.B) {
 		mcpCfgs,
 		pfCfgs,
 		mockKubeMgr,
+		nil,
 	)
 	_ = m // Use m to satisfy linter for now, benchmark logic needs review.
 

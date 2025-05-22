@@ -2,6 +2,7 @@ package model
 
 import (
 	"envctl/internal/k8smanager"
+	"envctl/pkg/logging"
 )
 
 // ---- New connection flow messages ----
@@ -113,4 +114,9 @@ type AllServicesStartedMsg struct {
 type ServiceStopResultMsg struct {
 	Label string
 	Err   error // nil if successful
+}
+
+// NewLogEntryMsg is used to send a new log entry from the logging package to the TUI controller.
+type NewLogEntryMsg struct {
+	Entry logging.LogEntry
 }

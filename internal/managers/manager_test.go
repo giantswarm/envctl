@@ -52,8 +52,8 @@ func setupServiceManagerTestMocks(t *testing.T) func() {
 				}
 				time.Sleep(1 * time.Millisecond)
 				if mcpUpdateFn != nil {
-					// This mcpUpdateFn is mcpUpdateAdapter, expecting mcpserver.McpProcessUpdate
-					mcpUpdateFn(mcpserver.McpProcessUpdate{Label: c.Name, Status: "Mock MCP Running"})
+					// This mcpUpdateFn is mcpUpdateAdapter, which now expects mcpserver.McpDiscreteStatusUpdate
+					mcpUpdateFn(mcpserver.McpDiscreteStatusUpdate{Label: c.Name, ProcessStatus: "NpxRunning", PID: 123})
 				}
 			}(cfg)
 		}

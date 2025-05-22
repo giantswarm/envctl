@@ -60,22 +60,10 @@ func (a *AppModel) Init() tea.Cmd {
 	var controllerCmds []tea.Cmd
 
 	if a.model.KubeMgr == nil { // Guard against nil KubeMgr
-		LogInfo(a.model, "KubeManager not available in AppModel.Init, skipping some initial commands.")
-		// Potentially return an error or a message to display to the user
+		LogInfo(tuiSubsystem, "KubeManager not available in AppModel.Init, skipping some initial commands.")
 	} else {
 		controllerCmds = append(controllerCmds, GetCurrentKubeContextCmd(a.model.KubeMgr))
 		controllerCmds = append(controllerCmds, FetchClusterListCmd(a.model.KubeMgr))
-
-		// Initial health checks are now triggered by handleKubeContextResultMsg
-		// when CurrentAppMode is ModeInitializing.
-		// if a.model.ManagementClusterName != "" { // REMOVED
-		// 	mcTargetContext := a.model.KubeMgr.BuildMcContextName(a.model.ManagementClusterName) // REMOVED
-		// 	controllerCmds = append(controllerCmds, FetchNodeStatusCmd(a.model.KubeMgr, mcTargetContext, true, a.model.ManagementClusterName)) // REMOVED
-		// } // REMOVED
-		// if a.model.WorkloadClusterName != "" && a.model.ManagementClusterName != "" { // REMOVED
-		// 	wcTargetContext := a.model.KubeMgr.BuildWcContextName(a.model.ManagementClusterName, a.model.WorkloadClusterName) // REMOVED
-		// 	controllerCmds = append(controllerCmds, FetchNodeStatusCmd(a.model.KubeMgr, wcTargetContext, false, a.model.WorkloadClusterName)) // REMOVED
-		// } // REMOVED
 	}
 
 	tickCmd := tea.Tick(HealthUpdateInterval, func(t time.Time) tea.Msg { return model.RequestClusterHealthUpdate{} })

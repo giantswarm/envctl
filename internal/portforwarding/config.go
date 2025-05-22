@@ -3,6 +3,8 @@ package portforwarding
 import (
 	"envctl/internal/kube"
 	"envctl/internal/utils"
+	"envctl/pkg/logging"
+	"errors"
 	"fmt"
 	"sync"
 )
@@ -68,8 +70,8 @@ func GetPortForwardConfig(mcShortName, workloadClusterArg string) []PortForwardi
 }
 
 // UpdateFunc defines the callback for port forwarding status updates.
-// Reverted to old signature: label, status, outputLog, isError, isReady bool
-type UpdateFunc func(label, status, outputLog string, isError, isReady bool)
+// Signature changed to: serviceLabel, statusDetail string, isOpReady bool, operationErr error
+type UpdateFunc func(serviceLabel, statusDetail string, isOpReady bool, operationErr error)
 
 // StartPortForwardsFunc is the type for the StartPortForwards function, for mocking.
 var StartPortForwards = StartPortForwardings // Points to the exported function
@@ -79,52 +81,67 @@ func StartPortForwardings(
 	updateCb UpdateFunc,
 	wg *sync.WaitGroup,
 ) map[string]chan struct{} {
-	if updateCb != nil {
-		// Log entry using old signature
-		updateCb("PortForwardingSys", "TRACE", fmt.Sprintf(">>> ENTERED REAL DefaultStartPortForwards. Configs: %d", len(configs)), false, false)
-	}
+	subsystemBase := "PortForwardingSys"
+	logging.Debug(subsystemBase, ">>> ENTERED StartPortForwardings. Configs: %d", len(configs))
 
 	individualStopChans := make(map[string]chan struct{})
 
 	if len(configs) == 0 {
+		logging.Info(subsystemBase, "No port forward configs to process.")
 		if updateCb != nil {
-			updateCb("PortForwardingSys", "INFO_defaultStartPortForwards", "No port forward configs to process.", false, false)
+			// Send a generic system status if needed, though ServiceManager might handle this.
+			// For now, relying on logging only for this case.
 		}
 		return individualStopChans
 	}
 
 	for _, pfCfg := range configs {
-		if updateCb != nil {
-			updateCb(pfCfg.Label, "DEBUG_PF_LOOP", fmt.Sprintf("Looping for: %s", pfCfg.Label), false, false)
-		}
+		config := pfCfg // Capture range variable
+		serviceSubsystem := "PortForward-" + config.Label
+		logging.Debug(serviceSubsystem, "Looping for: %s", config.Label)
+		
 		wg.Add(1)
-		config := pfCfg
 		individualStopChan := make(chan struct{})
 		individualStopChans[config.Label] = individualStopChan
 
 		go func() {
 			defer wg.Done()
 
+			logging.Info(serviceSubsystem, "Attempting to start port-forward for %s to %s:%s...", config.ServiceName, config.LocalPort, config.RemotePort)
 			if updateCb != nil {
-				updateCb(config.Label, "Attempting to start...", "", false, false)
+				updateCb(config.Label, "Starting", false, nil)
 			}
 
-			if updateCb != nil {
-				updateCb(config.Label, "DEBUG_PF_GOROUTINE", "Active, pre-portspec", false, false)
-			}
+			// kubeUpdateCallback translates kube.SendUpdateFunc to our new UpdateFunc needs
+			kubeUpdateCallback := func(kubeStatus, kubeOutputLog string, kubeIsError, kubeIsReady bool) {
+				// Log raw output from kube forwarder
+				if kubeOutputLog != "" {
+					if kubeIsError {
+						logging.Error(serviceSubsystem+"-kube", nil, "%s", kubeOutputLog)
+					} else {
+						logging.Info(serviceSubsystem+"-kube", "%s", kubeOutputLog)
+					}
+				}
 
-			// kubeUpdateCallback now also uses the old signature for kube.SendUpdateFunc
-			kubeUpdateCallback := func(status, outputLog string, isError, isReady bool) {
 				if updateCb != nil {
-					updateCb(config.Label, status, outputLog, isError, isReady)
+					var opErr error
+					if kubeIsError {
+						// Try to form a meaningful error from kubeStatus or kubeOutputLog
+						if kubeOutputLog != "" {
+							opErr = errors.New(kubeOutputLog)
+						} else if kubeStatus != "" && kubeStatus != "Error" {
+							opErr = fmt.Errorf("%s", kubeStatus)
+						} else {
+							opErr = fmt.Errorf("port-forward for %s failed", config.Label)
+						}
+					}
+					// Pass kubeStatus as statusDetail. ServiceManager adapter will map this to ServiceState.
+					updateCb(config.Label, kubeStatus, kubeIsReady, opErr)
 				}
 			}
 
 			portSpec := fmt.Sprintf("%s:%s", config.LocalPort, config.RemotePort)
-
-			if updateCb != nil {
-				updateCb(config.Label, "", fmt.Sprintf("DEBUG_PF_CONFIG: PRE-CALL to kube.StartPortForwardClientGo for %s", config.Label), false, false)
-			}
+			logging.Debug(serviceSubsystem, "Initiating kube.StartPortForwardClientGo for %s with spec %s", config.Label, portSpec)
 
 			pfStopChan, initialStatus, initialErr := kube.StartPortForwardClientGo(
 				config.KubeContext,
@@ -135,39 +152,41 @@ func StartPortForwardings(
 				kubeUpdateCallback,
 			)
 
-			if updateCb != nil {
-				debugMsg := fmt.Sprintf("POST-CALL kube.StartPortForwardClientGo: initialStatus='%s', pfStopChan_is_nil=%t", initialStatus, pfStopChan == nil)
-				updateCb(config.Label, "", debugMsg, initialErr != nil, false)
-			}
+			logging.Debug(serviceSubsystem, "kube.StartPortForwardClientGo returned. InitialStatus: '%s', InitialErr: %v, pfStopChan_is_nil: %t", initialStatus, initialErr, pfStopChan == nil)
 
 			if initialErr != nil {
+				logging.Error(serviceSubsystem, initialErr, "Failed to start port-forward. Initial output: %s", initialStatus)
 				if updateCb != nil {
-					updateCb(config.Label, fmt.Sprintf("Failed to start: %v", initialErr), initialStatus, true, false)
+					updateCb(config.Label, fmt.Sprintf("Failed: %v", initialErr), false, initialErr)
 				}
 				return
 			}
 			if pfStopChan == nil {
+				critError := fmt.Errorf("critical setup error: stop channel is nil despite no initial error for %s", config.Label)
+				logging.Error(serviceSubsystem, critError, "Critical setup error for port-forward. Initial output: %s", initialStatus)
 				if updateCb != nil {
-					updateCb(config.Label, "Critical setup error: stop channel is nil despite no initial error.", initialStatus, true, false)
+					updateCb(config.Label, "Critical setup error", false, critError)
 				}
 				return
 			}
 
-			if updateCb != nil {
-				updateCb(config.Label, "Port-forwarding setup process initiated.", initialStatus, false, false)
-			}
+			// Successfully initiated, further status updates will come via kubeUpdateCallback.
+			// The initial "Starting" status was already sent.
+			logging.Info(serviceSubsystem, "Port-forwarding process initiated.")
 
 			select {
-			case <-pfStopChan:
+			case <-pfStopChan: // Internal stop signal from the port-forwarding goroutine in kube package
+				logging.Info(serviceSubsystem, "Stopped (internal signal from kube forwarder).")
 				if updateCb != nil {
-					updateCb(config.Label, "Stopped (internal signal).", "", false, false)
+					updateCb(config.Label, "Stopped", false, nil)
 				}
-			case <-individualStopChan:
+			case <-individualStopChan: // External stop signal from ServiceManager
+				logging.Info(serviceSubsystem, "Stopped (external signal from ServiceManager).")
 				if pfStopChan != nil {
 					close(pfStopChan)
 				}
 				if updateCb != nil {
-					updateCb(config.Label, "Stopped (caller signal).", "", false, false)
+					updateCb(config.Label, "Stopped", false, nil)
 				}
 			}
 		}()

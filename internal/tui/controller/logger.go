@@ -3,10 +3,13 @@ package controller
 import (
 	// "envctl/internal/reporting" // No longer needed by logger.go directly
 	"envctl/internal/tui/model"
-	"fmt"
+	"envctl/pkg/logging"
 	"strings"
 	// "time" // No longer needed by logger.go directly
 )
+
+const controllerSubsystem = "Controller"
+const tuiSubsystem = "TUI"
 
 // The functions in this file provide a unified way for all handlers and
 // background goroutines to append messages to the global activity log while
@@ -14,66 +17,57 @@ import (
 // methods on *model keeps access to shared state simple and avoids the need
 // for a separate logger instance.
 
-// LogInfo appends an informational message to the activity log.
-func LogInfo(m *model.Model, format string, a ...interface{}) {
-	appendLogLine(m, "[INFO] "+fmt.Sprintf(format, a...))
+// LogInfo logs an informational message using the new logging package.
+// The subsystem is derived from the context (e.g., "Controller", "KeyHandler").
+// The model 'm' is no longer needed here directly as logging is global.
+func LogInfo(subsystem string, format string, a ...interface{}) {
+	logging.Info(subsystem, format, a...)
 }
 
-// LogDebug appends a debug-level message to the activity log.
-func LogDebug(m *model.Model, format string, a ...interface{}) {
+// LogDebug logs a debug-level message using the new logging package.
+// It respects the TUI model's DebugMode flag.
+func LogDebug(m *model.Model, subsystem string, format string, a ...interface{}) {
 	if m != nil && m.DebugMode {
-		appendLogLine(m, "[DEBUG] "+fmt.Sprintf(format, a...))
+		logging.Debug(subsystem, format, a...)
 	}
 }
 
-// LogWarn appends a warning message to the activity log.
-func LogWarn(m *model.Model, format string, a ...interface{}) {
-	appendLogLine(m, "[WARN] "+fmt.Sprintf(format, a...))
+// LogWarn logs a warning message using the new logging package.
+func LogWarn(subsystem string, format string, a ...interface{}) {
+	logging.Warn(subsystem, format, a...)
 }
 
-// LogError appends an error message to the activity log.
-func LogError(m *model.Model, format string, a ...interface{}) {
-	appendLogLine(m, "[ERROR] "+fmt.Sprintf(format, a...))
+// LogError logs an error message using the new logging package.
+// It now takes an error object as well.
+func LogError(subsystem string, err error, format string, a ...interface{}) {
+	logging.Error(subsystem, err, format, a...)
 }
 
-// appendLogLine is a small helper that performs the actual slice append and
-// enforces the MaxActivityLogLines invariant.
-// THIS WILL BE REMOVED once all logging goes through the reporter and handleReporterUpdate.
-func appendLogLine(m *model.Model, line string) {
-	if m == nil {
-		return
-	}
-	m.ActivityLog = append(m.ActivityLog, line)
-	if len(m.ActivityLog) > model.MaxActivityLogLines {
-		m.ActivityLog = m.ActivityLog[len(m.ActivityLog)-model.MaxActivityLogLines:]
-	}
-	m.ActivityLogDirty = true
-}
-
-// LogStdout logs multiple lines from a process's stdout as INFO level logs.
-func LogStdout(m *model.Model, source string, outputLines string) {
-	if m == nil || outputLines == "" {
+// LogStdout logs multiple lines from a process's stdout as INFO level logs via the new logging package.
+func LogStdout(source string, outputLines string) {
+	if outputLines == "" {
 		return
 	}
 	lines := strings.Split(strings.TrimRight(outputLines, "\n"), "\n")
 	for _, line := range lines {
 		if strings.TrimSpace(line) != "" {
-			// Calls the local LogInfo, which now calls appendLogLine directly.
-			LogInfo(m, "[%s] %s", source, line)
+			logging.Info(source+"-stdout", "%s", line)
 		}
 	}
 }
 
-// LogStderr logs multiple lines from a process's stderr as ERROR level logs.
-func LogStderr(m *model.Model, source string, errorLines string) {
-	if m == nil || errorLines == "" {
+// LogStderr logs multiple lines from a process's stderr as ERROR level logs via the new logging package.
+func LogStderr(source string, errorLines string) {
+	if errorLines == "" {
 		return
 	}
 	lines := strings.Split(strings.TrimRight(errorLines, "\n"), "\n")
 	for _, line := range lines {
 		if strings.TrimSpace(line) != "" {
-			// Calls the local LogError, which now calls appendLogLine directly.
-			LogError(m, "[%s stderr] %s", source, line)
+			// Passing nil for error as the error is the line itself
+			logging.Error(source+"-stderr", nil, "%s", line)
 		}
 	}
 }
+
+// appendLogLine is now REMOVED as logging is handled by pkg/logging and TUI controller appends to ActivityLog.

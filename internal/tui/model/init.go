@@ -6,6 +6,8 @@ import (
 	"envctl/internal/mcpserver"
 	"envctl/internal/portforwarding"
 	"envctl/internal/reporting"
+	"envctl/pkg/logging"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -96,6 +98,7 @@ func InitialModel(
 	mcpServerConfig []mcpserver.MCPServerConfig,
 	portForwardingConfig []portforwarding.PortForwardingConfig,
 	kubeMgr k8smanager.KubeManagerAPI,
+	logChan <-chan logging.LogEntry,
 ) *Model {
 	ti := textinput.New()
 	ti.Placeholder = "Management Cluster"
@@ -122,6 +125,8 @@ func InitialModel(
 	serviceMgr := managers.NewServiceManager(tuiReporter)
 
 	m := Model{
+		Width:                    80, // Default width
+		Height:                   24, // Default height
 		ManagementClusterName:    mcName,
 		WorkloadClusterName:      wcName,
 		CurrentKubeContext:       kubeContext,
@@ -154,6 +159,7 @@ func InitialModel(
 		StashedMcName:            "",
 		ClusterInfo:              nil,
 		DependencyGraph:          nil,
+		LogChannel:               logChan,
 	}
 
 	// m.Help.ShowAll = true // Help styling removed for now
@@ -187,17 +193,11 @@ func ChannelReaderCmd(ch chan tea.Msg) tea.Cmd {
 // Init implements tea.Model and starts asynchronous bootstrap tasks.
 // It now also starts the port forwarding and MCP services using the ServiceManager.
 func (m *Model) Init() tea.Cmd {
-	// fmt.Println("DEBUG_TUI_LIFECYCLE: model.Model.Init() called") // REMOVED
 	var cmds []tea.Cmd
 
 	if m.ServiceManager == nil {
 		errMsg := "ServiceManager not initialized in TUI model"
-		// Use reporter if available, otherwise direct append (should not happen)
-		if m.Reporter != nil {
-			m.Reporter.Report(reporting.ManagedServiceUpdate{SourceType: reporting.ServiceTypeSystem, SourceLabel: "ModelInit", Level: reporting.LogLevelFatal, Message: errMsg, IsError: true})
-		} else {
-			m.ActivityLog = append(m.ActivityLog, errMsg) // Fallback
-		}
+		logging.Error("ModelInit", errors.New(errMsg), "%s", errMsg)
 		m.QuittingMessage = errMsg
 		return tea.Quit
 	}
@@ -232,7 +232,25 @@ func (m *Model) Init() tea.Cmd {
 		cmds = append(cmds, ChannelReaderCmd(m.TUIChannel))
 	}
 
+	if m.LogChannel != nil {
+		cmds = append(cmds, ListenForLogEntriesCmd(m.LogChannel))
+	}
+
 	cmds = append(cmds, m.Spinner.Tick)
 
 	return tea.Batch(cmds...)
+}
+
+// ListenForLogEntriesCmd returns a Bubbletea command that listens on the LogChannel
+// and forwards new log entries as NewLogEntryMsg.
+func ListenForLogEntriesCmd(logChan <-chan logging.LogEntry) tea.Cmd {
+	return func() tea.Msg {
+		entry, ok := <-logChan
+		if !ok {
+			// Channel has been closed, perhaps return a specific nil message or a special "closed" message
+			// For now, returning nil will stop this command from re-queueing if Bubble Tea handles it that way.
+			return nil
+		}
+		return NewLogEntryMsg{Entry: entry}
+	}
 }

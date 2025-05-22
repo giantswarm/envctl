@@ -10,6 +10,7 @@ import (
 	"envctl/internal/tui/controller"
 	"envctl/internal/tui/model"
 	"envctl/internal/utils"
+	"envctl/pkg/logging"
 	"fmt"
 	"os"
 	"os/signal"
@@ -65,109 +66,130 @@ Arguments:
 			workloadClusterArg = args[1]
 		}
 
-		// Note: 'debug' is the general debug flag, 'tuiDebugMode' is specific to TUI's own debug features.
-		// model.InitialModel will receive 'debug' for general debug logging purposes.
+		// Determine global log level based on debug flag 
+		appLogLevel := logging.LevelInfo
+		if debug { 
+			appLogLevel = logging.LevelDebug
+		}
 
-		kubeMgr := k8smanager.NewKubeManager(reporting.NewConsoleReporter())
+		// Initialize logger early, before any potential logging action.
+		// For noTUI (CLI) mode, init CLI logger. For TUI mode, init happens later.
+		if noTUI {
+			logging.InitForCLI(appLogLevel, os.Stdout)
+		} // For TUI mode, InitForTUI is called further down.
+
+		tempConsoleReporterForKubeMgr := reporting.NewConsoleReporter()
+		kubeMgr := k8smanager.NewKubeManager(tempConsoleReporterForKubeMgr)
 
 		initialKubeContext, err := kubeMgr.GetCurrentContext()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: could not get initial Kubernetes context: %v\n", err)
+			if noTUI {
+				logging.Warn("CLI", "Could not get initial Kubernetes context: %v", err)
+			} else {
+				// In TUI mode, logging will be set up later, direct print for this early error.
+				fmt.Fprintf(os.Stderr, "Warning: could not get initial Kubernetes context: %v\n", err)
+			}
 			initialKubeContext = "unknown"
+		} 
+		// Log initial context using the appropriate logger if initialized
+		if noTUI {
+			logging.Info("CLI", "Initial Kubernetes context: %s", initialKubeContext)
+		} else {
+			// For TUI, this info will be part of initial model and potentially logged once TUI logger is up.
+			// Direct print for now as TUI logger is not yet up.
+			fmt.Printf("Initial Kubernetes context: %s\n", initialKubeContext)
 		}
-		fmt.Printf("Initial Kubernetes context: %s\n", initialKubeContext)
 
 		portForwardingConfig := portforwarding.GetPortForwardConfig(managementClusterArg, workloadClusterArg)
 		mcpServerConfig := mcpserver.GetMCPServerConfig()
 
 		if noTUI {
-			fmt.Println("Running in no-TUI mode.")
-			consoleReporter := reporting.NewConsoleReporter()
+			// logging.InitForCLI was already called above.
+			logging.Info("CLI", "Running in no-TUI mode.")
+			
+			consoleReporter := reporting.NewConsoleReporter() 
+			kubeMgr.SetReporter(consoleReporter) // Ensure KubeMgr uses the main console reporter for CLI
 			serviceMgr := managers.NewServiceManager(consoleReporter)
-			// kubeMgr already has a ConsoleReporter.
-
+			
+			// ... (rest of CLI mode logic using logging.* for its own messages) ...
 			if managementClusterArg != "" {
-				fmt.Printf("Attempting login to Management Cluster: %s (via KubeManager)\n", managementClusterArg)
+				logging.Info("CLI", "Attempting login to Management Cluster: %s (via KubeManager)", managementClusterArg)
 				_, _, loginErr := kubeMgr.Login(managementClusterArg)
 				if loginErr != nil {
-					fmt.Fprintf(os.Stderr, "Login to %s failed. Continuing with setup if possible...\n", managementClusterArg)
+					logging.Error("CLI", loginErr, "Login to %s failed. Continuing with setup if possible...", managementClusterArg)
 				} else {
 					currentKubeContextAfterLogin, _ := kubeMgr.GetCurrentContext()
-					fmt.Printf("Context after login to %s: %s\n", managementClusterArg, currentKubeContextAfterLogin)
-					initialKubeContext = currentKubeContextAfterLogin
+					logging.Info("CLI", "Context after login to %s: %s", managementClusterArg, currentKubeContextAfterLogin)
+					initialKubeContext = currentKubeContextAfterLogin 
 				}
 			}
 
-			fmt.Println("--- Setting up background services (no-TUI mode) ---")
+			logging.Info("CLI", "--- Setting up background services (no-TUI mode) ---")
 			var wg sync.WaitGroup
 			activeServices, startupErrors := serviceMgr.StartServices(
 				buildManagedServiceConfigs(portForwardingConfig, mcpServerConfig),
 				&wg,
 			)
 			if len(startupErrors) > 0 {
-				fmt.Fprintln(os.Stderr, "Errors during service startup configuration:")
+				logging.Error("CLI", nil, "Errors during service startup configuration:")
 				for _, e := range startupErrors {
-					fmt.Fprintf(os.Stderr, "- %v\n", e)
+					logging.Error("CLI", e, "  - %v", e)
 				}
 			}
 			if len(activeServices) == 0 {
-				fmt.Println("No background services were configured or started successfully. Exiting.")
+				logging.Info("CLI", "No background services were configured or started successfully. Exiting.")
 				return nil
 			}
-
-			fmt.Printf("%d services initiated. Press Ctrl+C to stop all services and exit.\n", len(activeServices))
-			// wg.Wait() // Don't wait here, let them run in background
-
+			logging.Info("CLI", "%d services initiated. Press Ctrl+C to stop all services and exit.", len(activeServices))
 			sigChan := make(chan os.Signal, 1)
 			signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 			<-sigChan
-
-			fmt.Println("\n--- Shutting down services ---")
+			logging.Info("CLI", "\n--- Shutting down services ---")
 			serviceMgr.StopAllServices()
-			// Give some time for services to stop based on their internal logic and reporting
-			// Consider waiting on the initial wg if it was used to track goroutine completion in StartServices
-			// For now, a short explicit wait or rely on OS to clean up child processes of mcp-server etc.
-			time.Sleep(1 * time.Second) // Brief pause for cleanup
-			fmt.Println("All services signaled to stop.")
+			time.Sleep(1 * time.Second)
+			logging.Info("CLI", "All services signaled to stop.")
 
 		} else { // TUI Mode
+			// This fmt.Println is pre-TUI initialization, so it's acceptable.
 			fmt.Println("Starting TUI mode...")
-			// Determine color scheme - this needs to be read from viper or a flag
-			// For now, assume dark. Replace with actual flag reading.
-			// colorScheme := viper.GetString("color-scheme")
-			// color.Initialize(colorScheme == "dark" || colorScheme == "")
-			color.Initialize(true) // Default to dark for now
+			color.Initialize(true) 
 
-			// model.InitialModel will create ServiceManager internally and set up TUIReporter for both itself and kubeMgr.
+			tuiLogLevel := appLogLevel
+			if tuiDebugMode && appLogLevel != logging.LevelDebug {
+				tuiLogLevel = logging.LevelDebug 
+			}
+			logChan := logging.InitForTUI(tuiLogLevel)
+			defer logging.CloseTUIChannel()
+
+			// Pass the TUI reporter to KubeManager for TUI mode
+			// model.InitialModel will create its own TUIReporter and ServiceManager
+			// and should also set this TUIReporter on the KubeMgr instance it receives.
+			// The kubeMgr passed to InitialModel will have its reporter updated by InitialModel.
+
 			coreModel := model.InitialModel(
 				managementClusterArg,
 				workloadClusterArg,
 				initialKubeContext,
-				debug, // Use the general debug flag here
+				debug, 
 				mcpServerConfig,
 				portForwardingConfig,
-				kubeMgr, // Pass KubeManager; its reporter will be reset by InitialModel/AppModel
+				kubeMgr, 
+				logChan,
 			)
 
-			// NewAppModel takes the core model and other necessary details.
-			// It's responsible for further setup, including ServiceManager and TUIReporter if not done in InitialModel.
 			appModel := controller.NewAppModel(coreModel, managementClusterArg, workloadClusterArg)
-
+			
 			program := tea.NewProgram(appModel, tea.WithAltScreen(), tea.WithMouseCellMotion())
 
 			if _, err := program.Run(); err != nil {
-				fmt.Fprintf(os.Stderr, "Error running TUI: %v\n", err)
-				// Attempt to stop services if AppModel and ServiceManager exist
-				if appModel != nil {
-					// Accessing ServiceManager might need a method on AppModel or directly from coreModel if it's exposed.
-					// Assuming coreModel (m) has ServiceManager after initialization by AppModel or InitialModel.
-					if coreModel.ServiceManager != nil {
-						coreModel.ServiceManager.StopAllServices()
-					}
+				// Log this error using the TUI logger if possible, or fallback
+				logging.Error("TUI-Lifecycle", err, "Error running TUI program")
+				if appModel != nil && coreModel.ServiceManager != nil {
+					coreModel.ServiceManager.StopAllServices()
 				}
 				return err
 			}
-			fmt.Println("TUI exited.")
+			logging.Info("TUI-Lifecycle", "TUI exited.")
 		}
 		return nil
 	},

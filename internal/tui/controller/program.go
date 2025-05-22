@@ -5,6 +5,7 @@ import (
 	"envctl/internal/mcpserver"
 	"envctl/internal/portforwarding"
 	"envctl/internal/tui/model"
+	"envctl/pkg/logging"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -17,6 +18,7 @@ func NewProgram(
 	portForwardingConfig []portforwarding.PortForwardingConfig,
 	// serviceMgr managers.ServiceManagerAPI, // REMOVED - Model now creates its own ServiceManager
 	kubeMgr k8smanager.KubeManagerAPI,
+	logChan <-chan logging.LogEntry,
 ) *tea.Program {
 	// Initialize the core data model. ServiceManager is now created within InitialModel.
 	m := model.InitialModel(
@@ -27,6 +29,7 @@ func NewProgram(
 		mcpServerConfig,
 		portForwardingConfig,
 		kubeMgr,
+		logChan,
 	)
 
 	// Setup AppModel which acts as the controller layer for Bubble Tea.

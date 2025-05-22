@@ -2,6 +2,8 @@ package portforwarding
 
 import (
 	"envctl/internal/kube"
+	"envctl/pkg/logging"
+	"errors"
 	"fmt"
 )
 
@@ -16,13 +18,34 @@ func StartAndManageIndividualPortForward(
 	cfg PortForwardingConfig,
 	updateFn PortForwardUpdateFunc,
 ) (chan struct{}, error) {
+	subsystem := "PortForward-" + cfg.Label
+	logging.Info(subsystem, "Initializing port-forward for %s to %s:%s in namespace %s (context: %s)", cfg.ServiceName, cfg.LocalPort, cfg.RemotePort, cfg.Namespace, cfg.KubeContext)
+
 	if updateFn != nil {
-		updateFn(cfg.Label, "Initializing", "", false, false)
+		updateFn(cfg.Label, "Starting", false, nil)
 	}
 
-	var bridgeCallback kube.SendUpdateFunc = func(status, outputLog string, isError, isReady bool) {
+	var bridgeCallback kube.SendUpdateFunc = func(kubeStatus, kubeOutputLog string, kubeIsError, kubeIsReady bool) {
+		if kubeOutputLog != "" {
+			if kubeIsError {
+				logging.Error(subsystem, nil, "kubectl: %s", kubeOutputLog)
+			} else {
+				logging.Info(subsystem, "kubectl: %s", kubeOutputLog)
+			}
+		}
+
 		if updateFn != nil {
-			updateFn(cfg.Label, status, outputLog, isError, isReady)
+			var operationErr error
+			if kubeIsError {
+				if kubeOutputLog != "" {
+					operationErr = errors.New(kubeOutputLog)
+				} else if kubeStatus != "" && kubeStatus != "Error" {
+					operationErr = fmt.Errorf("status: %s", kubeStatus)
+				} else {
+					operationErr = fmt.Errorf("port-forward operation for %s failed", cfg.Label)
+				}
+			}
+			updateFn(cfg.Label, kubeStatus, kubeIsReady, operationErr)
 		}
 	}
 
@@ -37,18 +60,15 @@ func StartAndManageIndividualPortForward(
 		bridgeCallback,
 	)
 
-	if initialStatus != "" && initialErr == nil {
-		if updateFn != nil {
-			updateFn(cfg.Label, initialStatus, "", false, false)
-		}
-	}
-
 	if initialErr != nil {
+		logging.Error(subsystem, initialErr, "Failed to initialize port-forward: %v. Initial output: %s", initialErr, initialStatus)
 		if updateFn != nil {
-			updateFn(cfg.Label, fmt.Sprintf("Failed to initialize port-forward: %v", initialErr), initialStatus, true, false)
+			updateFn(cfg.Label, fmt.Sprintf("Failed: %v", initialErr), false, initialErr)
 		}
 		return stopChan, initialErr
 	}
+
+	logging.Info(subsystem, "Port-forward process initiated. Initial status: %s", initialStatus)
 
 	return stopChan, nil
 }

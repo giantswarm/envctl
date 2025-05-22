@@ -1,86 +1,59 @@
 package reporting
 
 import (
+	"envctl/pkg/logging" // Import the new logging package
 	"fmt"
-	"os"
-	"strings"
-	"time"
+	// "os" // No longer needed for direct Fprintf
+	// "strings" // No longer needed for string manipulation here
+	// "time" // No longer needed for timestamp formatting here
 )
 
-// ConsoleReporter is an implementation of ServiceReporter that prints updates to the console.
-type ConsoleReporter struct {
-	// TODO: Add configuration if needed, e.g., a log level filter for console output.
-}
+// ConsoleReporter is an implementation of ServiceReporter that prints updates to the console
+// by leveraging the centralized logging package.
+type ConsoleReporter struct {}
 
 // NewConsoleReporter creates a new ConsoleReporter.
 func NewConsoleReporter() *ConsoleReporter {
 	return &ConsoleReporter{}
 }
 
-// Report formats and prints the ManagedServiceUpdate to stdout or stderr.
+// Report translates the ManagedServiceUpdate into a structured log message via the logging package.
 func (cr *ConsoleReporter) Report(update ManagedServiceUpdate) {
-	// Default to using Message as the primary content for display.
-	// If Message is empty but Details is not, use Details.
-	outputMessage := update.Message
-	if strings.TrimSpace(outputMessage) == "" && strings.TrimSpace(update.Details) != "" {
-		outputMessage = update.Details
+	// The subsystem for the log message will be composed from SourceType and SourceLabel.
+	subsystem := string(update.SourceType)
+	if update.SourceLabel != "" {
+		subsystem = fmt.Sprintf("%s-%s", update.SourceType, update.SourceLabel)
 	}
 
-	// Fallback if both Message and Details are empty but it's an error with ErrorDetail
-	if strings.TrimSpace(outputMessage) == "" && update.ErrorDetail != nil {
-		outputMessage = update.ErrorDetail.Error()
-	}
+	// The primary message is the state.
+	logMessage := fmt.Sprintf("State: %s", update.State)
 
-	// Prefix for the log line
-	// [TIME] [LEVEL] [SOURCE_TYPE-SOURCE_LABEL] Message
-	// Details will be printed on subsequent lines if present and not already part of outputMessage.
-
-	timestamp := update.Timestamp
-	if timestamp.IsZero() { // Ensure timestamp is set
-		timestamp = time.Now()
-	}
-	tsFormatted := timestamp.Format("15:04:05.000") // Include milliseconds for better debugging
-
-	var logPrefixBuilder strings.Builder
-	logPrefixBuilder.WriteString(fmt.Sprintf("[%s] ", tsFormatted))
-
-	if update.Level != "" {
-		logPrefixBuilder.WriteString(fmt.Sprintf("[%s] ", strings.ToUpper(string(update.Level))))
-	}
-
-	if update.SourceType != "" || update.SourceLabel != "" {
-		logPrefixBuilder.WriteString("[")
-		if update.SourceType != "" {
-			logPrefixBuilder.WriteString(string(update.SourceType))
+	// Determine the log level and function based on update.ServiceLevel and update.ErrorDetail.
+	if update.ErrorDetail != nil {
+		// If ErrorDetail is present, it's definitely an error or a warning with an error.
+		// The ServiceLevel should ideally reflect this.
+		// We pass update.ErrorDetail directly to logging.Error or logging.Warn.
+		if update.ServiceLevel == LogLevelWarn {
+			logging.Warn(subsystem, "%s (Error: %v)", logMessage, update.ErrorDetail)
+		} else {
+			// Default to Error if ErrorDetail is present and not explicitly Warn.
+			logging.Error(subsystem, update.ErrorDetail, "%s", logMessage)
 		}
-		if update.SourceType != "" && update.SourceLabel != "" {
-			logPrefixBuilder.WriteString(" - ")
+	} else {
+		// No ErrorDetail, so use ServiceLevel to determine Info, Warn, Debug.
+		switch update.ServiceLevel {
+		case LogLevelError, LogLevelFatal:
+			// This case should ideally have ErrorDetail, but if not, log message as error.
+			logging.Error(subsystem, nil, "%s (Reported as Error/Fatal without details)", logMessage)
+		case LogLevelWarn:
+			logging.Warn(subsystem, "%s", logMessage)
+		case LogLevelDebug:
+			logging.Debug(subsystem, "%s", logMessage)
+		case LogLevelTrace:
+			// Assuming pkg/logging might not have Trace, map to Debug or handle if it does.
+			logging.Debug(subsystem, "%s (Trace)", logMessage) 
+		default: // LogLevelInfo, LogLevelStdout, LogLevelStderr, or unknown
+			logging.Info(subsystem, "%s", logMessage)
 		}
-		if update.SourceLabel != "" {
-			logPrefixBuilder.WriteString(update.SourceLabel)
-		}
-		logPrefixBuilder.WriteString("] ")
-	}
-
-	// Determine output stream (stdout or stderr)
-	outStream := os.Stdout
-	if update.IsError || update.Level == LogLevelError || update.Level == LogLevelFatal || update.Level == LogLevelStderr {
-		outStream = os.Stderr
-	}
-
-	// Print the main message
-	fmt.Fprintf(outStream, "%s%s\n", logPrefixBuilder.String(), outputMessage)
-
-	// Print multi-line details if Details was different from what was used in outputMessage
-	// and Details is not empty.
-	if update.Details != "" && outputMessage != update.Details {
-		for _, line := range strings.Split(strings.TrimSuffix(update.Details, "\n"), "\n") {
-			fmt.Fprintf(outStream, "%s  %s\n", logPrefixBuilder.String(), line) // Indent details
-		}
-	}
-
-	// If ErrorDetail is present and IsError is true, and it wasn't the primary outputMessage, print it.
-	if update.ErrorDetail != nil && update.IsError && outputMessage != update.ErrorDetail.Error() {
-		fmt.Fprintf(outStream, "%s  ERROR_DETAIL: %v\n", logPrefixBuilder.String(), update.ErrorDetail)
 	}
 }

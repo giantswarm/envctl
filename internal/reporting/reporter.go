@@ -23,8 +23,8 @@ func (st ServiceType) String() string {
 	return string(st)
 }
 
-// LogLevel defines the severity or nature of the update.
-// These can be used by reporters to filter or style output.
+// LogLevel defines the severity or nature of a status update or a log entry if used generally.
+// For ManagedServiceUpdate, this will be ServiceLevel reflecting the status severity.
 type LogLevel string
 
 const (
@@ -34,8 +34,8 @@ const (
 	LogLevelWarn   LogLevel = "WARN"
 	LogLevelError  LogLevel = "ERROR"
 	LogLevelFatal  LogLevel = "FATAL"  // For errors that might lead to termination
-	LogLevelStdout LogLevel = "STDOUT" // For raw stdout from processes
-	LogLevelStderr LogLevel = "STDERR" // For raw stderr from processes
+	LogLevelStdout LogLevel = "STDOUT" // For raw stdout from processes (primarily for direct logging, not status)
+	LogLevelStderr LogLevel = "STDERR" // For raw stderr from processes (primarily for direct logging, not status)
 )
 
 // String makes LogLevel satisfy the fmt.Stringer interface.
@@ -43,42 +43,48 @@ func (ll LogLevel) String() string {
 	return string(ll)
 }
 
-// ManagedServiceUpdate carries status and log updates from various components.
-// This struct is the standardized way for components to report back to the TUI or console.
-// The goal is to make it rich enough to convey all necessary information for different reporters (TUI, console).
-// TODO: Review fields, especially how to handle pure log lines vs. status changes.
-// Maybe add a LogLevel field or a separate LogMessage struct/interface if updates become too broad.
+// ServiceState defines the discrete state of a managed service.
+type ServiceState string
+
+const (
+	StateUnknown   ServiceState = "Unknown"
+	StateStarting  ServiceState = "Starting"
+	StateRunning   ServiceState = "Running"
+	StateStopping  ServiceState = "Stopping"
+	StateStopped   ServiceState = "Stopped"
+	StateFailed    ServiceState = "Failed"
+	StateRetrying  ServiceState = "Retrying" // If a service has retry logic
+	// Add more states as needed, e.g., StateDegraded, StateConnected, StateDisconnected
+)
+
+// String makes ServiceState satisfy the fmt.Stringer interface.
+func (ss ServiceState) String() string {
+	return string(ss)
+}
+
+// ManagedServiceUpdate carries state updates from various components.
+// This struct is the standardized way for components to report their state back to the TUI or console.
+// It focuses on the *state* of the service, not verbose logs (which go through pkg/logging).
 type ManagedServiceUpdate struct {
-	// Timestamp of when the event occurred or was reported.
-	Timestamp time.Time
-
-	// SourceType identifies the kind of component sending the update.
-	SourceType ServiceType
-	// SourceLabel uniquely identifies the specific instance of the service/component (e.g., "Prometheus (MC)", "tsh-login").
+	Timestamp   time.Time
+	SourceType  ServiceType
 	SourceLabel string
+	State       ServiceState // The current discrete state of the service.
 
-	// Level defines the severity or nature of the update.
-	Level LogLevel
-	// Message provides a human-readable status (e.g., "Running", "Attempting to start...", "Error").
-	// Can be empty if this update is purely a log message or a metric update.
-	Message string
-	// Details contains any detailed log lines associated with this update. Can be multi-line.
-	Details string
+	// ServiceLevel reflects the severity of the current State (e.g., StateFailed implies LogLevelError).
+	ServiceLevel LogLevel
+	IsReady      bool // Derived from State (e.g., true if State == StateRunning).
 
-	// State indicators for services/components, primarily used by the TUI model to update its state.
-	// These might not be relevant for all LogLevels (e.g., a simple LogLevelInfo might not change IsReady).
-	IsError     bool
-	IsReady     bool
-	ErrorDetail error
+	ErrorDetail error // Associated Go error if State is Failed or a warning state has an error.
 }
 
 // String provides a simple string representation for debugging the update itself.
 func (msu ManagedServiceUpdate) String() string {
-	return fmt.Sprintf("Update(TS: %s, Source: %s-%s, Level: %s, Msg: '%s', Ready: %t, Error: %t, ErrDetail: %v, Details: '%s')",
-		msu.Timestamp.Format(time.RFC3339), msu.SourceType, msu.SourceLabel, msu.Level, msu.Message, msu.IsReady, msu.IsError, msu.ErrorDetail, msu.Details)
+	return fmt.Sprintf("StateUpdate(TS: %s, Source: %s-%s, State: %s, Level: %s, Ready: %t, ErrDetail: %v)",
+		msu.Timestamp.Format(time.RFC3339), msu.SourceType, msu.SourceLabel, msu.State, msu.ServiceLevel, msu.IsReady, msu.ErrorDetail)
 }
 
-// ServiceReporter defines a unified interface for reporting service/component updates.
+// ServiceReporter defines a unified interface for reporting service/component state updates.
 // Implementations will handle these updates appropriately (e.g., TUI display, console logging).
 // This interface will be the abstraction point for all components that need to report status or logs.
 type ServiceReporter interface {

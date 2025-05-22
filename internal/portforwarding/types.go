@@ -17,8 +17,8 @@ type PortForwardingConfig struct {
 
 // PortForwardUpdateFunc is the function signature for callbacks that receive updates
 // from the port forwarding process.
-// REVERTED to old simple signature.
-type PortForwardUpdateFunc func(label, status, outputLog string, isError, isReady bool)
+// Signature changed to: label, statusDetail, isOpReady, operationErr
+type PortForwardUpdateFunc func(serviceLabel, statusDetail string, isOpReady bool, operationErr error)
 
 // ManagedPortForwardInfo holds information about a managed port-forward process,
 // typically returned after initiating it.

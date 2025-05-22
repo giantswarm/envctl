@@ -7,6 +7,7 @@ import (
 	"envctl/internal/mcpserver"
 	"envctl/internal/portforwarding"
 	"envctl/internal/reporting"
+	"envctl/pkg/logging"
 	"time"
 
 	"github.com/charmbracelet/bubbles/help"
@@ -107,7 +108,7 @@ const (
 const (
 	// MaxActivityLogLines defines the maximum number of lines to keep in the activityLog.
 	// This prevents the log from growing indefinitely and consuming too much memory.
-	MaxActivityLogLines = 200
+	MaxActivityLogLines = 10000
 
 	// MaxPanelLogLines defines the maximum number of lines to keep in individual port-forward panel logs.
 	MaxPanelLogLines = 100
@@ -231,6 +232,9 @@ type Model struct {
 
 	// --- Kubernetes interaction (via KubeManager) ---
 	KubeMgr k8smanager.KubeManagerAPI
+
+	// Added for receiving logs from the logging package
+	LogChannel <-chan logging.LogEntry
 }
 
 // Other structs that might need field export if used cross-package
@@ -271,7 +275,56 @@ type McpServerProcess struct { // Renamed from mcpServerProcess
 
 // SetStatusMessage updates the status bar message and schedules clearing it after the given duration.
 func (m *Model) SetStatusMessage(message string, msgType MessageType, clearAfter time.Duration) tea.Cmd {
-	m.StatusBarMessage = message
+	// Estimate available width for the center message part of the status bar
+	estimatedLeftW := int(float64(m.Width) * 0.25)
+	estimatedRightW := int(float64(m.Width) * 0.35)
+	estimatedCenterW := m.Width - estimatedLeftW - estimatedRightW
+
+	const iconBuffer = 2       // Approximate for icon and a space
+	const ellipsisBuffer = 3   // For "..."
+	const paddingBuffer = 2    // General padding
+	totalBuffer := iconBuffer + ellipsisBuffer + paddingBuffer
+
+	maxLen := estimatedCenterW - totalBuffer
+	if maxLen < 0 {
+		maxLen = 0
+	}
+
+	// Using simple len() for byte length, not visual width. This is a simplification.
+	actualMessageByteLength := len(message)
+	truncatedMessage := message
+
+	if actualMessageByteLength > maxLen {
+		if maxLen <= 0 {
+			truncatedMessage = ""
+		} else if maxLen <= ellipsisBuffer { // Not enough space for ellipsis itself
+			// Take as much of the start of the message as fits
+			if len(message) > maxLen {
+				truncatedMessage = message[:maxLen]
+			} // else message is already shorter or equal, no truncation needed
+		} else {
+			// Can fit message part and ellipsis
+			// Simple byte slice truncation, may cut multi-byte runes.
+			// A rune-aware approach would be: string([]rune(message)[:someRuneCount])
+			// but calculating someRuneCount to fit maxLen bytes is complex without rune width metrics.
+			truncateAt := maxLen - ellipsisBuffer
+			if truncateAt < 0 { truncateAt = 0 } // Should not happen if maxLen > ellipsisBuffer
+			
+			// Ensure we don't slice beyond the actual length of the message if it's short but still needs ellipsis space
+			if len(message) > truncateAt {
+				truncatedMessage = message[:truncateAt] + "..."
+			} else {
+				// This case means message is shorter than (maxLen - ellipsisBuffer), but longer than maxLen overall.
+				// This implies maxLen is very small, just show what fits without ellipsis.
+				if len(message) > maxLen {
+					truncatedMessage = message[:maxLen]
+				} 
+				// else message is already short enough, no truncation or ellipsis needed (covered by outer if)
+			}
+		}
+	}
+
+	m.StatusBarMessage = truncatedMessage
 	m.StatusBarMessageType = msgType
 
 	if m.StatusBarClearCancel != nil {
@@ -286,7 +339,7 @@ func (m *Model) SetStatusMessage(message string, msgType MessageType, clearAfter
 		case <-captured:
 			return nil
 		default:
-			return ClearStatusBarMsg{} // Assumes ClearStatusBarMsg is defined in this package (messages.go)
+			return ClearStatusBarMsg{}
 		}
 	})
 }
