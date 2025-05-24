@@ -16,9 +16,10 @@ type McpUpdateFunc func(update McpDiscreteStatusUpdate)
 // ManagedMcpServerInfo holds information about an MCP server that has been initiated.
 // It's sent over a channel by StartAllPredefinedMcpServers.
 type ManagedMcpServerInfo struct {
-	Label     string        // Name of the server
-	PID       int           // Process ID if successfully started, otherwise 0
-	ProxyPort int           // Port that mcp-proxy is listening on (0 if not determined)
-	StopChan  chan struct{} // Channel to signal this server to stop; nil if startup failed badly
-	Err       error         // Initial error during startup, if any
+	Label       string        // Name of the server
+	PID         int           // Process ID if successfully started (for local command servers), otherwise 0
+	ContainerID string        // Container ID if this is a containerized server, otherwise empty
+	ProxyPort   int           // Port that mcp-proxy is listening on (0 if not determined)
+	StopChan    chan struct{} // Channel to signal this server to stop; nil if startup failed badly
+	Err         error         // Initial error during startup, if any
 }

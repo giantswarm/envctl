@@ -4,16 +4,20 @@ import (
 	"sync"
 	// "syscall" // Not directly used here
 	"envctl/internal/config" // Added for new config type
+	"envctl/internal/containerizer"
+	"envctl/pkg/logging"
+	"fmt"
 )
 
 // StartAllMCPServers iterates through the given list of MCPServerDefinition configurations,
-// attempts to start each one using StartAndManageIndividualMcpServer, and sends information
-// about each attempt (ManagedMcpServerInfo) on the returned channel.
-// The provided McpUpdateFunc will be used for ongoing updates from each server.
-// The master goroutine that launches individual servers will add to the WaitGroup for each server it attempts.
-// StartAndManageIndividualMcpServer is then responsible for wg.Done() if it successfully launches its own goroutine,
-// otherwise this function (StartAllMCPServers) must handle wg.Done() for initial startup failures.
-func StartAllMCPServers(mcpServerConfigs []config.MCPServerDefinition, updateFn McpUpdateFunc, wg *sync.WaitGroup) <-chan ManagedMcpServerInfo {
+// attempts to start each one using the appropriate method (local command or container),
+// and sends information about each attempt (ManagedMcpServerInfo) on the returned channel.
+func StartAllMCPServers(
+	mcpServerConfigs []config.MCPServerDefinition,
+	updateFn McpUpdateFunc,
+	wg *sync.WaitGroup,
+	containerRuntime containerizer.ContainerRuntime,
+) <-chan ManagedMcpServerInfo {
 	infoChan := make(chan ManagedMcpServerInfo)
 
 	go func() {
@@ -29,24 +33,55 @@ func StartAllMCPServers(mcpServerConfigs []config.MCPServerDefinition, updateFn 
 				wg.Add(1) // Add before attempting to start, corresponding Done is crucial.
 			}
 
-			pid, stopChan, startErr := StartAndManageIndividualMcpServer(
-				serverCfg,
-				updateFn,
-				wg, // Pass wg; StartAndManageIndividualMcpServer's goroutine will call Done.
-			)
+			var pid int
+			var containerID string
+			var stopChan chan struct{}
+			var startErr error
 
-			// If StartAndManageIndividualMcpServer returns an error, its goroutine (which calls wg.Done)
-			// was not started. So, we must call wg.Done() here if wg is in use.
+			// Choose the appropriate startup method based on server type
+			switch serverCfg.Type {
+			case config.MCPServerTypeLocalCommand:
+				pid, stopChan, startErr = StartAndManageIndividualMcpServer(
+					serverCfg,
+					updateFn,
+					wg, // Pass wg; StartAndManageIndividualMcpServer's goroutine will call Done.
+				)
+
+			case config.MCPServerTypeContainer:
+				if containerRuntime == nil {
+					startErr = fmt.Errorf("container runtime not available for server %s", serverCfg.Name)
+					logging.Error("MCPStartup", startErr, "Cannot start containerized server")
+				} else {
+					containerID, stopChan, startErr = StartAndManageContainerizedMcpServer(
+						serverCfg,
+						containerRuntime,
+						updateFn,
+						wg,
+					)
+					// For consistency, we could use a hash of containerID as "PID"
+					// but keeping it as 0 for containers is cleaner
+					pid = 0
+				}
+
+			default:
+				startErr = fmt.Errorf("unknown server type %s for server %s", serverCfg.Type, serverCfg.Name)
+				logging.Error("MCPStartup", startErr, "Cannot start server with unknown type")
+			}
+
+			// If startup failed and goroutine wasn't started, we must call wg.Done()
 			if startErr != nil && wg != nil {
 				wg.Done()
 			}
 
-			infoChan <- ManagedMcpServerInfo{
-				Label:    serverCfg.Name,
-				PID:      pid,
-				StopChan: stopChan,
-				Err:      startErr,
+			info := ManagedMcpServerInfo{
+				Label:       serverCfg.Name,
+				PID:         pid,
+				ContainerID: containerID,
+				StopChan:    stopChan,
+				Err:         startErr,
 			}
+
+			infoChan <- info
 		}
 	}()
 
@@ -69,7 +104,28 @@ func startMCPServersInternal(
 		return stopChans, startupErrors
 	}
 
-	managedMcpChan := StartAllMCPServers(configs, mcpUpdateFn, wg)
+	// Get global container runtime if needed
+	var containerRuntime containerizer.ContainerRuntime
+	hasContainerServers := false
+	for _, cfg := range configs {
+		if cfg.Type == config.MCPServerTypeContainer {
+			hasContainerServers = true
+			break
+		}
+	}
+
+	if hasContainerServers {
+		// TODO: Get runtime type from global config
+		runtime, err := containerizer.NewContainerRuntime("docker")
+		if err != nil {
+			logging.Error("MCPStartup", err, "Failed to initialize container runtime")
+			// Continue anyway, individual servers will fail
+		} else {
+			containerRuntime = runtime
+		}
+	}
+
+	managedMcpChan := StartAllMCPServers(configs, mcpUpdateFn, wg, containerRuntime)
 
 	for serverInfo := range managedMcpChan {
 		if serverInfo.Err != nil {

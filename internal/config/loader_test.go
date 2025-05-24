@@ -221,8 +221,12 @@ func TestLoadConfig_ContextResolution(t *testing.T) {
 	// The user config file (confWithPlaceholders) is still in effect.
 	_, errOnlyMc := LoadConfig("some-mc-for-case2", "")
 	assert.Error(t, errOnlyMc)
-	// The first port-forward to require a WC name with an empty wcName supplied will be "pf-wc"
-	assert.Contains(t, errOnlyMc.Error(), "port-forward 'pf-wc' requires WC context, but wcName is not provided (mcName: some-mc-for-case2)")
+	// Due to map iteration order, we might get error for either "pf-wc" or "pf-another-wc-needing-names"
+	assert.Contains(t, errOnlyMc.Error(), "requires WC context, but wcName is not provided (mcName: some-mc-for-case2)")
+	assert.True(t,
+		strings.Contains(errOnlyMc.Error(), "port-forward 'pf-wc'") ||
+			strings.Contains(errOnlyMc.Error(), "port-forward 'pf-another-wc-needing-names'"),
+		"Error should mention one of the WC-requiring port-forwards")
 
 	// Case 3: No mc or wc provided. Either "mc" or "wc" placeholder error could occur first.
 	// The user config file (confWithPlaceholders) is still in effect.

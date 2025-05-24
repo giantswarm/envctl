@@ -172,3 +172,60 @@ func resolveKubeContextPlaceholders(config *EnvctlConfig, mcName, wcName string)
 	}
 	return nil
 }
+
+// ExampleContainerizedConfig shows how to configure containerized MCP servers
+// This is not used in the code but serves as documentation
+func ExampleContainerizedConfig() EnvctlConfig {
+	return EnvctlConfig{
+		MCPServers: []MCPServerDefinition{
+			{
+				Name:           "kubernetes",
+				Type:           MCPServerTypeContainer,
+				Enabled:        true,
+				Icon:           "☸️",
+				Category:       "Core",
+				Image:          "giantswarm/mcp-server-kubernetes:latest",
+				ProxyPort:      8001,
+				ContainerPorts: []string{"8001:3000"}, // host:container
+				ContainerVolumes: []string{
+					"~/.kube/config:/home/mcpuser/.kube/config:ro",
+				},
+				ContainerEnv: map[string]string{
+					"KUBECONFIG": "/home/mcpuser/.kube/config",
+				},
+			},
+			{
+				Name:           "prometheus",
+				Type:           MCPServerTypeContainer,
+				Enabled:        true,
+				Icon:           "🔥",
+				Category:       "Monitoring",
+				Image:          "giantswarm/mcp-server-prometheus:latest",
+				ProxyPort:      8002,
+				ContainerPorts: []string{"8002:3000"},
+				ContainerEnv: map[string]string{
+					"PROMETHEUS_URL": "http://host.docker.internal:8080/prometheus",
+					"ORG_ID":         "giantswarm",
+				},
+				RequiresPortForwards: []string{"mc-prometheus"},
+			},
+			{
+				Name:           "grafana",
+				Type:           MCPServerTypeContainer,
+				Enabled:        true,
+				Icon:           "📊",
+				Category:       "Monitoring",
+				Image:          "giantswarm/mcp-server-grafana:latest",
+				ProxyPort:      8003,
+				ContainerPorts: []string{"8003:3000"},
+				ContainerEnv: map[string]string{
+					"GRAFANA_URL": "http://host.docker.internal:3000",
+				},
+				RequiresPortForwards: []string{"mc-grafana"},
+			},
+		},
+		GlobalSettings: GlobalSettings{
+			DefaultContainerRuntime: "docker",
+		},
+	}
+}
