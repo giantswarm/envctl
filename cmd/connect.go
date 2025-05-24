@@ -2,10 +2,9 @@ package cmd
 
 import (
 	"envctl/internal/color"
+	"envctl/internal/config"
 	"envctl/internal/k8smanager"
 	"envctl/internal/managers"
-	"envctl/internal/mcpserver"
-	"envctl/internal/portforwarding"
 	"envctl/internal/reporting"
 	"envctl/internal/tui/controller"
 	"envctl/internal/tui/model"
@@ -85,8 +84,16 @@ Arguments:
 		// Log initial context using the appropriate logger if initialized
 		logging.Info("CLI", "Initial Kubernetes context: %s", initialKubeContext)
 
-		portForwardingConfig := portforwarding.GetPortForwardConfig(managementClusterArg, workloadClusterArg)
-		mcpServerConfig := mcpserver.GetMCPServerConfig()
+		// Load configuration using the new central loader
+		envctlCfg, err := config.LoadConfig(managementClusterArg, workloadClusterArg)
+		if err != nil {
+			logging.Error("CLI", err, "Failed to load envctl configuration")
+			// It might be desirable to allow proceeding with defaults or minimal functionality
+			// For now, strict failure.
+			return fmt.Errorf("failed to load envctl configuration: %w", err)
+		}
+		// portForwardingConfig := portforwarding.GetPortForwardConfig(managementClusterArg, workloadClusterArg)
+		// mcpServerConfig := mcpserver.GetMCPServerConfig()
 
 		if noTUI {
 			// logging.InitForCLI was already called above.
@@ -112,7 +119,7 @@ Arguments:
 			logging.Info("CLI", "--- Setting up background services (no-TUI mode) ---")
 			var wg sync.WaitGroup
 			activeServices, startupErrors := serviceMgr.StartServices(
-				buildManagedServiceConfigs(portForwardingConfig, mcpServerConfig),
+				buildManagedServiceConfigs(envctlCfg.PortForwards, envctlCfg.MCPServers),
 				&wg,
 			)
 			if len(startupErrors) > 0 {
@@ -152,8 +159,7 @@ Arguments:
 				workloadClusterArg,
 				initialKubeContext,
 				debug,
-				mcpServerConfig,
-				portForwardingConfig,
+				envctlCfg,
 				kubeMgr,
 				logChan,
 			)
@@ -199,19 +205,25 @@ Arguments:
 }
 
 // buildManagedServiceConfigs is a helper to create the config slice for ServiceManager.
-func buildManagedServiceConfigs(pfConfigs []portforwarding.PortForwardingConfig, mcpConfigs []mcpserver.MCPServerConfig) []managers.ManagedServiceConfig {
+func buildManagedServiceConfigs(pfConfigs []config.PortForwardDefinition, mcpConfigs []config.MCPServerDefinition) []managers.ManagedServiceConfig {
 	var managedServiceConfigs []managers.ManagedServiceConfig
 	for _, pfCfg := range pfConfigs {
+		if !pfCfg.Enabled { // Only add enabled port-forwards
+			continue
+		}
 		managedServiceConfigs = append(managedServiceConfigs, managers.ManagedServiceConfig{
 			Type:   reporting.ServiceTypePortForward,
-			Label:  pfCfg.Label,
+			Label:  pfCfg.Name, // Using Name from new struct
 			Config: pfCfg,
 		})
 	}
 	for _, mcpCfg := range mcpConfigs {
+		if !mcpCfg.Enabled { // Only add enabled MCP servers
+			continue
+		}
 		managedServiceConfigs = append(managedServiceConfigs, managers.ManagedServiceConfig{
 			Type:   reporting.ServiceTypeMCPServer,
-			Label:  mcpCfg.Name,
+			Label:  mcpCfg.Name, // Name is already correct
 			Config: mcpCfg,
 		})
 	}

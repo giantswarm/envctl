@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"envctl/internal/config" // Added
 	// "envctl/internal/reporting" // No longer needed by this test if using local McpProcessUpdate
 	"fmt"
 	"os/exec"
@@ -18,11 +19,12 @@ func TestPipeFails(t *testing.T) {
 	}
 	defer func() { execCommand = originalExecCommand }()
 
-	serverCfg := MCPServerConfig{
-		Name:      "pipe-fail-server",
-		ProxyPort: 9002,
-		Command:   "some-cmd",
-		Args:      []string{"some-arg"},
+	serverCfg := config.MCPServerDefinition{ // Updated type
+		Name:    "pipe-fail-server",
+		// ProxyPort: 9002, // ProxyPort is not part of MCPServerDefinition
+		Command: []string{"some-cmd", "some-arg"}, // Command is now []string
+		// Args:      []string{"some-arg"}, // Args are part of Command
+		Type:    config.MCPServerTypeLocalCommand, // Assuming local command for this test
 	}
 	mockUpdateFn := func(update McpDiscreteStatusUpdate) { /* no-op, or add assertions if needed */ }
 
@@ -47,12 +49,10 @@ func TestPipeFails(t *testing.T) {
 }
 
 // proxyArgsForTest is a helper to reconstruct the arguments mcp-proxy would be called with.
-func proxyArgsForTest(serverCfg MCPServerConfig) []string {
-	proxyArgs := []string{
-		"--port", fmt.Sprintf("%d", serverCfg.ProxyPort),
-		"--pass-environment",
-		"--",
-		serverCfg.Command,
-	}
-	return append(proxyArgs, serverCfg.Args...)
+// This helper might need to be re-evaluated as MCPServerDefinition.Command is now the full command.
+// For StartAndManageIndividualMcpServer, mcp-proxy is called with ["mcp-proxy", "--pass-environment", "--", <serverCfg.Command components>...]
+func proxyArgsForTest(serverCfg config.MCPServerDefinition) []string { // Updated type
+	mcpProxyBaseArgs := []string{"mcp-proxy", "--pass-environment", "--"}
+	// serverCfg.Command is already a []string, so it can be directly appended.
+	return append(mcpProxyBaseArgs, serverCfg.Command...)
 }

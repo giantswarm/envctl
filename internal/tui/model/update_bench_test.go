@@ -1,14 +1,13 @@
 package model_test
 
 import (
-	"envctl/internal/mcpserver"
+	"envctl/internal/config"
 	"testing"
 
 	"envctl/internal/tui/controller"
 	"envctl/internal/tui/model"
 
 	"envctl/internal/k8smanager"
-	"envctl/internal/portforwarding"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
@@ -33,7 +32,8 @@ var benchmarkMsgs = func() []tea.Msg {
 
 // newBenchModel constructs a minimal but functional model for the benchmark.
 func newBenchModel() tea.Model {
-	mCore := model.InitialModel("mc", "wc", "mc", false, mcpserver.GetMCPServerConfig(), nil, (k8smanager.KubeManagerAPI)(nil), nil)
+	defaultCfg := config.GetDefaultConfig("mc", "wc")
+	mCore := model.InitialModel("mc", "wc", "mc", false, defaultCfg, (k8smanager.KubeManagerAPI)(nil), nil)
 
 	mCore.Width = 120
 	mCore.Height = 40
@@ -43,8 +43,7 @@ func newBenchModel() tea.Model {
 }
 
 func BenchmarkModelUpdate(b *testing.B) {
-	mcpCfgs := mcpserver.GetMCPServerConfig()
-	pfCfgs := portforwarding.GetPortForwardConfig("benchmark-mc", "benchmark-wc")
+	defaultCfg := config.GetDefaultConfig("benchmark-mc", "benchmark-wc")
 	var mockKubeMgr k8smanager.KubeManagerAPI // Can be nil
 
 	m := model.InitialModel(
@@ -52,8 +51,7 @@ func BenchmarkModelUpdate(b *testing.B) {
 		"benchmark-wc",
 		"benchmark-ctx",
 		false,
-		mcpCfgs,
-		pfCfgs,
+		defaultCfg,
 		mockKubeMgr,
 		nil,
 	)

@@ -2,6 +2,7 @@ package portforwarding
 
 import (
 	"context"
+	"envctl/internal/config"
 	"envctl/internal/kube"
 	"envctl/pkg/logging"
 	"errors"
@@ -28,12 +29,13 @@ var (
 // client via the internal kube package.
 // It does not spawn any external processes.
 func StartAndManageIndividualPortForward(
-	cfg PortForwardingConfig,
+	cfg config.PortForwardDefinition,
 	updateFn PortForwardUpdateFunc,
 ) (chan struct{}, error) {
-	subsystem := "PortForward-" + cfg.Label // Logging subsystem for this forwarder instance
+	subsystem := "PortForward-" + cfg.Name
 	// Initial log for this specific forwarder starting its management. Kube operations log separately.
-	logging.Info(subsystem, "Attempting to start and manage port-forward for %s (%s:%s -> %s/%s)", cfg.Label, cfg.LocalPort, cfg.RemotePort, cfg.Namespace, cfg.ServiceName)
+	targetResource := fmt.Sprintf("%s/%s", cfg.TargetType, cfg.TargetName)
+	logging.Info(subsystem, "Attempting to start and manage port-forward for %s (%s:%s -> %s/%s)", cfg.Name, cfg.LocalPort, cfg.RemotePort, cfg.Namespace, targetResource)
 
 	// Helper function to report state if it has changed
 	reportIfChanged := func(label string, detail PortForwardStatusDetail, isReady bool, opErr error) {
@@ -78,14 +80,14 @@ func StartAndManageIndividualPortForward(
 		var operationErr error
 		if kubeIsError {
 			if kubeOutputLog != "" {
-				operationErr = errors.New(kubeOutputLog) // Use the detail from sendUpdate as the error
+				operationErr = errors.New(kubeOutputLog)
 			} else {
-				operationErr = fmt.Errorf("port-forward operation for %s indicated error for status '%s' without specific detail", cfg.Label, kubeStatus)
+				operationErr = fmt.Errorf("port-forward operation for %s indicated error for status '%s' without specific detail", cfg.Name, kubeStatus)
 			}
 		}
 
 		var statusDetail PortForwardStatusDetail
-		switch kubeStatus { // This is the explicit status string from StartPortForwardClientGo
+		switch kubeStatus {
 		case "Initializing":
 			statusDetail = StatusDetailInitializing
 		case "ForwardingActive":
@@ -95,44 +97,37 @@ func StartAndManageIndividualPortForward(
 		case "Failed":
 			statusDetail = StatusDetailFailed
 		default:
-			// This case should ideally not be reached if StartPortForwardClientGo sends defined status strings.
 			logging.Warn(subsystem, "Unknown kubeStatus '%s' received in bridgeCallback for %s. Detail: %s, IsError: %t, IsReady: %t",
-				kubeStatus, cfg.Label, kubeOutputLog, kubeIsError, kubeIsReady)
+				kubeStatus, cfg.Name, kubeOutputLog, kubeIsError, kubeIsReady)
 			statusDetail = StatusDetailUnknown
-			// If it's an unknown status but an error is flagged, ensure it's treated as an error.
 			if kubeIsError && operationErr == nil {
-				operationErr = fmt.Errorf("unknown status '%s' with error flag for %s", kubeStatus, cfg.Label)
+				operationErr = fmt.Errorf("unknown status '%s' with error flag for %s", kubeStatus, cfg.Name)
 			}
 		}
 
-		reportIfChanged(cfg.Label, statusDetail, kubeIsReady, operationErr)
+		reportIfChanged(cfg.Name, statusDetail, kubeIsReady, operationErr)
 	}
 
 	portMap := fmt.Sprintf("%s:%s", cfg.LocalPort, cfg.RemotePort)
+	serviceArg := fmt.Sprintf("%s/%s", cfg.TargetType, cfg.TargetName)
 
 	stopChan, initialStatusFromKube, initialErr := KubeStartPortForwardFn(
 		context.Background(),
-		cfg.KubeContext,
+		cfg.KubeContextTarget,
 		cfg.Namespace,
-		cfg.ServiceName,
+		serviceArg,
 		portMap,
-		cfg.Label,
+		cfg.Name,
 		bridgeCallback,
 	)
 
 	if initialErr != nil {
-		// This error is from StartPortForwardClientGo before any goroutines are launched (e.g., port parsing).
-		// It would have already called sendUpdate("Failed",...) if it reached that point.
-		// If the error is from very early (like port parsing), sendUpdate might not have been called by kube.go.
-		// Ensure a final 'Failed' state is reported if we get an error here.
-		logging.Error(subsystem, initialErr, "Failed to initialize port-forward start sequence for %s. Initial status reported by kube: %s", cfg.Label, initialStatusFromKube)
-		reportIfChanged(cfg.Label, StatusDetailFailed, false, initialErr) // Ensure this reports a failure.
-		return stopChan, initialErr                                       // stopChan might be nil
+		logging.Error(subsystem, initialErr, "Failed to initialize port-forward start sequence for %s. Initial status reported by kube: %s", cfg.Name, initialStatusFromKube)
+		reportIfChanged(cfg.Name, StatusDetailFailed, false, initialErr)
+		return stopChan, initialErr
 	}
 
-	// StartPortForwardClientGo now sends an "Initializing" status itself.
-	// The initialStatusFromKube string is mostly for context here if needed.
-	logging.Debug(subsystem, "Port-forward management process initiated for %s. Kube reported initial status: %s", cfg.Label, initialStatusFromKube)
+	logging.Debug(subsystem, "Port-forward management process initiated for %s. Kube reported initial status: %s", cfg.Name, initialStatusFromKube)
 
 	return stopChan, nil
 }

@@ -1,9 +1,8 @@
 package controller
 
 import (
+	"envctl/internal/config"
 	"envctl/internal/k8smanager"
-	"envctl/internal/mcpserver"
-	"envctl/internal/portforwarding"
 	"envctl/internal/tui/model"
 	"envctl/pkg/logging"
 
@@ -14,9 +13,7 @@ import (
 func NewProgram(
 	mcName, wcName, currentKubeContext string,
 	tuiDebugMode bool,
-	mcpServerConfig []mcpserver.MCPServerConfig,
-	portForwardingConfig []portforwarding.PortForwardingConfig,
-	// serviceMgr managers.ServiceManagerAPI, // REMOVED - Model now creates its own ServiceManager
+	envctlCfg config.EnvctlConfig,
 	kubeMgr k8smanager.KubeManagerAPI,
 	logChan <-chan logging.LogEntry,
 ) *tea.Program {
@@ -26,8 +23,7 @@ func NewProgram(
 		wcName,
 		currentKubeContext,
 		tuiDebugMode,
-		mcpServerConfig,
-		portForwardingConfig,
+		envctlCfg,
 		kubeMgr,
 		logChan,
 	)

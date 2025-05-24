@@ -53,12 +53,16 @@ func renderPortForwardPanel(pf *model.PortForwardProcess, m *model.Model, target
 	finalPanelStyle = finalPanelStyle.Copy().Foreground(contentFg.GetForeground())
 
 	var b strings.Builder
-	b.WriteString(color.PortTitleStyle.Render(SafeIcon(IconLink) + pf.Label))
+	icon := pf.Config.Icon
+	if icon == "" {
+		icon = IconLink
+	}
+	b.WriteString(color.PortTitleStyle.Render(SafeIcon(icon) + pf.Label))
 	b.WriteString("\n")
 	b.WriteString(fmt.Sprintf("Port: %s:%s", pf.Config.LocalPort, pf.Config.RemotePort))
 	b.WriteString("\n")
-	svc := strings.TrimPrefix(pf.Config.ServiceName, "service/")
-	b.WriteString(fmt.Sprintf("Svc: %s", svc))
+	targetInfo := fmt.Sprintf("%s/%s", pf.Config.TargetType, pf.Config.TargetName)
+	b.WriteString(fmt.Sprintf("Target: %s", targetInfo))
 	b.WriteString("\n")
 
 	var statusIcon string

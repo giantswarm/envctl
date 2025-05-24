@@ -2,7 +2,8 @@ package controller
 
 import (
 	"context"
-	"envctl/internal/color" // Corrected import for color package
+	"envctl/internal/color"  // Corrected import for color package
+	"envctl/internal/config" // Added
 	"envctl/internal/k8smanager"
 	"envctl/internal/reporting" // To access mainControllerDispatch (needs to be exported or tested via model.Update)
 	"envctl/internal/tui/model" // Added for logging.LogEntry for logChan type
@@ -78,14 +79,12 @@ func (m *MockKubeManager) SetReporter(reporter reporting.ServiceReporter) {
 func TestMainControllerDispatch_ReporterUpdateMsg_GeneratesLog(t *testing.T) {
 	mockKubeMgr := &MockKubeManager{}
 
-	// Initialize logging for TUI mode for this test
-	// Ensure this is the *only* logger initialization for this test execution path.
 	logChan := logging.InitForTUI(logging.LevelDebug)
-	// No defer logging.CloseTUIChannel() here, as the test might finish before async operations using it complete.
-	// Let the test runner handle teardown or rely on garbage collection if channel is not globally problematic.
 
-	mInitialModel := model.InitialModel("mc1", "wc1", "test-context", true /*debugMode On*/, nil, nil, mockKubeMgr, logChan)
-	mInitialModel.LogChannel = logChan // Ensure the model has the correct channel instance used by this test.
+	// Use default config for InitialModel
+	defaultCfg := config.GetDefaultConfig("mc1", "wc1")
+	mInitialModel := model.InitialModel("mc1", "wc1", "test-context", true, defaultCfg, mockKubeMgr, logChan)
+	mInitialModel.LogChannel = logChan
 
 	assert.NotNil(t, mInitialModel.TUIChannel, "TUIChannel should be initialized")
 
@@ -147,7 +146,9 @@ func TestMainControllerDispatch_NewLogEntryMsg_UpdatesLogViewport(t *testing.T) 
 	logChan := logging.InitForTUI(logging.LevelDebug)
 	defer logging.CloseTUIChannel()
 
-	m := model.InitialModel("mc1", "wc1", "test-context", true /*debugMode On*/, nil, nil, mockKubeMgr, logChan)
+	// Use default config for InitialModel
+	defaultCfg := config.GetDefaultConfig("mc1", "wc1")
+	m := model.InitialModel("mc1", "wc1", "test-context", true, defaultCfg, mockKubeMgr, logChan)
 	m.LogChannel = logChan
 	m.Width = 80
 	m.Height = 24

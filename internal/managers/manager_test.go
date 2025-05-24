@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	// Project-specific imports
+	"envctl/internal/config"
 	"envctl/internal/kube" // Needed for portforwarding mock type kube.SendUpdateFunc
 	"envctl/internal/mcpserver"
 	"envctl/internal/portforwarding"
@@ -33,26 +34,27 @@ func setupServiceManagerTestMocks(t *testing.T) func() {
 	// Save the original value of the package-level variable StartMCPServers
 	originalMCPServerStarter := mcpserver.StartMCPServers
 
-	t.Logf("SETUP_MOCK: Overriding portforwarding.KubeStartPortForwardFn (kube.StartPortForwardClientGo)")
-	portforwarding.KubeStartPortForwardFn = func(ctx context.Context, kubeContext, namespace, serviceName, portMap, label string, bridgeFn kube.SendUpdateFunc) (chan struct{}, string, error) {
-		t.Logf("MOCK_EXEC: mock kube.StartPortForwardClientGo called for label: %s", label)
+	t.Logf("SETUP_MOCK: Overriding portforwarding.KubeStartPortForwardFn")
+	portforwarding.KubeStartPortForwardFn = func(ctx context.Context, kubeContext, namespace, serviceArg, portMap, label string, bridgeFn kube.SendUpdateFunc) (chan struct{}, string, error) {
+		t.Logf("MOCK_EXEC: mock kube.StartPortForward called for label: %s", label)
 		mStopChans := make(chan struct{})
 		go func() {
 			time.Sleep(1 * time.Millisecond)
 			if bridgeFn != nil {
-				bridgeFn("Mock PF Running via Kube Mock", "", false, true)
+				// Simulate a simplified status update from the portforwarding mock
+				bridgeFn("ForwardingActive", "Mock PF Running via Kube Mock", false, true)
 			}
 		}()
 		return mStopChans, "Mock Kube Init", nil
 	}
 
 	t.Logf("SETUP_MOCK: Overriding mcpserver.StartMCPServers variable")
-	mcpserver.StartMCPServers = func(configs []mcpserver.MCPServerConfig, mcpUpdateFn mcpserver.McpUpdateFunc, wg *sync.WaitGroup) (map[string]chan struct{}, []error) {
+	mcpserver.StartMCPServers = func(configs []config.MCPServerDefinition, mcpUpdateFn mcpserver.McpUpdateFunc, wg *sync.WaitGroup) (map[string]chan struct{}, []error) {
 		t.Logf("MOCK_EXEC: mock mcpserver.StartMCPServers called with %d configs", len(configs))
 		mStopChans := make(map[string]chan struct{})
 		for _, cfg := range configs {
 			mStopChans[cfg.Name] = make(chan struct{})
-			go func(c mcpserver.MCPServerConfig) {
+			go func(c config.MCPServerDefinition) {
 				if wg != nil {
 					wg.Add(1)
 					defer wg.Done()
@@ -108,15 +110,16 @@ func TestServiceManager_StopService(t *testing.T) {
 	sm := NewServiceManager(consoleReporter)
 	pflabel := "TestPF_Stop"
 	configs := []ManagedServiceConfig{
-		{Type: reporting.ServiceTypePortForward, Label: pflabel, Config: portforwarding.PortForwardingConfig{
-			Label:       pflabel,
-			ServiceName: "test-pf-svc-stop",
+		{Type: reporting.ServiceTypePortForward, Label: pflabel, Config: config.PortForwardDefinition{
+			Name:        pflabel,
+			TargetName:  "test-pf-svc-stop",
+			TargetType:  "service",
 			Namespace:   "default",
 			LocalPort:   "8081",
 			RemotePort:  "8000",
-			KubeContext: "test-stop-ctx",
-			InstanceKey: pflabel,
+			KubeContextTarget: "test-stop-ctx",
 			BindAddress: "127.0.0.1",
+			Enabled:     true,
 		}},
 	}
 	var wg sync.WaitGroup
@@ -154,17 +157,8 @@ func TestServiceManager_StopAllServices(t *testing.T) {
 	pflabel1 := "PF_StopAll1"
 	mcplabel1 := "MCP_StopAll1"
 	configs := []ManagedServiceConfig{
-		{Type: reporting.ServiceTypePortForward, Label: pflabel1, Config: portforwarding.PortForwardingConfig{
-			Label:       pflabel1,
-			ServiceName: "sa1",
-			Namespace:   "default",
-			LocalPort:   "8082",
-			RemotePort:  "8000",
-			KubeContext: "test-stopall-ctx",
-			InstanceKey: pflabel1,
-			BindAddress: "127.0.0.1",
-		}},
-		{Type: reporting.ServiceTypeMCPServer, Label: mcplabel1, Config: mcpserver.MCPServerConfig{Name: mcplabel1, Command: "echo"}},
+		{Type: reporting.ServiceTypePortForward, Label: pflabel1, Config: config.PortForwardDefinition{Name: pflabel1, TargetName: "sa1", TargetType: "service", Enabled: true}},
+		{Type: reporting.ServiceTypeMCPServer, Label: mcplabel1, Config: config.MCPServerDefinition{Name: mcplabel1, Command: []string{"echo"}, Type: config.MCPServerTypeLocalCommand, Enabled: true}},
 	}
 	var wg sync.WaitGroup
 	stopChans, _ := sm.StartServices(configs, &wg)
@@ -249,23 +243,23 @@ func getInternalServiceManager(smAPI ServiceManagerAPI) *ServiceManager {
 }
 
 var (
-	originalStartMCPServersFunc      func([]mcpserver.MCPServerConfig, mcpserver.McpUpdateFunc, *sync.WaitGroup) (map[string]chan struct{}, []error)
-	originalStartPortForwardingsFunc func([]portforwarding.PortForwardingConfig, portforwarding.PortForwardUpdateFunc, *sync.WaitGroup) map[string]chan struct{}
-	originalsStored                  bool
-	storeMutex                       sync.Mutex
+	originalStartMCPServersFunc_managersTest      func([]config.MCPServerDefinition, mcpserver.McpUpdateFunc, *sync.WaitGroup) (map[string]chan struct{}, []error)
+	originalStartPortForwardingsFunc_managersTest func([]config.PortForwardDefinition, portforwarding.PortForwardUpdateFunc, *sync.WaitGroup) map[string]chan struct{}
+	originalsStored_managersTest                  bool
+	storeMutex_managersTest                       sync.Mutex
 )
 
 func setupMocksAndTeardown(t *testing.T) func() {
-	storeMutex.Lock()
-	if !originalsStored {
-		originalStartMCPServersFunc = mcpserver.StartMCPServers
-		originalStartPortForwardingsFunc = portforwarding.StartPortForwardings
-		originalsStored = true
+	storeMutex_managersTest.Lock()
+	if !originalsStored_managersTest {
+		originalStartMCPServersFunc_managersTest = mcpserver.StartMCPServers
+		originalStartPortForwardingsFunc_managersTest = portforwarding.StartPortForwardings
+		originalsStored_managersTest = true
 	}
-	storeMutex.Unlock()
+	storeMutex_managersTest.Unlock()
 
 	// Generic mock implementations that can be further specialized in tests if needed
-	mcpserver.StartMCPServers = func(configs []mcpserver.MCPServerConfig, mcpUpdateFn mcpserver.McpUpdateFunc, wg *sync.WaitGroup) (map[string]chan struct{}, []error) {
+	mcpserver.StartMCPServers = func(configs []config.MCPServerDefinition, mcpUpdateFn mcpserver.McpUpdateFunc, wg *sync.WaitGroup) (map[string]chan struct{}, []error) {
 		t.Logf("GENERIC MOCK_EXEC: mcpserver.StartMCPServers with %d configs", len(configs))
 		mStopChans := make(map[string]chan struct{})
 		for _, cfg := range configs {
@@ -274,20 +268,20 @@ func setupMocksAndTeardown(t *testing.T) func() {
 		return mStopChans, nil
 	}
 
-	portforwarding.StartPortForwardings = func(configs []portforwarding.PortForwardingConfig, pfUpdateFn portforwarding.PortForwardUpdateFunc, wg *sync.WaitGroup) map[string]chan struct{} {
+	portforwarding.StartPortForwardings = func(configs []config.PortForwardDefinition, pfUpdateFn portforwarding.PortForwardUpdateFunc, wg *sync.WaitGroup) map[string]chan struct{} {
 		t.Logf("GENERIC MOCK_EXEC: portforwarding.StartPortForwardings with %d configs", len(configs))
 		mStopChans := make(map[string]chan struct{})
 		for _, cfg := range configs {
-			mStopChans[cfg.Label] = make(chan struct{})
+			mStopChans[cfg.Name] = make(chan struct{})
 		}
 		return mStopChans
 	}
 
 	return func() {
-		storeMutex.Lock()
-		mcpserver.StartMCPServers = originalStartMCPServersFunc
-		portforwarding.StartPortForwardings = originalStartPortForwardingsFunc
-		storeMutex.Unlock()
+		storeMutex_managersTest.Lock()
+		mcpserver.StartMCPServers = originalStartMCPServersFunc_managersTest
+		portforwarding.StartPortForwardings = originalStartPortForwardingsFunc_managersTest
+		storeMutex_managersTest.Unlock()
 	}
 }
 
@@ -303,7 +297,7 @@ func TestServiceManager_DebounceAndStateTransitions(t *testing.T) {
 
 	// --- Test MCP Service ---
 	mcpServiceLabel := "test-mcp-service"
-	mcpConfig := mcpserver.MCPServerConfig{Name: mcpServiceLabel, Command: "sleep", Args: []string{"1"}}
+	mcpConfig := config.MCPServerDefinition{Name: mcpServiceLabel, Command: []string{"sleep", "1"}, Type: config.MCPServerTypeLocalCommand, Enabled: true}
 	managedConfigsMcp := []ManagedServiceConfig{
 		{Label: mcpServiceLabel, Type: reporting.ServiceTypeMCPServer, Config: mcpConfig},
 	}
@@ -311,9 +305,9 @@ func TestServiceManager_DebounceAndStateTransitions(t *testing.T) {
 	var capturedMcpUpdateFn mcpserver.McpUpdateFunc
 	// Specific override for this test section to capture the update function
 	// This temporarily replaces the generic mock from setupMocksAndTeardown
-	oldMcpserverMock := mcpserver.StartMCPServers // Save the generic mock
+	oldMcpserverMock := mcpserver.StartMCPServers
 	mcpserver.StartMCPServers = func(
-		configs []mcpserver.MCPServerConfig,
+		configs []config.MCPServerDefinition,
 		updateFn mcpserver.McpUpdateFunc,
 		processWg *sync.WaitGroup,
 	) (map[string]chan struct{}, []error) {
@@ -386,16 +380,16 @@ func TestServiceManager_DebounceAndStateTransitions(t *testing.T) {
 	mcpserver.StartMCPServers = oldMcpserverMock // Restore generic mock for mcpserver for this section
 	mockReporterInstance.ClearUpdates()
 	pfServiceLabel := "test-pf-service"
-	pfConfig := portforwarding.PortForwardingConfig{Label: pfServiceLabel, ServiceName: "svc", LocalPort: "8080", RemotePort: "80"}
+	pfConfig := config.PortForwardDefinition{Name: pfServiceLabel, TargetName: "svc", TargetType: "service", LocalPort: "8080", RemotePort: "80", Enabled: true}
 	managedConfigsPf := []ManagedServiceConfig{
 		{Label: pfServiceLabel, Type: reporting.ServiceTypePortForward, Config: pfConfig},
 	}
 
 	var capturedPfUpdateFn portforwarding.PortForwardUpdateFunc
 	// Specific override for this test section to capture the update function
-	oldPfMock := portforwarding.StartPortForwardings // Save the generic mock
+	oldPfMock := portforwarding.StartPortForwardings
 	portforwarding.StartPortForwardings = func(
-		configs []portforwarding.PortForwardingConfig,
+		configs []config.PortForwardDefinition,
 		updateFn portforwarding.PortForwardUpdateFunc,
 		processWg *sync.WaitGroup,
 	) map[string]chan struct{} {
@@ -444,7 +438,7 @@ func TestServiceManager_DebounceAndStateTransitions(t *testing.T) {
 	// --- Test Restart Logic ---
 	mockReporterInstance.ClearUpdates()
 	restartServiceLabel := "test-restart-service"
-	restartMcpConfig := mcpserver.MCPServerConfig{Name: restartServiceLabel, Command: "sleep", Args: []string{"2"}}
+	restartMcpConfig := config.MCPServerDefinition{Name: restartServiceLabel, Command: []string{"sleep", "2"}, Type: config.MCPServerTypeLocalCommand, Enabled: true}
 	managedRestartConfigs := []ManagedServiceConfig{
 		{Label: restartServiceLabel, Type: reporting.ServiceTypeMCPServer, Config: restartMcpConfig},
 	}
@@ -457,7 +451,7 @@ func TestServiceManager_DebounceAndStateTransitions(t *testing.T) {
 
 	// Mock for the initial start of test-restart-service (instance 1)
 	mcpserver.StartMCPServers = func(
-		configs []mcpserver.MCPServerConfig,
+		configs []config.MCPServerDefinition,
 		updateFn mcpserver.McpUpdateFunc,
 		processWg *sync.WaitGroup,
 	) (map[string]chan struct{}, []error) {
@@ -508,7 +502,7 @@ func TestServiceManager_DebounceAndStateTransitions(t *testing.T) {
 
 		// Now, set up the mock for when instance 2 (the restarted one) starts
 		mcpserver.StartMCPServers = func(
-			configs []mcpserver.MCPServerConfig,
+			configs []config.MCPServerDefinition,
 			updateFn mcpserver.McpUpdateFunc,
 			processWg *sync.WaitGroup,
 		) (map[string]chan struct{}, []error) {
@@ -582,7 +576,7 @@ func TestServiceManager_DebounceAndStateTransitions(t *testing.T) {
 		stoppedServiceLabel := "already-stopped-svc"
 		smInternal.mu.Lock()
 		smInternal.serviceConfigs[stoppedServiceLabel] = ManagedServiceConfig{
-			Label: stoppedServiceLabel, Type: reporting.ServiceTypeMCPServer, Config: mcpserver.MCPServerConfig{Name: stoppedServiceLabel},
+			Label: stoppedServiceLabel, Type: reporting.ServiceTypeMCPServer, Config: config.MCPServerDefinition{Name: stoppedServiceLabel, Type: config.MCPServerTypeLocalCommand, Enabled:true},
 		}
 		delete(smInternal.serviceStates, stoppedServiceLabel) // Ensure it's not in states
 		smInternal.mu.Unlock()
@@ -591,7 +585,7 @@ func TestServiceManager_DebounceAndStateTransitions(t *testing.T) {
 		originalGlobalMcpserverMock := mcpserver.StartMCPServers
 		var capturedUpdateFnForAlreadyStopped mcpserver.McpUpdateFunc
 		mcpserver.StartMCPServers = func(
-			configs []mcpserver.MCPServerConfig,
+			configs []config.MCPServerDefinition,
 			updateFn mcpserver.McpUpdateFunc,
 			processWg *sync.WaitGroup,
 		) (map[string]chan struct{}, []error) {
@@ -672,8 +666,13 @@ func TestServiceManager_StopService_WithMocks(t *testing.T) {
 	sm := NewServiceManager(consoleReporter)
 	pflabel := "TestPF_Stop"
 	configs := []ManagedServiceConfig{
-		{Type: reporting.ServiceTypePortForward, Label: pflabel, Config: portforwarding.PortForwardingConfig{
-			Label: pflabel, ServiceName: "s", LocalPort: "1", RemotePort: "1", // Simplified config
+		{Type: reporting.ServiceTypePortForward, Label: pflabel, Config: config.PortForwardDefinition{
+			Name:        pflabel,
+			TargetName:  "s",
+			TargetType:  "service",
+			LocalPort:   "1",
+			RemotePort:  "1",
+			Enabled:     true,
 		}},
 	}
 	var wg sync.WaitGroup
@@ -681,14 +680,14 @@ func TestServiceManager_StopService_WithMocks(t *testing.T) {
 	// Specific mock for StartPortForwardings for this test to return a controllable stop channel
 	var specificPfStopChan chan struct{}
 	portforwarding.StartPortForwardings = func(
-		cfgs []portforwarding.PortForwardingConfig,
+		cfgs []config.PortForwardDefinition,
 		updateFn portforwarding.PortForwardUpdateFunc,
 		pWg *sync.WaitGroup,
 	) map[string]chan struct{} {
 		specificPfStopChan = make(chan struct{})
 		// If the main service manager expects Add/Done, this mock needs to respect it if it were real.
 		// For this test, service manager's goroutine wrapper handles Add/Done for pWg.
-		return map[string]chan struct{}{cfgs[0].Label: specificPfStopChan}
+		return map[string]chan struct{}{cfgs[0].Name: specificPfStopChan}
 	}
 
 	// ServiceManager will Add(1) to wg internally.
@@ -721,8 +720,8 @@ func TestServiceManager_StopAllServices_WithMocks(t *testing.T) {
 	pflabel1 := "PF_StopAll1"
 	mcplabel1 := "MCP_StopAll1"
 	configs := []ManagedServiceConfig{
-		{Type: reporting.ServiceTypePortForward, Label: pflabel1, Config: portforwarding.PortForwardingConfig{Label: pflabel1, ServiceName: "s1"}},
-		{Type: reporting.ServiceTypeMCPServer, Label: mcplabel1, Config: mcpserver.MCPServerConfig{Name: mcplabel1, Command: "c1"}},
+		{Type: reporting.ServiceTypePortForward, Label: pflabel1, Config: config.PortForwardDefinition{Name: pflabel1, TargetName: "s1", TargetType: "service", Enabled: true}},
+		{Type: reporting.ServiceTypeMCPServer, Label: mcplabel1, Config: config.MCPServerDefinition{Name: mcplabel1, Command: []string{"c1"}, Type: config.MCPServerTypeLocalCommand, Enabled: true}},
 	}
 	var wg sync.WaitGroup
 
@@ -730,13 +729,13 @@ func TestServiceManager_StopAllServices_WithMocks(t *testing.T) {
 	pfStopChans := make(map[string]chan struct{})
 	mcpStopChans := make(map[string]chan struct{})
 
-	portforwarding.StartPortForwardings = func(cfgs []portforwarding.PortForwardingConfig, _ portforwarding.PortForwardUpdateFunc, _ *sync.WaitGroup) map[string]chan struct{} {
+	portforwarding.StartPortForwardings = func(cfgs []config.PortForwardDefinition, _ portforwarding.PortForwardUpdateFunc, _ *sync.WaitGroup) map[string]chan struct{} {
 		for _, cfg := range cfgs {
-			pfStopChans[cfg.Label] = make(chan struct{})
+			pfStopChans[cfg.Name] = make(chan struct{})
 		}
 		return pfStopChans
 	}
-	mcpserver.StartMCPServers = func(cfgs []mcpserver.MCPServerConfig, _ mcpserver.McpUpdateFunc, _ *sync.WaitGroup) (map[string]chan struct{}, []error) {
+	mcpserver.StartMCPServers = func(cfgs []config.MCPServerDefinition, _ mcpserver.McpUpdateFunc, _ *sync.WaitGroup) (map[string]chan struct{}, []error) {
 		for _, cfg := range cfgs {
 			mcpStopChans[cfg.Name] = make(chan struct{})
 		}

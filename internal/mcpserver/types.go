@@ -1,14 +1,5 @@
 package mcpserver
 
-// MCPServerConfig defines the configuration for an MCP server.
-type MCPServerConfig struct {
-	Name      string            // Unique name for the server (e.g., "kubernetes", "prometheus")
-	ProxyPort int               // Port on which mcp-proxy will listen
-	Command   string            // The actual command to run (e.g., "npx", "uvx")
-	Args      []string          // Arguments for the command
-	Env       map[string]string // Environment variables to set for the command
-}
-
 // McpDiscreteStatusUpdate is used to report discrete status changes from a running MCP process.
 // It focuses on the state, not verbose logs.
 type McpDiscreteStatusUpdate struct {

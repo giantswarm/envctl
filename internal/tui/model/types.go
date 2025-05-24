@@ -1,11 +1,10 @@
 package model
 
 import (
+	"envctl/internal/config"
 	"envctl/internal/dependency"
 	"envctl/internal/k8smanager"
 	"envctl/internal/managers"
-	"envctl/internal/mcpserver"
-	"envctl/internal/portforwarding"
 	"envctl/internal/reporting"
 	"envctl/pkg/logging"
 	"time"
@@ -196,15 +195,15 @@ type Model struct {
 	WCHealth              ClusterHealthInfo
 
 	// --- Port Forwarding specific fields ---
-	PortForwardingConfig []portforwarding.PortForwardingConfig
+	PortForwardingConfig []config.PortForwardDefinition
 	PortForwards         map[string]*PortForwardProcess
 	PortForwardOrder     []string
 
 	// --- MCP Proxy specific fields ---
-	McpServers        map[string]*McpServerProcess // Holds live data for MCP server instances
-	McpProxyOrder     []string                     // Defines the display order of MCP proxies
-	MCPServerConfig   []mcpserver.MCPServerConfig  // Initial configurations for MCP servers
-	McpConfigViewport viewport.Model               // For the MCP config overlay
+	McpServers        map[string]*McpServerProcess
+	McpProxyOrder     []string
+	MCPServerConfig   []config.MCPServerDefinition
+	McpConfigViewport viewport.Model
 
 	// --- UI State & Output ---
 	ActivityLog              []string
@@ -248,29 +247,30 @@ type ClusterHealthInfo struct { // Renamed from clusterHealthInfo
 }
 
 type PortForwardProcess struct { // Renamed from portForwardProcess
-	Label       string                              // Exported
-	Command     string                              // Exported
-	LocalPort   int                                 // Exported
-	RemotePort  int                                 // Exported
-	TargetHost  string                              // Exported
-	ContextName string                              // Exported
-	StopChan    chan struct{}                       // Exported
-	Log         []string                            // Exported
-	Active      bool                                // Exported
-	Running     bool                                // Exported
-	StatusMsg   string                              // Exported
-	Err         error                               // Exported
-	Config      portforwarding.PortForwardingConfig // Update type here
+	Label       string                    // Exported
+	Command     string                    // Exported
+	LocalPort   int                       // Exported
+	RemotePort  int                       // Exported
+	TargetHost  string                    // Exported
+	ContextName string                    // Exported
+	StopChan    chan struct{}             // Exported
+	Log         []string                  // Exported
+	Active      bool                      // Exported
+	Running     bool                      // Exported
+	StatusMsg   string                    // Exported
+	Err         error                     // Exported
+	Config      config.PortForwardDefinition // Updated type
 }
 
 type McpServerProcess struct { // Renamed from mcpServerProcess
-	Label     string        // Exported, User-friendly label (e.g., "Kubernetes API").
-	Pid       int           // Exported, PID of the process.
-	StopChan  chan struct{} // Exported, Channel to signal the process to stop.
-	Output    []string      // Exported, Stores output or log messages.
-	Err       error         // Exported, Any error encountered by the process.
-	Active    bool          // Exported, Whether the server is configured to be active.
-	StatusMsg string        // Exported, Detailed status message for display.
+	Label     string                   // Exported, User-friendly label (e.g., "Kubernetes API").
+	Pid       int                      // Exported, PID of the process.
+	StopChan  chan struct{}            // Exported, Channel to signal the process to stop.
+	Output    []string                 // Exported, Stores output or log messages.
+	Err       error                    // Exported, Any error encountered by the process.
+	Active    bool                     // Exported, Whether the server is configured to be active.
+	StatusMsg string                   // Exported, Detailed status message for display.
+	Config    config.MCPServerDefinition // Added Config field
 }
 
 // SetStatusMessage updates the status bar message and schedules clearing it after the given duration.

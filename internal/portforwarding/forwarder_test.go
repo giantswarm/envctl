@@ -2,6 +2,7 @@ package portforwarding
 
 import (
 	"context"
+	"envctl/internal/config"
 	"envctl/internal/kube"
 	"errors"
 	"fmt"
@@ -31,33 +32,34 @@ func TestStartAndManageIndividualPortForward_Success(t *testing.T) {
 		t.Logf("TestStartAndManageIndividualPortForward_Success: Restored original KubeStartPortForwardClientGoFn")
 	}()
 
-	var capturedContext context.Context // Variable to capture the context
+	var capturedContext context.Context
 
 	mockStopChan := make(chan struct{})
-	KubeStartPortForwardFn = func(ctx context.Context, kubeContext string, namespace string, serviceName string, portMap string, label string, bridgeFn kube.SendUpdateFunc) (chan struct{}, string, error) {
-		capturedContext = ctx // Capture the context
+	KubeStartPortForwardFn = func(ctx context.Context, kubeContext string, namespace string, serviceArg string, portMap string, label string, bridgeFn kube.SendUpdateFunc) (chan struct{}, string, error) {
+		capturedContext = ctx
 		t.Logf("[Mock KubeStartPortForwardFn - Success] Called for label '%s'", label)
-		// Simulate StartPortForwardClientGo sending "Initializing" first
 		initMsg := fmt.Sprintf("Mock Kube Init for %s", label)
 		bridgeFn("Initializing", initMsg, false, false)
 
 		go func() {
 			t.Logf("[Mock KubeStartPortForwardClientGoFn - Success GOROUTINE %s] Simulating async ready signal by calling bridgeFn", label)
-			time.Sleep(25 * time.Millisecond) // Increased delay slightly to ensure it's processed after init
+			time.Sleep(25 * time.Millisecond)
 			fwdDetail := "Forwarding from 127.0.0.1:8080 to 80"
-			bridgeFn("ForwardingActive", fwdDetail, false, true) // Simulate kube saying it's ready
+			bridgeFn("ForwardingActive", fwdDetail, false, true)
 			t.Logf("[Mock KubeStartPortForwardClientGoFn - Success GOROUTINE %s] bridgeFn called for ready signal", label)
 		}()
-		return mockStopChan, "Initializing", nil // initialStatus string from Kube layer
+		return mockStopChan, "Initializing", nil
 	}
 
-	cfg := PortForwardingConfig{
-		Label:       "test-label",
-		ServiceName: "TestService",
+	cfg := config.PortForwardDefinition{
+		Name:        "test-label",
+		TargetType:  "service",
+		TargetName:  "TestService",
 		Namespace:   "test-ns",
 		LocalPort:   "8080",
 		RemotePort:  "80",
-		KubeContext: "test-ctx",
+		KubeContextTarget: "test-ctx",
+		Enabled:     true,
 	}
 
 	var updates []testPortForwardUpdate
@@ -92,9 +94,9 @@ func TestStartAndManageIndividualPortForward_Success(t *testing.T) {
 		updates = append(updates, update)
 	}
 
-	t.Logf("TestStartAndManageIndividualPortForward_Success: Calling StartAndManageIndividualPortForward for '%s'", cfg.Label)
+	t.Logf("TestStartAndManageIndividualPortForward_Success: Calling StartAndManageIndividualPortForward for '%s'", cfg.Name)
 	returnedStopChan, err := StartAndManageIndividualPortForward(cfg, updateFn)
-	t.Logf("TestStartAndManageIndividualPortForward_Success: StartAndManageIndividualPortForward for '%s' returned", cfg.Label)
+	t.Logf("TestStartAndManageIndividualPortForward_Success: StartAndManageIndividualPortForward for '%s' returned", cfg.Name)
 
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
@@ -105,13 +107,13 @@ func TestStartAndManageIndividualPortForward_Success(t *testing.T) {
 
 	// Wait for the expected "Ready" update (ForwardingActive)
 	syncChan := make(chan bool)
-	t.Logf("TestStartAndManageIndividualPortForward_Success: Waiting for ForwardingActive update signal for '%s'", cfg.Label)
+	t.Logf("TestStartAndManageIndividualPortForward_Success: Waiting for ForwardingActive update signal for '%s'", cfg.Name)
 	go func() {
 		for i := 0; i < 400; i++ { // Increased iterations for potentially slower CI
 			mu.Lock()
 			readyFound := false
 			for _, u := range updates {
-				if u.StatusDetail == StatusDetailForwardingActive && u.IsOpReady && u.Label == cfg.Label && u.OperationErr == nil {
+				if u.StatusDetail == StatusDetailForwardingActive && u.IsOpReady && u.Label == cfg.Name && u.OperationErr == nil {
 					readyFound = true
 					break
 				}
@@ -130,9 +132,9 @@ func TestStartAndManageIndividualPortForward_Success(t *testing.T) {
 		mu.Lock()
 		finalUpdates := updates
 		mu.Unlock()
-		t.Fatalf("TestStartAndManageIndividualPortForward_Success: Timed out waiting for the ForwardingActive update for '%s'. Updates received: %+v", cfg.Label, finalUpdates)
+		t.Fatalf("TestStartAndManageIndividualPortForward_Success: Timed out waiting for the ForwardingActive update for '%s'. Updates received: %+v", cfg.Name, finalUpdates)
 	}
-	t.Logf("TestStartAndManageIndividualPortForward_Success: Received signal from syncChan for '%s'", cfg.Label)
+	t.Logf("TestStartAndManageIndividualPortForward_Success: Received signal from syncChan for '%s'", cfg.Name)
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -142,7 +144,7 @@ func TestStartAndManageIndividualPortForward_Success(t *testing.T) {
 		{Label: "test-label", StatusDetail: StatusDetailForwardingActive, IsOpReady: true, OperationErr: nil, OutputLog: "Forwarding from 127.0.0.1:8080 to 80"},
 	}
 
-	t.Logf("TestStartAndManageIndividualPortForward_Success: Comparing %d actual updates with %d expected updates for '%s'", len(updates), len(expectedUpdates), cfg.Label)
+	t.Logf("TestStartAndManageIndividualPortForward_Success: Comparing %d actual updates with %d expected updates for '%s'", len(updates), len(expectedUpdates), cfg.Name)
 
 	assert.Len(t, updates, len(expectedUpdates), "Number of updates should match")
 	for i, expected := range expectedUpdates {
@@ -175,22 +177,20 @@ func TestStartAndManageIndividualPortForward_KubeError(t *testing.T) {
 		t.Logf("TestStartAndManageIndividualPortForward_KubeError: Restored original KubeStartPortForwardClientGoFn")
 	}()
 
-	// Test case for when KubeStartPortForwardFn returns an error
-	// This mock simulates KubeStartPortForwardClientGo returning an error *immediately*,
-	// before it would have a chance to send an "Initializing" update itself.
 	expectedKubeErr := errors.New("kube init error from mock")
-	KubeStartPortForwardFn = func(ctx context.Context, kubeContext string, namespace string, serviceName string, portMap string, label string, bridgeFn kube.SendUpdateFunc) (chan struct{}, string, error) {
+	KubeStartPortForwardFn = func(ctx context.Context, kubeContext string, namespace string, serviceArg string, portMap string, label string, bridgeFn kube.SendUpdateFunc) (chan struct{}, string, error) {
 		t.Logf("[Mock KubeStartPortForwardClientGoFn - Error] Called for label '%s', returning error: %v immediately", label, expectedKubeErr)
-		// No call to bridgeFn("Initializing", ...) because the error is immediate
 		return nil, "InitializationError", expectedKubeErr
 	}
 
-	cfgError := PortForwardingConfig{
-		Label:     "error-label",
-		ServiceName: "ErrorService",
-		Namespace:   "err-ns",
-		LocalPort:   "123",
-		RemotePort:  "456",
+	cfgError := config.PortForwardDefinition{
+		Name:       "error-label",
+		TargetType: "service",
+		TargetName: "ErrorService",
+		Namespace:  "err-ns",
+		LocalPort:  "123",
+		RemotePort: "456",
+		Enabled:    true,
 	}
 	var updates []testPortForwardUpdate
 	var mu sync.Mutex
@@ -209,9 +209,9 @@ func TestStartAndManageIndividualPortForward_KubeError(t *testing.T) {
 		updates = append(updates, update)
 	}
 
-	t.Logf("TestStartAndManageIndividualPortForward_KubeError: Calling StartAndManageIndividualPortForward for '%s'", cfgError.Label)
+	t.Logf("TestStartAndManageIndividualPortForward_KubeError: Calling StartAndManageIndividualPortForward for '%s'", cfgError.Name)
 	_, err := StartAndManageIndividualPortForward(cfgError, updateFn)
-	t.Logf("TestStartAndManageIndividualPortForward_KubeError: StartAndManageIndividualPortForward for '%s' returned", cfgError.Label)
+	t.Logf("TestStartAndManageIndividualPortForward_KubeError: StartAndManageIndividualPortForward for '%s' returned", cfgError.Name)
 
 	if err == nil {
 		t.Fatal("Expected an error from StartAndManageIndividualPortForward, got nil")
@@ -223,7 +223,7 @@ func TestStartAndManageIndividualPortForward_KubeError(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 
-	t.Logf("TestStartAndManageIndividualPortForward_KubeError: Comparing actual updates with expected for '%s'", cfgError.Label)
+	t.Logf("TestStartAndManageIndividualPortForward_KubeError: Comparing actual updates with expected for '%s'", cfgError.Name)
 
 	// Since KubeStartPortForwardFn returns an error immediately, StartPortForwardClientGo (the real one)
 	// would not have sent an "Initializing" update yet. StartAndManageIndividualPortForward

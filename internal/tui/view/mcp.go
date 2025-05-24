@@ -2,7 +2,7 @@ package view
 
 import (
 	"envctl/internal/color"
-	"envctl/internal/mcpserver"
+	"envctl/internal/config"
 	"envctl/internal/tui/model"
 	"fmt"
 	"strings"
@@ -11,7 +11,7 @@ import (
 )
 
 // renderMcpProxyPanel renders one MCP proxy status panel.
-func renderMcpProxyPanel(serverName string, predefinedData mcpserver.MCPServerConfig, proc *model.McpServerProcess, m *model.Model, targetOuterWidth int) string {
+func renderMcpProxyPanel(serverName string, predefinedData config.MCPServerDefinition, proc *model.McpServerProcess, m *model.Model, targetOuterWidth int) string {
 	var baseStyle lipgloss.Style
 	var contentFg lipgloss.Style
 	statusMsg := "Not Started"
@@ -45,30 +45,32 @@ func renderMcpProxyPanel(serverName string, predefinedData mcpserver.MCPServerCo
 	}
 
 	var b strings.Builder
-	b.WriteString(color.PortTitleStyle.Render(SafeIcon(IconGear) + strings.TrimSpace(predefinedData.Name) + " MCP"))
-	b.WriteString("\n")
-	b.WriteString(fmt.Sprintf("Port: %d (SSE)", predefinedData.ProxyPort))
+	icon := predefinedData.Icon
+	if icon == "" {
+		icon = IconGear
+	}
+	b.WriteString(color.PortTitleStyle.Render(SafeIcon(icon) + strings.TrimSpace(predefinedData.Name) + " MCP"))
 	b.WriteString("\n")
 	b.WriteString(pidStr)
 	b.WriteString("\n")
 
-	var icon string
+	var iconStr string
 	if proc == nil {
-		icon = SafeIcon(IconWarning)
+		iconStr = SafeIcon(IconWarning)
 	} else {
 		st := strings.ToLower(statusMsg)
 		switch {
 		case proc.Err != nil || strings.Contains(st, "error") || strings.Contains(st, "failed"):
-			icon = SafeIcon(IconCross)
+			iconStr = SafeIcon(IconCross)
 		case strings.Contains(st, "running"):
-			icon = SafeIcon(IconPlay)
+			iconStr = SafeIcon(IconPlay)
 		case strings.Contains(st, "stopped"):
-			icon = SafeIcon(IconStop)
+			iconStr = SafeIcon(IconStop)
 		default:
-			icon = SafeIcon(IconHourglass)
+			iconStr = SafeIcon(IconHourglass)
 		}
 	}
-	b.WriteString(contentFg.Render(fmt.Sprintf("Status: %s%s", icon, trimStatusMessage(statusMsg))))
+	b.WriteString(contentFg.Render(fmt.Sprintf("Status: %s%s", iconStr, trimStatusMessage(statusMsg))))
 
 	frame := final.GetHorizontalFrameSize()
 	width := targetOuterWidth - frame

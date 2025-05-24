@@ -1,10 +1,9 @@
 package model
 
 import (
+	"envctl/internal/config"
 	"envctl/internal/k8smanager"
 	"envctl/internal/managers"
-	"envctl/internal/mcpserver"
-	"envctl/internal/portforwarding"
 	"envctl/internal/reporting"
 	"envctl/pkg/logging"
 	"errors"
@@ -95,8 +94,7 @@ func DefaultKeyMap() KeyMap { // Returns model.KeyMap (KeyMap is in this package
 func InitialModel(
 	mcName, wcName, kubeContext string,
 	tuiDebug bool,
-	mcpServerConfig []mcpserver.MCPServerConfig,
-	portForwardingConfig []portforwarding.PortForwardingConfig,
+	envctlCfg config.EnvctlConfig,
 	kubeMgr k8smanager.KubeManagerAPI,
 	logChan <-chan logging.LogEntry,
 ) *Model {
@@ -135,8 +133,8 @@ func InitialModel(
 		ManagementClusterName:    mcName,
 		WorkloadClusterName:      wcName,
 		CurrentKubeContext:       kubeContext,
-		MCPServerConfig:          mcpServerConfig,
-		PortForwardingConfig:     portForwardingConfig,
+		MCPServerConfig:          envctlCfg.MCPServers,
+		PortForwardingConfig:     envctlCfg.PortForwards,
 		ServiceManager:           serviceMgr,
 		KubeMgr:                  kubeMgr,
 		Reporter:                 tuiReporter,
@@ -170,22 +168,29 @@ func InitialModel(
 	// Populate PortForwards and McpServers with initial placeholder data
 	// This ensures that when status updates arrive, the map entries exist.
 	for _, pfCfg := range m.PortForwardingConfig {
-		m.PortForwardOrder = append(m.PortForwardOrder, pfCfg.Label)
-		m.PortForwards[pfCfg.Label] = &PortForwardProcess{
-			Label:     pfCfg.Label,
-			StatusMsg: "Initializing...", // Or "Awaiting Setup..."
-			Active:    false,             // Initial state, will be updated by ServiceManager
-			Running:   false,             // Initial state
+		if !pfCfg.Enabled {
+			continue
+		}
+		m.PortForwardOrder = append(m.PortForwardOrder, pfCfg.Name)
+		m.PortForwards[pfCfg.Name] = &PortForwardProcess{
+			Label:     pfCfg.Name,
+			StatusMsg: "Initializing...",
+			Active:    false,
+			Running:   false,
 			Config:    pfCfg,
 		}
 	}
 
 	for _, mcpCfg := range m.MCPServerConfig {
-		m.McpProxyOrder = append(m.McpProxyOrder, mcpCfg.Name) // Ensure McpProxyOrder is also initialized
+		if !mcpCfg.Enabled {
+			continue
+		}
+		m.McpProxyOrder = append(m.McpProxyOrder, mcpCfg.Name)
 		m.McpServers[mcpCfg.Name] = &McpServerProcess{
 			Label:     mcpCfg.Name,
-			StatusMsg: "Initializing...", // Or "Awaiting Setup..."
-			Active:    false,             // Initial state, will be updated by ServiceManager
+			StatusMsg: "Initializing...",
+			Active:    false,
+			Config:    mcpCfg,
 		}
 	}
 
@@ -231,15 +236,21 @@ func (m *Model) Init() tea.Cmd {
 
 	var managedServiceConfigs []managers.ManagedServiceConfig
 	for _, pfCfg := range m.PortForwardingConfig {
+		if !pfCfg.Enabled {
+			continue
+		}
 		managedServiceConfigs = append(managedServiceConfigs, managers.ManagedServiceConfig{
-			Type:   reporting.ServiceTypePortForward, // Use reporting type
-			Label:  pfCfg.Label,
+			Type:   reporting.ServiceTypePortForward,
+			Label:  pfCfg.Name,
 			Config: pfCfg,
 		})
 	}
 	for _, mcpCfg := range m.MCPServerConfig {
+		if !mcpCfg.Enabled {
+			continue
+		}
 		managedServiceConfigs = append(managedServiceConfigs, managers.ManagedServiceConfig{
-			Type:   reporting.ServiceTypeMCPServer, // Use reporting type
+			Type:   reporting.ServiceTypeMCPServer,
 			Label:  mcpCfg.Name,
 			Config: mcpCfg,
 		})

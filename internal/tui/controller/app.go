@@ -38,7 +38,7 @@ func NewAppModel(m *model.Model, mcName, wcName string) *AppModel {
 
 	// Configure initial port-forwards and dependency graph using controller functions
 	SetupPortForwards(app.model, mcName, wcName)
-	app.model.DependencyGraph = BuildDependencyGraph(app.model, app.model.MCPServerConfig) // Use renamed field
+	app.model.DependencyGraph = BuildDependencyGraph(app.model)
 
 	// Set initial focused panel key (logic moved from model.InitialModel)
 	if len(app.model.PortForwardOrder) > 0 {

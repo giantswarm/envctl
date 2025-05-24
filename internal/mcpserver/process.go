@@ -2,7 +2,8 @@ package mcpserver
 
 import (
 	"bufio"
-	"envctl/pkg/logging" // Added for logging
+	"envctl/internal/config" // Added for new config type
+	"envctl/pkg/logging"     // Added for logging
 	"fmt"
 	"os"
 	"os/exec"
@@ -16,33 +17,65 @@ var execCommand = exec.Command
 // StartAndManageIndividualMcpServer prepares, starts, and manages a single MCP server process.
 // It calls updateFn with McpDiscreteStatusUpdate for state changes and uses pkg/logging for verbose output.
 func StartAndManageIndividualMcpServer(
-	serverConfig MCPServerConfig,
+	serverConfig config.MCPServerDefinition, // Updated type
 	updateFn McpUpdateFunc, // Now func(update McpDiscreteStatusUpdate)
 	wg *sync.WaitGroup,
 ) (pid int, stopChan chan struct{}, initialError error) {
 
 	label := serverConfig.Name
-	proxyPort := serverConfig.ProxyPort
+	// proxyPort := serverConfig.ProxyPort // ProxyPort is not part of MCPServerDefinition, mcp-proxy manages its own port or it's passed via env
 	subsystem := "MCPServer-" + label
 
-	logging.Info(subsystem, "Initializing MCP server %s (underlying: %s %v) on port %d", label, serverConfig.Command, serverConfig.Args, proxyPort)
+	// Logging needs to be adjusted as ProxyPort is not directly available.
+	// The command from serverConfig.Command will be executed directly by mcp-proxy.
+	logging.Info(subsystem, "Initializing MCP server %s (underlying: %s)", label, strings.Join(serverConfig.Command, " "))
 	if updateFn != nil {
 		updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "NpxInitializing", PID: 0})
 	}
 
-	// Prepare exec.Cmd for mcp-proxy
-	proxyArgs := []string{
-		"--port", fmt.Sprintf("%d", proxyPort),
-		"--pass-environment",
-		"--",
-		serverConfig.Command,
-	}
-	proxyArgs = append(proxyArgs, serverConfig.Args...)
+	// mcp-proxy will now take the command and its arguments directly.
+	// The old logic constructed proxyArgs including a --port for mcp-proxy itself.
+	// Now, serverConfig.Command contains the actual command and its args.
+	// mcp-proxy needs to be invoked in a way that it executes serverConfig.Command.
+	// Assuming mcp-proxy is a generic process runner that takes the target command after "--".
+	// If mcp-proxy has a fixed port, it needs to be configured when mcp-proxy itself is run, or via its own config.
+	// If the MCP server (e.g. npx my-server) needs a port, it should be in its serverConfig.Env or serverConfig.Command args.
 
-	cmd := execCommand("mcp-proxy", proxyArgs...)
+	// For now, assuming mcp-proxy is available and takes the command to execute.
+	// The MCPServerDefinition.Command is []string, first element is command, rest are args.
+	if len(serverConfig.Command) == 0 {
+		errMsg := fmt.Errorf("command not defined for MCP server %s", label)
+		logging.Error(subsystem, errMsg, "Cannot start MCP server")
+		if updateFn != nil {
+			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "NpxStartFailed", ProcessErr: errMsg})
+		}
+		return 0, nil, errMsg
+	}
+
+	// Construct arguments for mcp-proxy. It needs to execute the command defined in serverConfig.Command.
+	// This assumes mcp-proxy still uses a specific port for its own API if any, or that part is handled elsewhere.
+	// The main change is that serverConfig.Command IS the command to run, not something mcp-proxy figures out.
+	
+	// Let's assume mcp-proxy still needs a port for itself, for example, if it offers a control plane.
+	// This port is NOT the port of the service being proxied (that's implicit in the service's own config).
+	// For this refactor, let's assume mcp-proxy doesn't need a specific port passed this way for the *target* service.
+	// If it needs a port for *itself*, that is a separate concern from MCPServerDefinition.
+	// The original `ProxyPort` was for `mcp-proxy` itself.
+	// We will remove direct use of `ProxyPort` from `MCPServerDefinition` here.
+	// The `mcp-proxy` command itself will be responsible for its own port management.
+
+	proxyCmd := "mcp-proxy" // This could be configurable globally if needed
+	mcpProxyArgs := []string{"--pass-environment", "--"} // mcp-proxy specific args before the actual command
+	mcpProxyArgs = append(mcpProxyArgs, serverConfig.Command...)
+
+	cmd := execCommand(proxyCmd, mcpProxyArgs...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Env = os.Environ() // Inherit current environment
-	for k, v := range serverConfig.Env {
+	// Add environment variables from serverConfig.Env (for localCommand)
+	// or serverConfig.ContainerEnv (for container type, though this function is for local commands)
+	// The MCPServerDefinition has Env for localCommand and ContainerEnv for container.
+	// This function seems to be generic for local commands run via mcp-proxy.
+	for k, v := range serverConfig.Env { // Assuming this is for localCommand type
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 	}
 
@@ -67,7 +100,8 @@ func StartAndManageIndividualMcpServer(
 	currentStopChan := make(chan struct{})
 
 	if err := cmd.Start(); err != nil {
-		errMsg := fmt.Errorf("failed to start mcp-proxy for %s (underlying: %s %v): %w", label, serverConfig.Command, serverConfig.Args, err)
+		// Adjusted error message to reflect the command being run
+		errMsg := fmt.Errorf("failed to start mcp-proxy for %s (executing: %s): %w", label, strings.Join(serverConfig.Command, " "), err)
 		logging.Error(subsystem, err, "Failed to start mcp-proxy process")
 		stdoutPipe.Close()
 		stderrPipe.Close()
@@ -85,7 +119,7 @@ func StartAndManageIndividualMcpServer(
 		updateFn(McpDiscreteStatusUpdate{
 			Label:         label,
 			PID:           processPid,
-			ProcessStatus: "NpxRunning", // Changed from "Running" Status to ProcessStatus
+			ProcessStatus: "NpxRunning",
 		})
 	}
 
@@ -105,16 +139,9 @@ func StartAndManageIndividualMcpServer(
 		}()
 
 		go func() {
-			if wg != nil {
-				// wg.Add(1) // No, this Add should be done by the caller of StartAndManageIndividualMcpServer for this goroutine
-				// defer wg.Done() // And this Done too
-			}
 			scanner := bufio.NewScanner(stderrPipe)
 			for scanner.Scan() {
 				line := scanner.Text()
-				// Log stderr from the process.
-				// Specific informational messages from stderr are logged as INFO or DEBUG.
-				// Other stderr lines are logged as ERROR.
 				if strings.Contains(line, "Uvicorn running on") || strings.Contains(line, "Application startup complete.") || strings.Contains(line, "StreamableHTTP session manager started") || strings.Contains(line, "Application started with StreamableHTTP session manager!") {
 					logging.Info(subsystem+"-stderr", "%s", line)
 				} else if strings.HasPrefix(line, "INFO:") || strings.HasPrefix(line, "[I ") {

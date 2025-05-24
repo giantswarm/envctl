@@ -5,8 +5,8 @@
             │                                                                          │            
             │   ⚙  MCP Configuration  (↑/↓ scroll  •  y copy  •  Esc close)            │            
             │                                                                          │            
-            │  [{"name":"kubernetes","proxy_port":8001},{"name":"prometheus","proxy_p  │            
-            │  ort"                                                                    │            
+            │  {"mcpServers":[{"name":"kubernetes-                                     │            
+            │  mcp","url":"local://kubernetes","descri                                 │            
             │                                                                          │            
             │                                                                          │            
             │                                                                          │            

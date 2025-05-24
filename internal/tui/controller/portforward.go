@@ -26,16 +26,18 @@ func SetupPortForwards(m *model.Model, mcName, wcName string) {
 	}
 
 	// Iterate over the centrally defined port forward configurations stored in the model
-	for _, pfCfg := range m.PortForwardingConfig {
-		// The InstanceKey from PortForwardingConfig should be used as the key
-		// Ensure Label and InstanceKey are consistent if they need to be.
-		// For now, assuming pfCfg.Label is suitable as the key and for display.
-		m.PortForwardOrder = append(m.PortForwardOrder, pfCfg.Label)
-		m.PortForwards[pfCfg.Label] = &model.PortForwardProcess{
-			Label:     pfCfg.Label,
-			Config:    pfCfg,               // Store the full config from PortForwardingConfig
-			Active:    true,                // Assume all available PFs are initially active
-			StatusMsg: "Awaiting Setup...", // Initial status, will be updated by ServiceManager
+	// m.PortForwardingConfig is now []config.PortForwardDefinition
+	for _, pfCfg := range m.PortForwardingConfig { // pfCfg is config.PortForwardDefinition
+		if !pfCfg.Enabled { // Only setup enabled port forwards
+			continue
+		}
+		// Use pfCfg.Name as the key and label
+		m.PortForwardOrder = append(m.PortForwardOrder, pfCfg.Name)
+		m.PortForwards[pfCfg.Name] = &model.PortForwardProcess{
+			Label:     pfCfg.Name, // Use Name as the display Label in the TUI panel
+			Config:    pfCfg,      // Store the full config.PortForwardDefinition
+			Active:    true,       // Initially active, ServiceManager will start it
+			StatusMsg: "Awaiting Setup...",
 		}
 	}
 }

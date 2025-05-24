@@ -1,9 +1,8 @@
 package controller
 
 import (
+	"envctl/internal/config"
 	"envctl/internal/managers"
-	"envctl/internal/mcpserver"
-	"envctl/internal/portforwarding"
 	"envctl/internal/reporting"
 	"envctl/internal/tui/model"
 	"errors"
@@ -215,10 +214,21 @@ func handleContextSwitchAndReinitializeResultMsg(m *model.Model, msg model.Conte
 	LogInfo(connectionControllerSubsystem, "Successfully switched context to: %s. Re-initializing TUI services.", msg.SwitchedContext)
 	m.IsLoading = true
 
+	// Stop existing services before loading new config
 	if m.ServiceManager != nil {
 		m.ServiceManager.StopAllServices()
+		// Short delay to allow services to stop gracefully before new ones might try to use same resources
+		time.Sleep(250 * time.Millisecond) 
 	} else {
 		LogInfo(connectionControllerSubsystem, "ServiceManager is nil, cannot stop services during re-initialize.")
+	}
+
+	// Load the new configuration based on the new MC/WC names
+	newEnvctlConfig, err := config.LoadConfig(msg.DesiredMCName, msg.DesiredWCName)
+	if err != nil {
+		LogError(connectionControllerSubsystem, err, "Failed to load new envctl configuration for MC: %s, WC: %s", msg.DesiredMCName, msg.DesiredWCName)
+		m.IsLoading = false
+		return m, m.SetStatusMessage("Failed to load new configuration.", model.StatusBarError, 5*time.Second)
 	}
 
 	m.ManagementClusterName = msg.DesiredMCName
@@ -230,20 +240,27 @@ func handleContextSwitchAndReinitializeResultMsg(m *model.Model, msg model.Conte
 	} else {
 		m.WCHealth = model.ClusterHealthInfo{}
 	}
-	m.PortForwardingConfig = portforwarding.GetPortForwardConfig(m.ManagementClusterName, m.WorkloadClusterName)
-	m.MCPServerConfig = mcpserver.GetMCPServerConfig()
+	// Update model with new loaded configs
+	m.PortForwardingConfig = newEnvctlConfig.PortForwards
+	m.MCPServerConfig = newEnvctlConfig.MCPServers
+	
 	m.PortForwards = make(map[string]*model.PortForwardProcess)
 	m.McpServers = make(map[string]*model.McpServerProcess)
-	SetupPortForwards(m, m.ManagementClusterName, m.WorkloadClusterName)
+	
+	SetupPortForwards(m, m.ManagementClusterName, m.WorkloadClusterName) // This will use m.PortForwardingConfig
+	
 	m.McpProxyOrder = nil
-	for _, cfg := range m.MCPServerConfig {
+	for _, cfg := range m.MCPServerConfig { // This now iterates over []config.MCPServerDefinition
+		if !cfg.Enabled { continue }
 		m.McpProxyOrder = append(m.McpProxyOrder, cfg.Name)
 		m.McpServers[cfg.Name] = &model.McpServerProcess{
 			Label:     cfg.Name,
-			Active:    true,
+			Active:    true, // Active implies it should be started by ServiceManager
 			StatusMsg: "Awaiting Setup...",
+			Config:    cfg, // Store the config.MCPServerDefinition
 		}
 	}
+
 	if len(m.PortForwardOrder) > 0 {
 		m.FocusedPanelKey = m.PortForwardOrder[0]
 	} else if m.ManagementClusterName != "" {
@@ -251,6 +268,7 @@ func handleContextSwitchAndReinitializeResultMsg(m *model.Model, msg model.Conte
 	} else {
 		m.FocusedPanelKey = ""
 	}
+
 	var newInitCmds []tea.Cmd
 	if m.KubeMgr != nil {
 		newInitCmds = append(newInitCmds, GetCurrentKubeContextCmd(m.KubeMgr))
@@ -262,21 +280,26 @@ func handleContextSwitchAndReinitializeResultMsg(m *model.Model, msg model.Conte
 			wcTargetContext := m.KubeMgr.BuildWcContextName(m.ManagementClusterName, m.WorkloadClusterName)
 			newInitCmds = append(newInitCmds, FetchNodeStatusCmd(m.KubeMgr, wcTargetContext, false, m.WorkloadClusterName))
 		}
+
+		// Build managed service configs from the newly loaded and model-updated configs
 		var managedServiceConfigs []managers.ManagedServiceConfig
-		for _, pfCfg := range m.PortForwardingConfig {
+		for _, pfCfg := range m.PortForwardingConfig { // m.PortForwardingConfig is now []config.PortForwardDefinition
+			if !pfCfg.Enabled { continue }
 			managedServiceConfigs = append(managedServiceConfigs, managers.ManagedServiceConfig{
 				Type:   reporting.ServiceTypePortForward,
-				Label:  pfCfg.Label,
+				Label:  pfCfg.Name, // Use Name
 				Config: pfCfg,
 			})
 		}
-		for _, mcpCfg := range m.MCPServerConfig {
+		for _, mcpCfg := range m.MCPServerConfig { // m.MCPServerConfig is now []config.MCPServerDefinition
+			if !mcpCfg.Enabled { continue }
 			managedServiceConfigs = append(managedServiceConfigs, managers.ManagedServiceConfig{
 				Type:   reporting.ServiceTypeMCPServer,
 				Label:  mcpCfg.Name,
 				Config: mcpCfg,
 			})
 		}
+
 		if len(managedServiceConfigs) > 0 && m.ServiceManager != nil {
 			startServicesCmd := func() tea.Msg {
 				var wg sync.WaitGroup

@@ -2,6 +2,7 @@ package managers
 
 import (
 	// No longer importing "envctl/internal/managers"
+	"envctl/internal/config"
 	"envctl/internal/mcpserver"
 	"envctl/internal/portforwarding"
 	"envctl/internal/reporting"
@@ -90,8 +91,8 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 
 	var startupErrors []error
 	allStopChannels := make(map[string]chan struct{})
-	var pfConfigs []portforwarding.PortForwardingConfig
-	var mcpConfigs []mcpserver.MCPServerConfig
+	var pfConfigs []config.PortForwardDefinition
+	var mcpConfigs []config.MCPServerDefinition
 	pfOriginalLabels := make(map[string]string)
 	mcpOriginalLabels := make(map[string]string)
 
@@ -99,22 +100,18 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 		// cfg.Type is now reporting.ServiceType
 		switch cfg.Type {
 		case reporting.ServiceTypePortForward:
-			if pfConfig, ok := cfg.Config.(portforwarding.PortForwardingConfig); ok {
-				actualPfConfig := pfConfig
-				actualPfConfig.Label = cfg.Label
-				pfConfigs = append(pfConfigs, actualPfConfig)
-				pfOriginalLabels[actualPfConfig.Label] = cfg.Label
+			if pfConfig, ok := cfg.Config.(config.PortForwardDefinition); ok {
+				pfConfigs = append(pfConfigs, pfConfig)
+				pfOriginalLabels[pfConfig.Name] = cfg.Label
 			} else {
-				startupErrors = append(startupErrors, fmt.Errorf("invalid port forward config for label %s: type assertion failed", cfg.Label))
+				startupErrors = append(startupErrors, fmt.Errorf("invalid port forward config for label %s: type assertion failed to config.PortForwardDefinition", cfg.Label))
 			}
 		case reporting.ServiceTypeMCPServer:
-			if mcpConfig, ok := cfg.Config.(mcpserver.MCPServerConfig); ok {
-				actualMcpConfig := mcpConfig
-				actualMcpConfig.Name = cfg.Label
-				mcpConfigs = append(mcpConfigs, actualMcpConfig)
-				mcpOriginalLabels[actualMcpConfig.Name] = cfg.Label
+			if mcpConfig, ok := cfg.Config.(config.MCPServerDefinition); ok {
+				mcpConfigs = append(mcpConfigs, mcpConfig)
+				mcpOriginalLabels[mcpConfig.Name] = cfg.Label
 			} else {
-				startupErrors = append(startupErrors, fmt.Errorf("invalid MCP server config for label %s: type assertion failed", cfg.Label))
+				startupErrors = append(startupErrors, fmt.Errorf("invalid MCP server config for label %s: type assertion failed to config.MCPServerDefinition", cfg.Label))
 			}
 		default:
 			if sm.reporter != nil {

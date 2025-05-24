@@ -3,16 +3,17 @@ package mcpserver
 import (
 	"sync"
 	// "syscall" // Not directly used here
+	"envctl/internal/config" // Added for new config type
 )
 
-// StartAllMCPServers iterates through the given list of MCPServerConfig configurations,
+// StartAllMCPServers iterates through the given list of MCPServerDefinition configurations,
 // attempts to start each one using StartAndManageIndividualMcpServer, and sends information
 // about each attempt (ManagedMcpServerInfo) on the returned channel.
 // The provided McpUpdateFunc will be used for ongoing updates from each server.
 // The master goroutine that launches individual servers will add to the WaitGroup for each server it attempts.
 // StartAndManageIndividualMcpServer is then responsible for wg.Done() if it successfully launches its own goroutine,
 // otherwise this function (StartAllMCPServers) must handle wg.Done() for initial startup failures.
-func StartAllMCPServers(mcpServerConfigs []MCPServerConfig, updateFn McpUpdateFunc, wg *sync.WaitGroup) <-chan ManagedMcpServerInfo {
+func StartAllMCPServers(mcpServerConfigs []config.MCPServerDefinition, updateFn McpUpdateFunc, wg *sync.WaitGroup) <-chan ManagedMcpServerInfo {
 	infoChan := make(chan ManagedMcpServerInfo)
 
 	go func() {
@@ -57,7 +58,7 @@ var StartMCPServers = startMCPServersInternal
 
 // startMCPServersInternal is the actual implementation for starting MCP servers.
 func startMCPServersInternal(
-	configs []MCPServerConfig,
+	configs []config.MCPServerDefinition,
 	mcpUpdateFn McpUpdateFunc,
 	wg *sync.WaitGroup,
 ) (map[string]chan struct{}, []error) {

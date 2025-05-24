@@ -2,11 +2,11 @@ package model_test
 
 import (
 	"context"
+	"envctl/internal/config"
 	"envctl/internal/k8smanager" // NEW: for KubeManagerAPI and its types
 	"envctl/internal/reporting"
 
 	// For ServiceManagerAPI if needed (nil for now)
-	"envctl/internal/mcpserver"
 
 	// "envctl/internal/portforwarding" // Already commented out
 	// "envctl/internal/service" // REMOVED
@@ -253,7 +253,9 @@ func TestAppModeTransitions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			coreModel := model.InitialModel("test-mc", "test-wc", "test-context", false, mcpserver.GetMCPServerConfig(), nil, &mockKubeManagerForModelTest{}, nil /*logChan*/)
+			// Use default config for InitialModel
+			defaultCfg := config.GetDefaultConfig("test-mc", "test-wc") 
+			coreModel := model.InitialModel("test-mc", "test-wc", "test-context", false, defaultCfg, &mockKubeManagerForModelTest{}, nil)
 			coreModel.CurrentAppMode = tt.initialAppMode
 
 			if tt.initialModelSetup != nil {
@@ -294,7 +296,9 @@ func TestMessageHandling(t *testing.T) {
 		{
 			name: "ClearStatusBarMsg clears status bar",
 			initialModel: func() *model.Model {
-				m := model.InitialModel("mc", "wc", "ctx", false, mcpserver.GetMCPServerConfig(), nil, &mockKubeManagerForModelTest{}, nil /*logChan*/)
+				// Use default config for InitialModel
+				defaultCfg := config.GetDefaultConfig("mc", "wc")
+				m := model.InitialModel("mc", "wc", "ctx", false, defaultCfg, &mockKubeManagerForModelTest{}, nil)
 				m.StatusBarMessage = "Initial message"
 				m.StatusBarMessageType = model.StatusBarInfo
 				return m
@@ -310,7 +314,9 @@ func TestMessageHandling(t *testing.T) {
 		{
 			name: "SetStatusMessage updates status bar and handles cancellation channel",
 			initialModel: func() *model.Model {
-				m := model.InitialModel("mc", "wc", "ctx", false, mcpserver.GetMCPServerConfig(), nil, &mockKubeManagerForModelTest{}, nil /*logChan*/)
+				// Use default config for InitialModel
+				defaultCfg := config.GetDefaultConfig("mc", "wc")
+				m := model.InitialModel("mc", "wc", "ctx", false, defaultCfg, &mockKubeManagerForModelTest{}, nil)
 				return m
 			},
 			// No specific message, we will call the method directly on the model in assert.
