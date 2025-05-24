@@ -74,12 +74,23 @@ type ManagedServiceUpdate struct {
 	IsReady bool // Derived from State (e.g., true if State == StateRunning).
 
 	ErrorDetail error // Associated Go error if State is Failed or a warning state has an error.
+
+	// Additional service-specific data
+	ProxyPort int // For MCP servers: the port that mcp-proxy is listening on (0 if not applicable)
+	PID       int // For MCP servers: the process ID (0 if not applicable or not yet started)
 }
 
 // String provides a simple string representation for debugging the update itself.
 func (msu ManagedServiceUpdate) String() string {
-	return fmt.Sprintf("StateUpdate(TS: %s, Source: %s-%s, State: %s, Ready: %t, ErrDetail: %v)",
-		msu.Timestamp.Format(time.RFC3339), msu.SourceType, msu.SourceLabel, msu.State, msu.IsReady, msu.ErrorDetail)
+	portInfo := ""
+	if msu.ProxyPort > 0 {
+		portInfo = fmt.Sprintf(", Port: %d", msu.ProxyPort)
+	}
+	if msu.PID > 0 {
+		portInfo += fmt.Sprintf(", PID: %d", msu.PID)
+	}
+	return fmt.Sprintf("StateUpdate(TS: %s, Source: %s-%s, State: %s, Ready: %t%s, ErrDetail: %v)",
+		msu.Timestamp.Format(time.RFC3339), msu.SourceType, msu.SourceLabel, msu.State, msu.IsReady, portInfo, msu.ErrorDetail)
 }
 
 // ServiceReporter defines a unified interface for reporting service/component state updates.

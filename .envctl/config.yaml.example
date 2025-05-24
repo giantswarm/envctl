@@ -1,0 +1,14 @@
+# Project-specific configuration for envctl
+# Copy this to .envctl/config.yaml and update with your values
+
+mcpServers:
+  - name: grafana
+    type: localCommand
+    enabledByDefault: true
+    icon: "📊"
+    category: "Monitoring"
+    command: ["mcp-grafana"]
+    env:
+      GRAFANA_URL: "http://localhost:3000"
+      GRAFANA_API_KEY: "YOUR_GRAFANA_SERVICE_ACCOUNT_TOKEN_HERE"
+    requiresPortForwards: ["mc-grafana"] 

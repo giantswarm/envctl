@@ -254,12 +254,20 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 				State:       state,
 				IsReady:     (state == reporting.StateRunning),
 				ErrorDetail: mcpStatusUpdate.ProcessErr,
+				ProxyPort:   mcpStatusUpdate.ProxyPort,
+				PID:         mcpStatusUpdate.PID,
 			}
 
 			if !known || state != lastReportedState {
 				sm.serviceStates[originalLabel] = state
 
 				logMessage := fmt.Sprintf("Service %s (MCPServer) state changed to: %s", originalLabel, state)
+				if mcpStatusUpdate.ProxyPort > 0 {
+					logMessage += fmt.Sprintf(" (port: %d)", mcpStatusUpdate.ProxyPort)
+				}
+				if mcpStatusUpdate.PID > 0 {
+					logMessage += fmt.Sprintf(" [PID: %d]", mcpStatusUpdate.PID)
+				}
 				if state == reporting.StateFailed || mcpStatusUpdate.ProcessErr != nil {
 					logging.Error("ServiceManager", mcpStatusUpdate.ProcessErr, "%s", logMessage)
 				} else if state == reporting.StateRunning || state == reporting.StateStopped {

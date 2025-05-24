@@ -259,7 +259,9 @@ func handleContextSwitchAndReinitializeResultMsg(m *model.Model, msg model.Conte
 			Label:     cfg.Name,
 			Active:    true, // Active implies it should be started by ServiceManager
 			StatusMsg: "Awaiting Setup...",
-			Config:    cfg, // Store the config.MCPServerDefinition
+			Config:    cfg,           // Store the config.MCPServerDefinition
+			ProxyPort: cfg.ProxyPort, // Initialize with configured port
+			Pid:       0,             // Will be updated when process starts
 		}
 	}
 

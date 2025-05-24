@@ -84,3 +84,75 @@ func startMCPServersInternal(
 
 	return stopChans, startupErrors
 }
+
+// StartAllPredefinedMcpServers launches multiple MCP servers based on the provided configurations.
+// It uses a channel to communicate the results of each server initialization asynchronously.
+// Each server is launched in parallel using goroutines.
+// 'wg' can be nil; if provided, each server increment the WaitGroup counter and decrement it when their lifecycle goroutine ends.
+// 'updateFn' is called whenever there's a status update for any MCP server.
+func StartAllPredefinedMcpServers(
+	serverConfigs []config.MCPServerDefinition, // Updated type
+	updateFn McpUpdateFunc,
+	wg *sync.WaitGroup,
+) <-chan ManagedMcpServerInfo {
+
+	ch := make(chan ManagedMcpServerInfo, len(serverConfigs))
+	var internalWg sync.WaitGroup
+
+	for _, cfg := range serverConfigs {
+		internalWg.Add(1)
+		serverConfig := cfg // Capture loop variable
+		if wg != nil {
+			wg.Add(1)
+		}
+
+		// Create a channel to capture port updates for this server
+		portChan := make(chan int, 1)
+		serverLabel := serverConfig.Name
+
+		// Wrap the updateFn to capture port updates
+		wrappedUpdateFn := func(update McpDiscreteStatusUpdate) {
+			if update.ProxyPort > 0 && update.Label == serverLabel {
+				select {
+				case portChan <- update.ProxyPort:
+				default:
+					// Channel already has a port, don't block
+				}
+			}
+			if updateFn != nil {
+				updateFn(update)
+			}
+		}
+
+		go func() {
+			defer internalWg.Done()
+
+			pid, stopChan, err := StartAndManageIndividualMcpServer(serverConfig, wrappedUpdateFn, wg)
+
+			// Try to get the port if it was detected
+			var detectedPort int
+			select {
+			case detectedPort = <-portChan:
+				// Got a port
+			default:
+				// No port detected yet, use configured port as fallback
+				detectedPort = serverConfig.ProxyPort
+			}
+
+			ch <- ManagedMcpServerInfo{
+				Label:     serverConfig.Name,
+				PID:       pid,
+				ProxyPort: detectedPort,
+				StopChan:  stopChan,
+				Err:       err,
+			}
+		}()
+	}
+
+	go func() {
+		internalWg.Wait()
+		close(ch)
+	}()
+
+	return ch
+}

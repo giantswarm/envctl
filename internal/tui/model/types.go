@@ -265,6 +265,7 @@ type PortForwardProcess struct { // Renamed from portForwardProcess
 type McpServerProcess struct { // Renamed from mcpServerProcess
 	Label     string                     // Exported, User-friendly label (e.g., "Kubernetes API").
 	Pid       int                        // Exported, PID of the process.
+	ProxyPort int                        // Exported, Port that mcp-proxy is listening on
 	StopChan  chan struct{}              // Exported, Channel to signal the process to stop.
 	Output    []string                   // Exported, Stores output or log messages.
 	Err       error                      // Exported, Any error encountered by the process.

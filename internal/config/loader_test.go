@@ -224,12 +224,17 @@ func TestLoadConfig_ContextResolution(t *testing.T) {
 	// The first port-forward to require a WC name with an empty wcName supplied will be "pf-wc"
 	assert.Contains(t, errOnlyMc.Error(), "port-forward 'pf-wc' requires WC context, but wcName is not provided (mcName: some-mc-for-case2)")
 
-	// Case 3: No mc or wc provided. "mc" placeholder for "pf-mc" should be the first error.
+	// Case 3: No mc or wc provided. Either "mc" or "wc" placeholder error could occur first.
 	// The user config file (confWithPlaceholders) is still in effect.
 	_, errNoMcWc := LoadConfig("", "")
 	assert.Error(t, errNoMcWc)
-	// The first port-forward to require an MC name with an empty mcName supplied will be "pf-mc"
-	assert.Contains(t, errNoMcWc.Error(), "port-forward 'pf-mc' requires MC context, but mcName is not provided")
+	// Since map iteration order is not guaranteed, we could get either MC or WC error
+	// Just verify it's a context resolution error
+	assert.Contains(t, errNoMcWc.Error(), "error resolving KubeContextTarget placeholders")
+	assert.True(t,
+		strings.Contains(errNoMcWc.Error(), "requires MC context, but mcName is not provided") ||
+			strings.Contains(errNoMcWc.Error(), "requires WC context, but wcName is not provided"),
+		"Error should be about missing MC or WC context")
 
 }
 

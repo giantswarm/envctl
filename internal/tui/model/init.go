@@ -191,6 +191,8 @@ func InitialModel(
 			StatusMsg: "Initializing...",
 			Active:    false,
 			Config:    mcpCfg,
+			ProxyPort: mcpCfg.ProxyPort,
+			Pid:       0,
 		}
 	}
 

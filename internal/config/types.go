@@ -37,6 +37,9 @@ type MCPServerDefinition struct {
 	Command []string          `yaml:"command,omitempty"` // Command and its arguments, e.g., ["npx", "mcp-server-kubernetes"]
 	Env     map[string]string `yaml:"env,omitempty"`     // Environment variables for the command
 
+	// MCP Proxy Configuration
+	ProxyPort int `yaml:"proxyPort,omitempty"` // Port for mcp-proxy to bind to (0 = random port)
+
 	// Fields for Type = "container"
 	Image            string            `yaml:"image,omitempty"`            // Container image, e.g., "giantswarm/mcp-server-prometheus:latest"
 	ContainerPorts   []string          `yaml:"containerPorts,omitempty"`   // Port mappings, e.g., ["8080:8080", "9090:9000"] (host:container)
@@ -147,23 +150,22 @@ func GetDefaultConfig(mcName, wcName string) EnvctlConfig {
 
 	defaultMCPServers := []MCPServerDefinition{
 		{
-			Name:     "kubernetes",
-			Type:     MCPServerTypeLocalCommand,
-			Enabled:  true,
-			Icon:     "☸️",
-			Category: "Core",
-			Command:  []string{"npx", "mcp-server-kubernetes"},
-			// For local commands, ProxyPort was used. This might become part of how
-			// the service manager handles them or a specific field if needed.
-			// For now, assuming local commands manage their own ports or it's configured elsewhere if proxied.
+			Name:      "kubernetes",
+			Type:      MCPServerTypeLocalCommand,
+			Enabled:   true,
+			Icon:      "☸️",
+			Category:  "Core",
+			Command:   []string{"npx", "mcp-server-kubernetes"},
+			ProxyPort: 8001, // 0 means random port assignment
 		},
 		{
-			Name:     "prometheus",
-			Type:     MCPServerTypeLocalCommand,
-			Enabled:  true,
-			Icon:     "🔥",
-			Category: "Monitoring",
-			Command:  []string{"uvx", "mcp-server-prometheus"},
+			Name:      "prometheus",
+			Type:      MCPServerTypeLocalCommand,
+			Enabled:   true,
+			Icon:      "🔥",
+			Category:  "Monitoring",
+			Command:   []string{"uv", "--directory", "/home/teemow/projects/prometheus-mcp-server", "run", "src/prometheus_mcp_server/main.py"},
+			ProxyPort: 8002, // 0 means random port assignment
 			Env: map[string]string{
 				"PROMETHEUS_URL": "http://localhost:8080/prometheus", // Assumes mc-prometheus port-forward
 				"ORG_ID":         "giantswarm",
@@ -176,7 +178,8 @@ func GetDefaultConfig(mcName, wcName string) EnvctlConfig {
 			Enabled:              true,
 			Icon:                 "📊",
 			Category:             "Monitoring",
-			Command:              []string{"uvx", "mcp-server-grafana"},
+			Command:              []string{"mcp-grafana"},
+			ProxyPort:            8003,                                                      // 0 means random port assignment
 			Env:                  map[string]string{"GRAFANA_URL": "http://localhost:3000"}, // Assumes mc-grafana port-forward
 			RequiresPortForwards: []string{"mc-grafana"},
 		},

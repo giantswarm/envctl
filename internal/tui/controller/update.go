@@ -328,6 +328,14 @@ func handleReporterUpdate(m *model.Model, update reporting.ManagedServiceUpdate)
 			mcpProcess.StatusMsg = string(update.State) // Use State for StatusMsg
 			mcpProcess.Active = update.IsReady          // IsReady is derived from State
 			mcpProcess.Err = update.ErrorDetail
+			// Update ProxyPort if provided
+			if update.ProxyPort > 0 {
+				mcpProcess.ProxyPort = update.ProxyPort
+			}
+			// Update PID if provided
+			if update.PID > 0 {
+				mcpProcess.Pid = update.PID
+			}
 		}
 	}
 
@@ -344,6 +352,14 @@ func handleReporterUpdate(m *model.Model, update reporting.ManagedServiceUpdate)
 			statusBarMsg = fmt.Sprintf("%s %s: %s", statusPrefix, update.State, update.ErrorDetail.Error())
 		} else {
 			statusBarMsg = fmt.Sprintf("%s %s", statusPrefix, update.State)
+			// Add port info to status bar for MCP servers
+			if update.SourceType == reporting.ServiceTypeMCPServer && update.ProxyPort > 0 {
+				statusBarMsg += fmt.Sprintf(" (port: %d)", update.ProxyPort)
+			}
+			// Add PID info to status bar for MCP servers
+			if update.SourceType == reporting.ServiceTypeMCPServer && update.PID > 0 {
+				statusBarMsg += fmt.Sprintf(" [PID: %d]", update.PID)
+			}
 			switch update.State {
 			case reporting.StateFailed:
 				statusBarMsgType = model.StatusBarError

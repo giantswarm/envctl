@@ -6,7 +6,7 @@ alwaysApply: true
 When closing an issue:
 
 1.  Confirm with the user that the issue is ready to be closed.
-2.  Make sure to run `goimports -w ./...` and `go fmt ./...` before your commit any code.
+2.  Make sure to run `goimports -w .` and `go fmt ./...` before your commit any code.
 3.  Run tests by executing the `make test` command in the terminal using `run_terminal_cmd`.
 4.  **If tests fail:**
     *   You have to fix the tests.

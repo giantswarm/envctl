@@ -16,11 +16,15 @@ func renderMcpProxyPanel(serverName string, predefinedData config.MCPServerDefin
 	var contentFg lipgloss.Style
 	statusMsg := "Not Started"
 	pidStr := "PID: N/A"
+	portStr := "Port: N/A"
 
 	if proc != nil {
 		statusMsg = strings.TrimSpace(proc.StatusMsg)
 		if proc.Pid > 0 {
 			pidStr = fmt.Sprintf("PID: %d", proc.Pid)
+		}
+		if proc.ProxyPort > 0 {
+			portStr = fmt.Sprintf("Port: %d", proc.ProxyPort)
 		}
 		st := strings.ToLower(statusMsg)
 		switch {
@@ -52,6 +56,8 @@ func renderMcpProxyPanel(serverName string, predefinedData config.MCPServerDefin
 	b.WriteString(color.PortTitleStyle.Render(SafeIcon(icon) + strings.TrimSpace(predefinedData.Name) + " MCP"))
 	b.WriteString("\n")
 	b.WriteString(pidStr)
+	b.WriteString("\n")
+	b.WriteString(portStr)
 	b.WriteString("\n")
 
 	var iconStr string

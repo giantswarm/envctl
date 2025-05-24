@@ -3,12 +3,13 @@ package controller
 import (
 	"encoding/json"
 	"envctl/internal/config"
+	"envctl/internal/tui/model"
 	"fmt"
 	"strings"
 )
 
 // GenerateMcpConfigJson creates a JSON string with MCP server endpoint configurations.
-// It now uses []config.MCPServerDefinition.
+// It now uses both []config.MCPServerDefinition and the runtime McpServerProcess map to get actual proxy ports.
 // The concept of a ProxyPort for mcp-proxy itself is removed from MCPServerDefinition.
 // The URL for the MCP server will depend on how it exposes itself (e.g., via an env var, or a fixed port).
 // This function might need to be re-thought if the goal is to provide SSE endpoint URLs managed by an mcp-proxy.
@@ -19,7 +20,7 @@ import (
 // Given the refactor, this JSON generation needs to adapt or be re-evaluated for its purpose.
 // Let's assume for now, we can't reliably generate these URLs without more info on how mcp-proxy works with the new config.
 // For a placeholder, we can construct a dummy URL or indicate it's locally managed.
-func GenerateMcpConfigJson(mcpServerConfigs []config.MCPServerDefinition) string {
+func GenerateMcpConfigJson(mcpServerConfigs []config.MCPServerDefinition, mcpProcesses map[string]*model.McpServerProcess) string {
 	type entry struct {
 		URL         string `json:"url"`
 		Description string `json:"description,omitempty"`
@@ -30,14 +31,19 @@ func GenerateMcpConfigJson(mcpServerConfigs []config.MCPServerDefinition) string
 			continue
 		}
 		key := fmt.Sprintf("%s-mcp", cfg.Name)
-		// The URL construction needs to be determined. The old ProxyPort is gone.
-		// If the service is localCommand, its URL might be in cfg.Env (e.g., PROMETHEUS_URL for prometheus server).
-		// If it's a container, it's more complex.
-		// For now, let's create a placeholder or try to find a URL from Env.
 		description := fmt.Sprintf("Locally managed %s MCP server.", cfg.Type)
-		url := "local://" + cfg.Name // Placeholder
+		url := "local://" + cfg.Name // Default placeholder
 
-		if cfg.Type == config.MCPServerTypeLocalCommand {
+		// Check if we have runtime process information with actual proxy port
+		if proc, exists := mcpProcesses[cfg.Name]; exists && proc.ProxyPort > 0 {
+			// We have an actual port from mcp-proxy
+			url = fmt.Sprintf("http://localhost:%d/sse", proc.ProxyPort)
+			description = fmt.Sprintf("%s MCP server via mcp-proxy on port %d", cfg.Type, proc.ProxyPort)
+		} else if cfg.ProxyPort > 0 {
+			// Use configured port if no runtime port available
+			url = fmt.Sprintf("http://localhost:%d/sse", cfg.ProxyPort)
+			description = fmt.Sprintf("%s MCP server configured for port %d", cfg.Type, cfg.ProxyPort)
+		} else if cfg.Type == config.MCPServerTypeLocalCommand {
 			// Attempt to find a common URL env var, e.g., ending with _URL
 			for envKey, envVal := range cfg.Env {
 				if strings.HasSuffix(strings.ToUpper(envKey), "_URL") && strings.HasPrefix(envVal, "http") {
@@ -48,7 +54,6 @@ func GenerateMcpConfigJson(mcpServerConfigs []config.MCPServerDefinition) string
 			}
 		} else if cfg.Type == config.MCPServerTypeContainer {
 			// For containers, the URL is not as straightforward to determine for an external SSE endpoint.
-			// It might be one of the mapped ContainerPorts.
 			description = fmt.Sprintf("Containerized MCP server. Ports: %v", cfg.ContainerPorts)
 			// Could try to pick a port, e.g., the first one, but it's a guess.
 			if len(cfg.ContainerPorts) > 0 {

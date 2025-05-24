@@ -1,2 +1,3 @@
 envctl
 dist/
+.envctl/config.yaml

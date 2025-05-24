@@ -7,6 +7,7 @@ type McpDiscreteStatusUpdate struct {
 	ProcessStatus string // A string indicating the npx process status, e.g., "NpxStarting", "NpxRunning", "NpxExitedWithError"
 	ProcessErr    error  // The actual Go error object if the process failed or exited with an error
 	PID           int    // Process ID, can be useful for diagnostics
+	ProxyPort     int    // Port that mcp-proxy is listening on (0 if not yet determined)
 }
 
 // McpUpdateFunc is a callback function type for receiving McpDiscreteStatusUpdate messages.
@@ -15,8 +16,9 @@ type McpUpdateFunc func(update McpDiscreteStatusUpdate)
 // ManagedMcpServerInfo holds information about an MCP server that has been initiated.
 // It's sent over a channel by StartAllPredefinedMcpServers.
 type ManagedMcpServerInfo struct {
-	Label    string        // Name of the server
-	PID      int           // Process ID if successfully started, otherwise 0
-	StopChan chan struct{} // Channel to signal this server to stop; nil if startup failed badly
-	Err      error         // Initial error during startup, if any
+	Label     string        // Name of the server
+	PID       int           // Process ID if successfully started, otherwise 0
+	ProxyPort int           // Port that mcp-proxy is listening on (0 if not determined)
+	StopChan  chan struct{} // Channel to signal this server to stop; nil if startup failed badly
+	Err       error         // Initial error during startup, if any
 }

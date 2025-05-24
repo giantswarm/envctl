@@ -37,7 +37,7 @@ func handleKeyMsgGlobal(m *model.Model, keyMsg tea.KeyMsg, existingCmds []tea.Cm
 			m.CurrentAppMode = model.ModeMainDashboard
 			return m, nil
 		case "y":
-			configStr := GenerateMcpConfigJson(m.MCPServerConfig)
+			configStr := GenerateMcpConfigJson(m.MCPServerConfig, m.McpServers)
 			if err := clipboard.WriteAll(configStr); err != nil {
 				LogError(keyGlobalSubsystem, err, "Failed to copy MCP config: %v", err)
 				return m, m.SetStatusMessage("Copy MCP config failed", model.StatusBarError, 3*time.Second)
@@ -130,7 +130,7 @@ func handleKeyMsgGlobal(m *model.Model, keyMsg tea.KeyMsg, existingCmds []tea.Cm
 		} else {
 			m.CurrentAppMode = model.ModeMcpConfigOverlay
 			// Populate the viewport content when entering the mode
-			configJSON := GenerateMcpConfigJson(m.MCPServerConfig)
+			configJSON := GenerateMcpConfigJson(m.MCPServerConfig, m.McpServers)
 			m.McpConfigViewport.SetContent(configJSON)
 			m.McpConfigViewport.GotoTop() // Reset scroll position
 		}

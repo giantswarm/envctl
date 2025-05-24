@@ -23,23 +23,13 @@ func StartAndManageIndividualMcpServer(
 ) (pid int, stopChan chan struct{}, initialError error) {
 
 	label := serverConfig.Name
-	// proxyPort := serverConfig.ProxyPort // ProxyPort is not part of MCPServerDefinition, mcp-proxy manages its own port or it's passed via env
 	subsystem := "MCPServer-" + label
 
-	// Logging needs to be adjusted as ProxyPort is not directly available.
-	// The command from serverConfig.Command will be executed directly by mcp-proxy.
+	// Logging needs to be adjusted as ProxyPort is available in serverConfig.
 	logging.Info(subsystem, "Initializing MCP server %s (underlying: %s)", label, strings.Join(serverConfig.Command, " "))
 	if updateFn != nil {
-		updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "NpxInitializing", PID: 0})
+		updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "NpxInitializing", PID: 0, ProxyPort: 0})
 	}
-
-	// mcp-proxy will now take the command and its arguments directly.
-	// The old logic constructed proxyArgs including a --port for mcp-proxy itself.
-	// Now, serverConfig.Command contains the actual command and its args.
-	// mcp-proxy needs to be invoked in a way that it executes serverConfig.Command.
-	// Assuming mcp-proxy is a generic process runner that takes the target command after "--".
-	// If mcp-proxy has a fixed port, it needs to be configured when mcp-proxy itself is run, or via its own config.
-	// If the MCP server (e.g. npx my-server) needs a port, it should be in its serverConfig.Env or serverConfig.Command args.
 
 	// For now, assuming mcp-proxy is available and takes the command to execute.
 	// The MCPServerDefinition.Command is []string, first element is command, rest are args.
@@ -47,35 +37,32 @@ func StartAndManageIndividualMcpServer(
 		errMsg := fmt.Errorf("command not defined for MCP server %s", label)
 		logging.Error(subsystem, errMsg, "Cannot start MCP server")
 		if updateFn != nil {
-			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "NpxStartFailed", ProcessErr: errMsg})
+			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "NpxStartFailed", ProcessErr: errMsg, ProxyPort: 0})
 		}
 		return 0, nil, errMsg
 	}
 
-	// Construct arguments for mcp-proxy. It needs to execute the command defined in serverConfig.Command.
-	// This assumes mcp-proxy still uses a specific port for its own API if any, or that part is handled elsewhere.
-	// The main change is that serverConfig.Command IS the command to run, not something mcp-proxy figures out.
+	// Construct arguments for mcp-proxy.
+	proxyCmd := "mcp-proxy"
+	mcpProxyArgs := []string{}
 
-	// Let's assume mcp-proxy still needs a port for itself, for example, if it offers a control plane.
-	// This port is NOT the port of the service being proxied (that's implicit in the service's own config).
-	// For this refactor, let's assume mcp-proxy doesn't need a specific port passed this way for the *target* service.
-	// If it needs a port for *itself*, that is a separate concern from MCPServerDefinition.
-	// The original `ProxyPort` was for `mcp-proxy` itself.
-	// We will remove direct use of `ProxyPort` from `MCPServerDefinition` here.
-	// The `mcp-proxy` command itself will be responsible for its own port management.
+	// Add port argument if specified
+	if serverConfig.ProxyPort > 0 {
+		mcpProxyArgs = append(mcpProxyArgs, "--port", fmt.Sprintf("%d", serverConfig.ProxyPort))
+		logging.Info(subsystem, "Using specified port %d for mcp-proxy", serverConfig.ProxyPort)
+	} else {
+		logging.Info(subsystem, "Using random port assignment for mcp-proxy")
+	}
 
-	proxyCmd := "mcp-proxy"                              // This could be configurable globally if needed
-	mcpProxyArgs := []string{"--pass-environment", "--"} // mcp-proxy specific args before the actual command
+	// Add the pass-environment flag and separator
+	mcpProxyArgs = append(mcpProxyArgs, "--pass-environment", "--")
 	mcpProxyArgs = append(mcpProxyArgs, serverConfig.Command...)
 
 	cmd := execCommand(proxyCmd, mcpProxyArgs...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Env = os.Environ() // Inherit current environment
-	// Add environment variables from serverConfig.Env (for localCommand)
-	// or serverConfig.ContainerEnv (for container type, though this function is for local commands)
-	// The MCPServerDefinition has Env for localCommand and ContainerEnv for container.
-	// This function seems to be generic for local commands run via mcp-proxy.
-	for k, v := range serverConfig.Env { // Assuming this is for localCommand type
+	// Add environment variables from serverConfig.Env
+	for k, v := range serverConfig.Env {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 	}
 
@@ -83,7 +70,7 @@ func StartAndManageIndividualMcpServer(
 	if pipeErr != nil {
 		logging.Error(subsystem, pipeErr, "Failed to create stdout pipe")
 		if updateFn != nil {
-			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "NpxStartFailed", ProcessErr: pipeErr})
+			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "NpxStartFailed", ProcessErr: pipeErr, ProxyPort: 0})
 		}
 		return 0, nil, fmt.Errorf("stdout pipe for %s: %w", label, pipeErr)
 	}
@@ -92,7 +79,7 @@ func StartAndManageIndividualMcpServer(
 		stdoutPipe.Close()
 		logging.Error(subsystem, pipeErr, "Failed to create stderr pipe")
 		if updateFn != nil {
-			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "NpxStartFailed", ProcessErr: pipeErr})
+			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "NpxStartFailed", ProcessErr: pipeErr, ProxyPort: 0})
 		}
 		return 0, nil, fmt.Errorf("stderr pipe for %s: %w", label, pipeErr)
 	}
@@ -107,7 +94,7 @@ func StartAndManageIndividualMcpServer(
 		stderrPipe.Close()
 		close(currentStopChan)
 		if updateFn != nil {
-			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "NpxStartFailed", ProcessErr: err, PID: 0})
+			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "NpxStartFailed", ProcessErr: err, PID: 0, ProxyPort: 0})
 		}
 		return 0, nil, errMsg
 	}
@@ -115,11 +102,15 @@ func StartAndManageIndividualMcpServer(
 	processPid := cmd.Process.Pid
 	logging.Debug(subsystem, "Process started successfully with PID %d", processPid)
 
+	// Initialize with 0 port, will be updated when we parse the output
+	actualPort := 0
+
 	if updateFn != nil {
 		updateFn(McpDiscreteStatusUpdate{
 			Label:         label,
 			PID:           processPid,
 			ProcessStatus: "NpxRunning",
+			ProxyPort:     actualPort,
 		})
 	}
 
@@ -142,6 +133,34 @@ func StartAndManageIndividualMcpServer(
 			scanner := bufio.NewScanner(stderrPipe)
 			for scanner.Scan() {
 				line := scanner.Text()
+
+				// Check for mcp-proxy port announcement
+				// Example: "Starting MCP SSE server on port 8080"
+				if strings.Contains(line, "Starting MCP SSE server on port") ||
+					strings.Contains(line, "MCP server running on") ||
+					strings.Contains(line, "Server running on port") {
+					// Try to extract port number
+					parts := strings.Fields(line)
+					for i, part := range parts {
+						if part == "port" && i+1 < len(parts) {
+							portStr := strings.TrimSuffix(parts[i+1], ",")
+							portStr = strings.TrimSuffix(portStr, ".")
+							if port, err := fmt.Sscanf(portStr, "%d", &actualPort); err == nil && port == 1 {
+								logging.Info(subsystem, "Detected mcp-proxy listening on port %d", actualPort)
+								if updateFn != nil {
+									updateFn(McpDiscreteStatusUpdate{
+										Label:         label,
+										PID:           processPid,
+										ProcessStatus: "NpxRunning",
+										ProxyPort:     actualPort,
+									})
+								}
+								break
+							}
+						}
+					}
+				}
+
 				if strings.Contains(line, "Uvicorn running on") || strings.Contains(line, "Application startup complete.") || strings.Contains(line, "StreamableHTTP session manager started") || strings.Contains(line, "Application started with StreamableHTTP session manager!") {
 					logging.Info(subsystem+"-stderr", "%s", line)
 				} else if strings.HasPrefix(line, "INFO:") || strings.HasPrefix(line, "[I ") {
@@ -169,7 +188,7 @@ func StartAndManageIndividualMcpServer(
 				logging.Info(subsystem, "Process exited gracefully")
 			}
 			if updateFn != nil {
-				updateFn(McpDiscreteStatusUpdate{Label: label, PID: processPid, ProcessStatus: status, ProcessErr: finalErr})
+				updateFn(McpDiscreteStatusUpdate{Label: label, PID: processPid, ProcessStatus: status, ProcessErr: finalErr, ProxyPort: actualPort})
 			}
 
 		case <-currentStopChan:
@@ -195,7 +214,7 @@ func StartAndManageIndividualMcpServer(
 				finalProcessStatus = "NpxAlreadyExited"
 			}
 			if updateFn != nil {
-				updateFn(McpDiscreteStatusUpdate{Label: label, PID: processPid, ProcessStatus: finalProcessStatus, ProcessErr: stopErr})
+				updateFn(McpDiscreteStatusUpdate{Label: label, PID: processPid, ProcessStatus: finalProcessStatus, ProcessErr: stopErr, ProxyPort: actualPort})
 			}
 		}
 	}()
