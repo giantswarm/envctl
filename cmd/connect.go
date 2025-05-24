@@ -237,6 +237,4 @@ func init() {
 	connectCmdDef.Flags().BoolVar(&tuiDebugMode, "debug-tui", false, "Enable TUI debug mode from startup (shows extra logs, debug panel)")
 	// General debug flag for more verbose logging across the application, including non-TUI parts if applicable
 	connectCmdDef.Flags().BoolVar(&debug, "debug", false, "Enable general debug logging")
-
-	// Removed viper bindings as direct flag variables are used.
 }

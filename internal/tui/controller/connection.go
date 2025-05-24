@@ -218,7 +218,7 @@ func handleContextSwitchAndReinitializeResultMsg(m *model.Model, msg model.Conte
 	if m.ServiceManager != nil {
 		m.ServiceManager.StopAllServices()
 		// Short delay to allow services to stop gracefully before new ones might try to use same resources
-		time.Sleep(250 * time.Millisecond) 
+		time.Sleep(250 * time.Millisecond)
 	} else {
 		LogInfo(connectionControllerSubsystem, "ServiceManager is nil, cannot stop services during re-initialize.")
 	}
@@ -243,15 +243,17 @@ func handleContextSwitchAndReinitializeResultMsg(m *model.Model, msg model.Conte
 	// Update model with new loaded configs
 	m.PortForwardingConfig = newEnvctlConfig.PortForwards
 	m.MCPServerConfig = newEnvctlConfig.MCPServers
-	
+
 	m.PortForwards = make(map[string]*model.PortForwardProcess)
 	m.McpServers = make(map[string]*model.McpServerProcess)
-	
+
 	SetupPortForwards(m, m.ManagementClusterName, m.WorkloadClusterName) // This will use m.PortForwardingConfig
-	
+
 	m.McpProxyOrder = nil
 	for _, cfg := range m.MCPServerConfig { // This now iterates over []config.MCPServerDefinition
-		if !cfg.Enabled { continue }
+		if !cfg.Enabled {
+			continue
+		}
 		m.McpProxyOrder = append(m.McpProxyOrder, cfg.Name)
 		m.McpServers[cfg.Name] = &model.McpServerProcess{
 			Label:     cfg.Name,
@@ -284,7 +286,9 @@ func handleContextSwitchAndReinitializeResultMsg(m *model.Model, msg model.Conte
 		// Build managed service configs from the newly loaded and model-updated configs
 		var managedServiceConfigs []managers.ManagedServiceConfig
 		for _, pfCfg := range m.PortForwardingConfig { // m.PortForwardingConfig is now []config.PortForwardDefinition
-			if !pfCfg.Enabled { continue }
+			if !pfCfg.Enabled {
+				continue
+			}
 			managedServiceConfigs = append(managedServiceConfigs, managers.ManagedServiceConfig{
 				Type:   reporting.ServiceTypePortForward,
 				Label:  pfCfg.Name, // Use Name
@@ -292,7 +296,9 @@ func handleContextSwitchAndReinitializeResultMsg(m *model.Model, msg model.Conte
 			})
 		}
 		for _, mcpCfg := range m.MCPServerConfig { // m.MCPServerConfig is now []config.MCPServerDefinition
-			if !mcpCfg.Enabled { continue }
+			if !mcpCfg.Enabled {
+				continue
+			}
 			managedServiceConfigs = append(managedServiceConfigs, managers.ManagedServiceConfig{
 				Type:   reporting.ServiceTypeMCPServer,
 				Label:  mcpCfg.Name,

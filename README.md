@@ -208,6 +208,14 @@ Now you can use TAB to complete cluster names:
 envctl connect myinstallation <TAB>      # Shows short names of workload clusters for myinstallation
 ```
 
+## Flexible Configuration via YAML ⚙️
+
+`envctl` supports a powerful YAML-based configuration system to customize its behavior, define new MCP servers, and manage port-forwarding rules. This allows you to tailor `envctl` precisely to your development needs.
+
+Configurations are loaded in layers (default, user-global, project-specific), with later layers overriding earlier ones. You can manage global settings, define how MCP servers are run (as local commands or containers), and specify detailed port-forwarding rules, including dynamic Kubernetes context targeting (`"mc"`, `"wc"`, or explicit contexts).
+
+For a detailed explanation of the configuration file structure, all available options, and comprehensive examples, please see the [**Flexible Configuration Documentation (docs/configuration.md)**](docs/configuration.md).
+
 ## MCP Integration Notes 💡
 
 *   `envctl connect` uses `mcp-proxy` to manage connections for the following predefined MCP services:

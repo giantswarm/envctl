@@ -111,15 +111,15 @@ func TestServiceManager_StopService(t *testing.T) {
 	pflabel := "TestPF_Stop"
 	configs := []ManagedServiceConfig{
 		{Type: reporting.ServiceTypePortForward, Label: pflabel, Config: config.PortForwardDefinition{
-			Name:        pflabel,
-			TargetName:  "test-pf-svc-stop",
-			TargetType:  "service",
-			Namespace:   "default",
-			LocalPort:   "8081",
-			RemotePort:  "8000",
+			Name:              pflabel,
+			TargetName:        "test-pf-svc-stop",
+			TargetType:        "service",
+			Namespace:         "default",
+			LocalPort:         "8081",
+			RemotePort:        "8000",
 			KubeContextTarget: "test-stop-ctx",
-			BindAddress: "127.0.0.1",
-			Enabled:     true,
+			BindAddress:       "127.0.0.1",
+			Enabled:           true,
 		}},
 	}
 	var wg sync.WaitGroup
@@ -576,7 +576,7 @@ func TestServiceManager_DebounceAndStateTransitions(t *testing.T) {
 		stoppedServiceLabel := "already-stopped-svc"
 		smInternal.mu.Lock()
 		smInternal.serviceConfigs[stoppedServiceLabel] = ManagedServiceConfig{
-			Label: stoppedServiceLabel, Type: reporting.ServiceTypeMCPServer, Config: config.MCPServerDefinition{Name: stoppedServiceLabel, Type: config.MCPServerTypeLocalCommand, Enabled:true},
+			Label: stoppedServiceLabel, Type: reporting.ServiceTypeMCPServer, Config: config.MCPServerDefinition{Name: stoppedServiceLabel, Type: config.MCPServerTypeLocalCommand, Enabled: true},
 		}
 		delete(smInternal.serviceStates, stoppedServiceLabel) // Ensure it's not in states
 		smInternal.mu.Unlock()
@@ -667,12 +667,12 @@ func TestServiceManager_StopService_WithMocks(t *testing.T) {
 	pflabel := "TestPF_Stop"
 	configs := []ManagedServiceConfig{
 		{Type: reporting.ServiceTypePortForward, Label: pflabel, Config: config.PortForwardDefinition{
-			Name:        pflabel,
-			TargetName:  "s",
-			TargetType:  "service",
-			LocalPort:   "1",
-			RemotePort:  "1",
-			Enabled:     true,
+			Name:       pflabel,
+			TargetName: "s",
+			TargetType: "service",
+			LocalPort:  "1",
+			RemotePort: "1",
+			Enabled:    true,
 		}},
 	}
 	var wg sync.WaitGroup

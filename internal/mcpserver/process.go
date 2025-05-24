@@ -55,7 +55,7 @@ func StartAndManageIndividualMcpServer(
 	// Construct arguments for mcp-proxy. It needs to execute the command defined in serverConfig.Command.
 	// This assumes mcp-proxy still uses a specific port for its own API if any, or that part is handled elsewhere.
 	// The main change is that serverConfig.Command IS the command to run, not something mcp-proxy figures out.
-	
+
 	// Let's assume mcp-proxy still needs a port for itself, for example, if it offers a control plane.
 	// This port is NOT the port of the service being proxied (that's implicit in the service's own config).
 	// For this refactor, let's assume mcp-proxy doesn't need a specific port passed this way for the *target* service.
@@ -64,7 +64,7 @@ func StartAndManageIndividualMcpServer(
 	// We will remove direct use of `ProxyPort` from `MCPServerDefinition` here.
 	// The `mcp-proxy` command itself will be responsible for its own port management.
 
-	proxyCmd := "mcp-proxy" // This could be configurable globally if needed
+	proxyCmd := "mcp-proxy"                              // This could be configurable globally if needed
 	mcpProxyArgs := []string{"--pass-environment", "--"} // mcp-proxy specific args before the actual command
 	mcpProxyArgs = append(mcpProxyArgs, serverConfig.Command...)
 

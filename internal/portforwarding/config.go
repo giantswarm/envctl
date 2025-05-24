@@ -40,7 +40,7 @@ func startPortForwardingsInternal(
 	}
 
 	for _, pfCfg := range configs { // pfCfg is now config.PortForwardDefinition
-		currentPfCfg := pfCfg // Capture range variable
+		currentPfCfg := pfCfg      // Capture range variable
 		if !currentPfCfg.Enabled { // Check if the port-forward is enabled in the config
 			logging.Debug(subsystemBase, "Skipping disabled port-forward: %s", currentPfCfg.Name)
 			continue
@@ -88,7 +88,7 @@ func startPortForwardingsInternal(
 
 			portSpec := fmt.Sprintf("%s:%s", currentPfCfg.LocalPort, currentPfCfg.RemotePort)
 			serviceArg := fmt.Sprintf("%s/%s", currentPfCfg.TargetType, currentPfCfg.TargetName)
-			
+
 			// Note: currentPfCfg.BindAddress is available here.
 			// However, kube.StartPortForward currently hardcodes bind address to 127.0.0.1.
 			// To use currentPfCfg.BindAddress, kube.StartPortForward would need to be updated.
@@ -104,7 +104,7 @@ func startPortForwardingsInternal(
 				currentPfCfg.Namespace,
 				serviceArg,
 				portSpec,
-				currentPfCfg.Name, 
+				currentPfCfg.Name,
 				kubeUpdateCallback,
 			)
 

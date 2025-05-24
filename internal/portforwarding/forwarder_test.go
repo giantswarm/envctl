@@ -52,14 +52,14 @@ func TestStartAndManageIndividualPortForward_Success(t *testing.T) {
 	}
 
 	cfg := config.PortForwardDefinition{
-		Name:        "test-label",
-		TargetType:  "service",
-		TargetName:  "TestService",
-		Namespace:   "test-ns",
-		LocalPort:   "8080",
-		RemotePort:  "80",
+		Name:              "test-label",
+		TargetType:        "service",
+		TargetName:        "TestService",
+		Namespace:         "test-ns",
+		LocalPort:         "8080",
+		RemotePort:        "80",
 		KubeContextTarget: "test-ctx",
-		Enabled:     true,
+		Enabled:           true,
 	}
 
 	var updates []testPortForwardUpdate

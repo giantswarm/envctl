@@ -254,7 +254,7 @@ func TestAppModeTransitions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Use default config for InitialModel
-			defaultCfg := config.GetDefaultConfig("test-mc", "test-wc") 
+			defaultCfg := config.GetDefaultConfig("test-mc", "test-wc")
 			coreModel := model.InitialModel("test-mc", "test-wc", "test-context", false, defaultCfg, &mockKubeManagerForModelTest{}, nil)
 			coreModel.CurrentAppMode = tt.initialAppMode
 

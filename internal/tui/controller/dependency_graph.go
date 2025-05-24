@@ -29,7 +29,7 @@ func BuildDependencyGraph(m *model.Model) *dependency.Graph {
 	for _, mcpCfg := range m.MCPServerConfig { // Iterate over the config from the model
 		deps := []dependency.NodeID{}
 		for _, requiredPfName := range mcpCfg.RequiresPortForwards {
-			deps = append(deps, dependency.NodeID("pf:" + requiredPfName))
+			deps = append(deps, dependency.NodeID("pf:"+requiredPfName))
 		}
 
 		node := dependency.Node{

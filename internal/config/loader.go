@@ -15,16 +15,15 @@ var osUserHomeDir = os.UserHomeDir
 var osGetwd = os.Getwd
 
 const (
-	userConfigDir      = ".config/envctl"
-	projectConfigDir   = ".envctl"
-	configFileName     = "config.yaml"
-	kubeContextMC Alias = "mc"
-	kubeContextWC Alias = "wc"
+	userConfigDir          = ".config/envctl"
+	projectConfigDir       = ".envctl"
+	configFileName         = "config.yaml"
+	kubeContextMC    Alias = "mc"
+	kubeContextWC    Alias = "wc"
 )
 
 // Alias is a type for placeholders like "mc" or "wc"
 type Alias string
-
 
 // LoadConfig loads the envctl configuration by layering default, user, and project settings.
 // mcName and wcName are the canonical names provided by the user.
@@ -61,7 +60,7 @@ func LoadConfig(mcName, wcName string) (EnvctlConfig, error) {
 			config = mergeConfigs(config, projectConfig, mcName, wcName)
 		}
 	}
-	
+
 	// 4. Resolve KubeContextTarget placeholders in the final configuration
 	err = resolveKubeContextPlaceholders(&config, mcName, wcName)
 	if err != nil {
@@ -172,4 +171,4 @@ func resolveKubeContextPlaceholders(config *EnvctlConfig, mcName, wcName string)
 		}
 	}
 	return nil
-} 
+}

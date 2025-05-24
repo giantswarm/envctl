@@ -232,9 +232,9 @@ func TestRenderPortForwardingRow_Simple(t *testing.T) {
 	}
 	// Create an EnvctlConfig with these specific port forwards for the test
 	envctlCfgWithPfs := config.EnvctlConfig{
-		PortForwards: pfDefs, 
+		PortForwards: pfDefs,
 		// Use default MCPServers for this test, or define specific ones if needed
-		MCPServers: config.GetDefaultConfig("MCmgmt", "").MCPServers, 
+		MCPServers:     config.GetDefaultConfig("MCmgmt", "").MCPServers,
 		GlobalSettings: config.GetDefaultConfig("MCmgmt", "").GlobalSettings,
 	}
 
@@ -287,8 +287,8 @@ func TestRenderMcpProxiesRow_Simple(t *testing.T) {
 		{Name: "other-proxy", Enabled: true, Type: config.MCPServerTypeLocalCommand, Command: []string{"cmd3"}, Icon: "⚙️"},
 	}
 	envctlCfgWithMcps := config.EnvctlConfig{
-		MCPServers: mcpDefs,
-		PortForwards: config.GetDefaultConfig("MCmgmt", "WCwork").PortForwards,
+		MCPServers:     mcpDefs,
+		PortForwards:   config.GetDefaultConfig("MCmgmt", "WCwork").PortForwards,
 		GlobalSettings: config.GetDefaultConfig("MCmgmt", "WCwork").GlobalSettings,
 	}
 
@@ -309,13 +309,13 @@ func TestRenderMcpProxiesRow_Simple(t *testing.T) {
 	// "etcd" is disabled, so it shouldn't be in m.McpServers if InitialModel filters by Enabled
 	// Check if InitialModel adds disabled services to m.McpServers map (it currently does, view layer skips them)
 	// If it does, its status should be "Inactive" or similar by default. The view test expects 3 cells.
-	if proc, ok := m.McpServers["etcd"]; ok { 
+	if proc, ok := m.McpServers["etcd"]; ok {
 		proc.StatusMsg = "Inactive (disabled)"
 	} else if _, presentInConfig := getConfigByName(mcpDefs, "etcd"); presentInConfig {
-        // If InitialModel *doesn't* add disabled ones, this check is different
-        // For now, assume InitialModel adds all from config, and view handles enabled state
+		// If InitialModel *doesn't* add disabled ones, this check is different
+		// For now, assume InitialModel adds all from config, and view handles enabled state
 		// t.Logf("MCP server 'etcd' (disabled) not found in m.McpServers, which might be okay if InitialModel filters.")
-    }
+	}
 
 	if proc, ok := m.McpServers["other-proxy"]; ok {
 		proc.StatusMsg = "Error: Failed to start"
@@ -345,12 +345,12 @@ func TestRenderMcpProxiesRow_Simple(t *testing.T) {
 
 // Helper to find config by name for MCP test assertions
 func getConfigByName(configs []config.MCPServerDefinition, name string) (*config.MCPServerDefinition, bool) {
-    for _, cfg := range configs {
-        if cfg.Name == name {
-            return &cfg, true
-        }
-    }
-    return nil, false
+	for _, cfg := range configs {
+		if cfg.Name == name {
+			return &cfg, true
+		}
+	}
+	return nil, false
 }
 
 func TestRenderStatusBar_Simple(t *testing.T) {
@@ -446,14 +446,16 @@ func TestRender_McpConfigOverlay(t *testing.T) {
 	m.Width = 100
 	m.Height = 30
 	m.CurrentAppMode = model.ModeMcpConfigOverlay
-	
+
 	// GenerateMcpConfigJson now takes []config.MCPServerDefinition which is m.MCPServerConfig
 	// To avoid importing controller, we create a representative JSON string.
 	mcpJsonEntries := []string{}
 	for _, srvCfg := range m.MCPServerConfig { // m.MCPServerConfig is now []config.MCPServerDefinition
-		if !srvCfg.Enabled { continue }
+		if !srvCfg.Enabled {
+			continue
+		}
 		// Simplified URL for test, actual URL generation logic is in controller.GenerateMcpConfigJson
-		url := "local://" + srvCfg.Name 
+		url := "local://" + srvCfg.Name
 		if srvCfg.Type == config.MCPServerTypeLocalCommand {
 			for envKey, envVal := range srvCfg.Env {
 				if strings.HasSuffix(strings.ToUpper(envKey), "_URL") && strings.HasPrefix(envVal, "http") {
@@ -623,7 +625,7 @@ func TestRender_MainDashboard_Normal(t *testing.T) {
 	m.Height = 35
 	m.CurrentAppMode = model.ModeMainDashboard
 
-	prometheusPFName := "mc-prometheus" 
+	prometheusPFName := "mc-prometheus"
 	alloyMetricsPFName := "alloy-metrics-wc"
 	kubernetesMcpName := "kubernetes"
 
@@ -652,7 +654,7 @@ func TestRender_MainDashboard_Normal(t *testing.T) {
 
 	// Set focus
 	if _, fok := m.PortForwards[prometheusPFName]; fok {
-		m.FocusedPanelKey = prometheusPFName 
+		m.FocusedPanelKey = prometheusPFName
 	} else if len(m.PortForwardOrder) > 0 {
 		// Try to pick a valid focus key from PortForwardOrder, skipping special keys if possible
 		validFocusSet := false

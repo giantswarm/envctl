@@ -2,10 +2,6 @@ package portforwarding
 
 import "envctl/internal/config"
 
-// import "envctl/internal/reporting" // Not needed here if using simple signature
-
-// PortForwardingConfig struct removed
-
 // PortForwardStatusDetail defines specific status details from the port-forwarding operation.
 // These are more granular statuses that the ServiceManager can then map to reporting.ServiceState.
 type PortForwardStatusDetail string
@@ -35,6 +31,6 @@ type PortForwardUpdateFunc func(serviceLabel string, statusDetail PortForwardSta
 // typically returned after initiating it.
 type ManagedPortForwardInfo struct {
 	Config       config.PortForwardDefinition // Updated type
-	StopChan     chan struct{} // Channel to signal termination to the process
-	InitialError error         // Any error that occurred during startup
+	StopChan     chan struct{}                // Channel to signal termination to the process
+	InitialError error                        // Any error that occurred during startup
 }

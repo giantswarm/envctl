@@ -20,11 +20,11 @@ func TestPipeFails(t *testing.T) {
 	defer func() { execCommand = originalExecCommand }()
 
 	serverCfg := config.MCPServerDefinition{ // Updated type
-		Name:    "pipe-fail-server",
+		Name: "pipe-fail-server",
 		// ProxyPort: 9002, // ProxyPort is not part of MCPServerDefinition
 		Command: []string{"some-cmd", "some-arg"}, // Command is now []string
 		// Args:      []string{"some-arg"}, // Args are part of Command
-		Type:    config.MCPServerTypeLocalCommand, // Assuming local command for this test
+		Type: config.MCPServerTypeLocalCommand, // Assuming local command for this test
 	}
 	mockUpdateFn := func(update McpDiscreteStatusUpdate) { /* no-op, or add assertions if needed */ }
 

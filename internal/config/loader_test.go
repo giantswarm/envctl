@@ -219,7 +219,7 @@ func TestLoadConfig_ContextResolution(t *testing.T) {
 
 	// Case 2: Only mc provided. "wc" placeholder should cause an error for pf-wc.
 	// The user config file (confWithPlaceholders) is still in effect.
-	_, errOnlyMc := LoadConfig("some-mc-for-case2", "") 
+	_, errOnlyMc := LoadConfig("some-mc-for-case2", "")
 	assert.Error(t, errOnlyMc)
 	// The first port-forward to require a WC name with an empty wcName supplied will be "pf-wc"
 	assert.Contains(t, errOnlyMc.Error(), "port-forward 'pf-wc' requires WC context, but wcName is not provided (mcName: some-mc-for-case2)")
@@ -241,4 +241,4 @@ func TestLoadConfig_ContextResolution(t *testing.T) {
 // - Test with malformed YAML in config files.
 // - Test merge strategy for GlobalSettings more thoroughly if more fields are added.
 
-// </rewritten_file> 
+// </rewritten_file>

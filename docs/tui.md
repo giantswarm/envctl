@@ -87,7 +87,10 @@ The TUI is composed of several distinct sections:
 
 1. **Header**: Displays the application title, keyboard hints, and optional debug info
 2. **Cluster Information Panes**: Shows MC and WC connection details and node health
-3. **Port Forwarding Panels**: Displays active port forwards with status indicators
+3. **Service Panels (Port Forwards & MCP Servers)**: Displays active port forwards and managed MCP server processes. 
+    *   The services listed here are now fully configurable via `envctl`'s YAML configuration files (see `docs/configuration.md`).
+    *   Each panel can display an `icon` and be grouped by `category` if specified in its configuration.
+    *   Status indicators show the current state (e.g., running, starting, failed).
 4. **Activity Log**: Shows a scrollable log of recent operations and events
 
 ## Message System
@@ -122,11 +125,9 @@ All UI styling is centralized in `styles.go` using the [Lipgloss](https://github
 
 ### Port Forward Management
 
-- Monitor active port forwards (Prometheus, Grafana, Alloy Metrics) with status indicators.
-- Prometheus (MC) and Grafana (MC) are standard and always use the Management Cluster context.
-- Alloy Metrics port-forwarding follows this logic:
-  - If both a Management Cluster and a Workload Cluster are configured, Alloy Metrics connects to the Workload Cluster.
-  - If only a Management Cluster is configured, Alloy Metrics connects to that Management Cluster.
+- Monitor active port forwards with status indicators.
+- The specific port forwards (like Prometheus, Grafana, Alloy Metrics) and their target Kubernetes contexts (`kubeContextTarget`) are defined in the `envctl` configuration files (`config.yaml`). While defaults are provided, users can override these or add new custom port forwards.
+- For example, while Prometheus and Grafana typically target the Management Cluster (MC), and Alloy Metrics might target the Workload Cluster (WC) or MC, these are not hardcoded and depend on their respective `PortForwardDefinition` in the loaded configuration.
 - Restart individual port forwards when needed using the 'r' key with the panel focused.
 
 ### Dark Mode Support
@@ -151,11 +152,18 @@ All UI styling is centralized in `styles.go` using the [Lipgloss](https://github
 ### Port Forwarding Management
 
 Port forwards are managed by:
-- `portforward_handlers.go`: Logic for setting up, monitoring, and restarting port forwards, with specific behavior for each service:
-  - Prometheus (MC) and Grafana (MC) always connect to the Management Cluster
-  - Alloy Metrics connects to the Workload Cluster if one is specified, otherwise it connects to the Management Cluster
-- `portForwardProcess` struct: Tracks process state (including which cluster it targets), output, and errors for each port-forward.
-- Status update messages: Keep the UI in sync with actual process status for all services.
+- `internal/portforwarding/` package: Logic for establishing and managing port-forward connections based on `config.PortForwardDefinition` from the loaded configuration.
+- `internal/managers/service_manager.go`: Orchestrates starting and stopping port forwards as a type of managed service.
+- The `model.PortForwardProcess` struct in `internal/tui/model/types.go` tracks the runtime state (including target context, status, output, errors) for each port-forward displayed in the TUI.
+- Status update messages keep the UI in sync with the actual process status.
+
+### MCP Server Management (New Section or Enhanced)
+
+MCP (Model Context Protocol) servers are managed similarly:
+- `internal/mcpserver/` package: Logic for running local command MCP servers, often via `mcp-proxy` (container-type MCP servers are managed by the chosen container runtime).
+- `internal/managers/service_manager.go`: Orchestrates starting and stopping MCP servers.
+- The list of MCP servers, their types (`localCommand` or `container`), how they are run (command, image, environment variables, port mappings), and their dependencies are defined in the `mcpServers` section of the `config.yaml` files.
+- The `model.McpServerProcess` struct in `internal/tui/model/types.go` tracks the runtime state for each MCP server displayed.
 
 ### Context Switching
 
