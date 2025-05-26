@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"github.com/giantswarm/envctl/internal/utils"
 	"fmt" // Import os for stderr
 	"strings"
 	"time"
@@ -10,6 +9,8 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/giantswarm/envctl/internal/utils"
 )
 
 // newInputStep defines the different stages of the new connection input process.

@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"github.com/giantswarm/envctl/internal/tui"
-	"github.com/giantswarm/envctl/internal/utils"
 	"fmt"
 	"os"
 	"os/signal"
@@ -12,6 +10,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
+
+	"github.com/giantswarm/envctl/internal/tui"
+	"github.com/giantswarm/envctl/internal/utils"
 )
 
 // Variable to hold the background port-forward process
