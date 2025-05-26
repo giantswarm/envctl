@@ -1,4 +1,4 @@
-module envctl
+module github.com/giantswarm/envctl
 
 go 1.24.0
 
