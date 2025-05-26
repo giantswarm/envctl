@@ -3,7 +3,7 @@ package model
 import (
 	"envctl/internal/config"
 	"envctl/internal/dependency"
-	"envctl/internal/k8smanager"
+	"envctl/internal/kube"
 	"envctl/internal/managers"
 	"envctl/internal/orchestrator"
 	"envctl/internal/reporting"
@@ -116,15 +116,6 @@ const (
 
 // McpServerProcess holds the state for the MCP server process.
 // It is kept here because several files (handlers, renderers, etc.) require the definition.
-// type mcpServerProcess struct { // THIS BLOCK TO BE DELETED
-// 	label     string        // User-friendly label (e.g., "Kubernetes API").
-// 	pid       int           // PID of the process.
-// 	stopChan  chan struct{} // Channel to signal the process to stop.
-// 	output    []string      // Stores output or log messages.
-// 	err       error         // Any error encountered by the process.
-// 	active    bool          // Whether the server is configured to be active.
-// 	statusMsg string        // Detailed status message for display.
-// }
 
 // KeyMap defines the keybindings for the application.
 // Moved from controller to model package.
@@ -218,7 +209,7 @@ type Model struct {
 	NewConnectionInput       textinput.Model
 	CurrentInputStep         InputStep
 	StashedMcName            string
-	ClusterInfo              *k8smanager.ClusterList
+	ClusterInfo              *kube.ClusterInfo
 	Keys                     KeyMap
 	Help                     help.Model
 	TUIChannel               chan tea.Msg
@@ -231,12 +222,6 @@ type Model struct {
 	ServiceManager managers.ServiceManagerAPI // Interface for managing services
 	Reporter       reporting.ServiceReporter  // For sending updates to TUI/console
 	Orchestrator   *orchestrator.Orchestrator // Manages health monitoring and service lifecycle
-
-	// --- Kubernetes interaction (via KubeManager) ---
-	KubeMgr k8smanager.KubeManagerAPI
-
-	// K8s connection state management
-	K8sStateManager k8smanager.K8sStateManager
 
 	// Added for receiving logs from the logging package
 	LogChannel <-chan logging.LogEntry
@@ -351,4 +336,135 @@ func (m *Model) SetStatusMessage(message string, msgType MessageType, clearAfter
 			return ClearStatusBarMsg{}
 		}
 	})
+}
+
+// GetServiceState returns the current state of a service from the StateStore
+func (m *Model) GetServiceState(label string) reporting.ServiceState {
+	if m.Reporter != nil && m.Reporter.GetStateStore() != nil {
+		snapshot, exists := m.Reporter.GetStateStore().GetServiceState(label)
+		if exists {
+			return snapshot.State
+		}
+	}
+	return reporting.StateUnknown
+}
+
+// GetServiceSnapshot returns the complete state snapshot of a service from the StateStore
+func (m *Model) GetServiceSnapshot(label string) (reporting.ServiceStateSnapshot, bool) {
+	if m.Reporter != nil && m.Reporter.GetStateStore() != nil {
+		return m.Reporter.GetStateStore().GetServiceState(label)
+	}
+	return reporting.ServiceStateSnapshot{}, false
+}
+
+// IsServiceReady returns whether a service is ready based on StateStore
+func (m *Model) IsServiceReady(label string) bool {
+	snapshot, exists := m.GetServiceSnapshot(label)
+	return exists && snapshot.IsReady
+}
+
+// GetAllServiceStates returns all service states from the StateStore
+func (m *Model) GetAllServiceStates() map[string]reporting.ServiceStateSnapshot {
+	if m.Reporter != nil && m.Reporter.GetStateStore() != nil {
+		return m.Reporter.GetStateStore().GetAllServiceStates()
+	}
+	return make(map[string]reporting.ServiceStateSnapshot)
+}
+
+// GetServicesByType returns all services of a specific type from the StateStore
+func (m *Model) GetServicesByType(serviceType reporting.ServiceType) map[string]reporting.ServiceStateSnapshot {
+	if m.Reporter != nil && m.Reporter.GetStateStore() != nil {
+		return m.Reporter.GetStateStore().GetServicesByType(serviceType)
+	}
+	return make(map[string]reporting.ServiceStateSnapshot)
+}
+
+// ReconcileState synchronizes the TUI model state with the StateStore
+func (m *Model) ReconcileState() {
+	if m.Reporter == nil || m.Reporter.GetStateStore() == nil {
+		return
+	}
+
+	states := m.Reporter.GetStateStore().GetAllServiceStates()
+
+	// Update PortForwards and McpServers from StateStore
+	for label, snapshot := range states {
+		switch snapshot.SourceType {
+		case reporting.ServiceTypePortForward:
+			if pf, exists := m.PortForwards[label]; exists {
+				// Update the port forward state from the snapshot
+				pf.StatusMsg = string(snapshot.State)
+				pf.Running = snapshot.IsReady
+				pf.Active = snapshot.IsReady
+				if snapshot.ErrorDetail != nil {
+					pf.Err = snapshot.ErrorDetail
+				} else {
+					pf.Err = nil
+				}
+			}
+		case reporting.ServiceTypeMCPServer:
+			if mcp, exists := m.McpServers[label]; exists {
+				// Update the MCP server state from the snapshot
+				mcp.StatusMsg = string(snapshot.State)
+				mcp.Active = snapshot.IsReady
+				if snapshot.ProxyPort > 0 {
+					mcp.ProxyPort = snapshot.ProxyPort
+				}
+				if snapshot.PID > 0 {
+					mcp.Pid = snapshot.PID
+				}
+				if snapshot.ErrorDetail != nil {
+					mcp.Err = snapshot.ErrorDetail
+				} else {
+					mcp.Err = nil
+				}
+			}
+		}
+	}
+
+	// Update cluster health info from orchestrator's K8s state manager if available
+	if m.Orchestrator != nil && m.Orchestrator.GetK8sStateManager() != nil {
+		k8sStateMgr := m.Orchestrator.GetK8sStateManager()
+		if m.ManagementClusterName != "" {
+			mcContext := kube.BuildMcContext(m.ManagementClusterName)
+			mcState := k8sStateMgr.GetConnectionState(mcContext)
+			m.MCHealth.IsLoading = false
+			if mcState.IsHealthy {
+				m.MCHealth.StatusError = nil
+			} else if mcState.Error != nil {
+				m.MCHealth.StatusError = mcState.Error
+			}
+			m.MCHealth.LastUpdated = mcState.LastHealthCheck
+		}
+
+		if m.WorkloadClusterName != "" && m.ManagementClusterName != "" {
+			wcContext := kube.BuildWcContext(m.ManagementClusterName, m.WorkloadClusterName)
+			wcState := k8sStateMgr.GetConnectionState(wcContext)
+			m.WCHealth.IsLoading = false
+			if wcState.IsHealthy {
+				m.WCHealth.StatusError = nil
+			} else if wcState.Error != nil {
+				m.WCHealth.StatusError = wcState.Error
+			}
+			m.WCHealth.LastUpdated = wcState.LastHealthCheck
+		}
+	}
+}
+
+// GetMCContext returns the full Kubernetes context name for the current MC
+func (m *Model) GetMCContext() string {
+	if m.ManagementClusterName == "" {
+		return ""
+	}
+	mcContext := kube.BuildMcContext(m.ManagementClusterName)
+	return mcContext
+}
+
+// GetWCContext returns the full Kubernetes context name for the current WC
+func (m *Model) GetWCContext() string {
+	if m.ManagementClusterName == "" || m.WorkloadClusterName == "" {
+		return ""
+	}
+	wcContext := kube.BuildWcContext(m.ManagementClusterName, m.WorkloadClusterName)
+	return wcContext
 }

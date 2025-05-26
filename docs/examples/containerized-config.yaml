@@ -1,0 +1,69 @@
+# Example configuration for running MCP servers in containers
+# This can be placed in ~/.config/envctl/config.yaml or ./.envctl/config.yaml
+
+mcpServers:
+  - name: kubernetes
+    type: container
+    enabledByDefault: true
+    icon: "☸"
+    category: "Core"
+    image: "giantswarm/mcp-server-kubernetes:latest"
+    proxyPort: 8001
+    containerPorts:
+      - "8001:3000"  # host:container
+    containerVolumes:
+      - "~/.kube/config:/home/mcpuser/.kube/config:ro"
+    containerEnv:
+      KUBECONFIG: "/home/mcpuser/.kube/config"
+
+  - name: prometheus
+    type: container
+    enabledByDefault: true
+    icon: "🔥"
+    category: "Monitoring"
+    image: "giantswarm/mcp-server-prometheus:latest"
+    proxyPort: 8002
+    containerPorts:
+      - "8002:3000"
+    containerEnv:
+      PROMETHEUS_URL: "http://host.docker.internal:8080/prometheus"
+      ORG_ID: "giantswarm"
+    requiresPortForwards:
+      - "mc-prometheus"
+
+  - name: grafana
+    type: container
+    enabledByDefault: true
+    icon: "📊"
+    category: "Monitoring"
+    image: "giantswarm/mcp-server-grafana:latest"
+    proxyPort: 8003
+    containerPorts:
+      - "8003:3000"
+    containerEnv:
+      GRAFANA_URL: "http://host.docker.internal:3000"
+    requiresPortForwards:
+      - "mc-grafana"
+
+globalSettings:
+  defaultContainerRuntime: "docker"
+
+# Port forwards can be defined here too
+portForwards:
+  - name: mc-prometheus
+    enabledByDefault: true
+    kubeContextTarget: "mc"  # Will be resolved to actual MC context
+    namespace: "mimir"
+    targetType: "service"
+    targetName: "mimir-query-frontend"
+    localPort: "8080"
+    remotePort: "80"
+
+  - name: mc-grafana
+    enabledByDefault: true
+    kubeContextTarget: "mc"
+    namespace: "monitoring"
+    targetType: "service"
+    targetName: "grafana"
+    localPort: "3000"
+    remotePort: "3000" 

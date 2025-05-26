@@ -231,6 +231,40 @@ K8s MC Connection → prometheus-mc (port forward) → prometheus (MCP)
 K8s WC Connection → grafana-wc (port forward) → grafana (MCP)
 ```
 
+**Dependency Graph Structure:**
+- **Nodes**: Each service (K8s connection, port forward, or MCP server) is a node in the graph
+- **Edges**: Dependencies are directed edges from dependent to dependency
+- **Node Types**: `KindK8sConnection`, `KindPortForward`, `KindMCP`
+- **Node IDs**: Prefixed strings like `k8s:context-name`, `pf:service-name`, `mcp:server-name`
+
+**Dependency Rules:**
+1. **Port Forwards** depend on their target K8s connection (specified by `KubeContextTarget`)
+2. **MCP Servers** can depend on:
+   - Port forwards (specified in `RequiresPortForwards` array)
+   - K8s connections (e.g., the "kubernetes" MCP depends on MC connection)
+3. **K8s Connections** have no dependencies (they are the foundation)
+
+**Starting Services with Dependencies:**
+When starting services, the Orchestrator:
+1. Groups services by dependency levels using topological sort
+2. Starts services level by level (level 0 first, then 1, etc.)
+3. Waits for services in each level to become ready before starting the next level
+4. Only starts services whose K8s dependencies are healthy
+
+Example startup order:
+- Level 0: K8s connections (no dependencies)
+- Level 1: Port forwards (depend on K8s connections)
+- Level 2: MCP servers (depend on port forwards)
+
+**Restarting Services with Dependencies:**
+When restarting a service, the Orchestrator now ensures all its dependencies are also running:
+1. Checks if the service's dependencies are active
+2. If any dependency is not active, it includes it for restart
+3. Starts all services (the requested one plus its dependencies) in dependency order
+4. This ensures a service always has its requirements satisfied
+
+For example, restarting the "grafana" MCP server will also restart the "grafana-mc" port forward if it's not running.
+
 #### 2. Health Monitoring
 The Orchestrator continuously monitors Kubernetes connection health:
 - Performs periodic health checks (default: 15 seconds)
@@ -242,8 +276,12 @@ The Orchestrator continuously monitors Kubernetes connection health:
 When a dependency becomes unhealthy or is stopped:
 1. The Orchestrator identifies all transitive dependents using the dependency graph
 2. It stops dependent services in reverse dependency order
-3. It tracks that these services were stopped due to dependency failure
+3. It tracks that these services were stopped due to dependency failure (`StopReasonDependency`)
 4. Example: If K8s WC connection fails → stop dependent port forwards → stop MCPs depending on those port forwards
+
+**Stop Reasons:**
+- `StopReasonManual`: User explicitly stopped the service (won't auto-restart)
+- `StopReasonDependency`: Service stopped due to dependency failure (will auto-restart when dependency recovers)
 
 #### 4. Automatic Recovery
 When a failed dependency recovers:
@@ -328,3 +366,141 @@ When adding new features that involve service management:
 3. **Maintain Separation**: Keep basic operations in Service Manager, complex logic in Orchestrator
 4. **Test Thoroughly**: Include tests for dependency scenarios and edge cases
 5. **Consider Health**: If the service depends on external resources, integrate with health monitoring
+
+## Dependency Graph Implementation
+
+The dependency graph is implemented in `internal/dependency/graph.go` and provides a simple but effective way to model service relationships.
+
+### Core Types
+
+```go
+// NodeID is the unique identifier for a node
+type NodeID string
+
+// Node represents a service with its dependencies
+type Node struct {
+    ID           NodeID
+    FriendlyName string
+    Kind         NodeKind
+    DependsOn    []NodeID  // What this node depends on
+    State        NodeState // Current lifecycle state
+}
+
+// Graph manages the collection of nodes
+type Graph struct {
+    nodes map[NodeID]*Node
+}
+```
+
+### Key Methods
+
+1. **`AddNode(n Node)`**: Adds or replaces a node in the graph
+2. **`Get(id NodeID) *Node`**: Retrieves a node by ID
+3. **`Dependencies(id NodeID) []NodeID`**: Returns what a node depends ON
+4. **`Dependents(id NodeID) []NodeID`**: Returns what depends on this node
+
+### Usage Example
+
+```go
+// Building the graph (in orchestrator.buildDependencyGraph)
+g := dependency.New()
+
+// Add K8s connection node
+g.AddNode(dependency.Node{
+    ID:           "k8s:my-cluster",
+    FriendlyName: "K8s Connection",
+    Kind:         dependency.KindK8sConnection,
+    DependsOn:    nil, // No dependencies
+})
+
+// Add port forward that depends on K8s
+g.AddNode(dependency.Node{
+    ID:           "pf:prometheus",
+    FriendlyName: "Prometheus Port Forward",
+    Kind:         dependency.KindPortForward,
+    DependsOn:    []dependency.NodeID{"k8s:my-cluster"},
+})
+
+// Add MCP that depends on port forward
+g.AddNode(dependency.Node{
+    ID:           "mcp:prometheus",
+    FriendlyName: "Prometheus MCP Server",
+    Kind:         dependency.KindMCP,
+    DependsOn:    []dependency.NodeID{"pf:prometheus"},
+})
+```
+
+### Finding Dependencies
+
+The Orchestrator uses `findAllDependents` to find all transitive dependents:
+
+```go
+// findAllDependents finds all services that depend on the given node
+func (o *Orchestrator) findAllDependents(nodeID string) []string {
+    allDependents := make(map[string]bool)
+    visited := make(map[string]bool)
+    
+    var findDependents func(currentID string)
+    findDependents = func(currentID string) {
+        if visited[currentID] {
+            return
+        }
+        visited[currentID] = true
+        
+        // Get direct dependents
+        directDependents := o.depGraph.Dependents(dependency.NodeID(currentID))
+        
+        for _, dep := range directDependents {
+            depStr := string(dep)
+            if !strings.HasPrefix(depStr, "k8s:") {
+                allDependents[depStr] = true
+            }
+            // Recursively find dependents
+            findDependents(depStr)
+        }
+    }
+    
+    findDependents(nodeID)
+    return keys(allDependents)
+}
+```
+
+This recursive approach ensures that stopping a K8s connection will cascade through all port forwards to all MCP servers that transitively depend on it.
+
+## Service Health Monitoring
+
+envctl includes comprehensive health monitoring for all managed services:
+
+### Kubernetes Connection Health
+- Monitors the health of Management Cluster (MC) and Workload Cluster (WC) connections
+- Checks node readiness and API server availability every 15 seconds
+- Automatically stops dependent services when a connection becomes unhealthy
+- Restarts services when connections recover
+
+### MCP Server Health Checks
+- Verifies MCP servers are responsive by attempting to list their tools via JSON-RPC
+- Uses the `tools/list` method over HTTP to validate the server is functioning
+- Checks run every 30 seconds for all running MCP servers
+- Health status is reflected in the TUI with appropriate indicators
+
+### Port Forward Health Checks
+- Validates port forwards by attempting TCP connections to the local port
+- Ensures the tunnel is active and accepting connections
+- Runs every 30 seconds for all active port forwards
+- Failed health checks are reported but don't automatically stop the service
+
+### Health Check Implementation
+The health checking system is implemented in `internal/orchestrator/health_checker.go` with:
+- `ServiceHealthChecker` interface for extensibility
+- `MCPHealthChecker` for MCP server validation
+- `PortForwardHealthChecker` for port forward validation
+- Automatic health monitoring started by the orchestrator
+
+### State Reconciliation
+The TUI includes a `ReconcileState()` method that:
+- Synchronizes the UI state with the centralized StateStore
+- Updates service statuses, ports, PIDs, and error states
+- Refreshes cluster health information from the K8sStateManager
+- Ensures the UI always reflects the true state of services
+
+## Dependency Management

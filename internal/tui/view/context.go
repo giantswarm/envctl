@@ -2,8 +2,8 @@ package view
 
 import (
 	"envctl/internal/color"
+	"envctl/internal/kube"
 	"envctl/internal/tui/model"
-	"envctl/internal/utils"
 	"fmt"
 
 	"github.com/charmbracelet/lipgloss"
@@ -13,7 +13,7 @@ import (
 func renderMcPane(m *model.Model, paneWidth int) string {
 	// controller.LogDebug is not callable from view. Logging from view should be minimized or avoided.
 	// fmt.Printf("[ViewDebug][renderMcPane] Comparing for Active: currentKubeContext ('%s') vs built MC context ('%s') for mcName ('%s')\n",
-	// 	m.CurrentKubeContext, utils.BuildMcContext(m.ManagementClusterName), m.ManagementClusterName)
+	// 	m.CurrentKubeContext, kube.BuildMcContext(m.ManagementClusterName), m.ManagementClusterName)
 
 	mcName := m.ManagementClusterName
 	if mcName == "" {
@@ -21,7 +21,7 @@ func renderMcPane(m *model.Model, paneWidth int) string {
 	}
 
 	isMcActive := false
-	if m.ManagementClusterName != "" && m.CurrentKubeContext == utils.BuildMcContext(m.ManagementClusterName) {
+	if m.ManagementClusterName != "" && m.CurrentKubeContext == kube.BuildMcContext(m.ManagementClusterName) {
 		isMcActive = true
 	}
 
@@ -78,12 +78,12 @@ func renderWcPane(m *model.Model, paneWidth int) string {
 	}
 
 	// fmt.Printf("[ViewDebug][renderWcPane] Comparing for Active: currentKubeContext ('%s') vs built WC context ('%s') for mcName ('%s'), wcName ('%s')\n",
-	// 	m.CurrentKubeContext, utils.BuildWcContext(m.ManagementClusterName, m.WorkloadClusterName), m.ManagementClusterName, m.WorkloadClusterName)
+	// 	m.CurrentKubeContext, kube.BuildWcContext(m.ManagementClusterName, m.WorkloadClusterName), m.ManagementClusterName, m.WorkloadClusterName)
 
 	wcName := m.WorkloadClusterName
 	isWcActive := false
 	if m.ManagementClusterName != "" && m.WorkloadClusterName != "" &&
-		m.CurrentKubeContext == utils.BuildWcContext(m.ManagementClusterName, m.WorkloadClusterName) {
+		m.CurrentKubeContext == kube.BuildWcContext(m.ManagementClusterName, m.WorkloadClusterName) {
 		isWcActive = true
 	}
 

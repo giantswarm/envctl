@@ -57,12 +57,9 @@ func (a *AppModel) Init() tea.Cmd {
 
 	var controllerCmds []tea.Cmd
 
-	if a.model.KubeMgr == nil { // Guard against nil KubeMgr
-		LogInfo(tuiSubsystem, "KubeManager not available in AppModel.Init, skipping some initial commands.")
-	} else {
-		controllerCmds = append(controllerCmds, GetCurrentKubeContextCmd(a.model.KubeMgr))
-		controllerCmds = append(controllerCmds, FetchClusterListCmd(a.model.KubeMgr))
-	}
+	// Fetch initial data
+	controllerCmds = append(controllerCmds, GetCurrentKubeContextCmd())
+	controllerCmds = append(controllerCmds, FetchClusterListCmd())
 
 	// Health checks are now handled by the orchestrator
 	// tickCmd := tea.Tick(HealthUpdateInterval, func(t time.Time) tea.Msg { return model.RequestClusterHealthUpdate{} })

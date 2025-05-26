@@ -3,7 +3,6 @@ package model
 import (
 	"context"
 	"envctl/internal/config"
-	"envctl/internal/k8smanager"
 	"envctl/internal/managers"
 	"envctl/internal/reporting"
 	"envctl/pkg/logging"
@@ -99,29 +98,27 @@ func DefaultKeyMap() KeyMap { // Returns model.KeyMap (KeyMap is in this package
 
 // InitialModel constructs the initial model with sensible defaults.
 func InitialModel(
-	managementClusterName, workloadClusterName, initialKubeContext string,
+	mcName string,
+	wcName string,
+	currentContext string,
 	debugMode bool,
-	envctlCfg config.EnvctlConfig,
-	kubeMgr k8smanager.KubeManagerAPI,
+	cfg config.EnvctlConfig,
 	logChannel <-chan logging.LogEntry,
 ) *Model {
-	// Create TUI reporter and manager
-	tuiChannel := make(chan tea.Msg, 1000)
+	// Create the TUI reporter and service manager
+	tuiChannel := make(chan tea.Msg, 100)
 	tuiReporter := reporting.NewTUIReporter(tuiChannel)
-	// Ensure kubeMgr uses the TUI reporter
-	kubeMgr.SetReporter(tuiReporter)
 	serviceMgr := managers.NewServiceManager(tuiReporter)
 
-	// Create orchestrator for health monitoring and service lifecycle
+	// Create the orchestrator
 	orch := orchestrator.New(
-		kubeMgr,
 		serviceMgr,
 		tuiReporter,
 		orchestrator.Config{
-			MCName:              managementClusterName,
-			WCName:              workloadClusterName,
-			PortForwards:        envctlCfg.PortForwards,
-			MCPServers:          envctlCfg.MCPServers,
+			MCName:              mcName,
+			WCName:              wcName,
+			PortForwards:        cfg.PortForwards,
+			MCPServers:          cfg.MCPServers,
 			HealthCheckInterval: 15 * time.Second,
 		},
 	)
@@ -133,23 +130,20 @@ func InitialModel(
 		CurrentAppMode:        ModeInitializing,
 		FocusedPanelKey:       "",
 		ActivityLog:           []string{},
-		ManagementClusterName: managementClusterName,
-		WorkloadClusterName:   workloadClusterName,
-		CurrentKubeContext:    initialKubeContext,
-		KubeMgr:               kubeMgr,
+		ManagementClusterName: mcName,
+		WorkloadClusterName:   wcName,
+		CurrentKubeContext:    currentContext,
 		ServiceManager:        serviceMgr,
 		Reporter:              tuiReporter,
 		Orchestrator:          orch,
 		TUIChannel:            tuiChannel,
 		PortForwards:          make(map[string]*PortForwardProcess),
 		McpServers:            make(map[string]*McpServerProcess),
-		ClusterInfo:           &k8smanager.ClusterList{},
+		ClusterInfo:           nil, // Initialize as nil, will be populated later
 		DebugMode:             debugMode,
-		PortForwardingConfig:  envctlCfg.PortForwards,
-		MCPServerConfig:       envctlCfg.MCPServers,
-		// Initialize K8sStateManager with the orchestrator's instance
-		K8sStateManager:      orch.GetK8sStateManager(),
-		DependencyGraph:      nil, // Will be set by orchestrator
+		PortForwardingConfig:  cfg.PortForwards,
+		MCPServerConfig:       cfg.MCPServers,
+		// The orchestrator now manages K8s state
 		LogChannel:           logChannel,
 		StatusBarMessage:     "",
 		StatusBarMessageType: StatusBarInfo,
@@ -215,7 +209,7 @@ func InitialModel(
 	// m.Help.ShowAll = true // Help styling removed for now
 
 	// Basic initialization that CAN be done within model package:
-	if workloadClusterName != "" {
+	if wcName != "" {
 		m.WCHealth = ClusterHealthInfo{IsLoading: true}
 	}
 
@@ -225,7 +219,7 @@ func InitialModel(
 	// Initial focused panel can be set here if it's a sensible default not requiring controller logic
 	if len(m.PortForwardOrder) > 0 { // PortForwardOrder will be empty now initially
 		// m.FocusedPanelKey = m.PortForwardOrder[0] // This will need to be set by controller after SetupPortForwards
-	} else if managementClusterName != "" {
+	} else if mcName != "" {
 		m.FocusedPanelKey = McPaneFocusKey // McPaneFocusKey is a model constant
 	} // Else, FocusedPanelKey remains empty, controller can set it.
 
@@ -261,6 +255,10 @@ func (m *Model) Init() tea.Cmd {
 		}
 		// Update dependency graph from orchestrator
 		m.DependencyGraph = m.Orchestrator.GetDependencyGraph()
+
+		// Reconcile state after orchestrator starts to ensure UI consistency
+		m.ReconcileState()
+
 		logging.Info("ModelInit", "Orchestrator started successfully")
 		return AllServicesStartedMsg{InitialStartupErrors: nil}
 	}

@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"envctl/internal/config"
+	"envctl/internal/kube"
 	"envctl/internal/orchestrator"
 	"envctl/internal/tui/model"
 	"errors"
@@ -97,11 +98,7 @@ func handleSubmitNewConnectionMsg(m *model.Model, msg model.SubmitNewConnectionM
 	m.SetStatusMessage(fmt.Sprintf("Login to %s...", msg.MC), model.StatusBarInfo, 2*time.Second)
 
 	LogInfo(connectionControllerSubsystem, "Step 1: Logging into Management Cluster: %s...", msg.MC)
-	if m.KubeMgr == nil {
-		LogInfo(connectionControllerSubsystem, "KubeManager not available in handleSubmitNewConnectionMsg")
-		return m, m.SetStatusMessage("KubeManager error", model.StatusBarError, 5*time.Second)
-	}
-	return m, PerformKubeLoginCmd(m.KubeMgr, msg.MC, true, msg.WC)
+	return m, PerformKubeLoginCmd(msg.MC, true, msg.WC)
 }
 
 // handleKubeLoginResultMsg processes the outcome of a `tsh kube login` attempt (performKubeLoginCmd).
@@ -129,13 +126,7 @@ func handleKubeLoginResultMsg(m *model.Model, msg model.KubeLoginResultMsg, cmds
 		cmds = append(cmds, setStatusBarMessage)
 
 		// Update k8s state to not authenticated
-		if m.K8sStateManager != nil {
-			context := m.KubeMgr.BuildMcContextName(msg.ClusterName)
-			if !msg.IsMC && m.ManagementClusterName != "" {
-				context = m.KubeMgr.BuildWcContextName(m.ManagementClusterName, msg.ClusterName)
-			}
-			m.K8sStateManager.SetAuthenticated(context, false)
-		}
+		// K8s state is now managed by the K8s connection service
 
 		return m, tea.Batch(cmds...)
 	}
@@ -144,16 +135,7 @@ func handleKubeLoginResultMsg(m *model.Model, msg model.KubeLoginResultMsg, cmds
 	LogInfo(connectionControllerSubsystem, "kube login success for %s", msg.ClusterName)
 
 	// Update k8s state to authenticated
-	if m.K8sStateManager != nil {
-		context := m.KubeMgr.BuildMcContextName(msg.ClusterName)
-		if !msg.IsMC && m.ManagementClusterName != "" {
-			context = m.KubeMgr.BuildWcContextName(m.ManagementClusterName, msg.ClusterName)
-		}
-		m.K8sStateManager.SetAuthenticated(context, true)
-
-		// Start health monitoring for this context
-		m.K8sStateManager.StartHealthMonitor(context, 30*time.Second)
-	}
+	// K8s state is now managed by the K8s connection service
 
 	// Clear success message from status bar after a delay
 	setStatusBarMessage := m.SetStatusMessage(fmt.Sprintf("✅ Login successful to %s", msg.ClusterName), model.StatusBarSuccess, 3*time.Second)
@@ -173,14 +155,11 @@ func handleKubeLoginResultMsg(m *model.Model, msg model.KubeLoginResultMsg, cmds
 				wcIdentifierForLogin = desiredMcForNextStep + "-" + desiredWcForNextStep
 			}
 			LogInfo(connectionControllerSubsystem, "Step 2: Logging into Workload Cluster: %s...", wcIdentifierForLogin)
-			nextCmds = append(nextCmds, PerformKubeLoginCmd(m.KubeMgr, wcIdentifierForLogin, false, ""))
+			nextCmds = append(nextCmds, PerformKubeLoginCmd(wcIdentifierForLogin, false, ""))
 		} else {
 			LogInfo(connectionControllerSubsystem, "Step 2: No Workload Cluster specified. Proceeding to context switch for MC.")
-			if m.KubeMgr == nil {
-				return m, m.SetStatusMessage("KubeManager error", model.StatusBarError, 5*time.Second)
-			}
-			targetKubeContext := m.KubeMgr.BuildMcContextName(desiredMcForNextStep)
-			nextCmds = append(nextCmds, PerformPostLoginOperationsCmd(m.KubeMgr, targetKubeContext, desiredMcForNextStep, ""))
+			targetKubeContext := kube.BuildMcContext(desiredMcForNextStep)
+			nextCmds = append(nextCmds, PerformPostLoginOperationsCmd(targetKubeContext, desiredMcForNextStep, ""))
 		}
 	} else {
 		finalMcName := m.ManagementClusterName
@@ -194,11 +173,8 @@ func handleKubeLoginResultMsg(m *model.Model, msg model.KubeLoginResultMsg, cmds
 		m.WorkloadClusterName = shortWcName
 
 		LogInfo(connectionControllerSubsystem, "Step 3: Workload Cluster login successful. Proceeding to context switch for WC.")
-		if m.KubeMgr == nil {
-			return m, m.SetStatusMessage("KubeManager error", model.StatusBarError, 5*time.Second)
-		}
-		targetKubeContext := m.KubeMgr.BuildWcContextName(m.ManagementClusterName, m.WorkloadClusterName)
-		nextCmds = append(nextCmds, PerformPostLoginOperationsCmd(m.KubeMgr, targetKubeContext, m.ManagementClusterName, m.WorkloadClusterName))
+		targetKubeContext := kube.BuildWcContext(m.ManagementClusterName, m.WorkloadClusterName)
+		nextCmds = append(nextCmds, PerformPostLoginOperationsCmd(targetKubeContext, m.ManagementClusterName, m.WorkloadClusterName))
 	}
 	finalCmds := append(cmds, nextCmds...)
 	return m, tea.Batch(finalCmds...)
@@ -292,7 +268,6 @@ func handleContextSwitchAndReinitializeResultMsg(m *model.Model, msg model.Conte
 
 		// Create new orchestrator with updated configuration
 		newOrch := orchestrator.New(
-			m.KubeMgr,
 			m.ServiceManager,
 			m.Reporter,
 			orchestrator.Config{
@@ -332,19 +307,17 @@ func handleContextSwitchAndReinitializeResultMsg(m *model.Model, msg model.Conte
 	}
 
 	var newInitCmds []tea.Cmd
-	if m.KubeMgr != nil {
-		newInitCmds = append(newInitCmds, GetCurrentKubeContextCmd(m.KubeMgr))
-		if m.ManagementClusterName != "" {
-			mcTargetContext := m.KubeMgr.BuildMcContextName(m.ManagementClusterName)
-			newInitCmds = append(newInitCmds, FetchNodeStatusCmd(m.KubeMgr, mcTargetContext, true, m.ManagementClusterName))
-		}
-		if m.WorkloadClusterName != "" && m.ManagementClusterName != "" {
-			wcTargetContext := m.KubeMgr.BuildWcContextName(m.ManagementClusterName, m.WorkloadClusterName)
-			newInitCmds = append(newInitCmds, FetchNodeStatusCmd(m.KubeMgr, wcTargetContext, false, m.WorkloadClusterName))
-		}
-
-		// The orchestrator will handle starting services, not the TUI
+	newInitCmds = append(newInitCmds, GetCurrentKubeContextCmd())
+	if m.ManagementClusterName != "" {
+		mcTargetContext := kube.BuildMcContext(m.ManagementClusterName)
+		newInitCmds = append(newInitCmds, FetchNodeStatusCmd(mcTargetContext, true, m.ManagementClusterName))
 	}
+	if m.WorkloadClusterName != "" && m.ManagementClusterName != "" {
+		wcTargetContext := kube.BuildWcContext(m.ManagementClusterName, m.WorkloadClusterName)
+		newInitCmds = append(newInitCmds, FetchNodeStatusCmd(wcTargetContext, false, m.WorkloadClusterName))
+	}
+
+	// The orchestrator will handle starting services, not the TUI
 	statusCmd := m.SetStatusMessage(fmt.Sprintf("Context: %s. Initializing...", msg.SwitchedContext), model.StatusBarSuccess, 3*time.Second)
 	finalCmdsToBatch := append(existingCmds, newInitCmds...)
 	finalCmdsToBatch = append(finalCmdsToBatch, statusCmd)

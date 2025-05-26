@@ -742,9 +742,6 @@ func TestDirectLogger_Write(t *testing.T) {
 	}
 }
 
-// The MockKubeManager and its methods below are assumed to be used by other tests in this file.
-// The `var _ k8smanager.KubeManagerAPI = (*MockKubeManager)(nil)` line that might cause
-// import cycle with k8smanager is kept for now, but might need to be addressed if k8smanager imports kube.
 // If `k8smanager` types are used in signatures (e.g. k8smanager.ClusterList), the import is needed.
 
 type MockKubeManager struct{}

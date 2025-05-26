@@ -2,9 +2,8 @@ package controller
 
 import (
 	"context"
-	"envctl/internal/color"  // Corrected import for color package
-	"envctl/internal/config" // Added
-	"envctl/internal/k8smanager"
+	"envctl/internal/color"     // Corrected import for color package
+	"envctl/internal/config"    // Added
 	"envctl/internal/reporting" // To access mainControllerDispatch (needs to be exported or tested via model.Update)
 	"envctl/internal/tui/model" // Added for logging.LogEntry for logChan type
 	"envctl/pkg/logging"
@@ -16,36 +15,21 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// MockKubeManager now correctly implements k8smanager.KubeManagerAPI
+// MockKubeManager is a simple mock that doesn't use k8smanager types
 type MockKubeManager struct{}
 
 func (m *MockKubeManager) Login(clusterName string) (string, string, error) {
 	return "login-stdout-" + clusterName, "", nil
 }
 
-func (m *MockKubeManager) ListClusters() (*k8smanager.ClusterList, error) {
-	// Return a structure that matches k8smanager.ClusterList and k8smanager.Cluster
-	mc1 := k8smanager.Cluster{
-		Name:                  "mc1",
-		KubeconfigContextName: "teleport.giantswarm.io-mc1",
-		IsManagement:          true,
-	}
-	wc1a := k8smanager.Cluster{
-		Name:                  "wc1a",
-		KubeconfigContextName: "teleport.giantswarm.io-mc1-wc1a",
-		IsManagement:          false,
-		MCName:                "mc1",
-		WCShortName:           "wc1a",
-	}
-	allClustersMap := make(map[string]k8smanager.Cluster)
-	allClustersMap[mc1.KubeconfigContextName] = mc1
-	allClustersMap[wc1a.KubeconfigContextName] = wc1a
-
-	return &k8smanager.ClusterList{
-		ManagementClusters: []k8smanager.Cluster{mc1},
-		WorkloadClusters:   map[string][]k8smanager.Cluster{"mc1": {wc1a}},
-		AllClusters:        allClustersMap,
-		ContextNames:       []string{mc1.KubeconfigContextName, wc1a.KubeconfigContextName},
+func (m *MockKubeManager) ListClusters() (interface{}, error) {
+	// Return a simple structure that matches what the tests expect
+	return struct {
+		ManagementClusters []string
+		WorkloadClusters   map[string][]string
+	}{
+		ManagementClusters: []string{"mc1"},
+		WorkloadClusters:   map[string][]string{"mc1": {"wc1a"}},
 	}, nil
 }
 
@@ -60,8 +44,12 @@ func (m *MockKubeManager) BuildWcContextName(mcShortName, wcShortName string) st
 }
 func (m *MockKubeManager) StripTeleportPrefix(contextName string) string { return contextName }
 func (m *MockKubeManager) HasTeleportPrefix(contextName string) bool     { return false }
-func (m *MockKubeManager) GetClusterNodeHealth(ctx context.Context, kubeContextName string) (k8smanager.NodeHealth, error) {
-	return k8smanager.NodeHealth{ReadyNodes: 1, TotalNodes: 1}, nil
+func (m *MockKubeManager) GetClusterNodeHealth(ctx context.Context, kubeContextName string) (interface{}, error) {
+	return struct {
+		ReadyNodes int
+		TotalNodes int
+		Error      error
+	}{ReadyNodes: 1, TotalNodes: 1}, nil
 }
 
 func (m *MockKubeManager) DetermineClusterProvider(ctx context.Context, kubeContextName string) (string, error) {
@@ -78,13 +66,11 @@ func (m *MockKubeManager) SetReporter(reporter reporting.ServiceReporter) {
 // after processing a ReporterUpdateMsg, allowing continuous processing of messages
 // from the TUIChannel.
 func TestMainControllerDispatch_ReporterUpdateMsg_GeneratesLog(t *testing.T) {
-	mockKubeMgr := &MockKubeManager{}
-
 	logChan := logging.InitForTUI(logging.LevelDebug)
 
 	// Use default config for InitialModel
 	defaultCfg := config.GetDefaultConfig("mc1", "wc1")
-	mInitialModel := model.InitialModel("mc1", "wc1", "test-context", true, defaultCfg, mockKubeMgr, logChan)
+	mInitialModel := model.InitialModel("mc1", "wc1", "test-context", true, defaultCfg, logChan)
 	mInitialModel.LogChannel = logChan
 
 	assert.NotNil(t, mInitialModel.TUIChannel, "TUIChannel should be initialized")
@@ -154,14 +140,12 @@ done:
 // as strong evidence of re-queuing.
 
 func TestMainControllerDispatch_NewLogEntryMsg_UpdatesLogViewport(t *testing.T) {
-	mockKubeMgr := &MockKubeManager{}
-
 	logChan := logging.InitForTUI(logging.LevelDebug)
 	defer logging.CloseTUIChannel()
 
 	// Use default config for InitialModel
 	defaultCfg := config.GetDefaultConfig("mc1", "wc1")
-	m := model.InitialModel("mc1", "wc1", "test-context", true, defaultCfg, mockKubeMgr, logChan)
+	m := model.InitialModel("test-mc", "test-wc", "test-context", false, defaultCfg, logChan)
 	m.LogChannel = logChan
 	m.Width = 80
 	m.Height = 24

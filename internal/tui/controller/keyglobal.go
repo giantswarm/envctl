@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"envctl/internal/kube"
 	"envctl/internal/tui/model" // For LogError if we create new errors
 	"fmt"
 	"strings"
@@ -252,21 +253,17 @@ func handleKeyMsgGlobal(m *model.Model, keyMsg tea.KeyMsg, existingCmds []tea.Cm
 		return m, nil
 
 	case "s": // Context switch
-		if m.KubeMgr == nil {
-			LogWarn(keyGlobalSubsystem, "Cannot switch context: KubeManager not available.")
-			return m, m.SetStatusMessage("KubeManager error", model.StatusBarError, 3*time.Second)
-		}
 		if m.FocusedPanelKey == model.McPaneFocusKey && m.ManagementClusterName != "" {
-			target := m.KubeMgr.BuildMcContextName(m.ManagementClusterName) // Use KubeMgr
+			target := kube.BuildMcContext(m.ManagementClusterName)
 			LogInfo(keyGlobalSubsystem, "Attempting to switch Kubernetes context to: %s (Pane: MC, Target: %s)", target, m.ManagementClusterName)
-			cmds = append(cmds, PerformSwitchKubeContextCmd(m.KubeMgr, target))
+			cmds = append(cmds, PerformSwitchKubeContextCmd(target))
 		} else if m.FocusedPanelKey == model.WcPaneFocusKey && m.WorkloadClusterName != "" && m.ManagementClusterName != "" {
-			target := m.KubeMgr.BuildWcContextName(m.ManagementClusterName, m.WorkloadClusterName) // Use KubeMgr
+			target := kube.BuildWcContext(m.ManagementClusterName, m.WorkloadClusterName)
 			LogInfo(keyGlobalSubsystem, "Attempting to switch Kubernetes context to: %s (Pane: WC, Target: %s-%s)", target, m.ManagementClusterName, m.WorkloadClusterName)
-			cmds = append(cmds, PerformSwitchKubeContextCmd(m.KubeMgr, target))
+			cmds = append(cmds, PerformSwitchKubeContextCmd(target))
 		} else {
 			LogWarn(keyGlobalSubsystem, "Cannot switch context: Focus a valid MC/WC pane with defined cluster names or ensure clusters are set via (n)ew connection.")
-			cmds = append(cmds, m.SetStatusMessage("Focus valid MC/WC to switch context", model.StatusBarWarning, 3*time.Second))
+			cmds = append(cmds, m.SetStatusMessage("Cannot switch context: Focus a valid MC/WC pane with defined cluster names.", model.StatusBarWarning, 3*time.Second))
 		}
 	}
 

@@ -79,15 +79,15 @@ func handleKeyMsgInputMode(m *model.Model, keyMsg tea.KeyMsg) (*model.Model, tea
 			lower := strings.ToLower(currentInput)
 			if m.CurrentInputStep == model.McInputStep {
 				for _, cluster := range m.ClusterInfo.ManagementClusters {
-					if strings.HasPrefix(strings.ToLower(cluster.Name), lower) {
-						suggestions = append(suggestions, cluster.Name)
+					if strings.HasPrefix(strings.ToLower(cluster), lower) {
+						suggestions = append(suggestions, cluster)
 					}
 				}
 			} else if m.CurrentInputStep == model.WcInputStep && m.StashedMcName != "" {
 				if wcs, ok := m.ClusterInfo.WorkloadClusters[m.StashedMcName]; ok {
-					for _, cluster := range wcs {
-						if strings.HasPrefix(strings.ToLower(cluster.WCShortName), lower) {
-							suggestions = append(suggestions, cluster.WCShortName)
+					for _, wcShortName := range wcs {
+						if strings.HasPrefix(strings.ToLower(wcShortName), lower) {
+							suggestions = append(suggestions, wcShortName)
 						}
 					}
 				}

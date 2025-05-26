@@ -1,6 +1,7 @@
 package config
 
 import (
+	"envctl/internal/kube"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -9,8 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v3"
-
-	"envctl/internal/utils" // For direct use in tests if needed, or mocking
+	// For direct use in tests if needed, or mocking
 )
 
 // Helper function to create a temporary config file
@@ -205,8 +205,8 @@ func TestLoadConfig_ContextResolution(t *testing.T) {
 	// Case 1: mc and wc provided - successful resolution
 	loadedMcWc, errMcWc := LoadConfig("my-mc", "my-wc")
 	assert.NoError(t, errMcWc)
-	expectedMcContext := utils.BuildMcContext("my-mc")
-	expectedWcContext := utils.BuildWcContext("my-mc", "my-wc")
+	expectedMcContext := kube.BuildMcContext("my-mc")
+	expectedWcContext := kube.BuildWcContext("my-mc", "my-wc")
 	resolvedPortForwards := make(map[string]string)
 	for _, pf := range loadedMcWc.PortForwards {
 		resolvedPortForwards[pf.Name] = pf.KubeContextTarget
@@ -240,6 +240,100 @@ func TestLoadConfig_ContextResolution(t *testing.T) {
 			strings.Contains(errNoMcWc.Error(), "requires WC context, but wcName is not provided"),
 		"Error should be about missing MC or WC context")
 
+}
+
+func TestResolveKubeContextPlaceholders(t *testing.T) {
+	tests := []struct {
+		name      string
+		config    EnvctlConfig
+		mcName    string
+		wcName    string
+		expectErr bool
+		expected  EnvctlConfig
+	}{
+		{
+			name: "resolve mc placeholder",
+			config: EnvctlConfig{
+				PortForwards: []PortForwardDefinition{
+					{Name: "pf1", KubeContextTarget: "mc"},
+				},
+			},
+			mcName:    "my-mc",
+			wcName:    "",
+			expectErr: false,
+			expected: EnvctlConfig{
+				PortForwards: []PortForwardDefinition{
+					{Name: "pf1", KubeContextTarget: kube.BuildMcContext("my-mc")},
+				},
+			},
+		},
+		{
+			name: "resolve wc placeholder",
+			config: EnvctlConfig{
+				PortForwards: []PortForwardDefinition{
+					{Name: "pf1", KubeContextTarget: "wc"},
+				},
+			},
+			mcName:    "my-mc",
+			wcName:    "my-wc",
+			expectErr: false,
+			expected: EnvctlConfig{
+				PortForwards: []PortForwardDefinition{
+					{Name: "pf1", KubeContextTarget: kube.BuildWcContext("my-mc", "my-wc")},
+				},
+			},
+		},
+		{
+			name: "error when mc required but not provided",
+			config: EnvctlConfig{
+				PortForwards: []PortForwardDefinition{
+					{Name: "pf1", KubeContextTarget: "mc"},
+				},
+			},
+			mcName:    "",
+			wcName:    "",
+			expectErr: true,
+		},
+		{
+			name: "error when wc required but not provided",
+			config: EnvctlConfig{
+				PortForwards: []PortForwardDefinition{
+					{Name: "pf1", KubeContextTarget: "wc"},
+				},
+			},
+			mcName:    "my-mc",
+			wcName:    "",
+			expectErr: true,
+		},
+		{
+			name: "explicit context unchanged",
+			config: EnvctlConfig{
+				PortForwards: []PortForwardDefinition{
+					{Name: "pf1", KubeContextTarget: "explicit-context"},
+				},
+			},
+			mcName:    "my-mc",
+			wcName:    "my-wc",
+			expectErr: false,
+			expected: EnvctlConfig{
+				PortForwards: []PortForwardDefinition{
+					{Name: "pf1", KubeContextTarget: "explicit-context"},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := resolveKubeContextPlaceholders(&tt.config, tt.mcName, tt.wcName)
+			if tt.expectErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expected, tt.config)
+			}
+		})
+	}
 }
 
 // TODO: Add more tests:

@@ -4,10 +4,14 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
+
+// Global sequence counter for message ordering
+var globalSequence int64
 
 // ServiceType indicates the kind of component sending the update.
 type ServiceType string
@@ -95,9 +99,12 @@ type ManagedServiceUpdate struct {
 	CorrelationID string // Unique ID to track related messages
 	CausedBy      string // What triggered this update (e.g., "user_action", "health_check", "dependency_failure")
 	ParentID      string // ID of the parent operation that caused this update
+
+	// Message sequencing for proper ordering
+	Sequence int64 // Monotonically increasing sequence number for ordering
 }
 
-// NewManagedServiceUpdate creates a new ManagedServiceUpdate with auto-generated correlation ID
+// NewManagedServiceUpdate creates a new ManagedServiceUpdate with auto-generated correlation ID and sequence number
 func NewManagedServiceUpdate(sourceType ServiceType, sourceLabel string, state ServiceState) ManagedServiceUpdate {
 	return ManagedServiceUpdate{
 		Timestamp:     time.Now(),
@@ -107,6 +114,7 @@ func NewManagedServiceUpdate(sourceType ServiceType, sourceLabel string, state S
 		IsReady:       (state == StateRunning),
 		CorrelationID: GenerateCorrelationID(),
 		CausedBy:      "unknown",
+		Sequence:      atomic.AddInt64(&globalSequence, 1),
 	}
 }
 
@@ -204,5 +212,48 @@ type HealthStatusMsg struct {
 
 // Ensure HealthStatusMsg implements tea.Msg
 var _ tea.Msg = HealthStatusMsg{}
+
+// BackpressureNotificationMsg notifies the user about dropped critical messages
+type BackpressureNotificationMsg struct {
+	ServiceLabel string       // The service that had updates dropped
+	DroppedState ServiceState // The state that was dropped
+	Reason       string       // Why the message was dropped
+	Timestamp    time.Time    // When the drop occurred
+}
+
+// Ensure BackpressureNotificationMsg implements tea.Msg
+var _ tea.Msg = BackpressureNotificationMsg{}
+
+// CascadeInfo tracks cascade relationships between services
+type CascadeInfo struct {
+	InitiatingService string      // The service that triggered the cascade
+	AffectedServices  []string    // Services affected by the cascade
+	Reason            string      // Why the cascade occurred
+	CorrelationID     string      // Correlation ID linking all related operations
+	Timestamp         time.Time   // When the cascade started
+	CascadeType       CascadeType // Type of cascade operation
+}
+
+// CascadeType defines the type of cascade operation
+type CascadeType string
+
+const (
+	CascadeTypeStop    CascadeType = "stop"    // Cascade stop operation
+	CascadeTypeRestart CascadeType = "restart" // Cascade restart operation
+	CascadeTypeHealth  CascadeType = "health"  // Health-related cascade
+)
+
+// StateTransition tracks state changes with full context
+type StateTransition struct {
+	Label         string                 // Service label
+	FromState     ServiceState           // Previous state
+	ToState       ServiceState           // New state
+	Timestamp     time.Time              // When the transition occurred
+	CorrelationID string                 // Correlation ID for tracking
+	CausedBy      string                 // What caused this transition
+	ParentID      string                 // Parent operation ID
+	Sequence      int64                  // Sequence number for ordering
+	Metadata      map[string]interface{} // Additional context data
+}
 
 // Ensure reporter.go is correctly placed and has the initial definitions.

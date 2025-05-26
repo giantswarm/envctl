@@ -4,13 +4,11 @@ import (
 	"context"
 	"envctl/internal/color"
 	"envctl/internal/config"
-	"envctl/internal/k8smanager"
+	"envctl/internal/kube"
 	"envctl/internal/managers"
 	"envctl/internal/orchestrator"
 	"envctl/internal/reporting"
 	"envctl/internal/tui/controller"
-	"envctl/internal/tui/model"
-	"envctl/internal/utils"
 	"envctl/pkg/logging"
 	"fmt"
 	"os"
@@ -18,7 +16,7 @@ import (
 	"syscall"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea" // For TUI program
+	// For TUI program
 	"github.com/spf13/cobra"
 )
 
@@ -74,12 +72,13 @@ Arguments:
 
 		logging.InitForCLI(appLogLevel, os.Stdout)
 
-		tempConsoleReporterForKubeMgr := reporting.NewConsoleReporter()
-		kubeMgr := k8smanager.NewKubeManager(tempConsoleReporterForKubeMgr)
+		// Create kube manager
+		kubeMgr := kube.NewManager(nil)
 
+		// Get initial kube context
 		initialKubeContext, err := kubeMgr.GetCurrentContext()
 		if err != nil {
-			logging.Warn("CLI", "Could not get initial Kubernetes context: %v", err)
+			logging.Warn("ConnectCmd", "Failed to get initial kube context: %v", err)
 			initialKubeContext = "unknown"
 		}
 		// Log initial context using the appropriate logger if initialized
@@ -93,27 +92,31 @@ Arguments:
 			// For now, strict failure.
 			return fmt.Errorf("failed to load envctl configuration: %w", err)
 		}
-		// portForwardingConfig := portforwarding.GetPortForwardConfig(managementClusterArg, workloadClusterArg)
-		// mcpServerConfig := mcpserver.GetMCPServerConfig()
 
 		if noTUI {
 			// logging.InitForCLI was already called above.
 			logging.Info("CLI", "Running in no-TUI mode.")
 
 			consoleReporter := reporting.NewConsoleReporter()
-			kubeMgr.SetReporter(consoleReporter) // Ensure KubeMgr uses the main console reporter for CLI
 			serviceMgr := managers.NewServiceManager(consoleReporter)
 
 			// ... (rest of CLI mode logic using logging.* for its own messages) ...
 			if managementClusterArg != "" {
-				logging.Info("CLI", "Attempting login to Management Cluster: %s (via KubeManager)", managementClusterArg)
-				_, _, loginErr := kubeMgr.Login(managementClusterArg)
+				logging.Info("CLI", "Attempting login to Management Cluster: %s", managementClusterArg)
+				stdout, stderr, loginErr := kube.LoginToKubeCluster(managementClusterArg)
 				if loginErr != nil {
 					logging.Error("CLI", loginErr, "Login to %s failed. Continuing with setup if possible...", managementClusterArg)
 				} else {
+					// Get current kube context after login
 					currentKubeContextAfterLogin, _ := kubeMgr.GetCurrentContext()
-					logging.Info("CLI", "Context after login to %s: %s", managementClusterArg, currentKubeContextAfterLogin)
+					logging.Info("ConnectCmd", "Current kube context after login: %s", currentKubeContextAfterLogin)
 					initialKubeContext = currentKubeContextAfterLogin
+				}
+				if stdout != "" {
+					logging.Debug("CLI", "Login stdout: %s", stdout)
+				}
+				if stderr != "" {
+					logging.Debug("CLI", "Login stderr: %s", stderr)
 				}
 			}
 
@@ -121,7 +124,6 @@ Arguments:
 
 			// Create orchestrator for health monitoring and dependency management
 			orch := orchestrator.New(
-				kubeMgr,
 				serviceMgr,
 				consoleReporter,
 				orchestrator.Config{
@@ -157,31 +159,18 @@ Arguments:
 			logChan := logging.InitForTUI(appLogLevel)
 			defer logging.CloseTUIChannel()
 
-			// Pass the TUI reporter to KubeManager for TUI mode
-			// model.InitialModel will create its own TUIReporter and ServiceManager
-			// and should also set this TUIReporter on the KubeMgr instance it receives.
-			// The kubeMgr passed to InitialModel will have its reporter updated by InitialModel.
-
-			coreModel := model.InitialModel(
+			program := controller.NewProgram(
 				managementClusterArg,
 				workloadClusterArg,
 				initialKubeContext,
 				debug || tuiDebugMode, // Use either general debug or TUI-specific debug mode
 				envctlCfg,
-				kubeMgr,
 				logChan,
 			)
-
-			appModel := controller.NewAppModel(coreModel, managementClusterArg, workloadClusterArg)
-
-			program := tea.NewProgram(appModel, tea.WithAltScreen(), tea.WithMouseCellMotion())
 
 			if _, err := program.Run(); err != nil {
 				// Log this error using the TUI logger if possible, or fallback
 				logging.Error("TUI-Lifecycle", err, "Error running TUI program")
-				if appModel != nil && coreModel.ServiceManager != nil {
-					coreModel.ServiceManager.StopAllServices()
-				}
 				return err
 			}
 			logging.Info("TUI-Lifecycle", "TUI exited.")
@@ -189,7 +178,9 @@ Arguments:
 		return nil
 	},
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		clusterInfo, err := utils.GetClusterInfo()
+		// Create a temporary kube manager for completion
+		tempKubeMgr := kube.NewManager(nil)
+		clusterInfo, err := tempKubeMgr.ListClusters()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Completion error: %v\n", err)
 			return nil, cobra.ShellCompDirectiveError

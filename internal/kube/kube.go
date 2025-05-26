@@ -1,14 +1,16 @@
 package kube
 
 import (
+	"bytes"
 	"context"
+	"envctl/pkg/logging"
 	"fmt"
 	"net/http"
+	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
-
-	"envctl/pkg/logging"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -16,6 +18,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth" // Important for various auth providers
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/client-go/tools/portforward"
 	"k8s.io/client-go/transport/spdy"
 )
@@ -469,4 +472,191 @@ var SwitchKubeContext = func(contextName string) error {
 		return fmt.Errorf("failed to write updated kubeconfig to '%s': %w", kubeconfigFilePath, err)
 	}
 	return nil
+}
+
+// TeleportPrefix is the canonical prefix that all Giant Swarm Teleport kubeconfig
+// contexts start with.
+const TeleportPrefix = "teleport.giantswarm.io-"
+
+// HasTeleportPrefix checks whether a context already begins with the canonical
+// Teleport prefix.
+func HasTeleportPrefix(ctx string) bool {
+	return strings.HasPrefix(ctx, TeleportPrefix)
+}
+
+// StripTeleportPrefix removes the Teleport prefix from a context name if it is
+// present. If not, it returns the original string.
+func StripTeleportPrefix(ctx string) string {
+	if HasTeleportPrefix(ctx) {
+		return strings.TrimPrefix(ctx, TeleportPrefix)
+	}
+	return ctx
+}
+
+// BuildMcContext returns the full kubeconfig context name for a Management
+// Cluster given its short name (e.g. "ghost") ->
+// "teleport.giantswarm.io-ghost".
+func BuildMcContext(mc string) string {
+	if mc == "" {
+		return ""
+	}
+	return TeleportPrefix + mc
+}
+
+// BuildWcContext returns the full kubeconfig context name for a Workload
+// Cluster given the MC short name and WC short name. Example:
+// "teleport.giantswarm.io-ghost-acme".
+func BuildWcContext(mc, wc string) string {
+	if mc == "" || wc == "" {
+		return ""
+	}
+	return TeleportPrefix + mc + "-" + wc
+}
+
+// IsWorkloadClusterName checks if a cluster name appears to be a workload cluster
+// based on the naming convention (contains a hyphen)
+func IsWorkloadClusterName(clusterName string) bool {
+	return strings.Contains(clusterName, "-")
+}
+
+// ParseWorkloadClusterName extracts the MC and WC names from a full WC name
+// e.g., "mcname-wcname" returns ("mcname", "wcname")
+func ParseWorkloadClusterName(fullWCName string) (mcName, wcName string) {
+	parts := strings.SplitN(fullWCName, "-", 2)
+	if len(parts) == 2 {
+		return parts[0], parts[1]
+	}
+	return "", ""
+}
+
+// LoginToKubeCluster executes `tsh kube login <clusterName>` to authenticate with a Teleport Kubernetes cluster.
+// It captures and returns the standard output and standard error from the command.
+// Note: This function currently passes os.Stdin to the command, which might cause issues
+// if `tsh` prompts for interactive input (e.g., 2FA) in a non-interactive environment like the TUI.
+// - clusterName: The name of the Teleport Kubernetes cluster to log into.
+// Returns the stdout string, stderr string, and an error if the command execution fails.
+var LoginToKubeCluster = func(clusterName string) (stdout string, stderr string, err error) {
+	cmd := exec.Command("tsh", "kube", "login", clusterName)
+
+	var stdoutBuf, stderrBuf bytes.Buffer
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
+
+	// Stdin might still be needed if tsh prompts for anything (e.g., 2FA),
+	// but for non-interactive TUI, this might be an issue if it hangs.
+	// For now, keep os.Stdin, but this could be a point of failure if tsh blocks.
+	// Consider if tsh login can be made fully non-interactive or if a timeout is needed.
+	cmd.Stdin = os.Stdin
+
+	runErr := cmd.Run()
+
+	stdoutStr := stdoutBuf.String()
+	stderrStr := stderrBuf.String()
+
+	if runErr != nil {
+		// Include tsh's stderr in the error message for better diagnostics
+		return stdoutStr, stderrStr, fmt.Errorf("failed to execute 'tsh kube login %s': %w. Stderr: %s", clusterName, runErr, stderrStr)
+	}
+	return stdoutStr, stderrStr, nil
+}
+
+// GetClusterInfo executes the `tsh kube ls` command and parses its output to populate a ClusterInfo struct.
+// The parsing logic attempts to distinguish between management clusters (e.g., "ceres") and
+// workload clusters (e.g., "ceres-bobcat") based on naming conventions (presence of a hyphen).
+// It returns a pointer to the populated ClusterInfo struct and an error if `tsh kube ls` fails or parsing encounters issues.
+var GetClusterInfo = func() (*ClusterInfo, error) {
+	cmd := exec.Command("tsh", "kube", "ls")
+	var out bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute 'tsh kube ls': %w\nStderr: %s", err, stderr.String())
+	}
+
+	lines := strings.Split(out.String(), "\n")
+	info := &ClusterInfo{
+		ManagementClusters: []string{},
+		WorkloadClusters:   make(map[string][]string),
+	}
+
+	// Skip header lines of `tsh kube ls` output. Typically, the first 2 lines are headers.
+	if len(lines) < 3 { // Expect at least headers + one data line for any meaningful output.
+		return info, nil // Return empty info if no data rows
+	}
+
+	for _, line := range lines[2:] { // Start from the third data line
+		if line == "" {
+			continue
+		}
+		parts := strings.Fields(line)
+		if len(parts) == 0 {
+			continue
+		}
+
+		fullClusterName := strings.TrimSuffix(parts[0], "*")
+
+		// Heuristic to differentiate MCs and WCs: WCs usually contain a hyphen (e.g., "mc-name-wc-shortname").
+		// This assumes a naming convention where the MC name is the part before the first hyphen,
+		// and the WC short name is the part after.
+		if strings.Contains(fullClusterName, "-") {
+			// Potential Workload Cluster (e.g., "mcname-wcshortname")
+			nameParts := strings.SplitN(fullClusterName, "-", 2)
+			if len(nameParts) == 2 {
+				mcName := nameParts[0]
+				wcShortName := nameParts[1]
+				info.WorkloadClusters[mcName] = append(info.WorkloadClusters[mcName], wcShortName)
+			}
+		} else {
+			// Assumed to be a Management Cluster if no hyphen is present in the relevant part of the name.
+			info.ManagementClusters = append(info.ManagementClusters, fullClusterName)
+		}
+	}
+
+	// This step ensures that any MC inferred from a WC's name (e.g., "mcName" from "mcName-wcShortName")
+	// is also included in the ManagementClusters list, even if it wasn't listed as a standalone MC entry by `tsh kube ls`.
+	// This can happen if only workload clusters under a specific MC are available/listed.
+	existingMCs := make(map[string]bool)
+	for _, mc := range info.ManagementClusters {
+		existingMCs[mc] = true
+	}
+	for mcName := range info.WorkloadClusters {
+		if !existingMCs[mcName] {
+			info.ManagementClusters = append(info.ManagementClusters, mcName)
+		}
+	}
+
+	return info, nil
+}
+
+// GetStartingConfig returns the starting kubeconfig
+func GetStartingConfig() (*api.Config, error) {
+	pathOptions := clientcmd.NewDefaultPathOptions()
+	config, err := pathOptions.GetStartingConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get starting kubeconfig: %w", err)
+	}
+	return config, nil
+}
+
+// GetClientsetForContext creates a Kubernetes clientset for a specific context
+func GetClientsetForContext(ctx context.Context, kubeContextName string) (kubernetes.Interface, error) {
+	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	configOverrides := &clientcmd.ConfigOverrides{CurrentContext: kubeContextName}
+	kubeConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
+
+	restConfig, err := kubeConfig.ClientConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get REST config for context %q: %w", kubeContextName, err)
+	}
+	restConfig.Timeout = 15 * time.Second
+
+	clientset, err := kubernetes.NewForConfig(restConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Kubernetes clientset for context %q: %w", kubeContextName, err)
+	}
+
+	return clientset, nil
 }

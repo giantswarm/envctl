@@ -1,7 +1,7 @@
 package config
 
 import (
-	"envctl/internal/utils"
+	"envctl/internal/kube"
 )
 
 // EnvctlConfig is the top-level configuration structure for envctl.
@@ -51,7 +51,6 @@ type MCPServerDefinition struct {
 
 	// Dependencies
 	RequiresPortForwards []string `yaml:"requiresPortForwards,omitempty"` // Names of PortForwardDefinition(s) needed by this server
-	DependsOnServices    []string `yaml:"dependsOnServices,omitempty"`    // Names of other MCPServerDefinition(s) that must be healthy first
 }
 
 // PortForwardDefinition defines a Kubernetes port-forwarding configuration.
@@ -75,121 +74,97 @@ type PortForwardDefinition struct {
 	BindAddress         string `yaml:"bindAddress,omitempty"` // Default "127.0.0.1"
 }
 
-// GetDefaultConfig returns the default, embedded configuration for envctl.
+// GetDefaultConfig returns the default configuration for envctl.
+// mcName and wcName are the canonical names provided by the user.
 func GetDefaultConfig(mcName, wcName string) EnvctlConfig {
-	// Placeholder for where default configs will be constructed
-	// This will replicate the current hardcoded logic from
-	// mcpserver.GetMCPServerConfig() and portforwarding.GetPortForwardConfig()
-	// but map it to the new structures.
-
-	mcKubeContext := ""
+	// Build context names
+	mcContext := ""
+	wcContext := ""
 	if mcName != "" {
-		mcKubeContext = utils.BuildMcContext(mcName)
+		mcContext = kube.BuildMcContext(mcName)
 	}
-
-	wcKubeContext := ""
-	alloyMetricsTargetContext := mcKubeContext
 	if wcName != "" && mcName != "" {
-		wcKubeContext = utils.BuildWcContext(mcName, wcName)
-		alloyMetricsTargetContext = wcKubeContext
+		wcContext = kube.BuildWcContext(mcName, wcName)
 	}
 
-	defaultPortForwards := []PortForwardDefinition{}
-	if mcName != "" {
-		defaultPortForwards = append(defaultPortForwards,
-			PortForwardDefinition{
+	// Determine which context to use for Alloy Metrics
+	alloyContext := mcContext // Default to MC
+	if wcContext != "" {
+		alloyContext = wcContext // Use WC if available
+	}
+
+	return EnvctlConfig{
+		PortForwards: []PortForwardDefinition{
+			{
 				Name:              "mc-prometheus",
 				Enabled:           true,
-				Icon:              "🔥",
-				Category:          "Monitoring (MC)",
-				KubeContextTarget: mcKubeContext, // Will need a way to resolve this to actual context name
+				KubeContextTarget: mcContext,
 				Namespace:         "mimir",
 				TargetType:        "service",
 				TargetName:        "mimir-query-frontend",
 				LocalPort:         "8080",
-				RemotePort:        "8080",
-				BindAddress:       "127.0.0.1",
+				RemotePort:        "80",
 			},
-			PortForwardDefinition{
+			{
 				Name:              "mc-grafana",
 				Enabled:           true,
-				Icon:              "📊",
-				Category:          "Monitoring (MC)",
-				KubeContextTarget: mcKubeContext,
+				KubeContextTarget: mcContext,
 				Namespace:         "monitoring",
 				TargetType:        "service",
 				TargetName:        "grafana",
 				LocalPort:         "3000",
 				RemotePort:        "3000",
-				BindAddress:       "127.0.0.1",
 			},
-		)
-	}
-
-	if alloyMetricsTargetContext != "" {
-		alloyLabel := "alloy-metrics-mc"
-		alloyCategory := "Metrics (MC)"
-		if wcName != "" {
-			alloyLabel = "alloy-metrics-wc"
-			alloyCategory = "Metrics (WC)"
-		}
-		defaultPortForwards = append(defaultPortForwards, PortForwardDefinition{
-			Name:              alloyLabel,
-			Enabled:           true,
-			Icon:              "✨",
-			Category:          alloyCategory,
-			KubeContextTarget: alloyMetricsTargetContext,
-			Namespace:         "kube-system",
-			TargetType:        "service",
-			TargetName:        "alloy-metrics-cluster",
-			LocalPort:         "12345",
-			RemotePort:        "12345",
-			BindAddress:       "127.0.0.1",
-		})
-	}
-
-	defaultMCPServers := []MCPServerDefinition{
-		{
-			Name:      "kubernetes",
-			Type:      MCPServerTypeLocalCommand,
-			Enabled:   true,
-			Icon:      "☸",
-			Category:  "Core",
-			Command:   []string{"npx", "mcp-server-kubernetes"},
-			ProxyPort: 8001, // 0 means random port assignment
-		},
-		{
-			Name:      "prometheus",
-			Type:      MCPServerTypeLocalCommand,
-			Enabled:   true,
-			Icon:      "🔥",
-			Category:  "Monitoring",
-			Command:   []string{"uv", "--directory", "/home/teemow/projects/prometheus-mcp-server", "run", "src/prometheus_mcp_server/main.py"},
-			ProxyPort: 8002, // 0 means random port assignment
-			Env: map[string]string{
-				"PROMETHEUS_URL": "http://localhost:8080/prometheus", // Assumes mc-prometheus port-forward
-				"ORG_ID":         "giantswarm",
+			{
+				Name:              "alloy-metrics",
+				Enabled:           true,
+				KubeContextTarget: alloyContext,
+				Namespace:         "kube-system",
+				TargetType:        "service",
+				TargetName:        "alloy-metrics",
+				LocalPort:         "12345",
+				RemotePort:        "12345",
 			},
-			RequiresPortForwards: []string{"mc-prometheus"}, // Link to the port-forward by name
 		},
-		{
-			Name:                 "grafana",
-			Type:                 MCPServerTypeLocalCommand,
-			Enabled:              true,
-			Icon:                 "📊",
-			Category:             "Monitoring",
-			Command:              []string{"mcp-grafana"},
-			ProxyPort:            8003,                                                      // 0 means random port assignment
-			Env:                  map[string]string{"GRAFANA_URL": "http://localhost:3000"}, // Assumes mc-grafana port-forward
-			RequiresPortForwards: []string{"mc-grafana"},
+		MCPServers: []MCPServerDefinition{
+			{
+				Name:                 "kubernetes",
+				Type:                 MCPServerTypeLocalCommand,
+				Enabled:              true,
+				Icon:                 "☸",
+				Category:             "Core",
+				Command:              []string{"npx", "mcp-server-kubernetes"},
+				ProxyPort:            8001,
+				RequiresPortForwards: []string{},
+			},
+			{
+				Name:      "prometheus",
+				Type:      MCPServerTypeLocalCommand,
+				Enabled:   true,
+				Icon:      "🔥",
+				Category:  "Monitoring",
+				Command:   []string{"uv", "--directory", "/home/teemow/projects/prometheus-mcp-server", "run", "src/prometheus_mcp_server/main.py"},
+				ProxyPort: 8002,
+				Env: map[string]string{
+					"PROMETHEUS_URL": "http://localhost:8080/prometheus",
+					"ORG_ID":         "giantswarm",
+				},
+				RequiresPortForwards: []string{"mc-prometheus"},
+			},
+			{
+				Name:                 "grafana",
+				Type:                 MCPServerTypeLocalCommand,
+				Enabled:              true,
+				Icon:                 "📊",
+				Category:             "Monitoring",
+				Command:              []string{"mcp-grafana"},
+				ProxyPort:            8003,
+				Env:                  map[string]string{"GRAFANA_URL": "http://localhost:3000"},
+				RequiresPortForwards: []string{"mc-grafana"},
+			},
 		},
-	}
-
-	return EnvctlConfig{
-		MCPServers:   defaultMCPServers,
-		PortForwards: defaultPortForwards,
 		GlobalSettings: GlobalSettings{
-			DefaultContainerRuntime: "docker", // A sensible default
+			DefaultContainerRuntime: "docker",
 		},
 	}
 }

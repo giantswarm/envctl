@@ -54,7 +54,7 @@ func (s *StateSubscription) IsClosed() bool {
 	return s.Closed
 }
 
-// StateStore defines the interface for centralized state management
+// StateStore interface for managing service states
 type StateStore interface {
 	// GetServiceState returns the current state of a service
 	GetServiceState(label string) (ServiceStateSnapshot, bool)
@@ -85,6 +85,14 @@ type StateStore interface {
 
 	// GetMetrics returns state store metrics
 	GetMetrics() StateStoreMetrics
+
+	// Enhanced functionality for transitions and cascades
+	RecordStateTransition(transition StateTransition) error
+	GetStateTransitions(label string) []StateTransition
+	GetAllStateTransitions() []StateTransition
+	RecordCascadeOperation(cascade CascadeInfo) error
+	GetCascadeOperations() []CascadeInfo
+	GetCascadesByCorrelationID(correlationID string) []CascadeInfo
 }
 
 // StateStoreMetrics tracks state store performance and usage
@@ -106,20 +114,24 @@ type SubscriptionMetrics struct {
 	LastEventTime        time.Time
 }
 
-// DefaultStateStore is the default implementation of StateStore
+// DefaultStateStore implements StateStore with in-memory storage
 type DefaultStateStore struct {
 	states        map[string]ServiceStateSnapshot
 	subscriptions map[string]*StateSubscription
+	transitions   []StateTransition
+	cascades      []CascadeInfo
 	metrics       StateStoreMetrics
 	mu            sync.RWMutex
 	subIDCounter  int64
 }
 
-// NewStateStore creates a new state store
+// NewStateStore creates a new DefaultStateStore
 func NewStateStore() StateStore {
 	return &DefaultStateStore{
 		states:        make(map[string]ServiceStateSnapshot),
 		subscriptions: make(map[string]*StateSubscription),
+		transitions:   make([]StateTransition, 0),
+		cascades:      make([]CascadeInfo, 0),
 		metrics: StateStoreMetrics{
 			ServicesByType:  make(map[ServiceType]int),
 			ServicesByState: make(map[ServiceState]int),
@@ -168,6 +180,39 @@ func (s *DefaultStateStore) SetServiceState(update ManagedServiceUpdate) (bool, 
 
 	// Update state
 	s.states[update.SourceLabel] = newSnapshot
+
+	// Record state transition if state changed
+	if stateChanged {
+		transition := StateTransition{
+			Label:         update.SourceLabel,
+			FromState:     oldState,
+			ToState:       update.State,
+			Timestamp:     update.Timestamp,
+			CorrelationID: update.CorrelationID,
+			CausedBy:      update.CausedBy,
+			ParentID:      update.ParentID,
+			Sequence:      update.Sequence,
+			Metadata:      make(map[string]interface{}),
+		}
+
+		// Add metadata
+		if update.ProxyPort > 0 {
+			transition.Metadata["proxy_port"] = update.ProxyPort
+		}
+		if update.PID > 0 {
+			transition.Metadata["pid"] = update.PID
+		}
+		if update.ErrorDetail != nil {
+			transition.Metadata["error"] = update.ErrorDetail.Error()
+		}
+
+		s.transitions = append(s.transitions, transition)
+
+		// Limit transition history
+		if len(s.transitions) > 1000 {
+			s.transitions = s.transitions[len(s.transitions)-1000:]
+		}
+	}
 
 	// Update metrics
 	s.updateMetrics(oldSnapshot, newSnapshot, exists, stateChanged)
@@ -362,4 +407,82 @@ func (s *DefaultStateStore) notifySubscribers(event StateChangeEvent) {
 			}
 		}
 	}
+}
+
+// RecordStateTransition records a state transition for tracking
+func (s *DefaultStateStore) RecordStateTransition(transition StateTransition) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.transitions = append(s.transitions, transition)
+
+	// Limit transition history to prevent memory issues (keep last 1000)
+	if len(s.transitions) > 1000 {
+		s.transitions = s.transitions[len(s.transitions)-1000:]
+	}
+
+	return nil
+}
+
+// GetStateTransitions returns all state transitions for a specific service
+func (s *DefaultStateStore) GetStateTransitions(label string) []StateTransition {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var result []StateTransition
+	for _, transition := range s.transitions {
+		if transition.Label == label {
+			result = append(result, transition)
+		}
+	}
+	return result
+}
+
+// GetAllStateTransitions returns all recorded state transitions
+func (s *DefaultStateStore) GetAllStateTransitions() []StateTransition {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	result := make([]StateTransition, len(s.transitions))
+	copy(result, s.transitions)
+	return result
+}
+
+// RecordCascadeOperation records a cascade operation for tracking
+func (s *DefaultStateStore) RecordCascadeOperation(cascade CascadeInfo) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.cascades = append(s.cascades, cascade)
+
+	// Limit cascade history to prevent memory issues (keep last 500)
+	if len(s.cascades) > 500 {
+		s.cascades = s.cascades[len(s.cascades)-500:]
+	}
+
+	return nil
+}
+
+// GetCascadeOperations returns all recorded cascade operations
+func (s *DefaultStateStore) GetCascadeOperations() []CascadeInfo {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	result := make([]CascadeInfo, len(s.cascades))
+	copy(result, s.cascades)
+	return result
+}
+
+// GetCascadesByCorrelationID returns cascade operations for a specific correlation ID
+func (s *DefaultStateStore) GetCascadesByCorrelationID(correlationID string) []CascadeInfo {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var result []CascadeInfo
+	for _, cascade := range s.cascades {
+		if cascade.CorrelationID == correlationID {
+			result = append(result, cascade)
+		}
+	}
+	return result
 }

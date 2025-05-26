@@ -17,8 +17,7 @@ import (
 	"envctl/internal/config" // Added
 	"envctl/internal/reporting"
 
-	// Added for KubeManagerAPI type for nil
-	"envctl/internal/k8smanager" // Using k8smanager
+	// Using k8smanager
 	// "envctl/internal/mcpserver" // No longer needed for config types
 	// "envctl/internal/portforwarding" // No longer needed for config types
 	"envctl/internal/tui/model"
@@ -30,17 +29,14 @@ import (
 // updateGoldenFiles is a flag to indicate that golden files should be updated.
 var updateGoldenFiles = flag.Bool("update", false, "Update golden files")
 
-// mockKubeManager is a mock for KubeManagerAPI, implementing only what view tests might need indirectly.
-// For view tests, we mostly care that model fields (like MCHealth) are populated correctly prior to rendering.
-// The actual KubeManagerAPI calls usually happen in the controller/model updates, not in view.Render.
-
-type mockKubeManager struct{} // This mock will implement k8smanager.KubeManagerAPI
+// mockKubeManager is a simple mock that doesn't use k8smanager types
+type mockKubeManager struct{}
 
 func (m *mockKubeManager) Login(clusterName string) (stdout string, stderr string, err error) {
 	return "", "", nil
 }
-func (m *mockKubeManager) ListClusters() (*k8smanager.ClusterList, error) {
-	return &k8smanager.ClusterList{}, nil
+func (m *mockKubeManager) ListClusters() (interface{}, error) {
+	return nil, nil
 }
 func (m *mockKubeManager) GetCurrentContext() (string, error)           { return "test-context", nil }
 func (m *mockKubeManager) SwitchContext(targetContextName string) error { return nil }
@@ -54,14 +50,18 @@ func (m *mockKubeManager) BuildWcContextName(mcShortName, wcShortName string) st
 	return "teleport.giantswarm.io-" + mcShortName + "-" + wcShortName
 }
 func (m *mockKubeManager) StripTeleportPrefix(contextName string) string {
-	return strings.TrimPrefix(contextName, "teleport.giantswarm.io-")
+	return contextName
 }
 func (m *mockKubeManager) HasTeleportPrefix(contextName string) bool {
 	return strings.HasPrefix(contextName, "teleport.giantswarm.io-")
 }
-func (m *mockKubeManager) GetClusterNodeHealth(ctx context.Context, kubeContextName string) (k8smanager.NodeHealth, error) {
-	// Return a default healthy state for tests, or vary based on kubeContextName if needed for specific tests.
-	return k8smanager.NodeHealth{ReadyNodes: 1, TotalNodes: 1, Error: nil}, nil
+func (m *mockKubeManager) GetClusterNodeHealth(ctx context.Context, kubeContextName string) (interface{}, error) {
+	// Return a simple struct with the expected fields
+	return struct {
+		ReadyNodes int
+		TotalNodes int
+		Error      error
+	}{ReadyNodes: 1, TotalNodes: 1, Error: nil}, nil
 }
 
 func (m *mockKubeManager) DetermineClusterProvider(ctx context.Context, kubeContextName string) (string, error) {
@@ -69,7 +69,7 @@ func (m *mockKubeManager) DetermineClusterProvider(ctx context.Context, kubeCont
 }
 
 func (m *mockKubeManager) SetReporter(reporter reporting.ServiceReporter) {
-	// Mock implementation, can be empty.
+	// Mock implementation
 }
 
 // checkGoldenFile compares the actual output with the golden file.
@@ -169,7 +169,7 @@ func TestRenderHeader_Simple(t *testing.T) {
 
 	// Use GetDefaultConfig to get initial config.EnvctlConfig
 	defaultEnvctlCfg := config.GetDefaultConfig("MCmgmt", "WCwork")
-	m := model.InitialModel("MCmgmt", "WCwork", "test-context", false, defaultEnvctlCfg, &mockKubeManager{}, nil)
+	m := model.InitialModel("MCmgmt", "WCwork", "test-context", false, defaultEnvctlCfg, nil)
 	m.CurrentAppMode = model.ModeMainDashboard
 	m.Width = 100 // Provide a fixed width for consistent rendering
 	m.MCHealth = model.ClusterHealthInfo{ReadyNodes: 3, TotalNodes: 3, LastUpdated: initialTime}
@@ -198,7 +198,7 @@ func TestRenderContextPanesRow_Simple(t *testing.T) {
 
 	initialTime := time.Date(2024, 1, 1, 10, 30, 0, 0, time.UTC)
 	defaultEnvctlCfg := config.GetDefaultConfig("MCmgmt", "WCwork") // Get default EnvctlConfig
-	m := model.InitialModel("MCmgmt", "WCwork", "test-context", false, defaultEnvctlCfg, &mockKubeManager{}, nil)
+	m := model.InitialModel("MCmgmt", "WCwork", "test-context", false, defaultEnvctlCfg, nil)
 	m.CurrentAppMode = model.ModeMainDashboard
 	m.Width = 120
 	m.Height = 30
@@ -238,7 +238,7 @@ func TestRenderPortForwardingRow_Simple(t *testing.T) {
 		GlobalSettings: config.GetDefaultConfig("MCmgmt", "").GlobalSettings,
 	}
 
-	m := model.InitialModel("MCmgmt", "", "test-context", false, envctlCfgWithPfs, &mockKubeManager{}, nil)
+	m := model.InitialModel("MCmgmt", "", "test-context", false, envctlCfgWithPfs, nil)
 	m.CurrentAppMode = model.ModeMainDashboard
 	m.Width = 120
 	m.Height = 30
@@ -292,7 +292,7 @@ func TestRenderMcpProxiesRow_Simple(t *testing.T) {
 		GlobalSettings: config.GetDefaultConfig("MCmgmt", "WCwork").GlobalSettings,
 	}
 
-	m := model.InitialModel("MCmgmt", "WCwork", "test-context", false, envctlCfgWithMcps, &mockKubeManager{}, nil)
+	m := model.InitialModel("MCmgmt", "WCwork", "test-context", false, envctlCfgWithMcps, nil)
 	m.CurrentAppMode = model.ModeMainDashboard
 	m.Width = 120
 	m.Height = 30
@@ -357,7 +357,7 @@ func TestRenderStatusBar_Simple(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 
 	defaultEnvctlCfg := config.GetDefaultConfig("MC", "WC")
-	m := model.InitialModel("MC", "WC", "ctx", false, defaultEnvctlCfg, &mockKubeManager{}, nil)
+	m := model.InitialModel("MC", "WC", "ctx", false, defaultEnvctlCfg, nil)
 	m.Width = 80
 	m.CurrentAppMode = model.ModeMainDashboard // Or any mode that shows status bar
 	m.StatusBarMessage = "This is an INFO message."
@@ -389,7 +389,7 @@ func TestRender_HelpOverlay(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 
 	defaultEnvctlCfg := config.GetDefaultConfig("MC", "WC")
-	m := model.InitialModel("MC", "WC", "ctx", false, defaultEnvctlCfg, &mockKubeManager{}, nil)
+	m := model.InitialModel("MC", "WC", "ctx", false, defaultEnvctlCfg, nil)
 	m.Width = 100
 	m.Height = 30
 	m.CurrentAppMode = model.ModeHelpOverlay
@@ -410,7 +410,7 @@ func TestRender_HelpOverlay(t *testing.T) {
 }
 
 func TestRender_LogOverlay(t *testing.T) {
-	m := model.InitialModel("MC", "WC", "ctx", false, config.GetDefaultConfig("MC", "WC"), &mockKubeManager{}, nil)
+	m := model.InitialModel("MC", "WC", "ctx", false, config.GetDefaultConfig("MC", "WC"), nil)
 	m.Width = 100
 	m.Height = 30
 	m.CurrentAppMode = model.ModeLogOverlay
@@ -442,7 +442,7 @@ func TestRender_LogOverlay(t *testing.T) {
 
 func TestRender_McpConfigOverlay(t *testing.T) {
 	defaultEnvctlCfg := config.GetDefaultConfig("MC", "WC")
-	m := model.InitialModel("MC", "WC", "ctx", false, defaultEnvctlCfg, &mockKubeManager{}, nil)
+	m := model.InitialModel("MC", "WC", "ctx", false, defaultEnvctlCfg, nil)
 	m.Width = 100
 	m.Height = 30
 	m.CurrentAppMode = model.ModeMcpConfigOverlay
@@ -492,7 +492,7 @@ func TestRender_McpConfigOverlay(t *testing.T) {
 
 func TestRenderCombinedLogPanel_Simple(t *testing.T) {
 	defaultEnvctlCfg := config.GetDefaultConfig("MC", "WC")
-	m := model.InitialModel("MC", "WC", "ctx", false, defaultEnvctlCfg, &mockKubeManager{}, nil)
+	m := model.InitialModel("MC", "WC", "ctx", false, defaultEnvctlCfg, nil)
 	m.Width = 100
 	m.Height = 40 // Need enough height for this panel to be rendered
 	m.CurrentAppMode = model.ModeMainDashboard
@@ -532,7 +532,7 @@ func TestRenderCombinedLogPanel_Simple(t *testing.T) {
 func TestRender_ModeQuitting(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 	defaultEnvctlCfg := config.GetDefaultConfig("", "")
-	m := model.InitialModel("", "", "", false, defaultEnvctlCfg, &mockKubeManager{}, nil)
+	m := model.InitialModel("", "", "", false, defaultEnvctlCfg, nil)
 	m.Width = 80
 	m.Height = 24
 	m.CurrentAppMode = model.ModeQuitting
@@ -557,7 +557,7 @@ func TestRender_ModeInitializing(t *testing.T) {
 
 	defaultEnvctlCfg := config.GetDefaultConfig("", "")
 	t.Run("NoSize", func(t *testing.T) {
-		m := model.InitialModel("", "", "", false, defaultEnvctlCfg, &mockKubeManager{}, nil)
+		m := model.InitialModel("", "", "", false, defaultEnvctlCfg, nil)
 		m.Width = 0 // Critical: test case for when window size is not yet known
 		m.Height = 0
 		m.CurrentAppMode = model.ModeInitializing
@@ -576,7 +576,7 @@ func TestRender_ModeInitializing(t *testing.T) {
 	})
 
 	t.Run("WithSize", func(t *testing.T) {
-		m := model.InitialModel("", "", "", false, defaultEnvctlCfg, &mockKubeManager{}, nil)
+		m := model.InitialModel("", "", "", false, defaultEnvctlCfg, nil)
 		m.Width = 80
 		m.Height = 24
 		m.CurrentAppMode = model.ModeInitializing
@@ -598,7 +598,7 @@ func TestRender_ModeInitializing(t *testing.T) {
 func TestRender_ModeUnknown(t *testing.T) {
 	// NO_COLOR=true in Makefile should handle disabling ANSI codes
 	defaultEnvctlCfg := config.GetDefaultConfig("", "")
-	m := model.InitialModel("", "", "", false, defaultEnvctlCfg, &mockKubeManager{}, nil)
+	m := model.InitialModel("", "", "", false, defaultEnvctlCfg, nil)
 	m.Width = 80
 	m.Height = 24
 	m.CurrentAppMode = model.AppMode(999) // An undefined AppMode value
@@ -618,8 +618,7 @@ func TestRender_ModeUnknown(t *testing.T) {
 
 func TestRender_MainDashboard_Normal(t *testing.T) {
 	defaultEnvctlCfg := config.GetDefaultConfig("MC", "WC")
-	mockKube := &mockKubeManager{}
-	m := model.InitialModel("MC", "WC", "teleport.giantswarm.io-MC-WC", false, defaultEnvctlCfg, mockKube, nil)
+	m := model.InitialModel("MC", "WC", "teleport.giantswarm.io-MC-WC", false, defaultEnvctlCfg, nil)
 
 	m.Width = 120
 	m.Height = 35

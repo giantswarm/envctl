@@ -1,7 +1,7 @@
 package model
 
 import (
-	"envctl/internal/k8smanager"
+	"envctl/internal/kube"
 	"envctl/pkg/logging"
 )
 
@@ -46,7 +46,7 @@ type KubeContextSwitchedMsg struct {
 }
 
 type ClusterListResultMsg struct {
-	Info *k8smanager.ClusterList
+	Info *kube.ClusterInfo
 	Err  error
 }
 

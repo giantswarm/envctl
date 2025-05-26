@@ -1,13 +1,12 @@
 package config
 
 import (
+	"envctl/internal/kube"
 	"fmt"
 	"os"
 	"path/filepath"
 
 	"gopkg.in/yaml.v3" // Assuming YAML parsing library
-
-	"envctl/internal/utils" // For BuildMcContext, BuildWcContext
 )
 
 // For mocking in tests
@@ -151,81 +150,19 @@ func resolveKubeContextPlaceholders(config *EnvctlConfig, mcName, wcName string)
 			if mcName == "" {
 				return fmt.Errorf("port-forward '%s' requires MC context, but mcName is not provided", pf.Name)
 			}
-			pf.KubeContextTarget = utils.BuildMcContext(mcName)
+			pf.KubeContextTarget = kube.BuildMcContext(mcName)
 		case kubeContextWC:
 			if wcName == "" {
-				// If wcName is not provided, it could fall back to MC context or error.
-				// For now, let's assume it's an error if "wc" is specified but no wcName.
-				// Alternative: Fallback to MC context if wcName is empty.
-				// pf.KubeContextTarget = utils.BuildMcContext(mcName)
 				return fmt.Errorf("port-forward '%s' requires WC context, but wcName is not provided (mcName: %s)", pf.Name, mcName)
-
 			}
 			if mcName == "" { // Should not happen if wcName is set, but good practice
 				return fmt.Errorf("port-forward '%s' requires WC context, but mcName is not provided for building WC context name", pf.Name)
 			}
-			pf.KubeContextTarget = utils.BuildWcContext(mcName, wcName)
+			pf.KubeContextTarget = kube.BuildWcContext(mcName, wcName)
 		default:
 			// If it's not "mc" or "wc", assume it's an explicit context name or already resolved.
 			// No action needed. Or, we could validate if it's a valid looking context.
 		}
 	}
 	return nil
-}
-
-// ExampleContainerizedConfig shows how to configure containerized MCP servers
-// This is not used in the code but serves as documentation
-func ExampleContainerizedConfig() EnvctlConfig {
-	return EnvctlConfig{
-		MCPServers: []MCPServerDefinition{
-			{
-				Name:           "kubernetes",
-				Type:           MCPServerTypeContainer,
-				Enabled:        true,
-				Icon:           "☸",
-				Category:       "Core",
-				Image:          "giantswarm/mcp-server-kubernetes:latest",
-				ProxyPort:      8001,
-				ContainerPorts: []string{"8001:3000"}, // host:container
-				ContainerVolumes: []string{
-					"~/.kube/config:/home/mcpuser/.kube/config:ro",
-				},
-				ContainerEnv: map[string]string{
-					"KUBECONFIG": "/home/mcpuser/.kube/config",
-				},
-			},
-			{
-				Name:           "prometheus",
-				Type:           MCPServerTypeContainer,
-				Enabled:        true,
-				Icon:           "🔥",
-				Category:       "Monitoring",
-				Image:          "giantswarm/mcp-server-prometheus:latest",
-				ProxyPort:      8002,
-				ContainerPorts: []string{"8002:3000"},
-				ContainerEnv: map[string]string{
-					"PROMETHEUS_URL": "http://host.docker.internal:8080/prometheus",
-					"ORG_ID":         "giantswarm",
-				},
-				RequiresPortForwards: []string{"mc-prometheus"},
-			},
-			{
-				Name:           "grafana",
-				Type:           MCPServerTypeContainer,
-				Enabled:        true,
-				Icon:           "📊",
-				Category:       "Monitoring",
-				Image:          "giantswarm/mcp-server-grafana:latest",
-				ProxyPort:      8003,
-				ContainerPorts: []string{"8003:3000"},
-				ContainerEnv: map[string]string{
-					"GRAFANA_URL": "http://host.docker.internal:3000",
-				},
-				RequiresPortForwards: []string{"mc-grafana"},
-			},
-		},
-		GlobalSettings: GlobalSettings{
-			DefaultContainerRuntime: "docker",
-		},
-	}
 }

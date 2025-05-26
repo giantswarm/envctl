@@ -3,62 +3,69 @@ package model_test
 import (
 	"context"
 	"envctl/internal/config"
-	"envctl/internal/k8smanager" // NEW: for KubeManagerAPI and its types
 	"envctl/internal/reporting"
-
-	// For ServiceManagerAPI if needed (nil for now)
-
-	// "envctl/internal/portforwarding" // Already commented out
-	// "envctl/internal/service" // REMOVED
 	"envctl/internal/tui/controller"
-	"envctl/internal/tui/model" // Added for logging.LogEntry type for logChan
+	"envctl/internal/tui/model"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// Mock for KubeManagerAPI, implementing only what's needed by these tests
-// (which is likely nothing as tests operate on model state after updates)
+// mockKubeManagerForModelTest is a simple mock that doesn't use k8smanager types
 type mockKubeManagerForModelTest struct{}
 
 func (m *mockKubeManagerForModelTest) Login(clusterName string) (stdout string, stderr string, err error) {
 	return "", "", nil
 }
-func (m *mockKubeManagerForModelTest) ListClusters() (*k8smanager.ClusterList, error) {
-	return &k8smanager.ClusterList{}, nil
+
+func (m *mockKubeManagerForModelTest) ListClusters() (interface{}, error) {
+	return nil, nil
 }
-func (m *mockKubeManagerForModelTest) GetCurrentContext() (string, error)           { return "test-context", nil }
-func (m *mockKubeManagerForModelTest) SwitchContext(targetContextName string) error { return nil }
+
+func (m *mockKubeManagerForModelTest) GetCurrentContext() (string, error) {
+	return "test-context", nil
+}
+
+func (m *mockKubeManagerForModelTest) SwitchContext(targetContextName string) error {
+	return nil
+}
+
 func (m *mockKubeManagerForModelTest) GetAvailableContexts() ([]string, error) {
 	return []string{"test-context"}, nil
 }
+
 func (m *mockKubeManagerForModelTest) BuildMcContextName(mcShortName string) string {
 	return "teleport.giantswarm.io-" + mcShortName
 }
+
 func (m *mockKubeManagerForModelTest) BuildWcContextName(mcShortName, wcShortName string) string {
 	return "teleport.giantswarm.io-" + mcShortName + "-" + wcShortName
 }
+
 func (m *mockKubeManagerForModelTest) StripTeleportPrefix(contextName string) string {
-	return strings.TrimPrefix(contextName, "teleport.giantswarm.io-")
+	return contextName
 }
+
 func (m *mockKubeManagerForModelTest) HasTeleportPrefix(contextName string) bool {
-	return strings.HasPrefix(contextName, "teleport.giantswarm.io-")
+	return false
 }
-func (m *mockKubeManagerForModelTest) GetClusterNodeHealth(ctx context.Context, kubeContextName string) (k8smanager.NodeHealth, error) {
-	return k8smanager.NodeHealth{ReadyNodes: 1, TotalNodes: 1, Error: nil}, nil
+
+func (m *mockKubeManagerForModelTest) GetClusterNodeHealth(ctx context.Context, kubeContextName string) (interface{}, error) {
+	return struct {
+		ReadyNodes int
+		TotalNodes int
+		Error      error
+	}{ReadyNodes: 1, TotalNodes: 1, Error: nil}, nil
 }
+
 func (m *mockKubeManagerForModelTest) DetermineClusterProvider(ctx context.Context, kubeContextName string) (string, error) {
 	return "mockProvider", nil
 }
 
 func (m *mockKubeManagerForModelTest) SetReporter(reporter reporting.ServiceReporter) {
-	// Mock implementation, can be empty.
 }
-
-// REMOVED: mockClusterService, mockPFService, mockProxyService as m.Services is replaced by m.KubeMgr
 
 func TestAppModeTransitions(t *testing.T) {
 	tests := []struct {
@@ -255,7 +262,7 @@ func TestAppModeTransitions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Use default config for InitialModel
 			defaultCfg := config.GetDefaultConfig("test-mc", "test-wc")
-			coreModel := model.InitialModel("test-mc", "test-wc", "test-context", false, defaultCfg, &mockKubeManagerForModelTest{}, nil)
+			coreModel := model.InitialModel("test-mc", "test-wc", "test-context", false, defaultCfg, nil)
 			coreModel.CurrentAppMode = tt.initialAppMode
 
 			if tt.initialModelSetup != nil {
@@ -298,7 +305,7 @@ func TestMessageHandling(t *testing.T) {
 			initialModel: func() *model.Model {
 				// Use default config for InitialModel
 				defaultCfg := config.GetDefaultConfig("mc", "wc")
-				m := model.InitialModel("mc", "wc", "ctx", false, defaultCfg, &mockKubeManagerForModelTest{}, nil)
+				m := model.InitialModel("mc", "wc", "ctx", false, defaultCfg, nil)
 				m.StatusBarMessage = "Initial message"
 				m.StatusBarMessageType = model.StatusBarInfo
 				return m
@@ -316,7 +323,7 @@ func TestMessageHandling(t *testing.T) {
 			initialModel: func() *model.Model {
 				// Use default config for InitialModel
 				defaultCfg := config.GetDefaultConfig("mc", "wc")
-				m := model.InitialModel("mc", "wc", "ctx", false, defaultCfg, &mockKubeManagerForModelTest{}, nil)
+				m := model.InitialModel("mc", "wc", "ctx", false, defaultCfg, nil)
 				return m
 			},
 			// No specific message, we will call the method directly on the model in assert.

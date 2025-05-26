@@ -151,6 +151,10 @@ func mainControllerDispatch(m *model.Model, msg tea.Msg) (*model.Model, tea.Cmd)
 		// No early return here, let it fall through to viewport updates if ActivityLogDirty was set indirectly
 		// (though handleReporterUpdate doesn't directly modify ActivityLog anymore)
 
+	case reporting.BackpressureNotificationMsg:
+		m, cmd = handleBackpressureNotification(m, msg)
+		cmds = append(cmds, cmd, model.ChannelReaderCmd(m.TUIChannel))
+
 	case model.AllServicesStartedMsg:
 		return handleAllServicesStartedMsg(m, msg)
 	case model.ServiceStopResultMsg:
@@ -313,57 +317,81 @@ func handleRestartMcpServerMsg(m *model.Model, msg model.RestartMcpServerMsg) (*
 	return m, statusCmd
 }
 
+// updatePortForwardFromSnapshot updates a PortForwardProcess from a StateStore snapshot
+func updatePortForwardFromSnapshot(pf *model.PortForwardProcess, snapshot reporting.ServiceStateSnapshot) {
+	pf.StatusMsg = string(snapshot.State)
+	pf.Running = snapshot.IsReady
+	pf.Active = snapshot.IsReady
+	if snapshot.ErrorDetail != nil {
+		pf.Err = snapshot.ErrorDetail
+	}
+}
+
+// updateMcpServerFromSnapshot updates a McpServerProcess from a StateStore snapshot
+func updateMcpServerFromSnapshot(mcp *model.McpServerProcess, snapshot reporting.ServiceStateSnapshot) {
+	mcp.StatusMsg = string(snapshot.State)
+	mcp.Active = snapshot.IsReady
+	if snapshot.ProxyPort > 0 {
+		mcp.ProxyPort = snapshot.ProxyPort
+	}
+	if snapshot.PID > 0 {
+		mcp.Pid = snapshot.PID
+	}
+	if snapshot.ErrorDetail != nil {
+		mcp.Err = snapshot.ErrorDetail
+	}
+}
+
 func handleReporterUpdate(m *model.Model, update reporting.ManagedServiceUpdate) (*model.Model, tea.Cmd) {
 	// The new ManagedServiceUpdate focuses on State. We no longer log its content directly here.
 	// State changes are already logged by ServiceManager via pkg/logging.
 	// This handler is now primarily for updating the UI based on the reported service state.
 
-	// 1. Update specific model state (for PF and MCP panels)
+	// The StateStore is already updated by the TUIReporter before this handler is called.
+	// We now reconcile the UI state with the StateStore to ensure consistency.
+
+	// Get the latest state from StateStore
+	snapshot, exists := m.GetServiceSnapshot(update.SourceLabel)
+	if !exists {
+		// Service not found in StateStore, this shouldn't happen but handle gracefully
+		logging.Warn("TUIController", "Received update for unknown service: %s", update.SourceLabel)
+		return m, nil
+	}
+
+	// Update specific model state (for PF and MCP panels) from StateStore
 	switch update.SourceType {
 	case reporting.ServiceTypePortForward:
 		if pfProcess, exists := m.PortForwards[update.SourceLabel]; exists {
-			pfProcess.StatusMsg = string(update.State) // Use State for StatusMsg
-			pfProcess.Running = update.IsReady         // IsReady is derived from State
-			pfProcess.Err = update.ErrorDetail
+			updatePortForwardFromSnapshot(pfProcess, snapshot)
 		}
 	case reporting.ServiceTypeMCPServer:
 		if mcpProcess, exists := m.McpServers[update.SourceLabel]; exists {
-			mcpProcess.StatusMsg = string(update.State) // Use State for StatusMsg
-			mcpProcess.Active = update.IsReady          // IsReady is derived from State
-			mcpProcess.Err = update.ErrorDetail
-			// Update ProxyPort if provided
-			if update.ProxyPort > 0 {
-				mcpProcess.ProxyPort = update.ProxyPort
-			}
-			// Update PID if provided
-			if update.PID > 0 {
-				mcpProcess.Pid = update.PID
-			}
+			updateMcpServerFromSnapshot(mcpProcess, snapshot)
 		}
 	}
 
-	// 2. Potentially update status bar
+	// Update status bar based on StateStore data
 	var statusCmd tea.Cmd
 	statusBarMsg := ""
 	statusBarMsgType := model.StatusBarInfo // Default
 
-	if update.State != "" { // Only update status bar if there's a meaningful state
-		statusPrefix := fmt.Sprintf("[%s - %s]", update.SourceType, update.SourceLabel)
+	if snapshot.State != "" { // Only update status bar if there's a meaningful state
+		statusPrefix := fmt.Sprintf("[%s - %s]", snapshot.SourceType, snapshot.Label)
 
-		if update.ErrorDetail != nil {
+		if snapshot.ErrorDetail != nil {
 			statusBarMsgType = model.StatusBarError
-			statusBarMsg = fmt.Sprintf("%s %s: %s", statusPrefix, update.State, update.ErrorDetail.Error())
+			statusBarMsg = fmt.Sprintf("%s %s: %s", statusPrefix, snapshot.State, snapshot.ErrorDetail.Error())
 		} else {
-			statusBarMsg = fmt.Sprintf("%s %s", statusPrefix, update.State)
+			statusBarMsg = fmt.Sprintf("%s %s", statusPrefix, snapshot.State)
 			// Add port info to status bar for MCP servers
-			if update.SourceType == reporting.ServiceTypeMCPServer && update.ProxyPort > 0 {
-				statusBarMsg += fmt.Sprintf(" (port: %d)", update.ProxyPort)
+			if snapshot.SourceType == reporting.ServiceTypeMCPServer && snapshot.ProxyPort > 0 {
+				statusBarMsg += fmt.Sprintf(" (port: %d)", snapshot.ProxyPort)
 			}
 			// Add PID info to status bar for MCP servers
-			if update.SourceType == reporting.ServiceTypeMCPServer && update.PID > 0 {
-				statusBarMsg += fmt.Sprintf(" [PID: %d]", update.PID)
+			if snapshot.SourceType == reporting.ServiceTypeMCPServer && snapshot.PID > 0 {
+				statusBarMsg += fmt.Sprintf(" [PID: %d]", snapshot.PID)
 			}
-			switch update.State {
+			switch snapshot.State {
 			case reporting.StateFailed:
 				statusBarMsgType = model.StatusBarError
 			case reporting.StateUnknown:
@@ -379,7 +407,7 @@ func handleReporterUpdate(m *model.Model, update reporting.ManagedServiceUpdate)
 
 		// Filter out less important status updates from the status bar to avoid noise
 		showInStatusBar := true
-		switch update.State {
+		switch snapshot.State {
 		case reporting.StateStarting, reporting.StateStopping, reporting.StateRetrying:
 			if !m.DebugMode { // Only show these transient states in status bar if TUI debug mode is on
 				showInStatusBar = false
@@ -434,4 +462,24 @@ func handleHealthStatusMsg(m *model.Model, msg reporting.HealthStatusMsg) (*mode
 
 	// Reuse existing handler to update UI state
 	return handleNodeStatusMsg(m, nodeMsg)
+}
+
+// handleBackpressureNotification handles notifications about dropped critical messages
+func handleBackpressureNotification(m *model.Model, notification reporting.BackpressureNotificationMsg) (*model.Model, tea.Cmd) {
+	// Set timestamp if not provided
+	if notification.Timestamp.IsZero() {
+		notification.Timestamp = time.Now()
+	}
+
+	// Create a warning message for the user
+	warningMsg := fmt.Sprintf("⚠️  Critical update dropped for %s (state: %s) - %s",
+		notification.ServiceLabel, notification.DroppedState, notification.Reason)
+
+	// Show in status bar with warning type
+	statusCmd := m.SetStatusMessage(warningMsg, model.StatusBarWarning, 10*time.Second)
+
+	// Log the notification
+	logging.Warn("TUIController", "Backpressure notification: %s", warningMsg)
+
+	return m, statusCmd
 }

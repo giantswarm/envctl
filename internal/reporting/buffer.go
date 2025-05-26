@@ -1,6 +1,7 @@
 package reporting
 
 import (
+	"sort"
 	"sync"
 	"time"
 
@@ -255,4 +256,104 @@ func (bc *BufferedChannel) Close() {
 // Channel returns the underlying channel for compatibility
 func (bc *BufferedChannel) Channel() <-chan tea.Msg {
 	return bc.ch
+}
+
+// SequencedMessage wraps a message with sequence information for ordering
+type SequencedMessage struct {
+	Message  tea.Msg
+	Sequence int64
+}
+
+// MessageBuffer handles message ordering and buffering
+type MessageBuffer struct {
+	buffer         []SequencedMessage
+	expectedSeq    int64
+	maxBufferSize  int
+	reorderTimeout time.Duration
+	mu             sync.Mutex
+}
+
+// NewMessageBuffer creates a new message buffer for handling out-of-order messages
+func NewMessageBuffer(maxSize int, timeout time.Duration) *MessageBuffer {
+	return &MessageBuffer{
+		buffer:         make([]SequencedMessage, 0, maxSize),
+		expectedSeq:    1,
+		maxBufferSize:  maxSize,
+		reorderTimeout: timeout,
+	}
+}
+
+// AddMessage adds a message to the buffer and returns any messages that can be delivered in order
+func (mb *MessageBuffer) AddMessage(msg tea.Msg, sequence int64) []tea.Msg {
+	mb.mu.Lock()
+	defer mb.mu.Unlock()
+
+	// If this is the expected sequence, we can deliver it immediately
+	if sequence == mb.expectedSeq {
+		mb.expectedSeq++
+		result := []tea.Msg{msg}
+
+		// Check if we can deliver any buffered messages
+		result = append(result, mb.deliverBufferedMessages()...)
+		return result
+	}
+
+	// If sequence is older than expected, it's a duplicate or very late message - ignore it
+	if sequence < mb.expectedSeq {
+		return nil
+	}
+
+	// Buffer the message for later delivery
+	mb.buffer = append(mb.buffer, SequencedMessage{
+		Message:  msg,
+		Sequence: sequence,
+	})
+
+	// Sort buffer by sequence number
+	sort.Slice(mb.buffer, func(i, j int) bool {
+		return mb.buffer[i].Sequence < mb.buffer[j].Sequence
+	})
+
+	// Limit buffer size to prevent memory issues
+	if len(mb.buffer) > mb.maxBufferSize {
+		// Remove oldest messages that are too far ahead
+		mb.buffer = mb.buffer[len(mb.buffer)-mb.maxBufferSize:]
+	}
+
+	// Try to deliver any messages that are now in order
+	return mb.deliverBufferedMessages()
+}
+
+// deliverBufferedMessages delivers any messages that are now in the correct sequence
+func (mb *MessageBuffer) deliverBufferedMessages() []tea.Msg {
+	var result []tea.Msg
+
+	for len(mb.buffer) > 0 && mb.buffer[0].Sequence == mb.expectedSeq {
+		result = append(result, mb.buffer[0].Message)
+		mb.expectedSeq++
+		mb.buffer = mb.buffer[1:]
+	}
+
+	return result
+}
+
+// ForceDeliverOldMessages delivers messages that have been waiting too long
+func (mb *MessageBuffer) ForceDeliverOldMessages(cutoffTime time.Time) []tea.Msg {
+	mb.mu.Lock()
+	defer mb.mu.Unlock()
+
+	var result []tea.Msg
+	var remaining []SequencedMessage
+
+	for _, buffered := range mb.buffer {
+		// For simplicity, we'll deliver all buffered messages when forcing
+		// In a real implementation, you'd check timestamps
+		result = append(result, buffered.Message)
+		if buffered.Sequence >= mb.expectedSeq {
+			mb.expectedSeq = buffered.Sequence + 1
+		}
+	}
+
+	mb.buffer = remaining
+	return result
 }

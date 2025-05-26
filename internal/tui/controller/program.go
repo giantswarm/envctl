@@ -2,7 +2,6 @@ package controller
 
 import (
 	"envctl/internal/config"
-	"envctl/internal/k8smanager"
 	"envctl/internal/tui/model"
 	"envctl/pkg/logging"
 
@@ -14,7 +13,6 @@ func NewProgram(
 	mcName, wcName, currentKubeContext string,
 	tuiDebugMode bool,
 	envctlCfg config.EnvctlConfig,
-	kubeMgr k8smanager.KubeManagerAPI,
 	logChan <-chan logging.LogEntry,
 ) *tea.Program {
 	// Initialize the core data model. ServiceManager is now created within InitialModel.
@@ -24,7 +22,6 @@ func NewProgram(
 		currentKubeContext,
 		tuiDebugMode,
 		envctlCfg,
-		kubeMgr,
 		logChan,
 	)
 

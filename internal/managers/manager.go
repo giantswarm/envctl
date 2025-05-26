@@ -17,19 +17,18 @@ type ServiceManager struct {
 	serviceConfigs map[string]ManagedServiceConfig // Map label to its original ManagedServiceConfig
 	reporter       reporting.ServiceReporter
 	mu             sync.Mutex
+	portForwards   map[string]chan struct{}
+	mcpServers     map[string]chan struct{}
 }
 
 // NewServiceManager creates a new instance of ServiceManager
 func NewServiceManager(reporter reporting.ServiceReporter) ServiceManagerAPI {
-	if reporter == nil {
-		// Fallback to a console reporter if nil
-		fmt.Println("Warning: NewServiceManager called with a nil reporter. Using a new ConsoleReporter as fallback.")
-		reporter = reporting.NewConsoleReporter()
-	}
 	return &ServiceManager{
 		activeServices: make(map[string]chan struct{}),
 		serviceConfigs: make(map[string]ManagedServiceConfig),
 		reporter:       reporter,
+		portForwards:   make(map[string]chan struct{}),
+		mcpServers:     make(map[string]chan struct{}),
 	}
 }
 
@@ -74,8 +73,10 @@ func (sm *ServiceManager) startServicesInternal(
 	// Separate configs by type
 	var pfConfigs []config.PortForwardDefinition
 	var mcpConfigs []config.MCPServerDefinition
+	var k8sConfigs []K8sConnectionConfig
 	pfOriginalLabels := make(map[string]string)
 	mcpOriginalLabels := make(map[string]string)
+	k8sOriginalLabels := make(map[string]string)
 
 	for _, cfg := range configs {
 		switch cfg.Type {
@@ -93,9 +94,33 @@ func (sm *ServiceManager) startServicesInternal(
 			} else {
 				startupErrors = append(startupErrors, fmt.Errorf("invalid MCP server config for label %s", cfg.Label))
 			}
+		case reporting.ServiceTypeKube:
+			if k8sConfig, ok := cfg.Config.(K8sConnectionConfig); ok {
+				k8sConfigs = append(k8sConfigs, k8sConfig)
+				k8sOriginalLabels[k8sConfig.Name] = cfg.Label
+			} else {
+				startupErrors = append(startupErrors, fmt.Errorf("invalid K8s connection config for label %s", cfg.Label))
+			}
 		default:
 			startupErrors = append(startupErrors, fmt.Errorf("unknown service type %q for label %q", string(cfg.Type), cfg.Label))
 		}
+	}
+
+	// Start K8s connections first (they are dependencies for other services)
+	if len(k8sConfigs) > 0 {
+		logging.Debug("ServiceManager", "Processing %d K8s connection configs.", len(k8sConfigs))
+		k8sStopChans := StartK8sConnectionServices(k8sConfigs, sm.reporter, wg)
+
+		sm.mu.Lock()
+		for label, ch := range k8sStopChans {
+			originalLabel := k8sOriginalLabels[label]
+			if originalLabel == "" {
+				originalLabel = label
+			}
+			allStopChannels[originalLabel] = ch
+			sm.activeServices[originalLabel] = ch
+		}
+		sm.mu.Unlock()
 	}
 
 	// Start port forwards
@@ -324,6 +349,21 @@ func (sm *ServiceManager) StopService(label string) error {
 		return nil
 	default:
 		// Not closed yet
+	}
+
+	// Report the Stopping state before closing the channel
+	if sm.reporter != nil {
+		// Get the service type from config
+		cfg, configExists := sm.serviceConfigs[label]
+		if configExists {
+			update := reporting.NewManagedServiceUpdate(
+				cfg.Type,
+				label,
+				reporting.StateStopping,
+			).WithCause("user_stop_request")
+
+			sm.reporter.Report(update)
+		}
 	}
 
 	// Close the stop channel

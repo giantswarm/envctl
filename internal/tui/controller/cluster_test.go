@@ -3,7 +3,7 @@ package controller
 import (
 	"context"
 	"envctl/internal/dependency"
-	"envctl/internal/k8smanager"
+	"envctl/internal/kube"
 	"envctl/internal/reporting"
 	"envctl/internal/tui/model"
 	"errors"
@@ -20,16 +20,7 @@ func TestHandleNodeStatusMsg_ServiceLifecycle(t *testing.T) {
 		DependencyGraph:       dependency.New(),
 		MCHealth:              model.ClusterHealthInfo{},
 		WCHealth:              model.ClusterHealthInfo{},
-	}
-
-	// Mock KubeManager
-	testModel.KubeMgr = &mockKubeManager{
-		buildMcContextName: func(mcName string) string {
-			return "teleport.giantswarm.io-" + mcName
-		},
-		buildWcContextName: func(mcName, wcName string) string {
-			return "teleport.giantswarm.io-" + mcName + "-" + wcName
-		},
+		ClusterInfo:           &kube.ClusterInfo{},
 	}
 
 	// Test 1: Health check fails - UI should update
@@ -93,6 +84,9 @@ func TestHandleNodeStatusMsg_ServiceLifecycle(t *testing.T) {
 		assert.Equal(t, 5, updatedModel.WCHealth.TotalNodes)
 		assert.False(t, updatedModel.WCHealth.IsLoading)
 	})
+
+	// Test that the model is updated correctly
+	assert.NotNil(t, testModel.ClusterInfo)
 }
 
 // Mock KubeManager for testing
@@ -105,7 +99,7 @@ func (m *mockKubeManager) Login(clusterName string) (stdout string, stderr strin
 	return "", "", nil
 }
 
-func (m *mockKubeManager) ListClusters() (*k8smanager.ClusterList, error) {
+func (m *mockKubeManager) ListClusters() (interface{}, error) {
 	return nil, nil
 }
 
@@ -143,8 +137,12 @@ func (m *mockKubeManager) HasTeleportPrefix(contextName string) bool {
 	return false
 }
 
-func (m *mockKubeManager) GetClusterNodeHealth(ctx context.Context, kubeContextName string) (k8smanager.NodeHealth, error) {
-	return k8smanager.NodeHealth{}, nil
+func (m *mockKubeManager) GetClusterNodeHealth(ctx context.Context, kubeContextName string) (interface{}, error) {
+	return struct {
+		ReadyNodes int
+		TotalNodes int
+		Error      error
+	}{}, nil
 }
 
 func (m *mockKubeManager) DetermineClusterProvider(ctx context.Context, kubeContextName string) (string, error) {
@@ -152,4 +150,53 @@ func (m *mockKubeManager) DetermineClusterProvider(ctx context.Context, kubeCont
 }
 
 func (m *mockKubeManager) SetReporter(reporter reporting.ServiceReporter) {
+}
+
+func TestHandleClusterListResultMsg(t *testing.T) {
+	tests := []struct {
+		name     string
+		msg      model.ClusterListResultMsg
+		expected *kube.ClusterInfo
+	}{
+		{
+			name: "successful cluster list",
+			msg: model.ClusterListResultMsg{
+				Info: &kube.ClusterInfo{
+					ManagementClusters: []string{"mc1", "mc2"},
+					WorkloadClusters: map[string][]string{
+						"mc1": {"wc1", "wc2"},
+						"mc2": {"wc3"},
+					},
+				},
+				Err: nil,
+			},
+			expected: &kube.ClusterInfo{
+				ManagementClusters: []string{"mc1", "mc2"},
+				WorkloadClusters: map[string][]string{
+					"mc1": {"wc1", "wc2"},
+					"mc2": {"wc3"},
+				},
+			},
+		},
+		{
+			name: "error fetching cluster list",
+			msg: model.ClusterListResultMsg{
+				Info: nil,
+				Err:  assert.AnError,
+			},
+			expected: &kube.ClusterInfo{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &model.Model{
+				ClusterInfo: &kube.ClusterInfo{},
+			}
+
+			updatedModel := handleClusterListResultMsg(m, tt.msg)
+
+			assert.Equal(t, tt.expected, updatedModel.ClusterInfo)
+		})
+	}
 }

@@ -5,7 +5,22 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- Kubernetes connections are now modeled as dependencies in the service dependency graph
+- **Service Health Monitoring**
+  - Added health checks for MCP servers using the `tools/list` JSON-RPC method
+  - Added health checks for port forwards by testing TCP connectivity
+  - Health checks run every 30 seconds for all running services
+  - Health status is reported through the StateStore and displayed in the TUI
+  - Created `ServiceHealthChecker` interface for extensible health checking
+- **Improved State Reconciliation**
+  - Implemented proper `ReconcileState()` method that syncs TUI state with StateStore
+  - Updates service statuses, ports, PIDs, and error states from centralized store
+  - Synchronizes cluster health information from K8sStateManager
+  - Ensures UI consistency after startup and state changes
+- **K8s Connections as Services**
+  - Kubernetes connections are now modeled as services in the dependency graph
+  - K8s connection health monitoring is now handled by dedicated K8s connection services
+  - Unified service management architecture - all services (K8s, port forwards, MCPs) follow the same lifecycle
+  - K8s connections can be stopped/restarted like other services with proper cascade handling
 - Cascading stop functionality: stopping a service automatically stops all dependent services
 - K8s connection health monitoring with automatic service lifecycle management
 - Port forwards now depend on their kubernetes context being authenticated and healthy
@@ -74,8 +89,41 @@ All notable changes to this project will be documented in this file.
   - Enhanced thread safety across all components with proper synchronization
   - Provided migration guides and troubleshooting documentation
   - Achieved high test coverage with robust integration and unit tests
+- **Improved Dependency Management for Service Restarts**
+  - When restarting a service, its dependencies are now automatically restarted if they're not active
+  - This ensures services always have their requirements satisfied (e.g., restarting Grafana MCP will also restart its port forward if needed)
+  - Dependencies are restarted regardless of their stop reason to guarantee service requirements
+  - Clear manual stop reason when restarting a service to allow proper dependency management
+- **Implemented Issue #46: Improved State Management Between TUI and Orchestrator**
+  - **Phase 1: Unified State Management**
+    - Added helper methods to TUI Model to use StateStore as single source of truth
+    - Implemented state reconciliation on TUI startup to ensure consistency
+    - Updated TUI controller to use StateStore instead of directly updating model maps
+    - Eliminated state duplication between TUI Model and StateStore
+  - **Phase 2: Message Sequencing**
+    - Added sequence numbers to `ManagedServiceUpdate` for proper message ordering
+    - Implemented `MessageBuffer` for handling out-of-order messages
+    - Added global sequence counter with atomic operations for thread safety
+  - **Phase 3: Enhanced Correlation Tracking**
+    - Added `CascadeInfo` type for tracking cascade relationships between services
+    - Added `StateTransition` type for tracking state changes with full context
+    - Enhanced StateStore to record state transitions and cascade operations automatically
+    - Updated orchestrator to record cascade operations for better observability
+  - **Phase 4: Improved Error Handling**
+    - Added retry logic for critical updates that are dropped due to buffer overflow
+    - Implemented `BackpressureNotificationMsg` for user notifications about dropped messages
+    - Added configurable retry attempts with exponential backoff
+    - Enhanced TUIReporter with retry queue processing and user feedback
 
 ### Changed
+- **Service Manager Refactoring**
+  - ServiceManager now accepts an optional KubeManager parameter for K8s connection services
+  - Added support for K8s connection services in the service lifecycle management
+  - Improved service stop handling to report "Stopping" state before closing channels
+- **Orchestrator Improvements**
+  - Removed old health monitoring methods in favor of K8s connection services
+  - Updated dependency graph to use service labels for K8s connections (e.g., "k8s-mc-mymc" instead of "k8s:context-name")
+  - Improved service restart logic to properly handle dependencies
 - Dependency graph now includes K8sConnection nodes as fundamental dependencies
 - Service manager's StopServiceWithDependents method handles cascading stops
 - Health check failures trigger automatic cleanup of dependent services
@@ -93,29 +141,25 @@ All notable changes to this project will be documented in this file.
 - `TUIReporter` now uses configurable buffered channels instead of simple channels
 - Service state updates now include correlation information in logs
 - Orchestrator operations (stop/restart) now generate and track correlation IDs
+- Removed unused `DependsOnServices` field from `MCPServerDefinition` - MCP servers never depend on other MCP servers
+- Enhanced `RestartService` to use the new `startServiceWithDependencies` method for dependency-aware restarts
+- Updated `handleServiceStateUpdate` to properly restart services with their dependencies
 
 ### Fixed
-- Services no longer continue running with broken k8s dependencies
-- Port forwards and MCP servers properly shut down when k8s connection is lost
-- Services are now properly restarted when k8s connection is restored after a network failure
-- TUI correctly updates service states when they are stopped due to k8s connection loss
-- Fixed issue where port forwards were not stopped when k8s connection failed (k8s nodes are now skipped in StopServiceWithDependents)
-- Both TUI and non-TUI modes now have consistent service lifecycle management
-- Removed duplicated health check logic from TUI - orchestrator is the single source of truth
-- Fixed services not restarting after K8s connection recovery - `StartServicesDependingOn` now finds and restarts all transitive dependencies, not just direct ones
-- Fixed service configs being lost - `StartServicesWithDependencyOrder` now properly stores service configurations for recovery after health failures
-- Manually stopped services are correctly excluded from automatic restart when K8s connections recover
-- Fixed race condition in restart logic that could cause services to get stuck in "Stopping" state
-- Fix issue where MCPs did not restart when their required port forwards restarted
-- Fix issue where MCPs would start before their required port forwards
-- Fix transitive dependency restart - all dependent services now restart when K8s connections recover
-- Fix port forwards starting immediately without waiting for K8s health checks
-- Fix service getting stuck in "Stopping" state after restart and stop sequence
-  - Resolved cascade logic incorrectly including initiating service in its own cascade
-- Fixed issue where MCPs would not restart when their dependent port forwarding was restarted
-- Fixed issue where only port forwardings would restart after K8s recovery, not their dependent MCPs
-- Fixed issue where MCPs would start before their required port forwardings
-- Fixed issue where services would get stuck in "Stopping" state after restart and stop operations
+- **Port Forwarding State Issue**
+  - Fixed issue where port forwarding services would get stuck in "Stopping" state
+  - ServiceManager now properly reports the "Stopping" state before closing the stop channel
+  - Port forwarding processes correctly transition to "Stopped" state
+- **Code Cleanup**
+  - Removed commented-out `mcpServerProcess` struct that was marked for deletion
+  - Removed duplicate `updatePortForwardFromSnapshot` and `updateMcpServerFromSnapshot` methods
+  - Cleaned up unused code and improved code organization
+
+### Documentation
+- Added comprehensive documentation about dependency graph implementation
+- Enhanced dependency management documentation with detailed examples
+- Added explanation of dependency rules and startup/restart behavior
+- Documented the relationship between stop reasons and automatic recovery
 
 ### Technical Details
 - New helper functions: `NewManagedServiceUpdate()`, `WithCause()`, `WithError()`, `WithServiceData()`

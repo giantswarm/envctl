@@ -2,6 +2,7 @@ package controller
 
 import (
 	"envctl/internal/dependency"
+	"envctl/internal/kube"
 	"envctl/internal/tui/model"
 )
 
@@ -12,26 +13,20 @@ import (
 func BuildDependencyGraph(m *model.Model) *dependency.Graph {
 	g := dependency.New()
 
-	// 1. K8s connection nodes - these are fundamental dependencies
-	// Add MC k8s connection node
-	mcContext := ""
+	// 1. K8s connection nodes (no dependencies)
 	if m.ManagementClusterName != "" {
-		mcContext = m.KubeMgr.BuildMcContextName(m.ManagementClusterName)
 		g.AddNode(dependency.Node{
-			ID:           dependency.NodeID("k8s:" + mcContext),
-			FriendlyName: "K8s MC Connection (" + m.ManagementClusterName + ")",
+			ID:           dependency.NodeID("k8s-mc"),
+			FriendlyName: "K8s MC Connection",
 			Kind:         dependency.KindK8sConnection,
-			DependsOn:    nil, // K8s connections don't depend on anything
+			DependsOn:    nil,
 		})
 	}
 
-	// Add WC k8s connection node if applicable
-	wcContext := ""
 	if m.WorkloadClusterName != "" && m.ManagementClusterName != "" {
-		wcContext = m.KubeMgr.BuildWcContextName(m.ManagementClusterName, m.WorkloadClusterName)
 		g.AddNode(dependency.Node{
-			ID:           dependency.NodeID("k8s:" + wcContext),
-			FriendlyName: "K8s WC Connection (" + m.WorkloadClusterName + ")",
+			ID:           dependency.NodeID("k8s-wc"),
+			FriendlyName: "K8s WC Connection",
 			Kind:         dependency.KindK8sConnection,
 			DependsOn:    nil,
 		})
@@ -40,17 +35,27 @@ func BuildDependencyGraph(m *model.Model) *dependency.Graph {
 	// 2. Port-forward nodes - now depend on their k8s connection
 	// m.PortForwards is map[string]*model.PortForwardProcess
 	// The key is pf.Name (formerly pf.Label)
-	for pfName, pf := range m.PortForwards {
+	for _, pf := range m.PortForwardingConfig {
+		if !pf.Enabled {
+			continue
+		}
+
 		deps := []dependency.NodeID{}
 
 		// Determine which k8s context this port forward uses
-		if pf.ContextName != "" {
-			deps = append(deps, dependency.NodeID("k8s:"+pf.ContextName))
+		contextName := pf.KubeContextTarget
+		if contextName != "" {
+			// Map context to k8s connection node
+			if contextName == kube.BuildMcContext(m.ManagementClusterName) && m.ManagementClusterName != "" {
+				deps = append(deps, dependency.NodeID("k8s-mc"))
+			} else if contextName == kube.BuildWcContext(m.ManagementClusterName, m.WorkloadClusterName) && m.WorkloadClusterName != "" {
+				deps = append(deps, dependency.NodeID("k8s-wc"))
+			}
 		}
 
 		g.AddNode(dependency.Node{
-			ID:           dependency.NodeID("pf:" + pfName),
-			FriendlyName: pfName,
+			ID:           dependency.NodeID("pf:" + pf.Name),
+			FriendlyName: pf.Name,
 			Kind:         dependency.KindPortForward,
 			DependsOn:    deps, // Now depends on k8s connection
 		})
@@ -58,22 +63,26 @@ func BuildDependencyGraph(m *model.Model) *dependency.Graph {
 
 	// 3. MCP proxy nodes with their dependencies
 	// m.MCPServerConfig is []config.MCPServerDefinition
-	for _, mcpCfg := range m.MCPServerConfig { // Iterate over the config from the model
+	for _, mcp := range m.MCPServerConfig { // Iterate over the config from the model
+		if !mcp.Enabled {
+			continue
+		}
+
 		deps := []dependency.NodeID{}
 
 		// Special handling for kubernetes MCP - it depends on k8s connection
-		if mcpCfg.Name == "kubernetes" && mcContext != "" {
-			deps = append(deps, dependency.NodeID("k8s:"+mcContext))
+		if mcp.Name == "kubernetes" && m.ManagementClusterName != "" {
+			deps = append(deps, dependency.NodeID("k8s-mc"))
 		}
 
 		// Add port forward dependencies
-		for _, requiredPfName := range mcpCfg.RequiresPortForwards {
-			deps = append(deps, dependency.NodeID("pf:"+requiredPfName))
+		for _, requiredPf := range mcp.RequiresPortForwards {
+			deps = append(deps, dependency.NodeID("pf:"+requiredPf))
 		}
 
 		node := dependency.Node{
-			ID:           dependency.NodeID("mcp:" + mcpCfg.Name),
-			FriendlyName: mcpCfg.Name,
+			ID:           dependency.NodeID("mcp:" + mcp.Name),
+			FriendlyName: mcp.Name,
 			Kind:         dependency.KindMCP,
 			DependsOn:    deps, // Combined dependencies
 		}

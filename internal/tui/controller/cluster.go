@@ -1,7 +1,7 @@
 package controller
 
 import (
-	"envctl/internal/k8smanager"
+	"envctl/internal/kube"
 	"envctl/internal/tui/model"
 	"fmt"
 	"time"
@@ -89,7 +89,7 @@ func handleClusterListResultMsg(m *model.Model, msg model.ClusterListResultMsg) 
 	LogDebug(m, clusterControllerSubsystem, "Handling ClusterListResultMsg, Error: %v", msg.Err)
 	if msg.Err != nil {
 		LogError(clusterControllerSubsystem, msg.Err, "Failed to fetch cluster list: %v", msg.Err)
-		m.ClusterInfo = &k8smanager.ClusterList{}
+		m.ClusterInfo = &kube.ClusterInfo{}
 		return m
 	}
 	m.ClusterInfo = msg.Info

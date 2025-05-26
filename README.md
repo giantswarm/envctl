@@ -174,6 +174,51 @@ When running `envctl connect`, the Terminal User Interface (TUI) provides a visu
 
 For more details on the implementation and architecture of the TUI, see the [TUI documentation](docs/tui.md).
 
+## Service Dependencies 🔗
+
+`envctl` automatically manages dependencies between services to ensure everything starts and stops in the correct order:
+
+### Dependency Hierarchy
+
+```
+┌─────────────────────┐
+│  K8s Connections    │ (Foundation - no dependencies)
+│  - MC Connection    │
+│  - WC Connection    │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│   Port Forwards     │ (Depend on K8s connections)
+│  - mc-prometheus    │ → Requires MC connection
+│  - mc-grafana       │ → Requires MC connection  
+│  - alloy-metrics    │ → Requires WC or MC connection
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│    MCP Servers      │ (May depend on port forwards)
+│  - kubernetes       │ → Requires MC connection
+│  - prometheus       │ → Requires mc-prometheus port forward
+│  - grafana          │ → Requires mc-grafana port forward
+└─────────────────────┘
+```
+
+### Automatic Behavior
+
+1. **Starting Services**: Services start in dependency order - K8s connections first, then port forwards, then MCP servers
+2. **Cascade Stop**: Stopping a service automatically stops all services that depend on it
+3. **Health Monitoring**: If a K8s connection becomes unhealthy, all dependent services are automatically stopped
+4. **Auto-Recovery**: When a K8s connection recovers, services that were stopped due to the failure are automatically restarted
+5. **Restart with Dependencies**: Restarting a service ensures all its dependencies are also running
+
+### Examples
+
+- If you stop the `mc-prometheus` port forward, the `prometheus` MCP server will also stop
+- If the MC K8s connection fails, all MC port forwards and their dependent MCP servers stop
+- When restarting the `grafana` MCP server, if the `mc-grafana` port forward isn't running, it will be restarted too
+- Manually stopped services won't be auto-restarted when dependencies recover
+
 ## Shell Completion 🧠
 
 `envctl` supports shell completion for cluster names.
