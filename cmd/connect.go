@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"envctl/internal/tui"
-	"envctl/internal/utils"
+	"github.com/giantswarm/envctl/internal/tui"
+	"github.com/giantswarm/envctl/internal/utils"
 	"fmt"
 	"os"
 	"os/signal"

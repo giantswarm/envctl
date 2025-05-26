@@ -7,7 +7,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	// Assuming utils is in "envctl/internal/utils" based on model.go
+	// Assuming utils is in "github.com/giantswarm/envctl/internal/utils" based on model.go
 	// We might need to adjust this if utils is not directly accessible or causes import cycle
 )
 

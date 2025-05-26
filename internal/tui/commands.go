@@ -1,7 +1,7 @@
 package tui
 
 import (
-	"envctl/internal/utils"
+	"github.com/giantswarm/envctl/internal/utils"
 	"fmt"
 	"os/exec"
 	"strings"
