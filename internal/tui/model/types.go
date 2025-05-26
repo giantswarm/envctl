@@ -419,34 +419,31 @@ func (m *Model) ReconcileState() {
 					mcp.Err = nil
 				}
 			}
-		}
-	}
-
-	// Update cluster health info from orchestrator's K8s state manager if available
-	if m.Orchestrator != nil && m.Orchestrator.GetK8sStateManager() != nil {
-		k8sStateMgr := m.Orchestrator.GetK8sStateManager()
-		if m.ManagementClusterName != "" {
-			mcContext := kube.BuildMcContext(m.ManagementClusterName)
-			mcState := k8sStateMgr.GetConnectionState(mcContext)
-			m.MCHealth.IsLoading = false
-			if mcState.IsHealthy {
-				m.MCHealth.StatusError = nil
-			} else if mcState.Error != nil {
-				m.MCHealth.StatusError = mcState.Error
+		case reporting.ServiceTypeKube:
+			// Update cluster health info from K8s service state
+			if snapshot.K8sHealth != nil {
+				if snapshot.K8sHealth.IsMC && m.ManagementClusterName != "" {
+					m.MCHealth.IsLoading = false
+					m.MCHealth.ReadyNodes = snapshot.K8sHealth.ReadyNodes
+					m.MCHealth.TotalNodes = snapshot.K8sHealth.TotalNodes
+					if snapshot.State == reporting.StateRunning {
+						m.MCHealth.StatusError = nil
+					} else if snapshot.ErrorDetail != nil {
+						m.MCHealth.StatusError = snapshot.ErrorDetail
+					}
+					m.MCHealth.LastUpdated = snapshot.LastUpdated
+				} else if !snapshot.K8sHealth.IsMC && m.WorkloadClusterName != "" {
+					m.WCHealth.IsLoading = false
+					m.WCHealth.ReadyNodes = snapshot.K8sHealth.ReadyNodes
+					m.WCHealth.TotalNodes = snapshot.K8sHealth.TotalNodes
+					if snapshot.State == reporting.StateRunning {
+						m.WCHealth.StatusError = nil
+					} else if snapshot.ErrorDetail != nil {
+						m.WCHealth.StatusError = snapshot.ErrorDetail
+					}
+					m.WCHealth.LastUpdated = snapshot.LastUpdated
+				}
 			}
-			m.MCHealth.LastUpdated = mcState.LastHealthCheck
-		}
-
-		if m.WorkloadClusterName != "" && m.ManagementClusterName != "" {
-			wcContext := kube.BuildWcContext(m.ManagementClusterName, m.WorkloadClusterName)
-			wcState := k8sStateMgr.GetConnectionState(wcContext)
-			m.WCHealth.IsLoading = false
-			if wcState.IsHealthy {
-				m.WCHealth.StatusError = nil
-			} else if wcState.Error != nil {
-				m.WCHealth.StatusError = wcState.Error
-			}
-			m.WCHealth.LastUpdated = wcState.LastHealthCheck
 		}
 	}
 }

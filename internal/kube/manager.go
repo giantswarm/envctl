@@ -3,14 +3,13 @@ package kube
 import (
 	"context"
 	"envctl/internal/reporting"
-	"envctl/internal/state"
 	"envctl/pkg/logging"
 	"fmt"
 	"sync"
 	"time"
 )
 
-// Manager provides a unified interface for all Kubernetes-related operations
+// Manager provides Kubernetes cluster management functionality
 type Manager interface {
 	// Authentication & Setup
 	Login(clusterName string) (stdout string, stderr string, err error)
@@ -22,35 +21,29 @@ type Manager interface {
 	GetAvailableContexts() ([]string, error)
 
 	// Context Name Construction
-	BuildMcContextName(mcShortName string) string
-	BuildWcContextName(mcShortName, wcShortName string) string
+	BuildMcContextName(mcName string) string
+	BuildWcContextName(mcName, wcName string) string
 	StripTeleportPrefix(contextName string) string
 	HasTeleportPrefix(contextName string) bool
 
 	// Cluster Operations
 	GetClusterNodeHealth(ctx context.Context, kubeContextName string) (NodeHealth, error)
 	DetermineClusterProvider(ctx context.Context, kubeContextName string) (string, error)
-
-	// State Management
-	GetK8sStateManager() state.K8sStateManager
-	SetReporter(reporter reporting.ServiceReporter)
 }
 
-// manager is the concrete implementation of Manager
+// manager implements the Manager interface
 type manager struct {
 	reporter reporting.ServiceReporter
-	stateMgr state.K8sStateManager
 	mu       sync.RWMutex
 }
 
-// NewManager creates a new K8s manager instance
+// NewManager creates a new Kubernetes manager
 func NewManager(reporter reporting.ServiceReporter) Manager {
 	if reporter == nil {
 		reporter = reporting.NewConsoleReporter()
 	}
 	return &manager{
 		reporter: reporter,
-		stateMgr: state.NewK8sStateManager(),
 	}
 }
 
@@ -63,11 +56,6 @@ func (m *manager) SetReporter(reporter reporting.ServiceReporter) {
 	} else {
 		m.reporter = reporter
 	}
-}
-
-// GetK8sStateManager returns the K8s state manager
-func (m *manager) GetK8sStateManager() state.K8sStateManager {
-	return m.stateMgr
 }
 
 // Login performs a Kubernetes cluster login
@@ -89,16 +77,7 @@ func (m *manager) Login(clusterName string) (string, string, error) {
 	// Perform the actual login
 	stdout, stderr, err := LoginToKubeCluster(clusterName)
 
-	// Update state and report result
-	contextName := BuildMcContext(clusterName)
-	if IsWorkloadClusterName(clusterName) {
-		// Extract MC and WC names for proper context building
-		mcName, wcName := ParseWorkloadClusterName(clusterName)
-		if mcName != "" && wcName != "" {
-			contextName = BuildWcContext(mcName, wcName)
-		}
-	}
-
+	// Report result
 	if err != nil {
 		logging.Error(subsystem, err, "Login failed")
 		if m.reporter != nil {
@@ -111,13 +90,6 @@ func (m *manager) Login(clusterName string) (string, string, error) {
 				CausedBy:    "user_login",
 			})
 		}
-		// Update state manager
-		m.stateMgr.UpdateConnectionState(contextName, state.K8sConnectionState{
-			ContextName:     contextName,
-			IsHealthy:       false,
-			Error:           err,
-			LastHealthCheck: time.Now(),
-		})
 	} else {
 		logging.Info(subsystem, "Login successful")
 		if m.reporter != nil {
@@ -130,12 +102,6 @@ func (m *manager) Login(clusterName string) (string, string, error) {
 				CausedBy:    "user_login",
 			})
 		}
-		// Update state manager - mark as authenticated
-		m.stateMgr.UpdateConnectionState(contextName, state.K8sConnectionState{
-			ContextName:     contextName,
-			IsHealthy:       true,
-			LastHealthCheck: time.Now(),
-		})
 	}
 
 	return stdout, stderr, err
@@ -213,13 +179,13 @@ func (m *manager) GetAvailableContexts() ([]string, error) {
 }
 
 // BuildMcContextName builds a management cluster context name
-func (m *manager) BuildMcContextName(mcShortName string) string {
-	return BuildMcContext(mcShortName)
+func (m *manager) BuildMcContextName(mcName string) string {
+	return BuildMcContext(mcName)
 }
 
 // BuildWcContextName builds a workload cluster context name
-func (m *manager) BuildWcContextName(mcShortName, wcShortName string) string {
-	return BuildWcContext(mcShortName, wcShortName)
+func (m *manager) BuildWcContextName(mcName, wcName string) string {
+	return BuildWcContext(mcName, wcName)
 }
 
 // StripTeleportPrefix removes the teleport prefix from a context name
@@ -272,16 +238,6 @@ func (m *manager) GetClusterNodeHealth(ctx context.Context, kubeContextName stri
 		TotalNodes: totalNodes,
 		Error:      err,
 	}
-
-	// Update state manager
-	m.stateMgr.UpdateConnectionState(kubeContextName, state.K8sConnectionState{
-		ContextName:     kubeContextName,
-		IsHealthy:       err == nil,
-		Error:           err,
-		LastHealthCheck: time.Now(),
-		ReadyNodes:      readyNodes,
-		TotalNodes:      totalNodes,
-	})
 
 	// Report result
 	if err != nil {

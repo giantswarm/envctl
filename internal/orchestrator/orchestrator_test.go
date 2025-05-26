@@ -7,7 +7,6 @@ import (
 	"envctl/internal/kube"
 	"envctl/internal/managers"
 	"envctl/internal/reporting"
-	"envctl/internal/state"
 	"sync"
 	"testing"
 	"time"
@@ -168,39 +167,18 @@ func (m *mockServiceManager) GetActiveServices() []string {
 // Mock Reporter
 type mockReporter struct {
 	mock.Mock
-	mu            sync.Mutex
-	healthUpdates []reporting.HealthStatusUpdate
-	stateStore    reporting.StateStore
 }
 
 func (m *mockReporter) Report(update reporting.ManagedServiceUpdate) {
 	m.Called(update)
-	// Update the state store if available
-	if m.stateStore != nil {
-		m.stateStore.SetServiceState(update)
-	}
-}
-
-func (m *mockReporter) ReportHealth(update reporting.HealthStatusUpdate) {
-	m.Called(update)
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.healthUpdates = append(m.healthUpdates, update)
 }
 
 func (m *mockReporter) GetStateStore() reporting.StateStore {
-	if m.stateStore == nil {
-		m.stateStore = reporting.NewStateStore()
+	args := m.Called()
+	if args.Get(0) == nil {
+		return nil
 	}
-	return m.stateStore
-}
-
-func (m *mockReporter) GetHealthUpdates() []reporting.HealthStatusUpdate {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	copies := make([]reporting.HealthStatusUpdate, len(m.healthUpdates))
-	copy(copies, m.healthUpdates)
-	return copies
+	return args.Get(0).(reporting.StateStore)
 }
 
 func TestOrchestrator_HealthMonitoring(t *testing.T) {
@@ -263,8 +241,8 @@ func TestOrchestrator_CascadeStop(t *testing.T) {
 		stoppedMutex.Unlock()
 	}).Return(nil)
 
-	reporter.On("ReportHealth", mock.Anything).Return().Maybe()
 	reporter.On("Report", mock.Anything).Return().Maybe()
+	reporter.On("GetStateStore").Return(reporting.NewStateStore()).Maybe()
 
 	// Start orchestrator
 	ctx, cancel := context.WithCancel(context.Background())
@@ -314,19 +292,7 @@ func TestOrchestrator_RestartService(t *testing.T) {
 		NodeHealth{ReadyNodes: 3, TotalNodes: 3}, nil,
 	).Maybe()
 
-	// Simulate K8s connections being healthy by setting state BEFORE starting orchestrator
-	mcContext := kube.BuildMcContext("test-mc")
-	orch.GetK8sStateManager().UpdateConnectionState(mcContext, state.K8sConnectionState{
-		ContextName: mcContext,
-		IsHealthy:   true,
-	})
-
-	// Also mark the K8s connection service as healthy
-	orch.GetK8sStateManager().UpdateConnectionState(mcContext, state.K8sConnectionState{
-		ContextName:     mcContext,
-		IsHealthy:       true,
-		LastHealthCheck: time.Now(),
-	})
+	// Note: K8s connections will be marked as healthy when the K8s service reports its state
 
 	// Track service operations
 	var startCalls int
@@ -397,8 +363,8 @@ func TestOrchestrator_RestartService(t *testing.T) {
 		return active
 	})
 
-	reporter.On("ReportHealth", mock.Anything).Return().Maybe()
 	reporter.On("Report", mock.Anything).Return().Maybe()
+	reporter.On("GetStateStore").Return(reporting.NewStateStore()).Maybe()
 
 	// Start orchestrator
 	ctx, cancel := context.WithCancel(context.Background())
@@ -480,12 +446,7 @@ func TestOrchestrator_RestartServiceWithDependencies(t *testing.T) {
 		NodeHealth{ReadyNodes: 3, TotalNodes: 3}, nil,
 	).Maybe()
 
-	// Simulate K8s connections being healthy by setting state
-	mcContext := kube.BuildMcContext("test-mc")
-	orch.GetK8sStateManager().UpdateConnectionState(mcContext, state.K8sConnectionState{
-		ContextName: mcContext,
-		IsHealthy:   true,
-	})
+	// Note: K8s connections will be marked as healthy when the K8s service reports its state
 
 	// Track service states
 	activeServices := map[string]bool{
@@ -543,8 +504,8 @@ func TestOrchestrator_RestartServiceWithDependencies(t *testing.T) {
 		return activeServices[label]
 	})
 
-	reporter.On("ReportHealth", mock.Anything).Return().Maybe()
 	reporter.On("Report", mock.Anything).Return().Maybe()
+	reporter.On("GetStateStore").Return(reporting.NewStateStore()).Maybe()
 
 	// Start orchestrator
 	ctx, cancel := context.WithCancel(context.Background())
@@ -589,15 +550,6 @@ func TestOrchestrator_RestartServiceWithDependencies(t *testing.T) {
 
 	// Stop orchestrator
 	orch.Stop()
-}
-
-func findHealthUpdate(updates []reporting.HealthStatusUpdate, clusterName string, isMC bool) *reporting.HealthStatusUpdate {
-	for _, u := range updates {
-		if u.ClusterShortName == clusterName && u.IsMC == isMC {
-			return &u
-		}
-	}
-	return nil
 }
 
 // TestOrchestrator_DependencyOrdering tests that services are started in the correct dependency order
@@ -663,19 +615,9 @@ func TestOrchestrator_DependencyOrdering(t *testing.T) {
 	kubeMgr.On("BuildMcContextName", "test-mc").Return("teleport.giantswarm.io-test-mc")
 	kubeMgr.On("BuildWcContextName", "test-mc", "test-wc").Return("teleport.giantswarm.io-test-mc-test-wc")
 
-	// Simulate K8s connections being healthy by setting state
-	mcContext := kube.BuildMcContext("test-mc")
-	wcContext := kube.BuildWcContext("test-mc", "test-wc")
-	orch.GetK8sStateManager().UpdateConnectionState(mcContext, state.K8sConnectionState{
-		ContextName: mcContext,
-		IsHealthy:   true,
-	})
-	orch.GetK8sStateManager().UpdateConnectionState(wcContext, state.K8sConnectionState{
-		ContextName: wcContext,
-		IsHealthy:   true,
-	})
+	// Note: K8s connections will be marked as healthy when the K8s service reports its state
 
-	// Capture the order of services started
+	// Track service operations
 	var startOrder [][]string
 	var startOrderMutex sync.Mutex
 
@@ -702,8 +644,8 @@ func TestOrchestrator_DependencyOrdering(t *testing.T) {
 
 	serviceMgr.On("StopAllServices").Return().Maybe()
 	serviceMgr.On("IsServiceActive", mock.Anything).Return(false).Maybe()
-	reporter.On("ReportHealth", mock.Anything).Return().Maybe()
 	reporter.On("Report", mock.Anything).Return().Maybe()
+	reporter.On("GetStateStore").Return(reporting.NewStateStore()).Maybe()
 
 	// Start orchestrator
 	ctx, cancel := context.WithCancel(context.Background())

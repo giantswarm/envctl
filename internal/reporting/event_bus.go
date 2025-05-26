@@ -1,6 +1,7 @@
 package reporting
 
 import (
+	"envctl/pkg/logging"
 	"sync"
 	"time"
 )
@@ -376,6 +377,16 @@ func NewEventBusAdapter(eventBus EventBus, stateStore StateStore) *EventBusAdapt
 
 // Report converts ManagedServiceUpdate to ServiceStateEvent and publishes it
 func (eba *EventBusAdapter) Report(update ManagedServiceUpdate) {
+	// Set timestamp if not provided
+	if update.Timestamp.IsZero() {
+		update.Timestamp = time.Now()
+	}
+
+	// Ensure correlation ID is set
+	if update.CorrelationID == "" {
+		update.CorrelationID = GenerateCorrelationID()
+	}
+
 	// Get old state from state store
 	oldSnapshot, exists := eba.stateStore.GetServiceState(update.SourceLabel)
 	oldState := StateUnknown
@@ -386,7 +397,7 @@ func (eba *EventBusAdapter) Report(update ManagedServiceUpdate) {
 	// Update state store
 	stateChanged, err := eba.stateStore.SetServiceState(update)
 	if err != nil {
-		// Log error but continue
+		logging.Error("EventBusAdapter", err, "Failed to update state store for service %s", update.SourceLabel)
 		return
 	}
 
@@ -404,21 +415,14 @@ func (eba *EventBusAdapter) Report(update ManagedServiceUpdate) {
 			event.WithServiceData(update.ProxyPort, update.PID)
 		}
 
+		// Add K8s health data to metadata if present
+		if update.K8sHealth != nil {
+			event.BaseEvent.WithMetadata("k8s_health", update.K8sHealth)
+		}
+
 		// Publish the event
 		eba.eventBus.Publish(event)
 	}
-}
-
-// ReportHealth converts HealthStatusUpdate to HealthEvent and publishes it
-func (eba *EventBusAdapter) ReportHealth(update HealthStatusUpdate) {
-	event := NewHealthEvent(update.ContextName, update.ClusterShortName, update.IsMC, update.IsHealthy, update.ReadyNodes, update.TotalNodes)
-
-	if update.Error != nil {
-		event.WithError(update.Error)
-	}
-
-	// Publish the event
-	eba.eventBus.Publish(event)
 }
 
 // GetStateStore returns the underlying state store

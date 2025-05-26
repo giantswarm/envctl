@@ -229,24 +229,6 @@ func (t *TUIReporter) processRetryQueue() {
 	}
 }
 
-// ReportHealth sends a health status update to the TUI
-func (t *TUIReporter) ReportHealth(update HealthStatusUpdate) {
-	if t.bufferedChan == nil {
-		logging.Error("TUIReporter", nil, "ReportHealth called with nil buffered channel")
-		return
-	}
-
-	// Send the health update wrapped in a HealthStatusMsg
-	msg := HealthStatusMsg{Update: update}
-	sent := t.bufferedChan.Send(msg)
-
-	if !sent {
-		// Health update was dropped
-		logging.Warn("TUIReporter", "TUI buffer full, dropped health update for %s (IsMC=%v)",
-			update.ClusterShortName, update.IsMC)
-	}
-}
-
 // GetStateStore returns the underlying state store
 func (t *TUIReporter) GetStateStore() StateStore {
 	return t.stateStore

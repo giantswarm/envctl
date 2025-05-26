@@ -32,12 +32,11 @@ func TestSimpleBufferStrategy(t *testing.T) {
 func TestPriorityBufferStrategy(t *testing.T) {
 	strategy := NewPriorityBufferStrategy(BufferActionDrop)
 	strategy.SetPriority("ReporterUpdateMsg", BufferActionEvictOldest)
-	strategy.SetPriority("HealthStatusMsg", BufferActionBlock)
 
 	tests := []struct {
-		name     string
-		msg      tea.Msg
-		expected BufferAction
+		name           string
+		msg            tea.Msg
+		expectedAction BufferAction
 	}{
 		{
 			"ReporterUpdateMsg uses priority",
@@ -45,13 +44,8 @@ func TestPriorityBufferStrategy(t *testing.T) {
 			BufferActionEvictOldest,
 		},
 		{
-			"HealthStatusMsg uses priority",
-			HealthStatusMsg{},
-			BufferActionBlock,
-		},
-		{
 			"Unknown message uses default",
-			struct{}{},
+			"some string message",
 			BufferActionDrop,
 		},
 	}
@@ -59,7 +53,7 @@ func TestPriorityBufferStrategy(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := strategy.OnBufferFull(tt.msg)
-			assert.Equal(t, tt.expected, result)
+			assert.Equal(t, tt.expectedAction, result)
 		})
 	}
 }
@@ -231,14 +225,14 @@ func TestGetMessageType(t *testing.T) {
 			"ReporterUpdateMsg",
 		},
 		{
-			"HealthStatusMsg",
-			HealthStatusMsg{},
-			"HealthStatusMsg",
+			"BackpressureNotificationMsg",
+			BackpressureNotificationMsg{},
+			"BackpressureNotificationMsg",
 		},
 		{
 			"Unknown message",
 			struct{}{},
-			"Unknown",
+			"struct {}",
 		},
 	}
 
@@ -255,7 +249,6 @@ func TestBufferedChannel_Integration(t *testing.T) {
 	// Create a priority strategy
 	strategy := NewPriorityBufferStrategy(BufferActionDrop)
 	strategy.SetPriority("ReporterUpdateMsg", BufferActionEvictOldest)
-	strategy.SetPriority("HealthStatusMsg", BufferActionBlock)
 
 	bc := NewBufferedChannel(2, strategy)
 	defer bc.Close()

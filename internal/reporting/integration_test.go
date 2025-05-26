@@ -70,52 +70,6 @@ func TestIntegration_CompleteEventFlow(t *testing.T) {
 	eventMutex.Lock()
 	allEvents = nil
 	eventMutex.Unlock()
-
-	// Simulate health monitoring
-	t.Run("HealthMonitoring", func(t *testing.T) {
-		// Healthy cluster
-		healthyUpdate := HealthStatusUpdate{
-			Timestamp:        time.Now(),
-			ContextName:      "test-context",
-			ClusterShortName: "test-cluster",
-			IsMC:             true,
-			IsHealthy:        true,
-			ReadyNodes:       3,
-			TotalNodes:       3,
-		}
-		adapter.ReportHealth(healthyUpdate)
-
-		// Unhealthy cluster
-		unhealthyUpdate := HealthStatusUpdate{
-			Timestamp:        time.Now(),
-			ContextName:      "test-context",
-			ClusterShortName: "test-cluster",
-			IsMC:             true,
-			IsHealthy:        false,
-			ReadyNodes:       1,
-			TotalNodes:       3,
-			Error:            assert.AnError,
-		}
-		adapter.ReportHealth(unhealthyUpdate)
-
-		// Give events time to process
-		time.Sleep(50 * time.Millisecond)
-
-		// Verify health events were generated
-		eventMutex.Lock()
-		defer eventMutex.Unlock()
-
-		assert.GreaterOrEqual(t, len(allEvents), 2, "Should have at least 2 health events")
-
-		// Find health events
-		healthEvents := 0
-		for _, event := range allEvents {
-			if _, ok := event.(*HealthEvent); ok {
-				healthEvents++
-			}
-		}
-		assert.GreaterOrEqual(t, healthEvents, 2, "Should have at least 2 health events")
-	})
 }
 
 // TestIntegration_EventFiltering tests complex event filtering scenarios
@@ -180,37 +134,20 @@ func TestIntegration_EventFiltering(t *testing.T) {
 			adapter.Report(update)
 		}
 
-		// Generate health event (should not match service filters)
-		healthUpdate := HealthStatusUpdate{
-			Timestamp:        time.Now(),
-			ContextName:      "test-context",
-			ClusterShortName: "test-cluster",
-			IsMC:             false,
-			IsHealthy:        false,
-			Error:            assert.AnError,
-		}
-		adapter.ReportHealth(healthUpdate)
-
 		// Give events time to process
 		time.Sleep(50 * time.Millisecond)
 
 		mu.Lock()
 		defer mu.Unlock()
 
-		// Verify critical events (failed states + unhealthy cluster)
-		assert.GreaterOrEqual(t, len(criticalEvents), 3, "Should have at least 3 critical events")
+		// Verify critical events (failed states)
+		assert.GreaterOrEqual(t, len(criticalEvents), 2, "Should have at least 2 critical events")
 
 		// Verify service events (all service state changes)
 		assert.GreaterOrEqual(t, len(serviceEvents), 5, "Should have at least 5 service events")
 
 		// Verify port forward events (only test-pf running/failed)
 		assert.GreaterOrEqual(t, len(pfEvents), 2, "Should have at least 2 port forward events")
-
-		// Verify no health events in service filters
-		for _, event := range serviceEvents {
-			_, isHealthEvent := event.(*HealthEvent)
-			assert.False(t, isHealthEvent, "Service filter should not receive health events")
-		}
 	})
 }
 
@@ -527,4 +464,58 @@ func TestIntegration_MemoryUsage(t *testing.T) {
 		metrics = stateStore.GetMetrics()
 		assert.LessOrEqual(t, metrics.TotalServices, 1, "Should have cleared most services (allowing for race conditions)")
 	})
+}
+
+func TestIntegration_EventBusWithStateStore(t *testing.T) {
+	// Create components
+	eventBus := NewEventBus()
+	stateStore := NewStateStore()
+	adapter := NewEventBusAdapter(eventBus, stateStore)
+
+	// Track received events
+	var receivedEvents []Event
+	var mu sync.Mutex
+
+	// Subscribe to all events
+	sub := eventBus.Subscribe(nil, func(event Event) {
+		mu.Lock()
+		defer mu.Unlock()
+		receivedEvents = append(receivedEvents, event)
+	})
+	defer sub.Close()
+
+	// Test service state changes
+	updates := []ManagedServiceUpdate{
+		NewManagedServiceUpdate(ServiceTypePortForward, "pf-test", StateStarting),
+		NewManagedServiceUpdate(ServiceTypePortForward, "pf-test", StateRunning),
+		NewManagedServiceUpdate(ServiceTypeMCPServer, "mcp-test", StateStarting),
+		NewManagedServiceUpdate(ServiceTypeMCPServer, "mcp-test", StateFailed).WithError(fmt.Errorf("test error")),
+	}
+
+	// Send updates
+	for _, update := range updates {
+		adapter.Report(update)
+	}
+
+	// Wait for events to be processed
+	time.Sleep(50 * time.Millisecond)
+
+	// Verify events were received
+	mu.Lock()
+	defer mu.Unlock()
+
+	// Should have 4 events (one for each state change)
+	assert.Len(t, receivedEvents, 4)
+
+	// Verify state store has correct final states
+	pfState, exists := stateStore.GetServiceState("pf-test")
+	assert.True(t, exists)
+	assert.Equal(t, StateRunning, pfState.State)
+	assert.True(t, pfState.IsReady)
+
+	mcpState, exists := stateStore.GetServiceState("mcp-test")
+	assert.True(t, exists)
+	assert.Equal(t, StateFailed, mcpState.State)
+	assert.False(t, mcpState.IsReady)
+	assert.NotNil(t, mcpState.ErrorDetail)
 }

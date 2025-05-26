@@ -134,8 +134,6 @@ func (s *K8sConnectionService) checkHealth() {
 	// Perform the health check using kube package
 	readyNodes, totalNodes, statusErr := kube.GetNodeStatus(clientset)
 
-	isHealthy := statusErr == nil
-
 	// Determine state based on health
 	var state reporting.ServiceState
 	var healthErr error
@@ -149,54 +147,25 @@ func (s *K8sConnectionService) checkHealth() {
 		logging.Debug(subsystem, "Health check passed: %d/%d nodes ready", readyNodes, totalNodes)
 	}
 
-	// Report the state
-	s.reportState(state, healthErr)
-
-	// Also report health status for UI
-	if s.reporter != nil {
-		clusterShortName := s.config.Name
-		if s.config.IsMC {
-			// Extract MC name from context (simplified - you might need better parsing)
-			clusterShortName = s.config.Name
-		}
-
-		healthUpdate := reporting.HealthStatusUpdate{
-			Timestamp:        time.Now(),
-			ContextName:      s.config.ContextName,
-			ClusterShortName: clusterShortName,
-			IsMC:             s.config.IsMC,
-			IsHealthy:        isHealthy,
-			ReadyNodes:       readyNodes,
-			TotalNodes:       totalNodes,
-			Error:            healthErr,
-		}
-
-		s.reporter.ReportHealth(healthUpdate)
-	}
+	// Report the state with K8s health data
+	s.reportStateWithHealth(state, healthErr, readyNodes, totalNodes)
 }
 
 // handleHealthCheckError is a helper to handle health check errors
 func (s *K8sConnectionService) handleHealthCheckError(subsystem string, err error, message string) {
 	logging.Error(subsystem, err, "%s", message)
-	s.reportState(reporting.StateFailed, err)
-
-	if s.reporter != nil {
-		healthUpdate := reporting.HealthStatusUpdate{
-			Timestamp:        time.Now(),
-			ContextName:      s.config.ContextName,
-			ClusterShortName: s.config.Name,
-			IsMC:             s.config.IsMC,
-			IsHealthy:        false,
-			ReadyNodes:       0,
-			TotalNodes:       0,
-			Error:            err,
-		}
-		s.reporter.ReportHealth(healthUpdate)
-	}
+	// Report failed state with no nodes ready
+	s.reportStateWithHealth(reporting.StateFailed, err, 0, 0)
 }
 
 // reportState reports the current state of the K8s connection
 func (s *K8sConnectionService) reportState(state reporting.ServiceState, err error) {
+	// Default to no health data when not from a health check
+	s.reportStateWithHealth(state, err, -1, -1)
+}
+
+// reportStateWithHealth reports the current state with optional K8s health data
+func (s *K8sConnectionService) reportStateWithHealth(state reporting.ServiceState, err error, readyNodes, totalNodes int) {
 	if s.reporter == nil {
 		return
 	}
@@ -209,6 +178,11 @@ func (s *K8sConnectionService) reportState(state reporting.ServiceState, err err
 
 	if err != nil {
 		update = update.WithError(err)
+	}
+
+	// Add K8s health data if available (readyNodes >= 0 indicates health data is present)
+	if readyNodes >= 0 {
+		update = update.WithK8sHealth(readyNodes, totalNodes, s.config.IsMC)
 	}
 
 	s.reporter.Report(update)

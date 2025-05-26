@@ -1,6 +1,7 @@
 package reporting
 
 import (
+	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -79,15 +80,15 @@ func (p *PriorityBufferStrategy) OnBufferFull(msg tea.Msg) BufferAction {
 	return p.DefaultAction
 }
 
-// getMessageType extracts the message type name for priority matching
+// getMessageType returns a string representation of the message type for metrics
 func getMessageType(msg tea.Msg) string {
 	switch msg.(type) {
 	case ReporterUpdateMsg:
 		return "ReporterUpdateMsg"
-	case HealthStatusMsg:
-		return "HealthStatusMsg"
+	case BackpressureNotificationMsg:
+		return "BackpressureNotificationMsg"
 	default:
-		return "Unknown"
+		return fmt.Sprintf("%T", msg)
 	}
 }
 

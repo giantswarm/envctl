@@ -158,7 +158,7 @@ func setupMocks(t *testing.T) func() {
 	}
 }
 
-// mockReporter is a test reporter that captures updates
+// mockReporter is a mock implementation of ServiceReporter for testing
 type mockReporter struct {
 	mu         sync.Mutex
 	updates    []reporting.ManagedServiceUpdate
@@ -185,10 +185,6 @@ func (r *mockReporter) Report(update reporting.ManagedServiceUpdate) {
 	if r.stateStore != nil {
 		r.stateStore.SetServiceState(update)
 	}
-}
-
-func (r *mockReporter) ReportHealth(update reporting.HealthStatusUpdate) {
-	// Ignore health reports in tests
 }
 
 func (r *mockReporter) GetStateStore() reporting.StateStore {

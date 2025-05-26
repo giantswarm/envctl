@@ -372,61 +372,25 @@ func TestEventBusAdapter_Report(t *testing.T) {
 	assert.Equal(t, StateRunning, snapshot.State)
 }
 
-func TestEventBusAdapter_ReportHealth(t *testing.T) {
+func TestEventBusAdapter_GetEventBus(t *testing.T) {
 	eventBus := NewEventBus()
-	stateStore := NewStateStore()
-	adapter := NewEventBusAdapter(eventBus, stateStore)
+	adapter := NewEventBusAdapter(eventBus, nil)
 
-	var receivedEvents []Event
-	var mu sync.Mutex
-
-	handler := func(event Event) {
-		mu.Lock()
-		defer mu.Unlock()
-		receivedEvents = append(receivedEvents, event)
-	}
-
-	// Subscribe to health events
-	filter := FilterByType(EventTypeHealthCheck)
-	eventBus.Subscribe(filter, handler)
-
-	// Report health update
-	healthUpdate := HealthStatusUpdate{
-		Timestamp:        time.Now(),
-		ContextName:      "test-context",
-		ClusterShortName: "test-cluster",
-		IsMC:             true,
-		IsHealthy:        true,
-		ReadyNodes:       3,
-		TotalNodes:       5,
-	}
-	adapter.ReportHealth(healthUpdate)
-
-	// Give handler time to execute
-	time.Sleep(10 * time.Millisecond)
-
-	mu.Lock()
-	defer mu.Unlock()
-
-	assert.Len(t, receivedEvents, 1)
-
-	healthEvent, ok := receivedEvents[0].(*HealthEvent)
-	assert.True(t, ok)
-	assert.Equal(t, "health-monitor", healthEvent.Source())
-	assert.Equal(t, "test-context", healthEvent.ContextName)
-	assert.Equal(t, "test-cluster", healthEvent.ClusterShortName)
-	assert.True(t, healthEvent.IsMC)
-	assert.True(t, healthEvent.IsHealthy)
-	assert.Equal(t, 3, healthEvent.ReadyNodes)
-	assert.Equal(t, 5, healthEvent.TotalNodes)
+	assert.Equal(t, eventBus, adapter.GetEventBus())
 }
 
-func TestEventBusAdapter_NilParameters(t *testing.T) {
-	// Test with nil parameters
-	adapter := NewEventBusAdapter(nil, nil)
+func TestEventBusAdapter_Close(t *testing.T) {
+	eventBus := NewEventBus()
+	adapter := NewEventBusAdapter(eventBus, nil)
 
-	assert.NotNil(t, adapter.GetEventBus())
-	assert.NotNil(t, adapter.GetStateStore())
+	// Subscribe to verify bus is closed
+	sub := eventBus.Subscribe(nil, func(event Event) {})
+	assert.NotNil(t, sub)
+
+	adapter.Close()
+
+	// Verify subscription is closed
+	assert.True(t, sub.IsClosed())
 }
 
 func TestEventBus_ConcurrentAccess(t *testing.T) {

@@ -97,30 +97,6 @@ func (c *ConsoleReporter) Report(update ManagedServiceUpdate) {
 	}
 }
 
-// ReportHealth processes a health status update by logging it to the console
-func (c *ConsoleReporter) ReportHealth(update HealthStatusUpdate) {
-	clusterType := "WC"
-	if update.IsMC {
-		clusterType = "MC"
-	}
-
-	subsystem := "Health-" + clusterType + "-" + update.ClusterShortName
-
-	if update.IsHealthy {
-		if update.TotalNodes > 0 {
-			logging.Info(subsystem, "Cluster healthy: %d/%d nodes ready", update.ReadyNodes, update.TotalNodes)
-		} else {
-			logging.Info(subsystem, "Cluster healthy")
-		}
-	} else {
-		if update.Error != nil {
-			logging.Error(subsystem, update.Error, "Cluster unhealthy")
-		} else {
-			logging.Warn(subsystem, "Cluster unhealthy: %d/%d nodes ready", update.ReadyNodes, update.TotalNodes)
-		}
-	}
-}
-
 // GetStateStore returns the underlying state store
 func (c *ConsoleReporter) GetStateStore() StateStore {
 	return c.stateStore

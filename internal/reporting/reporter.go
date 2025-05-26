@@ -53,13 +53,13 @@ func (ll LogLevel) String() string {
 type ServiceState string
 
 const (
-	StateUnknown  ServiceState = "Unknown"
-	StateStarting ServiceState = "Starting"
-	StateRunning  ServiceState = "Running"
-	StateStopping ServiceState = "Stopping"
-	StateStopped  ServiceState = "Stopped"
-	StateFailed   ServiceState = "Failed"
-	StateRetrying ServiceState = "Retrying" // If a service has retry logic
+	StateUnknown   ServiceState = "Unknown"
+	StateStarting  ServiceState = "Starting"
+	StateRunning   ServiceState = "Running"
+	StateStopping  ServiceState = "Stopping"
+	StateStopped   ServiceState = "Stopped"
+	StateFailed    ServiceState = "Failed"
+	StateRetrying  ServiceState = "Retrying" // If a service has retry logic
 	// Add more states as needed, e.g., StateDegraded, StateConnected, StateDisconnected
 )
 
@@ -78,30 +78,38 @@ func GenerateCorrelationID() string {
 	return "corr_" + hex.EncodeToString(bytes)
 }
 
-// ManagedServiceUpdate carries state updates from various components.
-// This struct is the standardized way for components to report their state back to the TUI or console.
-// It focuses on the *state* of the service, not verbose logs (which go through pkg/logging).
+// K8sHealthData contains Kubernetes-specific health information
+type K8sHealthData struct {
+	ReadyNodes int  `json:"ready_nodes"`
+	TotalNodes int  `json:"total_nodes"`
+	IsMC       bool `json:"is_mc"`
+}
+
+// ManagedServiceUpdate represents a state update for a managed service.
+// This is the primary data structure for communicating service state changes.
 type ManagedServiceUpdate struct {
-	Timestamp   time.Time
-	SourceType  ServiceType
-	SourceLabel string
-	State       ServiceState // The current discrete state of the service.
+	// Core identification
+	Timestamp   time.Time   `json:"timestamp"`
+	SourceType  ServiceType `json:"source_type"`
+	SourceLabel string      `json:"source_label"`
 
-	IsReady bool // Derived from State (e.g., true if State == StateRunning).
+	// State information
+	State       ServiceState `json:"state"`
+	IsReady     bool         `json:"is_ready"`
+	ErrorDetail error        `json:"error_detail,omitempty"`
 
-	ErrorDetail error // Associated Go error if State is Failed or a warning state has an error.
+	// Service-specific details
+	ProxyPort int `json:"proxy_port,omitempty"` // For MCP servers
+	PID       int `json:"pid,omitempty"`        // For processes
 
-	// Additional service-specific data
-	ProxyPort int // For MCP servers: the port that mcp-proxy is listening on (0 if not applicable)
-	PID       int // For MCP servers: the process ID (0 if not applicable or not yet started)
+	// K8s-specific health data (optional)
+	K8sHealth *K8sHealthData `json:"k8s_health,omitempty"`
 
-	// Correlation tracking for debugging and tracing cascading effects
-	CorrelationID string // Unique ID to track related messages
-	CausedBy      string // What triggered this update (e.g., "user_action", "health_check", "dependency_failure")
-	ParentID      string // ID of the parent operation that caused this update
-
-	// Message sequencing for proper ordering
-	Sequence int64 // Monotonically increasing sequence number for ordering
+	// Correlation and causation tracking
+	CorrelationID string `json:"correlation_id,omitempty"`
+	CausedBy      string `json:"caused_by,omitempty"`
+	ParentID      string `json:"parent_id,omitempty"`
+	Sequence      int64  `json:"sequence,omitempty"`
 }
 
 // NewManagedServiceUpdate creates a new ManagedServiceUpdate with auto-generated correlation ID and sequence number
@@ -144,6 +152,16 @@ func (msu ManagedServiceUpdate) WithServiceData(proxyPort, pid int) ManagedServi
 	return msu
 }
 
+// WithK8sHealth adds Kubernetes health data to the update
+func (msu ManagedServiceUpdate) WithK8sHealth(readyNodes, totalNodes int, isMC bool) ManagedServiceUpdate {
+	msu.K8sHealth = &K8sHealthData{
+		ReadyNodes: readyNodes,
+		TotalNodes: totalNodes,
+		IsMC:       isMC,
+	}
+	return msu
+}
+
 // String provides a simple string representation for debugging the update itself.
 func (msu ManagedServiceUpdate) String() string {
 	portInfo := ""
@@ -169,56 +187,31 @@ func (msu ManagedServiceUpdate) String() string {
 		msu.Timestamp.Format(time.RFC3339), msu.SourceType, msu.SourceLabel, msu.State, msu.IsReady, portInfo, correlationInfo, msu.ErrorDetail)
 }
 
-// ServiceReporter defines a unified interface for reporting service/component state updates.
-// Implementations will handle these updates appropriately (e.g., TUI display, console logging).
-// This interface will be the abstraction point for all components that need to report status or logs.
+// ServiceReporter is the interface that components use to report their state.
+// Implementations can be TUI-based, console-based, or even network-based.
 type ServiceReporter interface {
-	// Report processes an update. Implementations should be goroutine-safe
-	// if they are to be called concurrently from multiple sources.
+	// Report processes a service state update
 	Report(update ManagedServiceUpdate)
 
-	// ReportHealth processes a health status update
-	ReportHealth(update HealthStatusUpdate)
-
-	// GetStateStore returns the underlying state store for direct access
+	// GetStateStore returns the underlying state store (may return nil if not supported)
 	GetStateStore() StateStore
 }
 
-// ReporterUpdateMsg is the tea.Msg used by TUIReporter to send updates to the TUI.
-// It embeds the ManagedServiceUpdate.
+// ReporterUpdateMsg is the tea.Msg used to send service updates to the TUI
 type ReporterUpdateMsg struct {
 	Update ManagedServiceUpdate
 }
 
-// Ensure ReporterUpdateMsg implements tea.Msg (it does implicitly by being a struct).
+// Ensure ReporterUpdateMsg implements tea.Msg
 var _ tea.Msg = ReporterUpdateMsg{}
 
-// HealthStatusUpdate carries k8s cluster health status information
-type HealthStatusUpdate struct {
-	Timestamp        time.Time
-	ContextName      string // The k8s context name
-	ClusterShortName string // Short name of the cluster (MC or WC)
-	IsMC             bool   // True if this is for management cluster
-	IsHealthy        bool   // Overall health status
-	ReadyNodes       int    // Number of ready nodes
-	TotalNodes       int    // Total number of nodes
-	Error            error  // Any error encountered during health check
-}
-
-// HealthStatusMsg is the tea.Msg used to send health updates to the TUI
-type HealthStatusMsg struct {
-	Update HealthStatusUpdate
-}
-
-// Ensure HealthStatusMsg implements tea.Msg
-var _ tea.Msg = HealthStatusMsg{}
-
-// BackpressureNotificationMsg notifies the user about dropped critical messages
+// BackpressureNotificationMsg notifies about dropped critical messages
 type BackpressureNotificationMsg struct {
-	ServiceLabel string       // The service that had updates dropped
-	DroppedState ServiceState // The state that was dropped
-	Reason       string       // Why the message was dropped
-	Timestamp    time.Time    // When the drop occurred
+	Timestamp     time.Time
+	ServiceLabel  string
+	DroppedState  ServiceState
+	Reason        string
+	CorrelationID string
 }
 
 // Ensure BackpressureNotificationMsg implements tea.Msg

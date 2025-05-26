@@ -166,12 +166,6 @@ func mainControllerDispatch(m *model.Model, msg tea.Msg) (*model.Model, tea.Cmd)
 		cmds = append(cmds, model.ListenForLogEntriesCmd(m.LogChannel))
 		// DO NOT return here. Allow fall-through to viewport refresh logic.
 
-	case reporting.HealthStatusMsg:
-		m, cmd = handleHealthStatusMsg(m, msg)
-		// Re-queue the channel reader to continue processing messages
-		cmds = append(cmds, cmd, model.ChannelReaderCmd(m.TUIChannel))
-		// Fall through to viewport update logic instead of returning early
-
 	default:
 		if m.DebugMode {
 			LogDebug(m, controllerDispatchSubsystem, "Unhandled msg type in default case: %T -- Value: %v", msg, msg)
@@ -443,28 +437,6 @@ func handleNewLogEntry(m *model.Model, msg model.NewLogEntryMsg) *model.Model {
 	return m
 }
 
-func handleHealthStatusMsg(m *model.Model, msg reporting.HealthStatusMsg) (*model.Model, tea.Cmd) {
-	update := msg.Update
-
-	// Add debug logging
-	LogDebug(m, controllerDispatchSubsystem, "Received HealthStatusMsg: IsMC=%v, ClusterShortName=%s, Context=%s, Nodes=%d/%d, Error=%v",
-		update.IsMC, update.ClusterShortName, update.ContextName, update.ReadyNodes, update.TotalNodes, update.Error)
-
-	// Convert HealthStatusUpdate to NodeStatusMsg for existing handler
-	nodeMsg := model.NodeStatusMsg{
-		ClusterShortName: update.ClusterShortName,
-		ForMC:            update.IsMC,
-		ReadyNodes:       update.ReadyNodes,
-		TotalNodes:       update.TotalNodes,
-		Err:              update.Error,
-		DebugInfo:        fmt.Sprintf("Health check from orchestrator for context: %s", update.ContextName),
-	}
-
-	// Reuse existing handler to update UI state
-	return handleNodeStatusMsg(m, nodeMsg)
-}
-
-// handleBackpressureNotification handles notifications about dropped critical messages
 func handleBackpressureNotification(m *model.Model, notification reporting.BackpressureNotificationMsg) (*model.Model, tea.Cmd) {
 	// Set timestamp if not provided
 	if notification.Timestamp.IsZero() {

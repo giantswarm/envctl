@@ -7,7 +7,6 @@ import (
 	"envctl/internal/kube"
 	"envctl/internal/managers"
 	"envctl/internal/reporting"
-	"envctl/internal/state"
 	"envctl/pkg/logging"
 	"fmt"
 	"strings"
@@ -23,15 +22,9 @@ const (
 	StopReasonDependency                   // Service stopped due to dependency failure
 )
 
-// Orchestrator manages the overall application state, including:
-// - K8s connection health monitoring
-// - Service lifecycle based on dependencies
-// - Restart logic
-// - Cascade stop logic
-// - Works for both TUI and non-TUI modes
+// Orchestrator manages the lifecycle of all services and their dependencies
 type Orchestrator struct {
 	serviceMgr  managers.ServiceManagerAPI
-	k8sStateMgr state.K8sStateManager
 	kubeMgr     kube.Manager
 	depGraph    *dependency.Graph
 	reporter    reporting.ServiceReporter
@@ -79,7 +72,6 @@ func New(
 
 	return &Orchestrator{
 		serviceMgr:          serviceMgr,
-		k8sStateMgr:         kubeMgr.GetK8sStateManager(),
 		kubeMgr:             kubeMgr,
 		reporter:            reporter,
 		mcName:              cfg.MCName,
@@ -209,13 +201,6 @@ func (s *serviceStateInterceptor) Report(update reporting.ManagedServiceUpdate) 
 
 	// Check for restart handling
 	s.orchestrator.handleServiceStateUpdate(update)
-}
-
-// ReportHealth forwards health reports
-func (s *serviceStateInterceptor) ReportHealth(update reporting.HealthStatusUpdate) {
-	if s.originalReporter != nil {
-		s.originalReporter.ReportHealth(update)
-	}
 }
 
 // GetStateStore forwards to the original reporter
@@ -505,11 +490,6 @@ func (o *Orchestrator) GetDependencyGraph() *dependency.Graph {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
 	return o.depGraph
-}
-
-// GetK8sStateManager returns the k8s state manager
-func (o *Orchestrator) GetK8sStateManager() state.K8sStateManager {
-	return o.k8sStateMgr
 }
 
 // StopService stops a specific service through the orchestrator

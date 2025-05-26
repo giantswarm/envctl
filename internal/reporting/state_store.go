@@ -18,6 +18,7 @@ type ServiceStateSnapshot struct {
 	CorrelationID string
 	CausedBy      string
 	ParentID      string
+	K8sHealth     *K8sHealthData // K8s-specific health data
 }
 
 // StateChangeEvent represents a state change event with old and new states
@@ -173,6 +174,7 @@ func (s *DefaultStateStore) SetServiceState(update ManagedServiceUpdate) (bool, 
 		CorrelationID: update.CorrelationID,
 		CausedBy:      update.CausedBy,
 		ParentID:      update.ParentID,
+		K8sHealth:     update.K8sHealth,
 	}
 
 	// Check if state actually changed
