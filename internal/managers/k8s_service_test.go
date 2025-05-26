@@ -248,9 +248,9 @@ func TestK8sConnectionService_ConcurrentStop(t *testing.T) {
 
 // testK8sReporter is a test implementation of ServiceReporter
 type testK8sReporter struct {
-	mu               sync.Mutex
-	reports          []reporting.ManagedServiceUpdate
-	reportFunc       func(update reporting.ManagedServiceUpdate)
+	mu         sync.Mutex
+	reports    []reporting.ManagedServiceUpdate
+	reportFunc func(update reporting.ManagedServiceUpdate)
 }
 
 func (m *testK8sReporter) Report(update reporting.ManagedServiceUpdate) {
@@ -271,4 +271,4 @@ func TestGetNodeStatus(t *testing.T) {
 	// This test would require a mock kubernetes clientset
 	// For now, we'll skip it
 	t.Skip("Skipping test that requires kubernetes clientset mocking")
-} 
+}

@@ -24,7 +24,7 @@ func TestCascadeStopOnK8sFailure(t *testing.T) {
 	serviceMgr.On("StartServices", mock.Anything, mock.Anything).Return(map[string]chan struct{}{}, []error{})
 	serviceMgr.On("StopService", mock.Anything).Return(nil).Maybe()
 	serviceMgr.On("StopAllServices").Return().Maybe()
-	
+
 	// Add reporter expectations
 	reporter.On("Report", mock.Anything).Return().Maybe()
 	reporter.On("GetStateStore").Return(reporting.NewStateStore()).Maybe()
@@ -169,7 +169,7 @@ func TestCascadeRestartOnK8sRecovery(t *testing.T) {
 	}).Return(map[string]chan struct{}{}, []error{})
 	serviceMgr.On("StopService", mock.Anything).Return(nil).Maybe()
 	serviceMgr.On("StopAllServices").Return().Maybe()
-	
+
 	// Add reporter expectations
 	reporter.On("Report", mock.Anything).Return().Maybe()
 	reporter.On("GetStateStore").Return(reporting.NewStateStore()).Maybe()
@@ -277,7 +277,7 @@ func TestManualStopNotRestartedOnDependencyRecovery(t *testing.T) {
 	serviceMgr.On("StartServices", mock.Anything, mock.Anything).Return(map[string]chan struct{}{}, []error{})
 	serviceMgr.On("StopService", mock.Anything).Return(nil).Maybe()
 	serviceMgr.On("StopAllServices").Return().Maybe()
-	
+
 	// Add reporter expectations
 	reporter.On("Report", mock.Anything).Return().Maybe()
 	reporter.On("GetStateStore").Return(reporting.NewStateStore()).Maybe()
@@ -355,7 +355,7 @@ func TestComplexCascadeScenario(t *testing.T) {
 	serviceMgr.On("SetReporter", mock.Anything).Return()
 	serviceMgr.On("StartServices", mock.Anything, mock.Anything).Return(map[string]chan struct{}{}, []error{}).Maybe()
 	serviceMgr.On("StopAllServices").Return().Maybe()
-	
+
 	// Add reporter expectations
 	reporter.On("Report", mock.Anything).Return().Maybe()
 	reporter.On("GetStateStore").Return(reporting.NewStateStore()).Maybe()
@@ -397,7 +397,7 @@ func TestComplexCascadeScenario(t *testing.T) {
 
 	// Create orchestrator
 	orch := New(serviceMgr, reporter, cfg)
-	
+
 	// Build the dependency graph (normally done in Start())
 	orch.depGraph = orch.buildDependencyGraph()
 
@@ -517,13 +517,13 @@ func TestCascadeWithCorrelationTracking(t *testing.T) {
 	// Check cascade operations instead of service states
 	cascadeOps := stateStore.GetCascadesByCorrelationID(correlationID)
 	t.Logf("Found %d cascade operations with correlation ID %s", len(cascadeOps), correlationID)
-	
+
 	if len(cascadeOps) == 0 {
 		// Log all cascade operations for debugging
 		allCascades := stateStore.GetCascadeOperations()
 		t.Logf("All cascade operations: %d", len(allCascades))
 		for i, cascade := range allCascades {
-			t.Logf("Cascade %d: CorrelationID=%s, InitiatingService=%s, AffectedServices=%v", 
+			t.Logf("Cascade %d: CorrelationID=%s, InitiatingService=%s, AffectedServices=%v",
 				i, cascade.CorrelationID, cascade.InitiatingService, cascade.AffectedServices)
 		}
 		t.Error("Expected cascade operation to be recorded with correlation ID")
@@ -571,4 +571,4 @@ func (m *mockReporterWithStore) Report(update reporting.ManagedServiceUpdate) {
 
 func (m *mockReporterWithStore) GetStateStore() reporting.StateStore {
 	return m.stateStore
-} 
+}

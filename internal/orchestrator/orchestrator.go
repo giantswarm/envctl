@@ -24,10 +24,10 @@ const (
 
 // Orchestrator manages the lifecycle of all services and their dependencies
 type Orchestrator struct {
-	serviceMgr  managers.ServiceManagerAPI
-	kubeMgr     kube.Manager
-	depGraph    *dependency.Graph
-	reporter    reporting.ServiceReporter
+	serviceMgr managers.ServiceManagerAPI
+	kubeMgr    kube.Manager
+	depGraph   *dependency.Graph
+	reporter   reporting.ServiceReporter
 
 	// Configuration
 	mcName       string

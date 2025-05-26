@@ -94,7 +94,7 @@ func TestAddNode(t *testing.T) {
 				if node := g.Get(lastNode.ID); node == nil {
 					t.Errorf("node %s not found", lastNode.ID)
 				} else if node.FriendlyName != lastNode.FriendlyName {
-					t.Errorf("node friendly name mismatch: expected %s, got %s", 
+					t.Errorf("node friendly name mismatch: expected %s, got %s",
 						lastNode.FriendlyName, node.FriendlyName)
 				}
 			}
@@ -104,12 +104,12 @@ func TestAddNode(t *testing.T) {
 
 func TestGet(t *testing.T) {
 	g := New()
-	
+
 	// Test getting non-existent node
 	if node := g.Get("nonexistent"); node != nil {
 		t.Error("expected nil for non-existent node")
 	}
-	
+
 	// Add a node and test getting it
 	testNode := Node{
 		ID:           "test1",
@@ -119,7 +119,7 @@ func TestGet(t *testing.T) {
 		State:        StateRunning,
 	}
 	g.AddNode(testNode)
-	
+
 	retrieved := g.Get("test1")
 	if retrieved == nil {
 		t.Fatal("failed to retrieve added node")
@@ -137,20 +137,20 @@ func TestGet(t *testing.T) {
 		t.Errorf("State mismatch: expected %v, got %v", testNode.State, retrieved.State)
 	}
 	if len(retrieved.DependsOn) != len(testNode.DependsOn) {
-		t.Errorf("DependsOn length mismatch: expected %d, got %d", 
+		t.Errorf("DependsOn length mismatch: expected %d, got %d",
 			len(testNode.DependsOn), len(retrieved.DependsOn))
 	}
 }
 
 func TestDependencies(t *testing.T) {
 	g := New()
-	
+
 	// Test dependencies of non-existent node
 	deps := g.Dependencies("nonexistent")
 	if len(deps) != 0 {
 		t.Errorf("expected empty dependencies for non-existent node, got %v", deps)
 	}
-	
+
 	// Build a dependency chain
 	g.AddNode(Node{
 		ID:           "k8s1",
@@ -176,7 +176,7 @@ func TestDependencies(t *testing.T) {
 		Kind:         KindMCP,
 		DependsOn:    []NodeID{"pf1", "k8s1"}, // Depends on both
 	})
-	
+
 	// Test various dependencies
 	tests := []struct {
 		nodeID   NodeID
@@ -187,7 +187,7 @@ func TestDependencies(t *testing.T) {
 		{"mcp1", []NodeID{"pf1"}},
 		{"mcp2", []NodeID{"pf1", "k8s1"}},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(string(tt.nodeID), func(t *testing.T) {
 			deps := g.Dependencies(tt.nodeID)
@@ -213,13 +213,13 @@ func TestDependencies(t *testing.T) {
 
 func TestDependents(t *testing.T) {
 	g := New()
-	
+
 	// Test dependents of non-existent node
 	deps := g.Dependents("nonexistent")
 	if len(deps) != 0 {
 		t.Errorf("expected empty dependents for non-existent node, got %v", deps)
 	}
-	
+
 	// Build a dependency chain
 	g.AddNode(Node{
 		ID:           "k8s1",
@@ -251,7 +251,7 @@ func TestDependents(t *testing.T) {
 		Kind:         KindMCP,
 		DependsOn:    []NodeID{"pf1", "k8s1"}, // Depends on both
 	})
-	
+
 	// Test various dependents
 	tests := []struct {
 		nodeID   NodeID
@@ -259,10 +259,10 @@ func TestDependents(t *testing.T) {
 	}{
 		{"k8s1", []NodeID{"pf1", "pf2", "mcp2"}}, // All that depend on k8s1
 		{"pf1", []NodeID{"mcp1", "mcp2"}},        // MCPs that depend on pf1
-		{"pf2", []NodeID{}},                       // Nothing depends on pf2
-		{"mcp1", []NodeID{}},                      // Nothing depends on mcp1
+		{"pf2", []NodeID{}},                      // Nothing depends on pf2
+		{"mcp1", []NodeID{}},                     // Nothing depends on mcp1
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(string(tt.nodeID), func(t *testing.T) {
 			deps := g.Dependents(tt.nodeID)
@@ -289,21 +289,21 @@ func TestDependents(t *testing.T) {
 func TestComplexDependencyGraph(t *testing.T) {
 	// Test a more complex real-world scenario
 	g := New()
-	
+
 	// K8s connections
 	g.AddNode(Node{ID: "k8s-mc", Kind: KindK8sConnection})
 	g.AddNode(Node{ID: "k8s-wc", Kind: KindK8sConnection})
-	
+
 	// Port forwards
 	g.AddNode(Node{ID: "pf-prometheus", Kind: KindPortForward, DependsOn: []NodeID{"k8s-mc"}})
 	g.AddNode(Node{ID: "pf-grafana", Kind: KindPortForward, DependsOn: []NodeID{"k8s-mc"}})
 	g.AddNode(Node{ID: "pf-alloy", Kind: KindPortForward, DependsOn: []NodeID{"k8s-wc"}})
-	
+
 	// MCP servers
 	g.AddNode(Node{ID: "mcp-kubernetes", Kind: KindMCP, DependsOn: []NodeID{"k8s-mc"}})
 	g.AddNode(Node{ID: "mcp-prometheus", Kind: KindMCP, DependsOn: []NodeID{"pf-prometheus"}})
 	g.AddNode(Node{ID: "mcp-grafana", Kind: KindMCP, DependsOn: []NodeID{"pf-grafana"}})
-	
+
 	// Test transitive dependents
 	mcDependents := g.Dependents("k8s-mc")
 	expectedMCDependents := map[NodeID]bool{
@@ -311,18 +311,18 @@ func TestComplexDependencyGraph(t *testing.T) {
 		"pf-grafana":     true,
 		"mcp-kubernetes": true,
 	}
-	
+
 	for _, dep := range mcDependents {
 		if !expectedMCDependents[dep] {
 			t.Errorf("unexpected dependent of k8s-mc: %s", dep)
 		}
 		delete(expectedMCDependents, dep)
 	}
-	
+
 	if len(expectedMCDependents) > 0 {
 		t.Errorf("missing dependents of k8s-mc: %v", expectedMCDependents)
 	}
-	
+
 	// Test that stopping pf-prometheus should affect mcp-prometheus
 	promDependents := g.Dependents("pf-prometheus")
 	if len(promDependents) != 1 || promDependents[0] != "mcp-prometheus" {
@@ -331,4 +331,4 @@ func TestComplexDependencyGraph(t *testing.T) {
 }
 
 // Note: The Graph struct is documented as not thread-safe by design.
-// Callers (like the orchestrator) must handle synchronization. 
+// Callers (like the orchestrator) must handle synchronization.
