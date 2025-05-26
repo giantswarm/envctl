@@ -3,67 +3,125 @@ package reporting
 import (
 	"envctl/pkg/logging" // Import the new logging package
 	"fmt"
+	"time"
 	// "os" // No longer needed for direct Fprintf
 	// "strings" // No longer needed for string manipulation here
 	// "time" // No longer needed for timestamp formatting here
 )
 
-// ConsoleReporter is an implementation of ServiceReporter that prints updates to the console
-// by leveraging the centralized logging package.
-type ConsoleReporter struct{}
-
-// NewConsoleReporter creates a new ConsoleReporter.
-func NewConsoleReporter() *ConsoleReporter {
-	return &ConsoleReporter{}
+// ConsoleReporter is an implementation of ServiceReporter that logs updates to the console
+// via the pkg/logging package and maintains state in a StateStore.
+type ConsoleReporter struct {
+	stateStore StateStore // Centralized state management
 }
 
-// Report translates the ManagedServiceUpdate into a structured log message via the logging package.
-// The log level is inferred from the State and ErrorDetail.
-func (cr *ConsoleReporter) Report(update ManagedServiceUpdate) {
-	// The subsystem for the log message will be composed from SourceType and SourceLabel.
+// NewConsoleReporter creates a new ConsoleReporter
+func NewConsoleReporter() *ConsoleReporter {
+	return &ConsoleReporter{
+		stateStore: NewStateStore(),
+	}
+}
+
+// NewConsoleReporterWithStateStore creates a new ConsoleReporter with a specific state store
+func NewConsoleReporterWithStateStore(stateStore StateStore) *ConsoleReporter {
+	if stateStore == nil {
+		stateStore = NewStateStore()
+	}
+	return &ConsoleReporter{
+		stateStore: stateStore,
+	}
+}
+
+// Report processes a ManagedServiceUpdate by logging it to the console and updating the state store
+func (c *ConsoleReporter) Report(update ManagedServiceUpdate) {
+	// Set timestamp if not provided
+	if update.Timestamp.IsZero() {
+		update.Timestamp = time.Now()
+	}
+
+	// Ensure correlation ID is set
+	if update.CorrelationID == "" {
+		update.CorrelationID = GenerateCorrelationID()
+	}
+
+	// Update the centralized state store first
+	stateChanged := false
+	if c.stateStore != nil {
+		changed, err := c.stateStore.SetServiceState(update)
+		if err != nil {
+			logging.Error("ConsoleReporter", err, "Failed to update state store for service %s", update.SourceLabel)
+		}
+		stateChanged = changed
+	}
+
+	// Only log actual state changes to reduce noise
+	if !stateChanged && update.State != StateFailed && update.ErrorDetail == nil {
+		return
+	}
+
+	// Determine the subsystem for logging
 	subsystem := string(update.SourceType)
 	if update.SourceLabel != "" {
-		subsystem = fmt.Sprintf("%s-%s", update.SourceType, update.SourceLabel)
+		subsystem = string(update.SourceType) + "-" + update.SourceLabel
 	}
 
-	// The primary message is the state.
-	logMessage := fmt.Sprintf("State: %s", update.State)
+	// Build the log message
+	logMessage := "State: " + string(update.State)
+	if update.ProxyPort > 0 {
+		logMessage += fmt.Sprintf(", Port: %d", update.ProxyPort)
+	}
+	if update.PID > 0 {
+		logMessage += fmt.Sprintf(", PID: %d", update.PID)
+	}
+	if update.CorrelationID != "" {
+		logMessage += ", CorrelationID: " + update.CorrelationID
+	}
+	if update.CausedBy != "" && update.CausedBy != "unknown" {
+		logMessage += ", CausedBy: " + update.CausedBy
+	}
 
-	if update.ErrorDetail != nil {
-		// If ErrorDetail is present, it's an error.
+	// Log based on state and error
+	switch {
+	case update.ErrorDetail != nil:
 		logging.Error(subsystem, update.ErrorDetail, "%s", logMessage)
-	} else {
-		// No ErrorDetail, so determine log level based on State.
-		switch update.State {
-		case StateFailed:
-			logging.Error(subsystem, nil, "%s", logMessage)
-		case StateUnknown:
-			// "Unknown" states are often transient or less critical than outright failures without error.
-			logging.Warn(subsystem, "%s", logMessage)
-		case StateStarting, StateRetrying, StateStopping:
-			// Transient states that can be noisy; log as Debug.
-			logging.Debug(subsystem, "%s", logMessage)
-		case StateRunning, StateStopped:
-			// Significant, stable states.
-			logging.Info(subsystem, "%s", logMessage)
-		default:
-			// For any other unclassified state, default to Info.
-			logging.Info(subsystem, "%s", logMessage)
-		}
+	case update.State == StateFailed:
+		logging.Error(subsystem, nil, "%s", logMessage)
+	case update.State == StateUnknown:
+		logging.Warn(subsystem, "%s", logMessage)
+	case update.State == StateRunning || update.State == StateStopped:
+		logging.Info(subsystem, "%s", logMessage)
+	case update.State == StateStarting || update.State == StateStopping || update.State == StateRetrying:
+		logging.Debug(subsystem, "%s", logMessage)
+	default:
+		logging.Info(subsystem, "%s", logMessage)
 	}
 }
 
-// ReportHealth processes a health status update by logging it to the console.
+// ReportHealth processes a health status update by logging it to the console
 func (c *ConsoleReporter) ReportHealth(update HealthStatusUpdate) {
-	// Format the health update for console display
 	clusterType := "WC"
 	if update.IsMC {
 		clusterType = "MC"
 	}
 
+	subsystem := "Health-" + clusterType + "-" + update.ClusterShortName
+
 	if update.IsHealthy {
-		logging.Info("HealthCheck", "[HEALTH %s-%s] Nodes: %d/%d", clusterType, update.ClusterShortName, update.ReadyNodes, update.TotalNodes)
+		if update.TotalNodes > 0 {
+			logging.Info(subsystem, "Cluster healthy: %d/%d nodes ready", update.ReadyNodes, update.TotalNodes)
+		} else {
+			logging.Info(subsystem, "Cluster healthy")
+		}
 	} else {
-		logging.Error("HealthCheck", update.Error, "[HEALTH %s-%s] Connection unhealthy", clusterType, update.ClusterShortName)
+		if update.Error != nil {
+			logging.Error(subsystem, update.Error, "Cluster unhealthy")
+		} else {
+			logging.Warn(subsystem, "Cluster unhealthy: %d/%d nodes ready", update.ReadyNodes, update.TotalNodes)
+		}
 	}
+}
+
+// GetStateStore returns the underlying state store
+func (c *ConsoleReporter) GetStateStore() StateStore {
+	return c.stateStore
 }

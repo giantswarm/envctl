@@ -196,6 +196,14 @@ func (s *serviceStateInterceptor) ReportHealth(update reporting.HealthStatusUpda
 	}
 }
 
+// GetStateStore forwards to the original reporter
+func (s *serviceStateInterceptor) GetStateStore() reporting.StateStore {
+	if s.originalReporter != nil {
+		return s.originalReporter.GetStateStore()
+	}
+	return nil
+}
+
 // handleServiceStateUpdate processes service state changes and triggers restarts if needed
 func (o *Orchestrator) handleServiceStateUpdate(update reporting.ManagedServiceUpdate) {
 	o.mu.Lock()

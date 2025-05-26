@@ -160,13 +160,17 @@ func setupMocks(t *testing.T) func() {
 
 // mockReporter is a test reporter that captures updates
 type mockReporter struct {
-	mu      sync.Mutex
-	updates []reporting.ManagedServiceUpdate
-	t       *testing.T
+	mu         sync.Mutex
+	updates    []reporting.ManagedServiceUpdate
+	t          *testing.T
+	stateStore reporting.StateStore
 }
 
 func newMockReporter(t *testing.T) *mockReporter {
-	return &mockReporter{t: t}
+	return &mockReporter{
+		t:          t,
+		stateStore: reporting.NewStateStore(),
+	}
 }
 
 func (r *mockReporter) Report(update reporting.ManagedServiceUpdate) {
@@ -176,10 +180,19 @@ func (r *mockReporter) Report(update reporting.ManagedServiceUpdate) {
 	if r.t != nil {
 		r.t.Logf("Reporter captured update: %+v", update)
 	}
+
+	// Update the state store
+	if r.stateStore != nil {
+		r.stateStore.SetServiceState(update)
+	}
 }
 
 func (r *mockReporter) ReportHealth(update reporting.HealthStatusUpdate) {
 	// Ignore health reports in tests
+}
+
+func (r *mockReporter) GetStateStore() reporting.StateStore {
+	return r.stateStore
 }
 
 func (r *mockReporter) GetUpdates() []reporting.ManagedServiceUpdate {

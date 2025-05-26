@@ -13,9 +13,8 @@ import (
 // ServiceManager implements the ServiceManagerAPI interface.
 // It provides simple service lifecycle management without any dependency or restart logic.
 type ServiceManager struct {
-	activeServices map[string]chan struct{}          // Map of service label to its stop channel
-	serviceConfigs map[string]ManagedServiceConfig   // Map label to its original ManagedServiceConfig
-	serviceStates  map[string]reporting.ServiceState // Track current state of services
+	activeServices map[string]chan struct{}        // Map of service label to its stop channel
+	serviceConfigs map[string]ManagedServiceConfig // Map label to its original ManagedServiceConfig
 	reporter       reporting.ServiceReporter
 	mu             sync.Mutex
 }
@@ -30,7 +29,6 @@ func NewServiceManager(reporter reporting.ServiceReporter) ServiceManagerAPI {
 	return &ServiceManager{
 		activeServices: make(map[string]chan struct{}),
 		serviceConfigs: make(map[string]ManagedServiceConfig),
-		serviceStates:  make(map[string]reporting.ServiceState),
 		reporter:       reporter,
 	}
 }
@@ -181,10 +179,17 @@ func (sm *ServiceManager) createPortForwardUpdateAdapter(pfOriginalLabels map[st
 		}
 
 		// Only report if state changed
-		lastReportedState, known := sm.serviceStates[originalLabel]
-		if !known || state != lastReportedState {
-			sm.serviceStates[originalLabel] = state
+		var lastReportedState reporting.ServiceState
+		known := false
+		if sm.reporter != nil && sm.reporter.GetStateStore() != nil {
+			snapshot, exists := sm.reporter.GetStateStore().GetServiceState(originalLabel)
+			if exists {
+				lastReportedState = snapshot.State
+				known = true
+			}
+		}
 
+		if !known || state != lastReportedState {
 			// Log state change
 			logMessage := fmt.Sprintf("Service %s (PortForward) state changed to: %s", originalLabel, state)
 			if state == reporting.StateFailed || operationErr != nil {
@@ -213,7 +218,6 @@ func (sm *ServiceManager) createPortForwardUpdateAdapter(pfOriginalLabels map[st
 			// Clean up if stopped
 			if state == reporting.StateStopped || state == reporting.StateFailed {
 				delete(sm.activeServices, originalLabel)
-				delete(sm.serviceStates, originalLabel)
 			}
 		}
 	}
@@ -250,10 +254,17 @@ func (sm *ServiceManager) createMCPUpdateAdapter(mcpOriginalLabels map[string]st
 		}
 
 		// Only report if state changed
-		lastReportedState, known := sm.serviceStates[originalLabel]
-		if !known || state != lastReportedState {
-			sm.serviceStates[originalLabel] = state
+		var lastReportedState reporting.ServiceState
+		known := false
+		if sm.reporter != nil && sm.reporter.GetStateStore() != nil {
+			snapshot, exists := sm.reporter.GetStateStore().GetServiceState(originalLabel)
+			if exists {
+				lastReportedState = snapshot.State
+				known = true
+			}
+		}
 
+		if !known || state != lastReportedState {
 			// Log state change
 			logMessage := fmt.Sprintf("Service %s (MCPServer) state changed to: %s", originalLabel, state)
 			if mcpStatusUpdate.ProxyPort > 0 {
@@ -290,7 +301,6 @@ func (sm *ServiceManager) createMCPUpdateAdapter(mcpOriginalLabels map[string]st
 			// Clean up if stopped
 			if state == reporting.StateStopped || state == reporting.StateFailed {
 				delete(sm.activeServices, originalLabel)
-				delete(sm.serviceStates, originalLabel)
 			}
 		}
 	}
@@ -342,7 +352,11 @@ func (sm *ServiceManager) StopAllServices() {
 
 	// Clear all maps
 	sm.activeServices = make(map[string]chan struct{})
-	sm.serviceStates = make(map[string]reporting.ServiceState)
+
+	// Clear the state store as well
+	if sm.reporter != nil && sm.reporter.GetStateStore() != nil {
+		sm.reporter.GetStateStore().ClearAll()
+	}
 }
 
 // GetServiceConfig returns the configuration for a service

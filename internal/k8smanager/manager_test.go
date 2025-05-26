@@ -79,17 +79,29 @@ var _ clientcmd.ClientConfig = &mockClientConfig{} // Ensure it satisfies the in
 // mockServiceReporter is a simple mock for reporting.ServiceReporter
 type mockServiceReporter struct {
 	ReportFunc func(update reporting.ManagedServiceUpdate)
+	stateStore reporting.StateStore
 }
 
 func (m *mockServiceReporter) Report(update reporting.ManagedServiceUpdate) {
 	if m.ReportFunc != nil {
 		m.ReportFunc(update)
 	}
+	// Update the state store if available
+	if m.stateStore != nil {
+		m.stateStore.SetServiceState(update)
+	}
 }
 
 func (m *mockServiceReporter) ReportHealth(update reporting.HealthStatusUpdate) {
 	// For now, just ignore health reports in tests
 	// They're not relevant to the k8smanager tests
+}
+
+func (m *mockServiceReporter) GetStateStore() reporting.StateStore {
+	if m.stateStore == nil {
+		m.stateStore = reporting.NewStateStore()
+	}
+	return m.stateStore
 }
 
 // Make DetermineClusterProvider mockable for tests

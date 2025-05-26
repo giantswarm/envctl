@@ -171,6 +171,9 @@ type ServiceReporter interface {
 
 	// ReportHealth processes a health status update
 	ReportHealth(update HealthStatusUpdate)
+
+	// GetStateStore returns the underlying state store for direct access
+	GetStateStore() StateStore
 }
 
 // ReporterUpdateMsg is the tea.Msg used by TUIReporter to send updates to the TUI.

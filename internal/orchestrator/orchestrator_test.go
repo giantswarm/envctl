@@ -164,10 +164,15 @@ type mockReporter struct {
 	mock.Mock
 	mu            sync.Mutex
 	healthUpdates []reporting.HealthStatusUpdate
+	stateStore    reporting.StateStore
 }
 
 func (m *mockReporter) Report(update reporting.ManagedServiceUpdate) {
 	m.Called(update)
+	// Update the state store if available
+	if m.stateStore != nil {
+		m.stateStore.SetServiceState(update)
+	}
 }
 
 func (m *mockReporter) ReportHealth(update reporting.HealthStatusUpdate) {
@@ -175,6 +180,13 @@ func (m *mockReporter) ReportHealth(update reporting.HealthStatusUpdate) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.healthUpdates = append(m.healthUpdates, update)
+}
+
+func (m *mockReporter) GetStateStore() reporting.StateStore {
+	if m.stateStore == nil {
+		m.stateStore = reporting.NewStateStore()
+	}
+	return m.stateStore
 }
 
 func (m *mockReporter) GetHealthUpdates() []reporting.HealthStatusUpdate {

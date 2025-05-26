@@ -9,16 +9,18 @@ import (
 )
 
 // TUIReporter is an implementation of ServiceReporter that sends updates to a buffered channel
-// for the TUI to process with configurable overflow behavior.
+// for the TUI to process with configurable overflow behavior and maintains state in a StateStore.
 type TUIReporter struct {
 	bufferedChan *BufferedChannel
 	updateChan   chan<- tea.Msg // Keep for backwards compatibility
+	stateStore   StateStore     // Centralized state management
 }
 
 // TUIReporterConfig configures the TUI reporter behavior
 type TUIReporterConfig struct {
 	BufferSize     int
 	BufferStrategy BufferStrategy
+	StateStore     StateStore // Optional: if nil, a new one will be created
 }
 
 // DefaultTUIReporterConfig returns a sensible default configuration
@@ -31,6 +33,7 @@ func DefaultTUIReporterConfig() TUIReporterConfig {
 	return TUIReporterConfig{
 		BufferSize:     1000,
 		BufferStrategy: strategy,
+		StateStore:     nil, // Will be created automatically
 	}
 }
 
@@ -50,6 +53,12 @@ func NewTUIReporterWithConfig(updateChan chan<- tea.Msg, config TUIReporterConfi
 			}
 		}()
 		updateChan = dummyChan
+	}
+
+	// Create state store if not provided
+	stateStore := config.StateStore
+	if stateStore == nil {
+		stateStore = NewStateStore()
 	}
 
 	bufferedChan := NewBufferedChannel(config.BufferSize, config.BufferStrategy)
@@ -74,10 +83,11 @@ func NewTUIReporterWithConfig(updateChan chan<- tea.Msg, config TUIReporterConfi
 	return &TUIReporter{
 		bufferedChan: bufferedChan,
 		updateChan:   updateChan,
+		stateStore:   stateStore,
 	}
 }
 
-// Report processes a ManagedServiceUpdate by sending it to the TUI via the buffered channel.
+// Report processes a ManagedServiceUpdate by updating the state store and sending it to the TUI via the buffered channel.
 func (t *TUIReporter) Report(update ManagedServiceUpdate) {
 	if t.bufferedChan == nil {
 		return
@@ -93,16 +103,29 @@ func (t *TUIReporter) Report(update ManagedServiceUpdate) {
 		update.CorrelationID = GenerateCorrelationID()
 	}
 
-	// Send the update wrapped in a ReporterUpdateMsg
-	msg := ReporterUpdateMsg{Update: update}
-	sent := t.bufferedChan.Send(msg)
+	// Update the centralized state store first
+	stateChanged := false
+	if t.stateStore != nil {
+		changed, err := t.stateStore.SetServiceState(update)
+		if err != nil {
+			logging.Error("TUIReporter", err, "Failed to update state store for service %s", update.SourceLabel)
+		}
+		stateChanged = changed
+	}
 
-	if !sent {
-		// Message was dropped, log based on importance
-		if update.State == StateFailed || update.State == StateRunning {
-			// Only log important state changes when dropped
-			logging.Warn("TUIReporter", "TUI buffer full, dropped service update for %s (state=%s, correlationID=%s)",
-				update.SourceLabel, update.State, update.CorrelationID)
+	// Only send TUI updates for actual state changes to reduce noise
+	if stateChanged || update.State == StateFailed || update.ErrorDetail != nil {
+		// Send the update wrapped in a ReporterUpdateMsg
+		msg := ReporterUpdateMsg{Update: update}
+		sent := t.bufferedChan.Send(msg)
+
+		if !sent {
+			// Message was dropped, log based on importance
+			if update.State == StateFailed || update.State == StateRunning {
+				// Only log important state changes when dropped
+				logging.Warn("TUIReporter", "TUI buffer full, dropped service update for %s (state=%s, correlationID=%s)",
+					update.SourceLabel, update.State, update.CorrelationID)
+			}
 		}
 	}
 }
@@ -125,12 +148,25 @@ func (t *TUIReporter) ReportHealth(update HealthStatusUpdate) {
 	}
 }
 
+// GetStateStore returns the underlying state store
+func (t *TUIReporter) GetStateStore() StateStore {
+	return t.stateStore
+}
+
 // GetMetrics returns the current buffer metrics for monitoring
 func (t *TUIReporter) GetMetrics() ChannelStats {
 	if t.bufferedChan == nil {
 		return ChannelStats{}
 	}
 	return t.bufferedChan.GetMetrics()
+}
+
+// GetStateStoreMetrics returns the state store metrics
+func (t *TUIReporter) GetStateStoreMetrics() StateStoreMetrics {
+	if t.stateStore == nil {
+		return StateStoreMetrics{}
+	}
+	return t.stateStore.GetMetrics()
 }
 
 // Close closes the buffered channel
