@@ -46,11 +46,11 @@ type Orchestrator struct {
 	cancelHealthChecks  context.CancelFunc
 
 	// Service state tracking
-	stopReasons      map[string]StopReason           // Track why services were stopped
-	pendingRestarts  map[string]bool                 // Track services pending restart
-	serviceConfigs   map[string]managers.ManagedServiceConfig // Store all service configs
-	activeWaitGroup  *sync.WaitGroup                 // Track active services
-	
+	stopReasons     map[string]StopReason                    // Track why services were stopped
+	pendingRestarts map[string]bool                          // Track services pending restart
+	serviceConfigs  map[string]managers.ManagedServiceConfig // Store all service configs
+	activeWaitGroup *sync.WaitGroup                          // Track active services
+
 	mu sync.RWMutex
 }
 
@@ -166,7 +166,7 @@ func (o *Orchestrator) initializeServiceConfigs() {
 func (o *Orchestrator) setupServiceStateMonitoring() {
 	// Create a custom reporter that intercepts updates for restart logic
 	interceptor := &serviceStateInterceptor{
-		orchestrator:    o,
+		orchestrator:     o,
 		originalReporter: o.reporter,
 	}
 	o.serviceMgr.SetReporter(interceptor)
@@ -196,31 +196,45 @@ func (s *serviceStateInterceptor) ReportHealth(update reporting.HealthStatusUpda
 	}
 }
 
-// handleServiceStateUpdate handles service state changes for restart logic
+// handleServiceStateUpdate processes service state changes and triggers restarts if needed
 func (o *Orchestrator) handleServiceStateUpdate(update reporting.ManagedServiceUpdate) {
-	if update.State == reporting.StateStopped || update.State == reporting.StateFailed {
-		o.mu.Lock()
-		defer o.mu.Unlock()
+	o.mu.Lock()
+	defer o.mu.Unlock()
 
-		// Check if this service has a pending restart
-		if o.pendingRestarts[update.SourceLabel] {
-			delete(o.pendingRestarts, update.SourceLabel)
-			delete(o.stopReasons, update.SourceLabel) // Clear stop reason for restart
+	label := update.SourceLabel
 
-			// Schedule restart
-			go func() {
-				time.Sleep(100 * time.Millisecond) // Small delay to ensure clean stop
-				
-				o.mu.RLock()
-				cfg, exists := o.serviceConfigs[update.SourceLabel]
-				o.mu.RUnlock()
-				
-				if exists {
-					logging.Info("Orchestrator", "Restarting service %s", update.SourceLabel)
+	// Log the state update with correlation info
+	logging.Debug("Orchestrator", "Received service state update: %s -> %s (correlationID: %s, causedBy: %s)",
+		label, update.State, update.CorrelationID, update.CausedBy)
+
+	// Check if this service was pending restart
+	if wasPendingRestart, exists := o.pendingRestarts[label]; exists && wasPendingRestart {
+		if update.State == reporting.StateStopped || update.State == reporting.StateFailed {
+			// Service has stopped, now restart it
+			delete(o.pendingRestarts, label)
+
+			if cfg, configExists := o.serviceConfigs[label]; configExists {
+				logging.Info("Orchestrator", "Restarting service %s after stop (correlationID: %s)", label, update.CorrelationID)
+
+				// Start the service with correlation tracking
+				go func() {
 					configs := []managers.ManagedServiceConfig{cfg}
-					o.startServicesInDependencyOrder(configs)
-				}
-			}()
+					if err := o.startServicesInDependencyOrder(configs); err != nil {
+						logging.Error("Orchestrator", err, "Failed to restart service %s", label)
+
+						// Report restart failure with correlation
+						if o.reporter != nil {
+							failureUpdate := reporting.NewManagedServiceUpdate(
+								update.SourceType,
+								label,
+								reporting.StateFailed,
+							).WithCause("restart_failed", update.CorrelationID).WithError(err)
+
+							o.reporter.Report(failureUpdate)
+						}
+					}
+				}()
+			}
 		}
 	}
 }
@@ -328,7 +342,7 @@ func (o *Orchestrator) startServicesWithHealthCheck() error {
 
 		// Check if service's K8s dependency is healthy
 		shouldStart := true
-		
+
 		if pfConfig, ok := cfg.Config.(config.PortForwardDefinition); ok && pfConfig.KubeContextTarget != "" {
 			if healthy, exists := healthyContexts[pfConfig.KubeContextTarget]; !exists || !healthy {
 				logging.Info("Orchestrator", "Skipping port forward %s - K8s context %s not healthy", pfConfig.Name, pfConfig.KubeContextTarget)
@@ -520,6 +534,9 @@ func (o *Orchestrator) checkConnectionHealth(ctx context.Context, contextName st
 	// Update state
 	o.k8sStateMgr.SetHealthy(contextName, isHealthy, err)
 
+	// Generate correlation ID for this health check cycle
+	healthCorrelationID := reporting.GenerateCorrelationID()
+
 	// Log result
 	clusterType := "WC"
 	if isMC {
@@ -527,9 +544,9 @@ func (o *Orchestrator) checkConnectionHealth(ctx context.Context, contextName st
 	}
 
 	if isHealthy {
-		logging.Info("Orchestrator", "[HEALTH %s] Nodes: %d/%d", clusterType, health.ReadyNodes, health.TotalNodes)
+		logging.Info("Orchestrator", "[HEALTH %s] Nodes: %d/%d (correlationID: %s)", clusterType, health.ReadyNodes, health.TotalNodes, healthCorrelationID)
 	} else {
-		logging.Error("Orchestrator", err, "[HEALTH %s] Connection unhealthy", clusterType)
+		logging.Error("Orchestrator", err, "[HEALTH %s] Connection unhealthy (correlationID: %s)", clusterType, healthCorrelationID)
 	}
 
 	// Report health status to the UI/console via reporter
@@ -557,12 +574,12 @@ func (o *Orchestrator) checkConnectionHealth(ctx context.Context, contextName st
 
 		if !isHealthy {
 			// Connection became unhealthy - stop dependent services
-			logging.Info("Orchestrator", "K8s connection %s became unhealthy, stopping dependent services", contextName)
-			o.stopServiceWithDependents(k8sNodeID)
+			logging.Info("Orchestrator", "K8s connection %s became unhealthy, stopping dependent services (correlationID: %s)", contextName, healthCorrelationID)
+			o.stopServiceWithDependentsCorrelated(k8sNodeID, "health_check_failure", healthCorrelationID)
 		} else {
 			// Connection became healthy - restart dependent services
-			logging.Info("Orchestrator", "K8s connection %s is healthy again, restarting dependent services", contextName)
-			o.startServicesDependingOn(k8sNodeID)
+			logging.Info("Orchestrator", "K8s connection %s is healthy again, restarting dependent services (correlationID: %s)", contextName, healthCorrelationID)
+			o.startServicesDependingOnCorrelated(k8sNodeID, "health_check_recovery", healthCorrelationID)
 		}
 	}
 }
@@ -586,13 +603,17 @@ func (o *Orchestrator) StopService(label string) error {
 		return fmt.Errorf("service manager not initialized")
 	}
 
+	// Generate correlation ID for this user action
+	correlationID := reporting.GenerateCorrelationID()
+	logging.Info("Orchestrator", "User requested stop for service: %s (correlationID: %s)", label, correlationID)
+
 	// Mark as manual stop
 	o.mu.Lock()
 	o.stopReasons[label] = StopReasonManual
 	o.mu.Unlock()
 
 	// Use cascading stop to properly handle dependencies
-	return o.stopServiceWithDependents(label)
+	return o.stopServiceWithDependentsCorrelated(label, "user_action", correlationID)
 }
 
 // RestartService restarts a specific service through the orchestrator
@@ -601,18 +622,21 @@ func (o *Orchestrator) RestartService(label string) error {
 		return fmt.Errorf("service manager not initialized")
 	}
 
+	// Generate correlation ID for this user action
+	correlationID := reporting.GenerateCorrelationID()
+
 	o.mu.Lock()
 	_, exists := o.serviceConfigs[label]
 	if !exists {
 		o.mu.Unlock()
 		return fmt.Errorf("no configuration found for service %s", label)
 	}
-	
+
 	// Mark for restart
 	o.pendingRestarts[label] = true
 	o.mu.Unlock()
 
-	logging.Info("Orchestrator", "User requested restart for service: %s", label)
+	logging.Info("Orchestrator", "User requested restart for service: %s (correlationID: %s)", label, correlationID)
 
 	// Check if service is active
 	if !o.serviceMgr.IsServiceActive(label) {
@@ -621,7 +645,7 @@ func (o *Orchestrator) RestartService(label string) error {
 		delete(o.pendingRestarts, label) // Clear pending restart
 		cfg := o.serviceConfigs[label]
 		o.mu.Unlock()
-		
+
 		configs := []managers.ManagedServiceConfig{cfg}
 		return o.startServicesInDependencyOrder(configs)
 	}
@@ -630,10 +654,10 @@ func (o *Orchestrator) RestartService(label string) error {
 	return o.serviceMgr.StopService(label)
 }
 
-// stopServiceWithDependents stops a service and all services that depend on it
-func (o *Orchestrator) stopServiceWithDependents(label string) error {
-	logging.Debug("Orchestrator", "stopServiceWithDependents called for: %s", label)
-	
+// stopServiceWithDependentsCorrelated stops a service and all services that depend on it with correlation tracking
+func (o *Orchestrator) stopServiceWithDependentsCorrelated(label, causedBy, parentCorrelationID string) error {
+	logging.Debug("Orchestrator", "stopServiceWithDependentsCorrelated called for: %s (causedBy: %s, parentID: %s)", label, causedBy, parentCorrelationID)
+
 	if o.depGraph == nil {
 		// No dependency graph, just stop the service
 		return o.serviceMgr.StopService(label)
@@ -643,7 +667,7 @@ func (o *Orchestrator) stopServiceWithDependents(label string) error {
 	o.mu.RLock()
 	cfg, exists := o.serviceConfigs[label]
 	o.mu.RUnlock()
-	
+
 	if !exists && !strings.HasPrefix(label, "k8s:") {
 		return fmt.Errorf("service %s not found", label)
 	}
@@ -667,17 +691,18 @@ func (o *Orchestrator) stopServiceWithDependents(label string) error {
 		}
 
 		depLabel := o.getLabelFromNodeID(depNodeID)
-		
+
 		if o.serviceMgr.IsServiceActive(depLabel) {
-			// Mark as dependency stop
+			// Mark as dependency stop with correlation tracking
 			o.mu.Lock()
 			o.stopReasons[depLabel] = StopReasonDependency
 			o.mu.Unlock()
 
 			if err := o.serviceMgr.StopService(depLabel); err != nil {
-				logging.Error("Orchestrator", err, "Failed to stop dependent service %s", depLabel)
+				logging.Error("Orchestrator", err, "Failed to stop dependent service %s (correlationID: %s)", depLabel, parentCorrelationID)
 			} else {
-				logging.Info("Orchestrator", "Stopped service %s as part of cascade from %s", depLabel, label)
+				logging.Info("Orchestrator", "Stopped service %s as part of cascade from %s (causedBy: %s, correlationID: %s)",
+					depLabel, label, causedBy, parentCorrelationID)
 			}
 		}
 	}
@@ -687,21 +712,21 @@ func (o *Orchestrator) stopServiceWithDependents(label string) error {
 		if err := o.serviceMgr.StopService(label); err != nil {
 			return err
 		}
-		logging.Info("Orchestrator", "Stopped initiating service %s", label)
+		logging.Info("Orchestrator", "Stopped initiating service %s (causedBy: %s, correlationID: %s)", label, causedBy, parentCorrelationID)
 	}
 
 	return nil
 }
 
-// startServicesDependingOn starts all services that depend on the given node
-func (o *Orchestrator) startServicesDependingOn(nodeID string) error {
+// startServicesDependingOnCorrelated starts all services that depend on the given node with correlation tracking
+func (o *Orchestrator) startServicesDependingOnCorrelated(nodeID, causedBy, parentCorrelationID string) error {
 	if o.depGraph == nil {
 		return nil
 	}
 
 	// Find all services that depend on this node
 	dependents := o.findAllDependents(nodeID)
-	
+
 	var configsToStart []managers.ManagedServiceConfig
 
 	o.mu.RLock()
@@ -711,7 +736,7 @@ func (o *Orchestrator) startServicesDependingOn(nodeID string) error {
 		}
 
 		label := o.getLabelFromNodeID(depNodeID)
-		
+
 		// Skip if already active
 		if o.serviceMgr.IsServiceActive(label) {
 			continue
@@ -719,7 +744,7 @@ func (o *Orchestrator) startServicesDependingOn(nodeID string) error {
 
 		// Skip if manually stopped
 		if reason, exists := o.stopReasons[label]; exists && reason == StopReasonManual {
-			logging.Info("Orchestrator", "Service %s was manually stopped, not restarting", label)
+			logging.Info("Orchestrator", "Service %s was manually stopped, not restarting (correlationID: %s)", label, parentCorrelationID)
 			continue
 		}
 
@@ -734,8 +759,18 @@ func (o *Orchestrator) startServicesDependingOn(nodeID string) error {
 		return nil
 	}
 
-	logging.Info("Orchestrator", "Starting %d services that depend on %s", len(configsToStart), nodeID)
+	logging.Info("Orchestrator", "Starting %d services that depend on %s (causedBy: %s, correlationID: %s)",
+		len(configsToStart), nodeID, causedBy, parentCorrelationID)
 	return o.startServicesInDependencyOrder(configsToStart)
+}
+
+// Backwards compatibility methods that use the new correlated versions
+func (o *Orchestrator) stopServiceWithDependents(label string) error {
+	return o.stopServiceWithDependentsCorrelated(label, "unknown", reporting.GenerateCorrelationID())
+}
+
+func (o *Orchestrator) startServicesDependingOn(nodeID string) error {
+	return o.startServicesDependingOnCorrelated(nodeID, "unknown", reporting.GenerateCorrelationID())
 }
 
 // findAllDependents finds all services that depend on the given node (direct and transitive)
@@ -753,7 +788,7 @@ func (o *Orchestrator) findAllDependents(nodeID string) []string {
 		// Get direct dependents
 		directDependents := o.depGraph.Dependents(dependency.NodeID(currentID))
 		logging.Debug("Orchestrator", "Direct dependents of %s: %v", currentID, directDependents)
-		
+
 		for _, dep := range directDependents {
 			depStr := string(dep)
 			if !strings.HasPrefix(depStr, "k8s:") {
@@ -771,7 +806,7 @@ func (o *Orchestrator) findAllDependents(nodeID string) []string {
 	for dep := range allDependents {
 		result = append(result, dep)
 	}
-	
+
 	logging.Debug("Orchestrator", "All dependents of %s: %v", nodeID, result)
 	return result
 }

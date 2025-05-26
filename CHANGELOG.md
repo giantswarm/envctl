@@ -21,6 +21,17 @@ All notable changes to this project will be documented in this file.
   - Automatically restart services when their dependencies recover
   - Ensure correct startup order based on dependency graph
   - Prevent manually stopped services from auto-restarting
+- **Phase 1 of Issue #45: Message Handling Architecture Improvements**
+  - Added correlation ID support to `ManagedServiceUpdate` for tracing related messages and cascading effects
+  - Implemented configurable buffer strategies for TUI message channels:
+    - `BufferActionDrop`: Drop messages when buffer is full
+    - `BufferActionBlock`: Block until space is available
+    - `BufferActionEvictOldest`: Remove oldest message to make room for new ones
+  - Added priority-based buffer strategies to handle different message types differently
+  - Introduced `BufferedChannel` with metrics tracking (messages sent, dropped, blocked, evicted)
+  - Enhanced orchestrator with correlation tracking for health checks and cascading operations
+  - Updated service manager to use new correlation ID system for better debugging
+  - Added comprehensive test coverage for buffer strategies and correlation tracking
 
 ### Changed
 - Dependency graph now includes K8sConnection nodes as fundamental dependencies
@@ -36,6 +47,10 @@ All notable changes to this project will be documented in this file.
   - Better error handling and logging throughout the message flow
 - Improved startup behavior - the UI now shows loading state until all clusters are fully loaded
 - Port forwards no longer start before K8s health checks pass - orchestrator now checks K8s health before starting dependent services
+- `ManagedServiceUpdate` now includes `CorrelationID`, `CausedBy`, and `ParentID` fields for tracing
+- `TUIReporter` now uses configurable buffered channels instead of simple channels
+- Service state updates now include correlation information in logs
+- Orchestrator operations (stop/restart) now generate and track correlation IDs
 
 ### Fixed
 - Services no longer continue running with broken k8s dependencies
@@ -55,6 +70,16 @@ All notable changes to this project will be documented in this file.
 - Fix port forwards starting immediately without waiting for K8s health checks
 - Fix service getting stuck in "Stopping" state after restart and stop sequence
   - Resolved cascade logic incorrectly including initiating service in its own cascade
+- Fixed issue where MCPs would not restart when their dependent port forwarding was restarted
+- Fixed issue where only port forwardings would restart after K8s recovery, not their dependent MCPs
+- Fixed issue where MCPs would start before their required port forwardings
+- Fixed issue where services would get stuck in "Stopping" state after restart and stop operations
+
+### Technical Details
+- New helper functions: `NewManagedServiceUpdate()`, `WithCause()`, `WithError()`, `WithServiceData()`
+- New types: `BufferStrategy`, `BufferedChannel`, `ChannelMetrics`, `ChannelStats`
+- Backwards compatibility maintained for existing interfaces
+- All existing tests updated and new comprehensive test suite added
 
 ## [Previous]
 

@@ -8,7 +8,6 @@ import (
 	"envctl/pkg/logging"
 	"fmt"
 	"sync"
-	"time"
 )
 
 // ServiceManager implements the ServiceManagerAPI interface.
@@ -73,7 +72,7 @@ func (sm *ServiceManager) startServicesInternal(
 ) (map[string]chan struct{}, []error) {
 	var startupErrors []error
 	allStopChannels := make(map[string]chan struct{})
-	
+
 	// Separate configs by type
 	var pfConfigs []config.PortForwardDefinition
 	var mcpConfigs []config.MCPServerDefinition
@@ -196,16 +195,19 @@ func (sm *ServiceManager) createPortForwardUpdateAdapter(pfOriginalLabels map[st
 				logging.Debug("ServiceManager", "%s", logMessage)
 			}
 
-			// Report to observer
+			// Report to observer using new correlation system
 			if sm.reporter != nil {
-				sm.reporter.Report(reporting.ManagedServiceUpdate{
-					Timestamp:   time.Now(),
-					SourceType:  reporting.ServiceTypePortForward,
-					SourceLabel: originalLabel,
-					State:       state,
-					IsReady:     (state == reporting.StateRunning),
-					ErrorDetail: operationErr,
-				})
+				update := reporting.NewManagedServiceUpdate(
+					reporting.ServiceTypePortForward,
+					originalLabel,
+					state,
+				).WithCause("port_forward_status_change")
+
+				if operationErr != nil {
+					update = update.WithError(operationErr)
+				}
+
+				sm.reporter.Report(update)
 			}
 
 			// Clean up if stopped
@@ -260,7 +262,7 @@ func (sm *ServiceManager) createMCPUpdateAdapter(mcpOriginalLabels map[string]st
 			if mcpStatusUpdate.PID > 0 {
 				logMessage += fmt.Sprintf(" [PID: %d]", mcpStatusUpdate.PID)
 			}
-			
+
 			if state == reporting.StateFailed || mcpStatusUpdate.ProcessErr != nil {
 				logging.Error("ServiceManager", mcpStatusUpdate.ProcessErr, "%s", logMessage)
 			} else if state == reporting.StateRunning || state == reporting.StateStopped {
@@ -269,18 +271,20 @@ func (sm *ServiceManager) createMCPUpdateAdapter(mcpOriginalLabels map[string]st
 				logging.Debug("ServiceManager", "%s", logMessage)
 			}
 
-			// Report to observer
+			// Report to observer using new correlation system
 			if sm.reporter != nil {
-				sm.reporter.Report(reporting.ManagedServiceUpdate{
-					Timestamp:   time.Now(),
-					SourceType:  reporting.ServiceTypeMCPServer,
-					SourceLabel: originalLabel,
-					State:       state,
-					IsReady:     (state == reporting.StateRunning),
-					ErrorDetail: mcpStatusUpdate.ProcessErr,
-					ProxyPort:   mcpStatusUpdate.ProxyPort,
-					PID:         mcpStatusUpdate.PID,
-				})
+				update := reporting.NewManagedServiceUpdate(
+					reporting.ServiceTypeMCPServer,
+					originalLabel,
+					state,
+				).WithCause("mcp_server_status_change").
+					WithServiceData(mcpStatusUpdate.ProxyPort, mcpStatusUpdate.PID)
+
+				if mcpStatusUpdate.ProcessErr != nil {
+					update = update.WithError(mcpStatusUpdate.ProcessErr)
+				}
+
+				sm.reporter.Report(update)
 			}
 
 			// Clean up if stopped
@@ -315,7 +319,7 @@ func (sm *ServiceManager) StopService(label string) error {
 	// Close the stop channel
 	close(stopChan)
 	delete(sm.activeServices, label)
-	
+
 	logging.Info("ServiceManager", "Stopped service %s", label)
 	return nil
 }
@@ -335,7 +339,7 @@ func (sm *ServiceManager) StopAllServices() {
 			logging.Debug("ServiceManager", "Stopped service: %s", label)
 		}
 	}
-	
+
 	// Clear all maps
 	sm.activeServices = make(map[string]chan struct{})
 	sm.serviceStates = make(map[string]reporting.ServiceState)
@@ -345,7 +349,7 @@ func (sm *ServiceManager) StopAllServices() {
 func (sm *ServiceManager) GetServiceConfig(label string) (ManagedServiceConfig, bool) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
-	
+
 	cfg, exists := sm.serviceConfigs[label]
 	return cfg, exists
 }
@@ -354,7 +358,7 @@ func (sm *ServiceManager) GetServiceConfig(label string) (ManagedServiceConfig, 
 func (sm *ServiceManager) IsServiceActive(label string) bool {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
-	
+
 	_, exists := sm.activeServices[label]
 	return exists
 }
@@ -363,7 +367,7 @@ func (sm *ServiceManager) IsServiceActive(label string) bool {
 func (sm *ServiceManager) GetActiveServices() []string {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
-	
+
 	labels := make([]string, 0, len(sm.activeServices))
 	for label := range sm.activeServices {
 		labels = append(labels, label)
@@ -376,4 +380,3 @@ func (sm *ServiceManager) GetActiveServices() []string {
 // - StopServiceWithDependents: Removed (orchestrator handles this)
 // - StartServicesDependingOn: Removed (orchestrator handles this)
 // - StartServicesWithDependencyOrder: Removed (orchestrator handles this)
-

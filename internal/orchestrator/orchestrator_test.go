@@ -102,31 +102,31 @@ func newMockServiceManager() *mockServiceManager {
 
 func (m *mockServiceManager) StartServices(configs []managers.ManagedServiceConfig, wg *sync.WaitGroup) (map[string]chan struct{}, []error) {
 	args := m.Called(configs, wg)
-	
+
 	// Track started services
 	m.mu.Lock()
 	for _, cfg := range configs {
 		m.activeServices[cfg.Label] = true
 	}
 	m.mu.Unlock()
-	
+
 	return args.Get(0).(map[string]chan struct{}), args.Get(1).([]error)
 }
 
 func (m *mockServiceManager) StopService(label string) error {
 	args := m.Called(label)
-	
+
 	// Track stopped service
 	m.mu.Lock()
 	delete(m.activeServices, label)
 	m.mu.Unlock()
-	
+
 	return args.Error(0)
 }
 
 func (m *mockServiceManager) StopAllServices() {
 	m.Called()
-	
+
 	// Clear all active services
 	m.mu.Lock()
 	m.activeServices = make(map[string]bool)
@@ -151,7 +151,7 @@ func (m *mockServiceManager) IsServiceActive(label string) bool {
 func (m *mockServiceManager) GetActiveServices() []string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	var labels []string
 	for label := range m.activeServices {
 		labels = append(labels, label)
@@ -336,10 +336,10 @@ func TestOrchestrator_ServiceLifecycleOnHealthChange(t *testing.T) {
 	oldLogLevel := os.Getenv("LOG_LEVEL")
 	os.Setenv("LOG_LEVEL", "debug")
 	defer os.Setenv("LOG_LEVEL", oldLogLevel)
-	
+
 	// Initialize logging for the test
 	logging.InitForCLI(logging.LevelDebug, os.Stdout)
-	
+
 	// Create mocks
 	kubeMgr := &mockKubeManager{}
 	serviceMgr := newMockServiceManager()
@@ -376,14 +376,14 @@ func TestOrchestrator_ServiceLifecycleOnHealthChange(t *testing.T) {
 	// Track which services are stopped
 	var stoppedServices []string
 	var stoppedMutex sync.Mutex
-	
+
 	// Track which services have been started
 	var startedServices = make(map[string]bool)
-	
+
 	// Track health check calls
 	var healthCheckCount int
 	var healthCheckMutex sync.Mutex
-	
+
 	// Service manager expectations
 	serviceMgr.On("StartServices", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
 		configs := args.Get(0).([]managers.ManagedServiceConfig)
@@ -394,9 +394,9 @@ func TestOrchestrator_ServiceLifecycleOnHealthChange(t *testing.T) {
 		}
 		stoppedMutex.Unlock()
 	}).Return(map[string]chan struct{}{}, []error{})
-	
+
 	serviceMgr.On("SetReporter", mock.Anything).Return()
-	
+
 	serviceMgr.On("StopService", mock.Anything).Run(func(args mock.Arguments) {
 		label := args.String(0)
 		stoppedMutex.Lock()
@@ -405,9 +405,9 @@ func TestOrchestrator_ServiceLifecycleOnHealthChange(t *testing.T) {
 		t.Logf("Stopped service: %s", label)
 		stoppedMutex.Unlock()
 	}).Return(nil).Maybe()
-	
+
 	serviceMgr.On("StopAllServices").Return().Maybe()
-	
+
 	// Return dynamic active status based on started/stopped services
 	serviceMgr.On("IsServiceActive", mock.Anything).Return(func(label string) bool {
 		stoppedMutex.Lock()
@@ -438,7 +438,7 @@ func TestOrchestrator_ServiceLifecycleOnHealthChange(t *testing.T) {
 			healthCheckMutex.Unlock()
 			t.Logf("WC health check #%d (healthy)", count)
 		}).Times(4) // Allow 4 healthy checks to ensure services start
-	
+
 	// Fifth check: unhealthy
 	kubeMgr.On("GetClusterNodeHealth", mock.Anything, "teleport.giantswarm.io-lifecycle-mc-lifecycle-wc").
 		Return(k8smanager.NodeHealth{ReadyNodes: 2, TotalNodes: 5, Error: fmt.Errorf("node failure")}, fmt.Errorf("node failure")).
@@ -449,7 +449,7 @@ func TestOrchestrator_ServiceLifecycleOnHealthChange(t *testing.T) {
 			healthCheckMutex.Unlock()
 			t.Logf("WC health check #%d (unhealthy)", count)
 		}).Once()
-	
+
 	// Sixth check and beyond: healthy again
 	kubeMgr.On("GetClusterNodeHealth", mock.Anything, "teleport.giantswarm.io-lifecycle-mc-lifecycle-wc").
 		Return(k8smanager.NodeHealth{ReadyNodes: 5, TotalNodes: 5}, nil).
@@ -479,14 +479,14 @@ func TestOrchestrator_ServiceLifecycleOnHealthChange(t *testing.T) {
 			wcDependents := depGraph.Dependents("k8s:teleport.giantswarm.io-lifecycle-mc-lifecycle-wc")
 			t.Logf("Direct dependents of WC k8s: %v", wcDependents)
 		}
-		
+
 		pfNode := depGraph.Get("pf:test-pf")
 		if pfNode != nil {
 			t.Logf("PF node exists, depends on: %v", pfNode.DependsOn)
 			pfDependents := depGraph.Dependents("pf:test-pf")
 			t.Logf("Direct dependents of test-pf: %v", pfDependents)
 		}
-		
+
 		mcpNode := depGraph.Get("mcp:test-mcp")
 		if mcpNode != nil {
 			t.Logf("MCP node exists, depends on: %v", mcpNode.DependsOn)
@@ -499,11 +499,11 @@ func TestOrchestrator_ServiceLifecycleOnHealthChange(t *testing.T) {
 	// Wait for WC to become unhealthy (should be on 5th health check)
 	for i := 0; i < 20; i++ {
 		time.Sleep(50 * time.Millisecond)
-		
+
 		healthCheckMutex.Lock()
 		count := healthCheckCount
 		healthCheckMutex.Unlock()
-		
+
 		if count >= 5 {
 			// Give time for cascade stop to complete
 			time.Sleep(100 * time.Millisecond)
@@ -518,7 +518,7 @@ func TestOrchestrator_ServiceLifecycleOnHealthChange(t *testing.T) {
 	copy(stoppedServicesCopy, stoppedServices)
 	t.Logf("Stopped services after WC failure: %v", stoppedServicesCopy)
 	stoppedMutex.Unlock()
-	
+
 	assert.GreaterOrEqual(t, stoppedCount, 1, "Should have stopped at least 1 service (pf)")
 	assert.Contains(t, stoppedServicesCopy, "test-pf", "Port forward should be stopped")
 	// Note: test-mcp might not be stopped if it wasn't started yet
@@ -531,11 +531,11 @@ func TestOrchestrator_ServiceLifecycleOnHealthChange(t *testing.T) {
 	// Wait for WC to become healthy again (6th check)
 	for i := 0; i < 20; i++ {
 		time.Sleep(50 * time.Millisecond)
-		
+
 		healthCheckMutex.Lock()
 		count := healthCheckCount
 		healthCheckMutex.Unlock()
-		
+
 		if count >= 6 {
 			// Give time for services to restart
 			time.Sleep(100 * time.Millisecond)
@@ -584,11 +584,11 @@ func TestOrchestrator_CascadeStop(t *testing.T) {
 	serviceMgr.On("StopAllServices").Return().Maybe()
 	serviceMgr.On("IsServiceActive", "test-pf").Return(true)
 	serviceMgr.On("IsServiceActive", "test-mcp").Return(true)
-	
+
 	// Track stopped services
 	var stoppedServices []string
 	var stoppedMutex sync.Mutex
-	
+
 	serviceMgr.On("StopService", mock.Anything).Run(func(args mock.Arguments) {
 		stoppedMutex.Lock()
 		stoppedServices = append(stoppedServices, args.String(0))
@@ -652,25 +652,25 @@ func TestOrchestrator_RestartService(t *testing.T) {
 	var serviceActive = true
 	var mu sync.Mutex
 	var interceptor *serviceStateInterceptor
-	
+
 	serviceMgr.On("StartServices", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
 		mu.Lock()
 		startCalls++
 		serviceActive = true
 		mu.Unlock()
 	}).Return(map[string]chan struct{}{}, []error{})
-	
+
 	serviceMgr.On("SetReporter", mock.Anything).Run(func(args mock.Arguments) {
 		// Store the interceptor for later use
 		interceptor = args.Get(0).(*serviceStateInterceptor)
 	}).Return()
-	
+
 	serviceMgr.On("StopService", "test-pf").Run(func(args mock.Arguments) {
 		mu.Lock()
 		stopCalls++
 		serviceActive = false
 		mu.Unlock()
-		
+
 		// Simulate the service reporting stopped state after a short delay
 		if interceptor != nil {
 			go func() {
@@ -685,7 +685,7 @@ func TestOrchestrator_RestartService(t *testing.T) {
 			}()
 		}
 	}).Return(nil)
-	
+
 	serviceMgr.On("StopAllServices").Return().Maybe()
 	serviceMgr.On("IsServiceActive", "test-pf").Return(func(label string) bool {
 		mu.Lock()
@@ -723,7 +723,7 @@ func TestOrchestrator_RestartService(t *testing.T) {
 	finalStops := stopCalls
 	finalStarts := startCalls
 	mu.Unlock()
-	
+
 	assert.Equal(t, 1, finalStops, "Service should be stopped once")
 	assert.GreaterOrEqual(t, finalStarts, 2, "Service should be started at least twice (initial + restart)")
 
@@ -855,7 +855,7 @@ func TestOrchestrator_DependencyOrdering(t *testing.T) {
 	// Check that port forwards are in earlier levels than their dependent MCPs
 	pfLevel := -1
 	mcpLevel := -1
-	
+
 	for level, services := range actualOrder {
 		for _, svc := range services {
 			if svc == "mc-prometheus" || svc == "wc-grafana" {

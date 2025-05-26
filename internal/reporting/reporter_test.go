@@ -198,6 +198,14 @@ func TestTUIReporter_Report(t *testing.T) {
 						assert.False(t, reportedUpdate.Timestamp.IsZero(), "Timestamp should have been set by Report")
 						tt.update.Timestamp = reportedUpdate.Timestamp // Set to received for DeepEqual
 					}
+
+					// Check if correlation ID was set if originally empty
+					if tt.update.CorrelationID == "" {
+						assert.NotEmpty(t, reportedUpdate.CorrelationID, "CorrelationID should have been set by Report")
+						assert.Contains(t, reportedUpdate.CorrelationID, "corr_", "CorrelationID should have correct prefix")
+						tt.update.CorrelationID = reportedUpdate.CorrelationID // Set to received for comparison
+					}
+
 					assert.Equal(t, tt.update, reportedUpdate, "Reported update does not match original")
 				case <-time.After(50 * time.Millisecond): // Increased timeout slightly
 					t.Errorf("Expected a message on the channel, but timed out")

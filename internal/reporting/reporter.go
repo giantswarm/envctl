@@ -1,6 +1,8 @@
 package reporting
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"time"
 
@@ -62,6 +64,16 @@ func (ss ServiceState) String() string {
 	return string(ss)
 }
 
+// GenerateCorrelationID creates a unique correlation ID for tracing related messages
+func GenerateCorrelationID() string {
+	bytes := make([]byte, 8)
+	if _, err := rand.Read(bytes); err != nil {
+		// Fallback to timestamp-based ID if random generation fails
+		return fmt.Sprintf("corr_%d", time.Now().UnixNano())
+	}
+	return "corr_" + hex.EncodeToString(bytes)
+}
+
 // ManagedServiceUpdate carries state updates from various components.
 // This struct is the standardized way for components to report their state back to the TUI or console.
 // It focuses on the *state* of the service, not verbose logs (which go through pkg/logging).
@@ -78,6 +90,50 @@ type ManagedServiceUpdate struct {
 	// Additional service-specific data
 	ProxyPort int // For MCP servers: the port that mcp-proxy is listening on (0 if not applicable)
 	PID       int // For MCP servers: the process ID (0 if not applicable or not yet started)
+
+	// Correlation tracking for debugging and tracing cascading effects
+	CorrelationID string // Unique ID to track related messages
+	CausedBy      string // What triggered this update (e.g., "user_action", "health_check", "dependency_failure")
+	ParentID      string // ID of the parent operation that caused this update
+}
+
+// NewManagedServiceUpdate creates a new ManagedServiceUpdate with auto-generated correlation ID
+func NewManagedServiceUpdate(sourceType ServiceType, sourceLabel string, state ServiceState) ManagedServiceUpdate {
+	return ManagedServiceUpdate{
+		Timestamp:     time.Now(),
+		SourceType:    sourceType,
+		SourceLabel:   sourceLabel,
+		State:         state,
+		IsReady:       (state == StateRunning),
+		CorrelationID: GenerateCorrelationID(),
+		CausedBy:      "unknown",
+	}
+}
+
+// WithCause sets the cause and optionally parent ID for this update
+func (msu ManagedServiceUpdate) WithCause(causedBy string, parentID ...string) ManagedServiceUpdate {
+	msu.CausedBy = causedBy
+	if len(parentID) > 0 {
+		msu.ParentID = parentID[0]
+	}
+	return msu
+}
+
+// WithError adds error details to the update
+func (msu ManagedServiceUpdate) WithError(err error) ManagedServiceUpdate {
+	msu.ErrorDetail = err
+	if err != nil && msu.State != StateFailed {
+		msu.State = StateFailed
+		msu.IsReady = false
+	}
+	return msu
+}
+
+// WithServiceData adds service-specific data (port, PID)
+func (msu ManagedServiceUpdate) WithServiceData(proxyPort, pid int) ManagedServiceUpdate {
+	msu.ProxyPort = proxyPort
+	msu.PID = pid
+	return msu
 }
 
 // String provides a simple string representation for debugging the update itself.
@@ -89,8 +145,20 @@ func (msu ManagedServiceUpdate) String() string {
 	if msu.PID > 0 {
 		portInfo += fmt.Sprintf(", PID: %d", msu.PID)
 	}
-	return fmt.Sprintf("StateUpdate(TS: %s, Source: %s-%s, State: %s, Ready: %t%s, ErrDetail: %v)",
-		msu.Timestamp.Format(time.RFC3339), msu.SourceType, msu.SourceLabel, msu.State, msu.IsReady, portInfo, msu.ErrorDetail)
+
+	correlationInfo := ""
+	if msu.CorrelationID != "" {
+		correlationInfo = fmt.Sprintf(", CorrelationID: %s", msu.CorrelationID)
+	}
+	if msu.CausedBy != "" && msu.CausedBy != "unknown" {
+		correlationInfo += fmt.Sprintf(", CausedBy: %s", msu.CausedBy)
+	}
+	if msu.ParentID != "" {
+		correlationInfo += fmt.Sprintf(", ParentID: %s", msu.ParentID)
+	}
+
+	return fmt.Sprintf("StateUpdate(TS: %s, Source: %s-%s, State: %s, Ready: %t%s%s, ErrDetail: %v)",
+		msu.Timestamp.Format(time.RFC3339), msu.SourceType, msu.SourceLabel, msu.State, msu.IsReady, portInfo, correlationInfo, msu.ErrorDetail)
 }
 
 // ServiceReporter defines a unified interface for reporting service/component state updates.
