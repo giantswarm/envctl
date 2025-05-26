@@ -71,7 +71,7 @@ func renderPortForwardPanel(pf *model.PortForwardProcess, m *model.Model, target
 		statusIcon = SafeIcon(IconPlay)
 	case pf.Err != nil || strings.HasPrefix(statusToCheck, "failed") || strings.HasPrefix(statusToCheck, "error"):
 		statusIcon = SafeIcon(IconCross)
-	case strings.HasPrefix(statusToCheck, "exited") || strings.HasPrefix(statusToCheck, "killed"):
+	case strings.HasPrefix(statusToCheck, "exited") || strings.HasPrefix(statusToCheck, "killed") || strings.Contains(statusToCheck, "stopped"):
 		statusIcon = SafeIcon(IconStop)
 	default:
 		statusIcon = SafeIcon(IconHourglass)
