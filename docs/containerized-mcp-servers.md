@@ -1,172 +1,163 @@
 # Containerized MCP Servers
 
-This document describes the support for running MCP servers as containers in envctl.
+This document describes how to configure and use containerized MCP servers in envctl.
 
 ## Overview
 
-envctl now supports running MCP servers as Docker containers in addition to the traditional local command approach. This provides several benefits:
-
-- **No local dependencies**: Users don't need Node.js, Python, or other runtimes installed
-- **Consistency**: All users run the same server versions in identical environments
-- **Isolation**: MCP servers run in isolated containers, preventing conflicts
-- **Easier deployment**: Container images can be pre-built and distributed
+envctl supports running MCP (Model Context Protocol) servers as Docker containers instead of requiring local installations of Node.js or Python. This provides better isolation, reproducibility, and easier dependency management.
 
 ## Configuration
 
-### Server Type
-
-MCP servers can be configured with `type: container` to run as containers:
+To configure a containerized MCP server, use the `container` type in your configuration:
 
 ```yaml
 mcpServers:
   - name: kubernetes
-    type: container  # instead of localCommand
     enabled: true
-    icon: ☸️
-    category: Core
-    image: giantswarm/mcp-server-kubernetes:latest
-    proxyPort: 8001
-    containerPorts:
-      - "8001:3000"  # host:container
-    containerVolumes:
-      - "~/.kube/config:/home/mcpuser/.kube/config:ro"
-    containerEnv:
-      KUBECONFIG: /home/mcpuser/.kube/config
-```
-
-### Container-Specific Fields
-
-When `type: container`, these additional fields are available:
-
-- **`image`**: Docker image to use (required)
-- **`containerPorts`**: Port mappings in "host:container" format
-- **`containerEnv`**: Environment variables for the container
-- **`containerVolumes`**: Volume mounts in "host:container:mode" format
-- **`healthCheckCmd`**: Optional health check command
-- **`entrypoint`**: Override container entrypoint
-- **`containerUser`**: User to run the container as
-
-### Dependencies
-
-Containerized servers can still declare dependencies on port forwards:
-
-```yaml
-mcpServers:
-  - name: prometheus
     type: container
-    image: giantswarm/mcp-server-prometheus:latest
-    requiresPortForwards:
-      - mc-prometheus  # Will wait for this port forward before starting
+    image: ghcr.io/giantswarm/envctl/mcp-kubernetes:latest
+    containerPorts:
+      - "3000:3000"
+    containerEnv:
+      - MCP_ENV=production
+    containerVolumes:
+      - "$HOME/.kube:/home/node/.kube:ro"
+    healthCheckCmd: ["node", "--version"]
+    containerUser: "1000:1000"
 ```
 
-## Container Runtime
+### Configuration Fields
 
-By default, Docker is used as the container runtime. This can be configured globally:
+- `type`: Must be `container` for containerized servers
+- `image`: Docker image to use
+- `containerPorts`: Port mappings in Docker format `"host:container"`
+- `containerEnv`: Environment variables to set in the container
+- `containerVolumes`: Volume mounts (supports `~` expansion)
+- `healthCheckCmd`: Command to verify container health (optional)
+- `entrypoint`: Override the container's entrypoint (optional)
+- `containerUser`: User to run the container as (optional)
 
-```yaml
-globalSettings:
-  defaultContainerRuntime: docker  # or podman (future)
-```
+## Kubernetes Dependencies and Cascading Stops
 
-## Building Container Images
+envctl models kubernetes connections as dependencies in its service dependency graph. This enables intelligent service lifecycle management:
 
-Example Dockerfiles are provided in `docker/mcp-servers/`:
+### K8s Connection as a Dependency
 
-```bash
-cd docker/mcp-servers
-./build.sh  # Build all images
+- **Port forwards** depend on their kubernetes context being authenticated and healthy
+- The **kubernetes MCP server** depends on the management cluster context being available
+- **Other MCP servers** may depend on port forwards (configured via `requiresPortForwards`)
 
-# Or build individually:
-docker build -t giantswarm/mcp-server-kubernetes:latest kubernetes/
-```
+### Cascading Stop Behavior
+
+When you stop a service, envctl automatically stops all dependent services:
+
+1. **Stopping a k8s connection** (when it becomes unhealthy):
+   - All port forwards using that context are stopped
+   - Any MCP servers depending on those port forwards are stopped
+
+2. **Stopping a port forward**:
+   - Any MCP servers that require that port forward are stopped
+
+3. **Manual stop with 'x' key**:
+   - Uses cascading stop to cleanly shut down dependent services
+
+### Health Monitoring
+
+envctl continuously monitors k8s connection health:
+- Authenticated state is tracked after login
+- Cluster health is checked periodically (every 30 seconds)
+- If a k8s connection becomes unhealthy, dependent services are automatically stopped
+
+This ensures that services don't continue running with broken dependencies, preventing confusing error states.
 
 ## Network Considerations
 
-### Accessing Host Services
+### Host Network Mode (Recommended)
 
-Containers need to access services running on the host (like port-forwarded Kubernetes services). Use:
+For MCP servers that need to access cluster services via port forwards, use host network mode:
 
-- **Linux**: `host.docker.internal` or the Docker bridge IP
-- **macOS/Windows**: `host.docker.internal`
-
-Example:
 ```yaml
-containerEnv:
-  PROMETHEUS_URL: http://host.docker.internal:8080/prometheus
+containerPorts:
+  - "3000:3000"
+# The container will use --network host automatically when accessing localhost services
 ```
 
-### Port Detection
+### Bridge Network Mode
 
-The container manager attempts to detect the actual port the MCP server is listening on by:
+If you need network isolation, ensure proper connectivity:
+- Use `host.docker.internal` to access host services from the container
+- Configure the MCP server to connect to `host.docker.internal:port` instead of `localhost:port`
 
-1. Parsing container logs for port announcements
-2. Using Docker port inspection for mapped ports
-3. Falling back to the configured `proxyPort`
+## Container Lifecycle
 
-## Lifecycle Management
+1. **Startup**: 
+   - Container image is pulled if not present
+   - Container is created with specified configuration
+   - Health check is performed (if configured)
+   - Proxy port is detected from container logs
 
-Containerized MCP servers follow the same lifecycle as local servers:
+2. **Runtime**:
+   - Container logs are streamed to envctl logs
+   - Container health is monitored
+   - Restart on failure is handled by envctl
 
-1. **Starting**: Image is pulled (if needed), container is created and started
-2. **Running**: Logs are streamed, health is monitored
-3. **Stopping**: Container is stopped and removed
-4. **Restarting**: Same as stop + start
+3. **Shutdown**:
+   - Container receives SIGTERM
+   - 10-second grace period for cleanup
+   - Container is removed after stopping
 
-## Example Configuration
-
-Here's a complete example with both local and containerized servers:
+## Example: Prometheus MCP Server
 
 ```yaml
 mcpServers:
-  # Local command server (traditional)
-  - name: custom-local
-    type: localCommand
+  - name: prometheus  
     enabled: true
-    command: ["npx", "my-custom-mcp-server"]
-    proxyPort: 9000
-
-  # Containerized servers
-  - name: kubernetes
     type: container
-    enabled: true
-    image: giantswarm/mcp-server-kubernetes:latest
-    proxyPort: 8001
-    containerPorts: ["8001:3000"]
-    containerVolumes:
-      - "~/.kube/config:/home/mcpuser/.kube/config:ro"
-
-  - name: prometheus
-    type: container
-    enabled: true
-    image: giantswarm/mcp-server-prometheus:latest
-    proxyPort: 8002
-    containerPorts: ["8002:3000"]
-    containerEnv:
-      PROMETHEUS_URL: http://host.docker.internal:8080/prometheus
+    image: ghcr.io/giantswarm/envctl/mcp-prometheus:latest
     requiresPortForwards: ["mc-prometheus"]
-
-globalSettings:
-  defaultContainerRuntime: docker
+    containerEnv:
+      - PROMETHEUS_URL=http://localhost:9090
+    containerPorts:
+      - "3001:3000"
 ```
+
+This configuration:
+- Runs the Prometheus MCP server in a container
+- Requires the `mc-prometheus` port forward to be active
+- Accesses Prometheus at `localhost:9090` (via host network)
+- Exposes the MCP proxy on host port 3001
+
+## Building Custom MCP Server Images
+
+See the `docker/mcp-servers/` directory for Dockerfile examples. Key considerations:
+
+1. **Base Image**: Use appropriate base for your runtime (node:20-alpine, python:3.11-slim)
+2. **Dependencies**: Install all required packages in the image
+3. **User**: Run as non-root user for security
+4. **Entrypoint**: Set a clear entrypoint that starts the MCP server
 
 ## Troubleshooting
 
 ### Container Won't Start
 
-1. Check Docker is running: `docker info`
-2. Check image exists: `docker images | grep mcp-server`
-3. Check port conflicts: `docker ps` and `netstat -an | grep <port>`
-
-### Can't Access Host Services
-
-1. Verify host.docker.internal resolves: `docker run --rm alpine ping host.docker.internal`
-2. Check firewall rules
-3. Ensure port forwards are active before dependent containers start
-
-### Viewing Container Logs
-
-Logs are automatically streamed to envctl's output. For direct access:
-
+Check logs with:
 ```bash
-docker logs envctl-mcp-<name>-<timestamp>
-``` 
+docker logs envctl-mcp-<server-name>
+```
+
+Common issues:
+- Port already in use
+- Volume mount paths don't exist
+- Image pull failures
+
+### Can't Access Port Forwards
+
+If using bridge network:
+- Ensure MCP server is configured to use `host.docker.internal`
+- Check firewall rules
+
+### Health Check Failures
+
+- Verify the health check command is available in the container
+- Check container has necessary permissions
+- Review container logs for startup errors 

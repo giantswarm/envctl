@@ -109,7 +109,7 @@ func StartAndManageIndividualMcpServer(
 		updateFn(McpDiscreteStatusUpdate{
 			Label:         label,
 			PID:           processPid,
-			ProcessStatus: "NpxRunning",
+			ProcessStatus: "NpxStarting",
 			ProxyPort:     actualPort,
 		})
 	}
@@ -120,6 +120,9 @@ func StartAndManageIndividualMcpServer(
 		}
 		defer stdoutPipe.Close()
 		defer stderrPipe.Close()
+
+		// Track whether the server has fully started
+		serverReady := false
 
 		go func() {
 			scanner := bufio.NewScanner(stdoutPipe)
@@ -147,7 +150,8 @@ func StartAndManageIndividualMcpServer(
 							portStr = strings.TrimSuffix(portStr, ".")
 							if port, err := fmt.Sscanf(portStr, "%d", &actualPort); err == nil && port == 1 {
 								logging.Info(subsystem, "Detected mcp-proxy listening on port %d", actualPort)
-								if updateFn != nil {
+								// If server is already ready, update with the port
+								if serverReady && updateFn != nil {
 									updateFn(McpDiscreteStatusUpdate{
 										Label:         label,
 										PID:           processPid,
@@ -158,6 +162,27 @@ func StartAndManageIndividualMcpServer(
 								break
 							}
 						}
+					}
+				}
+
+				// Check if server is fully ready - expanded to handle more server types
+				if !serverReady && (strings.Contains(line, "Uvicorn running on") || 
+					strings.Contains(line, "Application startup complete.") || 
+					strings.Contains(line, "StreamableHTTP session manager started") || 
+					strings.Contains(line, "Application started with StreamableHTTP session manager!") ||
+					strings.Contains(line, "Starting Grafana MCP server") || // Grafana MCP
+					strings.Contains(line, "MCP server started") || // Generic
+					strings.Contains(line, "Server started successfully") || // Generic
+					strings.Contains(line, "Ready to accept connections")) { // Generic
+					serverReady = true
+					logging.Info(subsystem, "MCP server is now fully ready")
+					if updateFn != nil {
+						updateFn(McpDiscreteStatusUpdate{
+							Label:         label,
+							PID:           processPid,
+							ProcessStatus: "NpxRunning", // Now we're actually running
+							ProxyPort:     actualPort,
+						})
 					}
 				}
 

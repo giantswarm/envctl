@@ -43,14 +43,14 @@ var (
 	// New log level specific styles for the activity log. These will be applied on a per-line basis in
 	// prepareLogContent() (see render_log.go).
 	LogInfoStyle  = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#000000", Dark: "#E0E0E0"})
-	LogWarnStyle  = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#A07000", Dark: "#FFD066"}).Bold(true)
-	LogErrorStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#B30000", Dark: "#FF6B6B"}).Bold(true)
+	LogWarnStyle  = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#A07000", Dark: "#FFD066"})
+	LogErrorStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#B30000", Dark: "#FF6B6B"})
 	LogDebugStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#606060", Dark: "#909090"}).Italic(true)
 
 	// Health related styles for the activity log
-	LogHealthGoodStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#006600", Dark: "#8AE234"}).Bold(true)
-	LogHealthWarnStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#A07000", Dark: "#FFD066"}).Bold(true)
-	LogHealthErrStyle  = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#B30000", Dark: "#FF6B6B"}).Bold(true)
+	LogHealthGoodStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#006600", Dark: "#8AE234"})
+	LogHealthWarnStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#A07000", Dark: "#FFD066"})
+	LogHealthErrStyle  = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#B30000", Dark: "#FF6B6B"})
 
 	// errorStyle is a general style for error messages with high contrast in both modes
 	ErrorStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#B30000", Dark: "#FF6B6B"})
@@ -143,10 +143,10 @@ var (
 						Background(lipgloss.AdaptiveColor{Light: "#E0E8FF", Dark: "#30406B"}) // More saturated blue background when focused and active
 
 	// --- Health Status Text Styles (used within Context Panes) ---
-	HealthLoadingStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#303030", Dark: "#F0F0F0"}).Bold(true) // Bolder and brighter in dark mode
-	HealthGoodStyle    = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#005500", Dark: "#90FF90"}).Bold(true) // Brighter green in dark mode
-	HealthWarnStyle    = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#703000", Dark: "#FFFF00"}).Bold(true) // Bright yellow in dark mode
-	HealthErrorStyle   = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#990000", Dark: "#FF9090"}).Bold(true) // Brighter red in dark mode
+	HealthLoadingStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#303030", Dark: "#F0F0F0"})
+	HealthGoodStyle    = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#005500", Dark: "#90FF90"})
+	HealthWarnStyle    = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#703000", Dark: "#FFFF00"})
+	HealthErrorStyle   = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#990000", Dark: "#FF9090"})
 
 	// Quit key style for the quit confirmation message
 	QuitKeyStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#990000", Dark: "#FF8787"}).Bold(true)

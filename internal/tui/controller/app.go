@@ -5,8 +5,6 @@ import (
 	"envctl/internal/tui/model"
 	"envctl/internal/tui/view"
 
-	"time"
-
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -66,8 +64,9 @@ func (a *AppModel) Init() tea.Cmd {
 		controllerCmds = append(controllerCmds, FetchClusterListCmd(a.model.KubeMgr))
 	}
 
-	tickCmd := tea.Tick(HealthUpdateInterval, func(t time.Time) tea.Msg { return model.RequestClusterHealthUpdate{} })
-	controllerCmds = append(controllerCmds, tickCmd)
+	// Health checks are now handled by the orchestrator
+	// tickCmd := tea.Tick(HealthUpdateInterval, func(t time.Time) tea.Msg { return model.RequestClusterHealthUpdate{} })
+	// controllerCmds = append(controllerCmds, tickCmd)
 
 	finalCmds := []tea.Cmd{modelCmds}
 	finalCmds = append(finalCmds, controllerCmds...)

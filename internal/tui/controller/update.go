@@ -46,32 +46,32 @@ func mainControllerDispatch(m *model.Model, msg tea.Msg) (*model.Model, tea.Cmd)
 			m.CurrentAppMode = model.ModeQuitting
 			m.QuittingMessage = "Shutting down services..."
 
-			// Signal all services to stop via the ServiceManager
-			if m.ServiceManager != nil {
-				m.ServiceManager.StopAllServices()
+			// Signal the orchestrator to stop all services
+			if m.Orchestrator != nil {
+				m.Orchestrator.Stop()
 			}
 
-			// Optionally, provide immediate visual feedback if desired, though ServiceManager handles actual stopping.
-			// The old logic for direct stopChan closure is now handled by ServiceManager.
-			// for _, pf := range m.PortForwards { // This part is now managed by ServiceManager
+			// Optionally, provide immediate visual feedback if desired, though Orchestrator handles actual stopping.
+			// The old logic for direct stopChan closure is now handled by Orchestrator.
+			// for _, pf := range m.PortForwards { // This part is now managed by Orchestrator
 			// 	if pf.StopChan != nil { ... }
 			// }
-			// if m.McpServers != nil { // This part is now managed by ServiceManager
+			// if m.McpServers != nil { // This part is now managed by Orchestrator
 			// 	for name, proc := range m.McpServers { ... }
 			// }
 
 			model.FinalizeMsgSampling()
 			cmds = append(cmds, tea.Quit) // tea.Quit is the primary command to exit Bubble Tea
 			// We might want a small delay or a message to confirm shutdown before Quit,
-			// but StopAllServices is asynchronous in terms of when goroutines actually end.
+			// but Stop is asynchronous in terms of when goroutines actually end.
 			// The WaitGroup in cmd/connect.go handles waiting for actual process termination for CLI mode.
 			// For TUI, tea.Quit will terminate the UI loop.
 			return m, tea.Batch(cmds...)
 		case "ctrl+c":
-			// Consider if StopAllServices should also be called here for a cleaner exit,
+			// Consider if Stop should also be called here for a cleaner exit,
 			// though ctrl+c is often more abrupt.
-			if m.ServiceManager != nil {
-				m.ServiceManager.StopAllServices()
+			if m.Orchestrator != nil {
+				m.Orchestrator.Stop()
 			}
 			model.FinalizeMsgSampling()
 			return m, tea.Quit
@@ -105,8 +105,6 @@ func mainControllerDispatch(m *model.Model, msg tea.Msg) (*model.Model, tea.Cmd)
 	case model.KubeContextResultMsg:
 		LogDebug(m, controllerDispatchSubsystem, "Matched KubeContextResultMsg. Routing to handler...")
 		return handleKubeContextResultMsg(m, msg) // Pass msg directly
-	case model.RequestClusterHealthUpdate: // This one might be a simple type, not a struct with fields
-		return handleRequestClusterHealthUpdate(m)
 	case model.KubeContextSwitchedMsg:
 		LogDebug(m, controllerDispatchSubsystem, "Matched KubeContextSwitchedMsg. Routing to handler...")
 		return handleKubeContextSwitchedMsg(m, msg) // Pass msg directly
@@ -163,6 +161,12 @@ func mainControllerDispatch(m *model.Model, msg tea.Msg) (*model.Model, tea.Cmd)
 		// The command to re-listen for log entries should be added to the batch.
 		cmds = append(cmds, model.ListenForLogEntriesCmd(m.LogChannel))
 		// DO NOT return here. Allow fall-through to viewport refresh logic.
+
+	case reporting.HealthStatusMsg:
+		m, cmd = handleHealthStatusMsg(m, msg)
+		// Re-queue the channel reader to continue processing messages
+		cmds = append(cmds, cmd, model.ChannelReaderCmd(m.TUIChannel))
+		// Fall through to viewport update logic instead of returning early
 
 	default:
 		if m.DebugMode {
@@ -284,16 +288,15 @@ func handleRestartMcpServerMsg(m *model.Model, msg model.RestartMcpServerMsg) (*
 	// Log initial request using the new pkg/logging system
 	LogInfo(controllerSubsystem, "User requested restart for MCP server: %s", msg.Label)
 
-	if m.ServiceManager == nil {
-		errMsg := fmt.Sprintf("ServiceManager not available to restart service: %s", msg.Label)
+	if m.Orchestrator == nil {
+		errMsg := fmt.Sprintf("Orchestrator not available to restart service: %s", msg.Label)
 		// Log this error using pkg/logging
-		LogError(controllerSubsystem, errors.New(errMsg), "Attempted to restart service without ServiceManager")
+		LogError(controllerSubsystem, errors.New(errMsg), "Attempted to restart service without Orchestrator")
 		return m, m.SetStatusMessage(errMsg, model.StatusBarError, 5*time.Second)
 	}
 
-	// ServiceManager.RestartService itself will now use pkg/logging for its internal logs,
-	// and report state changes (like 'Stopping', 'Starting') via ManagedServiceUpdate.
-	err := m.ServiceManager.RestartService(msg.Label)
+	// Orchestrator.RestartService will handle the restart with proper dependency management
+	err := m.Orchestrator.RestartService(msg.Label)
 
 	statusBarMsg := fmt.Sprintf("Restart initiated for %s...", msg.Label)
 	statusBarMsgType := model.StatusBarInfo
@@ -410,4 +413,25 @@ func handleNewLogEntry(m *model.Model, msg model.NewLogEntryMsg) *model.Model {
 		model.AddRawLineToActivityLog(m, logLine)
 	}
 	return m
+}
+
+func handleHealthStatusMsg(m *model.Model, msg reporting.HealthStatusMsg) (*model.Model, tea.Cmd) {
+	update := msg.Update
+
+	// Add debug logging
+	LogDebug(m, controllerDispatchSubsystem, "Received HealthStatusMsg: IsMC=%v, ClusterShortName=%s, Context=%s, Nodes=%d/%d, Error=%v",
+		update.IsMC, update.ClusterShortName, update.ContextName, update.ReadyNodes, update.TotalNodes, update.Error)
+
+	// Convert HealthStatusUpdate to NodeStatusMsg for existing handler
+	nodeMsg := model.NodeStatusMsg{
+		ClusterShortName: update.ClusterShortName,
+		ForMC:            update.IsMC,
+		ReadyNodes:       update.ReadyNodes,
+		TotalNodes:       update.TotalNodes,
+		Err:              update.Error,
+		DebugInfo:        fmt.Sprintf("Health check from orchestrator for context: %s", update.ContextName),
+	}
+
+	// Reuse existing handler to update UI state
+	return handleNodeStatusMsg(m, nodeMsg)
 }

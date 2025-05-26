@@ -52,3 +52,18 @@ func (cr *ConsoleReporter) Report(update ManagedServiceUpdate) {
 		}
 	}
 }
+
+// ReportHealth processes a health status update by logging it to the console.
+func (c *ConsoleReporter) ReportHealth(update HealthStatusUpdate) {
+	// Format the health update for console display
+	clusterType := "WC"
+	if update.IsMC {
+		clusterType = "MC"
+	}
+
+	if update.IsHealthy {
+		logging.Info("HealthCheck", "[HEALTH %s-%s] Nodes: %d/%d", clusterType, update.ClusterShortName, update.ReadyNodes, update.TotalNodes)
+	} else {
+		logging.Error("HealthCheck", update.Error, "[HEALTH %s-%s] Connection unhealthy", clusterType, update.ClusterShortName)
+	}
+}

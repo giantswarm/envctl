@@ -5,6 +5,7 @@ import (
 	"envctl/internal/dependency"
 	"envctl/internal/k8smanager"
 	"envctl/internal/managers"
+	"envctl/internal/orchestrator"
 	"envctl/internal/reporting"
 	"envctl/pkg/logging"
 	"time"
@@ -138,6 +139,7 @@ type KeyMap struct {
 	Help            key.Binding
 	NewCollection   key.Binding
 	Restart         key.Binding
+	Stop            key.Binding
 	SwitchContext   key.Binding
 	ToggleDark      key.Binding
 	ToggleDebug     key.Binding
@@ -150,7 +152,7 @@ type KeyMap struct {
 func (k KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down, k.Tab, k.ShiftTab},
-		{k.NewCollection, k.Restart, k.SwitchContext, k.CopyLogs},
+		{k.NewCollection, k.Restart, k.Stop, k.SwitchContext, k.CopyLogs},
 		{k.Help, k.ToggleLog, k.ToggleMcpConfig, k.ToggleDark, k.ToggleDebug, k.Quit},
 	}
 }
@@ -228,9 +230,13 @@ type Model struct {
 	// --- Service Management ---
 	ServiceManager managers.ServiceManagerAPI // Interface for managing services
 	Reporter       reporting.ServiceReporter  // For sending updates to TUI/console
+	Orchestrator   *orchestrator.Orchestrator // Manages health monitoring and service lifecycle
 
 	// --- Kubernetes interaction (via KubeManager) ---
 	KubeMgr k8smanager.KubeManagerAPI
+
+	// K8s connection state management
+	K8sStateManager k8smanager.K8sStateManager
 
 	// Added for receiving logs from the logging package
 	LogChannel <-chan logging.LogEntry

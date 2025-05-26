@@ -135,6 +135,90 @@ func handleKeyMsgGlobal(m *model.Model, keyMsg tea.KeyMsg, existingCmds []tea.Cm
 			m.McpConfigViewport.GotoTop() // Reset scroll position
 		}
 		return m, nil
+	case key.Matches(keyMsg, m.Keys.Restart): // RESTART focused PF or MCP service
+		if m.FocusedPanelKey == "" {
+			return m, nil
+		}
+		var serviceLabelToRestart string
+		var serviceType string // To help with logging or specific actions if needed
+
+		if pf, ok := m.PortForwards[m.FocusedPanelKey]; ok {
+			serviceLabelToRestart = pf.Label // Use the label from the PortForwardProcess struct
+			serviceType = "Port Forward"
+		} else if mcp, ok := m.McpServers[m.FocusedPanelKey]; ok {
+			serviceLabelToRestart = mcp.Label // Use the label from the McpServerProcess struct
+			serviceType = "MCP Server"
+		} else {
+			LogDebug(m, keyGlobalSubsystem, "'r' pressed but no known service focused: %s", m.FocusedPanelKey)
+			return m, nil
+		}
+
+		if serviceLabelToRestart != "" {
+			LogInfo(keyGlobalSubsystem, "User requested restart for %s: %s", serviceType, serviceLabelToRestart)
+			// Logging of this action will now happen via pkg/logging, which the TUI will pick up.
+			restartCmd := func() tea.Msg {
+				if m.Orchestrator == nil {
+					return model.ServiceErrorMsg{Label: serviceLabelToRestart, Err: fmt.Errorf("Orchestrator not available")}
+				}
+				err := m.Orchestrator.RestartService(serviceLabelToRestart)
+				if err != nil {
+					return model.ServiceErrorMsg{Label: serviceLabelToRestart, Err: fmt.Errorf("failed to initiate restart: %w", err)}
+				}
+				return model.NopMsg{}
+			}
+			cmds = append(cmds, restartCmd)
+			cmds = append(cmds, m.SetStatusMessage(fmt.Sprintf("Restart initiated for %s...", serviceLabelToRestart), model.StatusBarInfo, 3*time.Second))
+		} else {
+			LogDebug(m, keyGlobalSubsystem, "'r' pressed but could not determine service label for focused key: %s", m.FocusedPanelKey)
+		}
+		return m, tea.Batch(cmds...)
+
+	case key.Matches(keyMsg, m.Keys.Stop): // STOP focused PF or MCP service
+		if m.FocusedPanelKey == "" {
+			return m, nil
+		}
+		var serviceLabelToStop string
+		var serviceTypeToStop string
+		stoppable := false
+
+		if pf, ok := m.PortForwards[m.FocusedPanelKey]; ok {
+			if pf.Running { // Only allow stopping if it's considered running
+				serviceLabelToStop = pf.Label
+				serviceTypeToStop = "Port Forward"
+				stoppable = true
+				pf.StatusMsg = "Stopping..." // Immediate visual feedback
+			}
+		} else if mcp, ok := m.McpServers[m.FocusedPanelKey]; ok {
+			if mcp.Active { // Or a more specific check if MCP has a distinct Running state
+				serviceLabelToStop = mcp.Label
+				serviceTypeToStop = "MCP Server"
+				stoppable = true
+				mcp.StatusMsg = "Stopping..." // Immediate visual feedback
+			}
+		}
+
+		if serviceLabelToStop != "" && stoppable {
+			LogInfo(keyGlobalSubsystem, "User requested to stop %s: %s", serviceTypeToStop, serviceLabelToStop)
+
+			stopCmd := func() tea.Msg {
+				if m.Orchestrator == nil {
+					return model.ServiceErrorMsg{Label: serviceLabelToStop, Err: fmt.Errorf("Orchestrator not available")}
+				}
+
+				// Let the orchestrator handle stopping with proper dependency management
+				err := m.Orchestrator.StopService(serviceLabelToStop)
+
+				return model.ServiceStopResultMsg{Label: serviceLabelToStop, Err: err}
+			}
+			cmds = append(cmds, stopCmd)
+			cmds = append(cmds, m.SetStatusMessage(fmt.Sprintf("Stopping %s...", serviceLabelToStop), model.StatusBarInfo, 3*time.Second))
+		} else if serviceLabelToStop != "" && !stoppable {
+			LogInfo(keyGlobalSubsystem, "Service %s is not in a stoppable state.", serviceLabelToStop)
+			cmds = append(cmds, m.SetStatusMessage(fmt.Sprintf("%s not running/active.", serviceLabelToStop), model.StatusBarWarning, 3*time.Second))
+		} else {
+			LogDebug(m, keyGlobalSubsystem, "'x' pressed but no known stoppable service focused: %s", m.FocusedPanelKey)
+		}
+		return m, tea.Batch(cmds...)
 	}
 
 	// --- Normal global shortcuts -------------------------------------------
@@ -166,86 +250,6 @@ func handleKeyMsgGlobal(m *model.Model, keyMsg tea.KeyMsg, existingCmds []tea.Cm
 	case "j", "down":
 		m.FocusedPanelKey = nextFocus(getFocusOrder(), m.FocusedPanelKey, 1)
 		return m, nil
-
-	case "r": // RESTART focused PF or MCP service
-		if m.FocusedPanelKey == "" {
-			return m, nil
-		}
-		var serviceLabelToRestart string
-		var serviceType string // To help with logging or specific actions if needed
-
-		if pf, ok := m.PortForwards[m.FocusedPanelKey]; ok {
-			serviceLabelToRestart = pf.Label // Use the label from the PortForwardProcess struct
-			serviceType = "Port Forward"
-		} else if mcp, ok := m.McpServers[m.FocusedPanelKey]; ok {
-			serviceLabelToRestart = mcp.Label // Use the label from the McpServerProcess struct
-			serviceType = "MCP Server"
-		} else {
-			LogDebug(m, keyGlobalSubsystem, "'r' pressed but no known service focused: %s", m.FocusedPanelKey)
-			return m, nil
-		}
-
-		if serviceLabelToRestart != "" {
-			LogInfo(keyGlobalSubsystem, "User requested restart for %s: %s", serviceType, serviceLabelToRestart)
-			// Logging of this action will now happen via pkg/logging, which the TUI will pick up.
-			restartCmd := func() tea.Msg {
-				if m.ServiceManager == nil {
-					return model.ServiceErrorMsg{Label: serviceLabelToRestart, Err: fmt.Errorf("ServiceManager not available")}
-				}
-				err := m.ServiceManager.RestartService(serviceLabelToRestart)
-				if err != nil {
-					return model.ServiceErrorMsg{Label: serviceLabelToRestart, Err: fmt.Errorf("failed to initiate restart: %w", err)}
-				}
-				return model.NopMsg{}
-			}
-			cmds = append(cmds, restartCmd)
-			cmds = append(cmds, m.SetStatusMessage(fmt.Sprintf("Restart initiated for %s...", serviceLabelToRestart), model.StatusBarInfo, 3*time.Second))
-		} else {
-			LogDebug(m, keyGlobalSubsystem, "'r' pressed but could not determine service label for focused key: %s", m.FocusedPanelKey)
-		}
-
-	case "x": // STOP focused PF or MCP service (NEW)
-		if m.FocusedPanelKey == "" {
-			return m, nil
-		}
-		var serviceLabelToStop string
-		var serviceTypeToStop string
-		stoppable := false
-
-		if pf, ok := m.PortForwards[m.FocusedPanelKey]; ok {
-			if pf.Running { // Only allow stopping if it's considered running
-				serviceLabelToStop = pf.Label
-				serviceTypeToStop = "Port Forward"
-				stoppable = true
-				pf.StatusMsg = "Stopping..." // Immediate visual feedback
-			}
-		} else if mcp, ok := m.McpServers[m.FocusedPanelKey]; ok {
-			if mcp.Active { // Or a more specific check if MCP has a distinct Running state
-				serviceLabelToStop = mcp.Label
-				serviceTypeToStop = "MCP Server"
-				stoppable = true
-				mcp.StatusMsg = "Stopping..." // Immediate visual feedback
-			}
-		}
-
-		if serviceLabelToStop != "" && stoppable {
-			LogInfo(keyGlobalSubsystem, "User requested to stop %s: %s", serviceTypeToStop, serviceLabelToStop)
-
-			stopCmd := func() tea.Msg {
-				if m.ServiceManager == nil {
-					return model.ServiceErrorMsg{Label: serviceLabelToStop, Err: fmt.Errorf("ServiceManager not available")}
-				}
-				err := m.ServiceManager.StopService(serviceLabelToStop)
-				return model.ServiceStopResultMsg{Label: serviceLabelToStop, Err: err}
-			}
-			cmds = append(cmds, stopCmd)
-			cmds = append(cmds, m.SetStatusMessage(fmt.Sprintf("Stopping %s...", serviceLabelToStop), model.StatusBarInfo, 3*time.Second))
-		} else if serviceLabelToStop != "" && !stoppable {
-			LogInfo(keyGlobalSubsystem, "Service %s is not in a stoppable state.", serviceLabelToStop)
-			cmds = append(cmds, m.SetStatusMessage(fmt.Sprintf("%s not running/active.", serviceLabelToStop), model.StatusBarWarning, 3*time.Second))
-		} else {
-			LogDebug(m, keyGlobalSubsystem, "'x' pressed but no known stoppable service focused: %s", m.FocusedPanelKey)
-		}
 
 	case "s": // Context switch
 		if m.KubeMgr == nil {

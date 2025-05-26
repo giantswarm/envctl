@@ -235,13 +235,16 @@ func (km *kubeManager) HasTeleportPrefix(contextName string) bool {
 func (km *kubeManager) GetClusterNodeHealth(ctx context.Context, kubeContextName string) (NodeHealth, error) {
 	debugOperation := "GetClusterNodeHealth-" + kubeContextName
 	logging.Debug(debugOperation, "Fetching node health for context: %s", kubeContextName)
+
 	// Reporter update for TUI (state change)
-	km.reporter.Report(reporting.ManagedServiceUpdate{
-		Timestamp:   time.Now(),
-		SourceType:  reporting.ServiceTypeKube,
-		SourceLabel: debugOperation,
-		State:       reporting.StateStarting,
-	})
+	if km.reporter != nil {
+		km.reporter.Report(reporting.ManagedServiceUpdate{
+			Timestamp:   time.Now(),
+			SourceType:  reporting.ServiceTypeKube,
+			SourceLabel: "KubeOperation-" + debugOperation,
+			State:       reporting.StateStarting,
+		})
+	}
 
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
 	configOverrides := &clientcmd.ConfigOverrides{CurrentContext: kubeContextName}
@@ -251,13 +254,15 @@ func (km *kubeManager) GetClusterNodeHealth(ctx context.Context, kubeContextName
 	if err != nil {
 		wrappedErr := fmt.Errorf("failed to get REST config for context %s: %w", kubeContextName, err)
 		logging.Error(debugOperation, wrappedErr, "Failed to get REST config")
-		km.reporter.Report(reporting.ManagedServiceUpdate{
-			Timestamp:   time.Now(),
-			SourceType:  reporting.ServiceTypeKube,
-			SourceLabel: debugOperation,
-			State:       reporting.StateFailed,
-			ErrorDetail: wrappedErr,
-		})
+		if km.reporter != nil {
+			km.reporter.Report(reporting.ManagedServiceUpdate{
+				Timestamp:   time.Now(),
+				SourceType:  reporting.ServiceTypeKube,
+				SourceLabel: "KubeOperation-" + debugOperation,
+				State:       reporting.StateFailed,
+				ErrorDetail: wrappedErr,
+			})
+		}
 		return NodeHealth{Error: wrappedErr}, wrappedErr
 	}
 	restConfig.Timeout = 15 * time.Second
@@ -266,37 +271,43 @@ func (km *kubeManager) GetClusterNodeHealth(ctx context.Context, kubeContextName
 	if err != nil {
 		wrappedErr := fmt.Errorf("failed to create Kubernetes clientset for context %s: %w", kubeContextName, err)
 		logging.Error(debugOperation, wrappedErr, "Failed to create Kubernetes clientset")
-		km.reporter.Report(reporting.ManagedServiceUpdate{
-			Timestamp:   time.Now(),
-			SourceType:  reporting.ServiceTypeKube,
-			SourceLabel: debugOperation,
-			State:       reporting.StateFailed,
-			ErrorDetail: wrappedErr,
-		})
+		if km.reporter != nil {
+			km.reporter.Report(reporting.ManagedServiceUpdate{
+				Timestamp:   time.Now(),
+				SourceType:  reporting.ServiceTypeKube,
+				SourceLabel: "KubeOperation-" + debugOperation,
+				State:       reporting.StateFailed,
+				ErrorDetail: wrappedErr,
+			})
+		}
 		return NodeHealth{Error: wrappedErr}, wrappedErr
 	}
 
 	ready, total, statusErr := kube.GetNodeStatus(clientset)
 	if statusErr != nil {
 		logging.Error(debugOperation, statusErr, "Failed to get node status")
-		km.reporter.Report(reporting.ManagedServiceUpdate{
-			Timestamp:   time.Now(),
-			SourceType:  reporting.ServiceTypeKube,
-			SourceLabel: debugOperation,
-			State:       reporting.StateFailed,
-			ErrorDetail: statusErr,
-		})
+		if km.reporter != nil {
+			km.reporter.Report(reporting.ManagedServiceUpdate{
+				Timestamp:   time.Now(),
+				SourceType:  reporting.ServiceTypeKube,
+				SourceLabel: "KubeOperation-" + debugOperation,
+				State:       reporting.StateFailed,
+				ErrorDetail: statusErr,
+			})
+		}
 		return NodeHealth{ReadyNodes: ready, TotalNodes: total, Error: statusErr}, statusErr
 	}
 
 	logging.Debug(debugOperation, "Node health for %s: %d/%d ready", kubeContextName, ready, total)
-	km.reporter.Report(reporting.ManagedServiceUpdate{
-		Timestamp:   time.Now(),
-		SourceType:  reporting.ServiceTypeKube,
-		SourceLabel: debugOperation,
-		State:       reporting.StateRunning,
-		IsReady:     ready == total && total > 0,
-	})
+	if km.reporter != nil {
+		km.reporter.Report(reporting.ManagedServiceUpdate{
+			Timestamp:   time.Now(),
+			SourceType:  reporting.ServiceTypeKube,
+			SourceLabel: "KubeOperation-" + debugOperation,
+			State:       reporting.StateRunning,
+			IsReady:     ready == total && total > 0,
+		})
+	}
 	return NodeHealth{ReadyNodes: ready, TotalNodes: total, Error: nil}, nil
 }
 

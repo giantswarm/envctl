@@ -87,6 +87,11 @@ func (m *mockServiceReporter) Report(update reporting.ManagedServiceUpdate) {
 	}
 }
 
+func (m *mockServiceReporter) ReportHealth(update reporting.HealthStatusUpdate) {
+	// For now, just ignore health reports in tests
+	// They're not relevant to the k8smanager tests
+}
+
 // Make DetermineClusterProvider mockable for tests
 var mockableDetermineClusterProvider func(ctx context.Context, kubeContextName string) (string, error)
 

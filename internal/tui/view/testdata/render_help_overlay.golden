@@ -12,10 +12,10 @@
  │  KEYBOARD SHORTCUTS                                                                            │ 
  │                                                                                                │ 
  │  ↑/k        navigate up            n  new connection         h         toggle help             │ 
- │  ↓/j        navigate down          r  restart forwarder      L         toggle log overlay      │ 
- │  tab        next panel             s  switch k8s context     C         show MCP config         │ 
- │  shift+tab  previous panel         y  copy logs              D         toggle dark/light mode  │ 
- │                                                              z         toggle debug info       │ 
+ │  ↓/j        navigate down          r  restart service        L         toggle log overlay      │ 
+ │  tab        next panel             x  stop service           C         show MCP config         │ 
+ │  shift+tab  previous panel         s  switch k8s context     D         toggle dark/light mode  │ 
+ │                                    y  copy logs              z         toggle debug info       │ 
  │                                                              q/ctrl+c  quit                    │ 
  │                                                                                                │ 
  ╰────────────────────────────────────────────────────────────────────────────────────────────────╯ 

@@ -1,13 +1,14 @@
 package managers
 
 import (
-	// No longer importing "envctl/internal/managers"
 	"envctl/internal/config"
+	"envctl/internal/dependency"
 	"envctl/internal/mcpserver"
 	"envctl/internal/portforwarding"
 	"envctl/internal/reporting"
 	"envctl/pkg/logging"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 )
@@ -26,7 +27,17 @@ type ServiceManager struct { // Renamed from DefaultServiceManager
 	initialWg     *sync.WaitGroup
 	reporter      reporting.ServiceReporter
 	serviceStates map[string]reporting.ServiceState // Added to track current state of services
+	// Track the reason for stopping a service
+	stopReasons map[string]StopReason // Map label to reason for stopping
 }
+
+// StopReason tracks why a service was stopped
+type StopReason int
+
+const (
+	StopReasonManual     StopReason = iota // User explicitly stopped the service
+	StopReasonDependency                   // Service stopped due to dependency failure
+)
 
 // NewServiceManager creates a new instance of ServiceManager and returns it as a ServiceManagerAPI interface.
 func NewServiceManager(reporter reporting.ServiceReporter) ServiceManagerAPI {
@@ -45,6 +56,7 @@ func NewServiceManager(reporter reporting.ServiceReporter) ServiceManagerAPI {
 		initialWg:       &sync.WaitGroup{},
 		reporter:        reporter,
 		serviceStates:   make(map[string]reporting.ServiceState), // Initialize the new map
+		stopReasons:     make(map[string]StopReason),
 	}
 }
 
@@ -183,6 +195,11 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 			if !known || state != lastReportedState {
 				sm.serviceStates[originalLabel] = state
 
+				// Clear stop reason when service becomes running
+				if state == reporting.StateRunning {
+					delete(sm.stopReasons, originalLabel)
+				}
+
 				logMessage := fmt.Sprintf("Service %s (PortForward) state changed to: %s", originalLabel, state)
 				if state == reporting.StateFailed || operationErr != nil {
 					logging.Error("ServiceManager", operationErr, "%s", logMessage)
@@ -261,6 +278,11 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 			if !known || state != lastReportedState {
 				sm.serviceStates[originalLabel] = state
 
+				// Clear stop reason when service becomes running
+				if state == reporting.StateRunning {
+					delete(sm.stopReasons, originalLabel)
+				}
+
 				logMessage := fmt.Sprintf("Service %s (MCPServer) state changed to: %s", originalLabel, state)
 				if mcpStatusUpdate.ProxyPort > 0 {
 					logMessage += fmt.Sprintf(" (port: %d)", mcpStatusUpdate.ProxyPort)
@@ -304,6 +326,12 @@ func (sm *ServiceManager) startSpecificServicesLogic(
 
 // StopService signals a specific service (by label) to stop.
 func (sm *ServiceManager) StopService(label string) error {
+	// Default to manual stop when called directly
+	return sm.stopServiceWithReason(label, StopReasonManual)
+}
+
+// stopServiceWithReason is the internal method that tracks why a service was stopped
+func (sm *ServiceManager) stopServiceWithReason(label string, reason StopReason) error {
 	sm.mu.Lock()
 	// Ensure unlock happens even if early return
 
@@ -333,6 +361,9 @@ func (sm *ServiceManager) StopService(label string) error {
 		sm.mu.Unlock()
 		return fmt.Errorf("service with label '%s' already stopped or stopping", label)
 	}
+
+	// Track the stop reason
+	sm.stopReasons[label] = reason
 
 	close(stopChan)
 
@@ -418,6 +449,8 @@ func (sm *ServiceManager) checkAndProcessRestart(update reporting.ManagedService
 
 		if sm.pendingRestarts[update.SourceLabel] {
 			delete(sm.pendingRestarts, update.SourceLabel) // Consume the pending restart flag
+			// Clear stop reason when restarting
+			delete(sm.stopReasons, update.SourceLabel)
 
 			cfg, exists := sm.serviceConfigs[update.SourceLabel]
 			if exists {
@@ -461,6 +494,348 @@ func (sm *ServiceManager) checkAndProcessRestart(update reporting.ManagedService
 		} else { // Service stopped/failed and no restart is pending for it
 			logging.Debug("ServiceManager", "Service %s stopped/failed and no restart pending. Removing from tracked states.", update.SourceLabel)
 			delete(sm.serviceStates, update.SourceLabel) // Clean up state map
+			// Don't clear stop reasons here - we need to keep them to know if service was manually stopped
 		}
+	}
+}
+
+// StopServiceWithDependents stops a service and all services that depend on it.
+// It traverses the dependency graph to find all dependent services and stops them first.
+func (sm *ServiceManager) StopServiceWithDependents(label string, depGraph *dependency.Graph) error {
+	if depGraph == nil {
+		// If no dependency graph provided, fall back to regular stop
+		return sm.StopService(label)
+	}
+
+	// Build a list of services to stop in the correct order
+	toStop := []string{}
+	visited := make(map[string]bool)
+
+	// Recursive function to collect dependents
+	var collectDependents func(nodeID string)
+	collectDependents = func(nodeID string) {
+		if visited[nodeID] {
+			return
+		}
+		visited[nodeID] = true
+
+		// Get all services that depend on this one
+		dependents := depGraph.Dependents(dependency.NodeID(nodeID))
+		for _, dependent := range dependents {
+			collectDependents(string(dependent))
+		}
+
+		// Add to stop list after processing dependents (post-order traversal)
+		toStop = append(toStop, nodeID)
+	}
+
+	// Start collection from the target service
+	// Convert label to node ID format
+	nodeID := label
+	if !strings.Contains(label, ":") {
+		// Try to determine the type based on active services
+		sm.mu.Lock()
+		if cfg, exists := sm.serviceConfigs[label]; exists {
+			switch cfg.Type {
+			case reporting.ServiceTypePortForward:
+				nodeID = "pf:" + label
+			case reporting.ServiceTypeMCPServer:
+				nodeID = "mcp:" + label
+			}
+		}
+		sm.mu.Unlock()
+	}
+
+	collectDependents(nodeID)
+
+	// Stop services in reverse order (dependents first)
+	var errors []error
+	for i := 0; i < len(toStop); i++ {
+		serviceToStop := toStop[i]
+
+		// Skip k8s nodes - they're not actual services
+		if strings.HasPrefix(serviceToStop, "k8s:") {
+			logging.Debug("ServiceManager", "Skipping k8s node %s (not an actual service)", serviceToStop)
+			continue
+		}
+
+		// Extract the actual service label from node ID
+		parts := strings.SplitN(serviceToStop, ":", 2)
+		if len(parts) == 2 {
+			serviceLabel := parts[1]
+
+			// Determine stop reason:
+			// - The originally requested service (matching label) is stopped manually
+			// - All dependent services are stopped due to dependency
+			stopReason := StopReasonDependency
+			if serviceLabel == label {
+				// Check if this was called from the orchestrator (for k8s health failures)
+				// by checking if the original label starts with "k8s:"
+				if strings.HasPrefix(label, "k8s:") {
+					stopReason = StopReasonDependency
+				} else {
+					stopReason = StopReasonManual
+				}
+			}
+
+			if err := sm.stopServiceWithReason(serviceLabel, stopReason); err != nil {
+				// Don't fail completely, collect errors
+				errors = append(errors, fmt.Errorf("failed to stop %s: %w", serviceLabel, err))
+			} else {
+				logging.Info("ServiceManager", "Stopped service %s as part of cascade from %s (reason: %v)", serviceLabel, label, stopReason)
+			}
+		}
+	}
+
+	if len(errors) > 0 {
+		// Combine all errors
+		var errStrings []string
+		for _, e := range errors {
+			errStrings = append(errStrings, e.Error())
+		}
+		return fmt.Errorf("errors during cascade stop: %v", errStrings)
+	}
+
+	return nil
+}
+
+// StartServicesDependingOn starts all services that depend on the given node ID
+func (sm *ServiceManager) StartServicesDependingOn(nodeID string, depGraph *dependency.Graph) error {
+	if depGraph == nil {
+		return fmt.Errorf("dependency graph is required")
+	}
+
+	// Find all services that depend on the given node
+	dependents := depGraph.Dependents(dependency.NodeID(nodeID))
+	if len(dependents) == 0 {
+		logging.Debug("ServiceManager", "No services depend on %s", nodeID)
+		return nil
+	}
+
+	// Build list of service configs to start
+	var configsToStart []ManagedServiceConfig
+
+	sm.mu.Lock()
+	for _, dependentNode := range dependents {
+		// Extract service label from node ID
+		parts := strings.SplitN(string(dependentNode), ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		serviceLabel := parts[1]
+
+		// Check if service is already active
+		if _, isActive := sm.activeServices[serviceLabel]; isActive {
+			logging.Debug("ServiceManager", "Service %s is already active, skipping", serviceLabel)
+			continue
+		}
+
+		// Check if service was stopped due to dependency failure
+		stopReason, hasStopReason := sm.stopReasons[serviceLabel]
+		if hasStopReason && stopReason == StopReasonManual {
+			logging.Info("ServiceManager", "Service %s was manually stopped, not restarting", serviceLabel)
+			continue
+		}
+
+		// Get the service config
+		if cfg, exists := sm.serviceConfigs[serviceLabel]; exists {
+			configsToStart = append(configsToStart, cfg)
+			logging.Info("ServiceManager", "Preparing to start service %s as it depends on %s", serviceLabel, nodeID)
+		} else {
+			logging.Warn("ServiceManager", "No config found for dependent service %s", serviceLabel)
+		}
+	}
+	sm.mu.Unlock()
+
+	if len(configsToStart) == 0 {
+		logging.Debug("ServiceManager", "No services to start that depend on %s", nodeID)
+		return nil
+	}
+
+	// Start the services in dependency order
+	logging.Info("ServiceManager", "Starting %d services that depend on %s", len(configsToStart), nodeID)
+	_, errs := sm.StartServicesWithDependencyOrder(configsToStart, depGraph, sm.initialWg)
+
+	if len(errs) > 0 {
+		var errStrings []string
+		for _, e := range errs {
+			errStrings = append(errStrings, e.Error())
+		}
+		return fmt.Errorf("errors starting services: %v", errStrings)
+	}
+
+	return nil
+}
+
+// StartServicesWithDependencyOrder starts services in the correct order based on dependencies
+func (sm *ServiceManager) StartServicesWithDependencyOrder(
+	configs []ManagedServiceConfig,
+	depGraph *dependency.Graph,
+	wg *sync.WaitGroup,
+) (map[string]chan struct{}, []error) {
+	if depGraph == nil {
+		// No dependency graph, fall back to regular start
+		return sm.StartServices(configs, wg)
+	}
+
+	// Build a map of configs by node ID for quick lookup
+	configsByNodeID := make(map[string]ManagedServiceConfig)
+	nodeIDToLabel := make(map[string]string)
+	for _, cfg := range configs {
+		nodeID := ""
+		switch cfg.Type {
+		case reporting.ServiceTypePortForward:
+			nodeID = "pf:" + cfg.Label
+		case reporting.ServiceTypeMCPServer:
+			nodeID = "mcp:" + cfg.Label
+		}
+		if nodeID != "" {
+			configsByNodeID[nodeID] = cfg
+			nodeIDToLabel[nodeID] = cfg.Label
+		}
+	}
+
+	// Group services by dependency levels
+	levels := sm.groupServicesByDependencyLevel(configsByNodeID, depGraph)
+	
+	// Start services level by level
+	allStopChannels := make(map[string]chan struct{})
+	var allErrors []error
+	
+	for levelIndex, level := range levels {
+		if len(level) == 0 {
+			continue
+		}
+		
+		logging.Info("ServiceManager", "Starting dependency level %d with %d services", levelIndex, len(level))
+		
+		// Start all services in this level
+		levelConfigs := make([]ManagedServiceConfig, 0, len(level))
+		for _, nodeID := range level {
+			if cfg, exists := configsByNodeID[nodeID]; exists {
+				levelConfigs = append(levelConfigs, cfg)
+			}
+		}
+		
+		stopChans, errs := sm.startSpecificServicesLogic(levelConfigs, wg)
+		
+		// Collect stop channels and errors
+		for label, ch := range stopChans {
+			allStopChannels[label] = ch
+		}
+		allErrors = append(allErrors, errs...)
+		
+		// Wait for all services in this level to become running before starting next level
+		// (except for the last level)
+		if levelIndex < len(levels)-1 && len(level) > 0 {
+			logging.Info("ServiceManager", "Waiting for level %d services to become running...", levelIndex)
+			if err := sm.waitForServicesToBeRunning(level, nodeIDToLabel, 30*time.Second); err != nil {
+				logging.Error("ServiceManager", err, "Some services in level %d did not become running", levelIndex)
+				// Continue anyway - dependent services might still work
+			}
+		}
+	}
+	
+	return allStopChannels, allErrors
+}
+
+// groupServicesByDependencyLevel groups services into levels based on their dependencies
+func (sm *ServiceManager) groupServicesByDependencyLevel(
+	configsByNodeID map[string]ManagedServiceConfig,
+	depGraph *dependency.Graph,
+) [][]string {
+	// Calculate dependency depth for each service
+	depths := make(map[string]int)
+	visited := make(map[string]bool)
+	
+	var calculateDepth func(nodeID string) int
+	calculateDepth = func(nodeID string) int {
+		if depth, exists := depths[nodeID]; exists {
+			return depth
+		}
+		
+		if visited[nodeID] {
+			// Circular dependency, return 0
+			return 0
+		}
+		visited[nodeID] = true
+		
+		maxDepth := -1
+		node := depGraph.Get(dependency.NodeID(nodeID))
+		if node != nil {
+			for _, dep := range node.DependsOn {
+				depStr := string(dep)
+				// Only consider dependencies that we're actually starting
+				if _, exists := configsByNodeID[depStr]; exists {
+					depDepth := calculateDepth(depStr)
+					if depDepth > maxDepth {
+						maxDepth = depDepth
+					}
+				}
+			}
+		}
+		
+		depth := maxDepth + 1
+		depths[nodeID] = depth
+		return depth
+	}
+	
+	// Calculate depths for all services
+	maxLevel := 0
+	for nodeID := range configsByNodeID {
+		depth := calculateDepth(nodeID)
+		if depth > maxLevel {
+			maxLevel = depth
+		}
+	}
+	
+	// Group services by level
+	levels := make([][]string, maxLevel+1)
+	for nodeID := range configsByNodeID {
+		level := depths[nodeID]
+		levels[level] = append(levels[level], nodeID)
+	}
+	
+	return levels
+}
+
+// waitForServicesToBeRunning waits for the specified services to reach running state
+func (sm *ServiceManager) waitForServicesToBeRunning(
+	nodeIDs []string,
+	nodeIDToLabel map[string]string,
+	timeout time.Duration,
+) error {
+	deadline := time.Now().Add(timeout)
+	checkInterval := 100 * time.Millisecond
+	
+	for {
+		allRunning := true
+		notRunning := []string{}
+		
+		sm.mu.Lock()
+		for _, nodeID := range nodeIDs {
+			label, exists := nodeIDToLabel[nodeID]
+			if !exists {
+				continue
+			}
+			
+			state, exists := sm.serviceStates[label]
+			if !exists || state != reporting.StateRunning {
+				allRunning = false
+				notRunning = append(notRunning, label)
+			}
+		}
+		sm.mu.Unlock()
+		
+		if allRunning {
+			logging.Info("ServiceManager", "All services in level are now running")
+			return nil
+		}
+		
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timeout waiting for services to become running: %v", notRunning)
+		}
+		
+		time.Sleep(checkInterval)
 	}
 }

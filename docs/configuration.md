@@ -48,7 +48,6 @@ mcpServers: # List of MCP Server definitions
     containerUser: "1000:1000"
     # Dependencies
     requiresPortForwards: ["name-of-required-portforward-1", "name-of-required-portforward-2"]
-    dependsOnServices: ["name-of-another-mcp-server"]
 
 portForwards: # List of Port Forward definitions
   - name: "unique-portforward-name"
@@ -93,7 +92,6 @@ This is a list of MCP (Model Context Protocol) server definitions. `envctl` can 
     *   `containerUser` (string, optional): User/group to run the container as (e.g., `"1000"` or `"1000:1000"`).
 *   **Dependencies:**
     *   `requiresPortForwards` (list of strings, optional): A list of `name`s of `PortForwardDefinition`s that this MCP server requires to be active before it starts (e.g., a Prometheus server might require a port-forward to the cluster's Prometheus instance).
-    *   `dependsOnServices` (list of strings, optional): A list of `name`s of other `MCPServerDefinition`s that must be healthy before this server starts.
 
 ### `portForwards`
 
@@ -145,8 +143,6 @@ mcpServers:
     command: ["npx", "some-dev-server", "--watch"]
     env:
       NODE_ENV: "development"
-    dependsOnServices: # Example of depending on another MCP server
-      - "kubernetes"
 
   - name: "jaeger-tracing"
     type: "container"

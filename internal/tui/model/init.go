@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"envctl/internal/config"
 	"envctl/internal/k8smanager"
 	"envctl/internal/managers"
@@ -8,7 +9,9 @@ import (
 	"envctl/pkg/logging"
 	"errors"
 	"fmt"
-	"sync"
+	"time"
+
+	"envctl/internal/orchestrator"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
@@ -61,7 +64,11 @@ func DefaultKeyMap() KeyMap { // Returns model.KeyMap (KeyMap is in this package
 		),
 		Restart: key.NewBinding(
 			key.WithKeys("r"),
-			key.WithHelp("r", "restart forwarder"),
+			key.WithHelp("r", "restart service"),
+		),
+		Stop: key.NewBinding(
+			key.WithKeys("x"),
+			key.WithHelp("x", "stop service"),
 		),
 		SwitchContext: key.NewBinding(
 			key.WithKeys("s"),
@@ -92,78 +99,87 @@ func DefaultKeyMap() KeyMap { // Returns model.KeyMap (KeyMap is in this package
 
 // InitialModel constructs the initial model with sensible defaults.
 func InitialModel(
-	mcName, wcName, kubeContext string,
-	tuiDebug bool,
+	managementClusterName, workloadClusterName, initialKubeContext string,
+	debugMode bool,
 	envctlCfg config.EnvctlConfig,
 	kubeMgr k8smanager.KubeManagerAPI,
-	logChan <-chan logging.LogEntry,
+	logChannel <-chan logging.LogEntry,
 ) *Model {
+	// Create TUI reporter and manager
+	tuiChannel := make(chan tea.Msg, 1000)
+	tuiReporter := reporting.NewTUIReporter(tuiChannel)
+	// Ensure kubeMgr uses the TUI reporter
+	kubeMgr.SetReporter(tuiReporter)
+	serviceMgr := managers.NewServiceManager(tuiReporter)
+
+	// Create orchestrator for health monitoring and service lifecycle
+	orch := orchestrator.New(
+		kubeMgr,
+		serviceMgr,
+		tuiReporter,
+		orchestrator.Config{
+			MCName:              managementClusterName,
+			WCName:              workloadClusterName,
+			PortForwards:        envctlCfg.PortForwards,
+			MCPServers:          envctlCfg.MCPServers,
+			HealthCheckInterval: 15 * time.Second,
+		},
+	)
+
+	m := &Model{
+		Width:                 80, // Default, will be updated
+		Height:                24, // Default, will be updated
+		QuitApp:               false,
+		CurrentAppMode:        ModeInitializing,
+		FocusedPanelKey:       "",
+		ActivityLog:           []string{},
+		ManagementClusterName: managementClusterName,
+		WorkloadClusterName:   workloadClusterName,
+		CurrentKubeContext:    initialKubeContext,
+		KubeMgr:               kubeMgr,
+		ServiceManager:        serviceMgr,
+		Reporter:              tuiReporter,
+		Orchestrator:          orch,
+		TUIChannel:            tuiChannel,
+		PortForwards:          make(map[string]*PortForwardProcess),
+		McpServers:            make(map[string]*McpServerProcess),
+		ClusterInfo:           &k8smanager.ClusterList{},
+		DebugMode:             debugMode,
+		PortForwardingConfig:  envctlCfg.PortForwards,
+		MCPServerConfig:       envctlCfg.MCPServers,
+		// Initialize K8sStateManager with the orchestrator's instance
+		K8sStateManager:      orch.GetK8sStateManager(),
+		DependencyGraph:      nil, // Will be set by orchestrator
+		LogChannel:           logChannel,
+		StatusBarMessage:     "",
+		StatusBarMessageType: StatusBarInfo,
+	}
+
+	// Initialize UI components
 	ti := textinput.New()
 	ti.Placeholder = "Management Cluster"
 	ti.CharLimit = 156
 	ti.Width = 50
+	m.NewConnectionInput = ti
+	m.CurrentInputStep = McInputStep
 
-	// Buffered channel to avoid blocking goroutines.
-	tuiMsgChannel := make(chan tea.Msg, 1000)
+	// Initialize viewports
+	m.LogViewport = viewport.New(0, 0)
+	m.MainLogViewport = viewport.New(0, 0)
+	m.McpConfigViewport = viewport.New(0, 0)
 
-	// Force dark background for lipgloss; helps with colour-consistency.
-	colorProfile := lipgloss.ColorProfile().String()
-	// lipgloss.SetHasDarkBackground(true) // MOVED to internal/color/Initialize
-	colorMode := fmt.Sprintf("%s (Dark: %v)", colorProfile, true) // This might need adjustment based on how dark mode is determined globally
-
-	// Spinner setup.
+	// Initialize spinner
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+	m.Spinner = s
 
-	// Create TUIReporter first, as ServiceManager needs it.
-	tuiReporter := reporting.NewTUIReporter(tuiMsgChannel)
-
-	// Create ServiceManager, now passing the reporter.
-	serviceMgr := managers.NewServiceManager(tuiReporter)
-
-	// Initialize viewports - ScrollStep is handled internally by the viewport by default
-	logVP := viewport.New(0, 0)
-	mainLogVP := viewport.New(0, 0)
-	mcpConfigVP := viewport.New(0, 0)
-
-	m := Model{
-		Width:                    80, // Default width
-		Height:                   24, // Default height
-		ManagementClusterName:    mcName,
-		WorkloadClusterName:      wcName,
-		CurrentKubeContext:       kubeContext,
-		MCPServerConfig:          envctlCfg.MCPServers,
-		PortForwardingConfig:     envctlCfg.PortForwards,
-		ServiceManager:           serviceMgr,
-		KubeMgr:                  kubeMgr,
-		Reporter:                 tuiReporter,
-		PortForwards:             make(map[string]*PortForwardProcess),
-		PortForwardOrder:         make([]string, 0),
-		McpServers:               make(map[string]*McpServerProcess),
-		ActivityLog:              make([]string, 0),
-		ActivityLogDirty:         true,
-		LogViewportLastWidth:     0,
-		MainLogViewportLastWidth: 0,
-		MCHealth:                 ClusterHealthInfo{IsLoading: true},
-		CurrentAppMode:           ModeInitializing,
-		NewConnectionInput:       ti,
-		CurrentInputStep:         McInputStep,
-		TUIChannel:               tuiMsgChannel,
-		DebugMode:                tuiDebug,
-		ColorMode:                colorMode,
-		LogViewport:              logVP,
-		MainLogViewport:          mainLogVP,
-		McpConfigViewport:        mcpConfigVP,
-		Spinner:                  s,
-		IsLoading:                true,
-		Keys:                     DefaultKeyMap(),
-		Help:                     help.New(),
-		StashedMcName:            "",
-		ClusterInfo:              nil,
-		DependencyGraph:          nil,
-		LogChannel:               logChan,
-	}
+	// Initialize other UI state
+	m.IsLoading = true
+	m.Keys = DefaultKeyMap()
+	m.Help = help.New()
+	m.ColorMode = fmt.Sprintf("%s (Dark: %v)", lipgloss.ColorProfile().String(), true)
+	m.MCHealth = ClusterHealthInfo{IsLoading: true}
 
 	// Populate PortForwards and McpServers with initial placeholder data
 	// This ensures that when status updates arrive, the map entries exist.
@@ -199,7 +215,7 @@ func InitialModel(
 	// m.Help.ShowAll = true // Help styling removed for now
 
 	// Basic initialization that CAN be done within model package:
-	if wcName != "" {
+	if workloadClusterName != "" {
 		m.WCHealth = ClusterHealthInfo{IsLoading: true}
 	}
 
@@ -209,11 +225,11 @@ func InitialModel(
 	// Initial focused panel can be set here if it's a sensible default not requiring controller logic
 	if len(m.PortForwardOrder) > 0 { // PortForwardOrder will be empty now initially
 		// m.FocusedPanelKey = m.PortForwardOrder[0] // This will need to be set by controller after SetupPortForwards
-	} else if mcName != "" {
+	} else if managementClusterName != "" {
 		m.FocusedPanelKey = McPaneFocusKey // McPaneFocusKey is a model constant
 	} // Else, FocusedPanelKey remains empty, controller can set it.
 
-	return &m
+	return m
 }
 
 // ChannelReaderCmd returns a Bubbletea command that forwards messages from the given channel.
@@ -225,48 +241,30 @@ func ChannelReaderCmd(ch chan tea.Msg) tea.Cmd {
 }
 
 // Init implements tea.Model and starts asynchronous bootstrap tasks.
-// It now also starts the port forwarding and MCP services using the ServiceManager.
+// It now starts the orchestrator which handles service lifecycle and health monitoring.
 func (m *Model) Init() tea.Cmd {
 	var cmds []tea.Cmd
 
-	if m.ServiceManager == nil {
-		errMsg := "ServiceManager not initialized in TUI model"
+	if m.Orchestrator == nil {
+		errMsg := "Orchestrator not initialized in TUI model"
 		logging.Error("ModelInit", errors.New(errMsg), "%s", errMsg)
 		m.QuittingMessage = errMsg
 		return tea.Quit
 	}
 
-	var managedServiceConfigs []managers.ManagedServiceConfig
-	for _, pfCfg := range m.PortForwardingConfig {
-		if !pfCfg.Enabled {
-			continue
+	// Start the orchestrator (which will start services and monitor health)
+	startOrchestratorCmd := func() tea.Msg {
+		ctx := context.Background()
+		if err := m.Orchestrator.Start(ctx); err != nil {
+			logging.Error("ModelInit", err, "Failed to start orchestrator")
+			return AllServicesStartedMsg{InitialStartupErrors: []error{err}}
 		}
-		managedServiceConfigs = append(managedServiceConfigs, managers.ManagedServiceConfig{
-			Type:   reporting.ServiceTypePortForward,
-			Label:  pfCfg.Name,
-			Config: pfCfg,
-		})
+		// Update dependency graph from orchestrator
+		m.DependencyGraph = m.Orchestrator.GetDependencyGraph()
+		logging.Info("ModelInit", "Orchestrator started successfully")
+		return AllServicesStartedMsg{InitialStartupErrors: nil}
 	}
-	for _, mcpCfg := range m.MCPServerConfig {
-		if !mcpCfg.Enabled {
-			continue
-		}
-		managedServiceConfigs = append(managedServiceConfigs, managers.ManagedServiceConfig{
-			Type:   reporting.ServiceTypeMCPServer,
-			Label:  mcpCfg.Name,
-			Config: mcpCfg,
-		})
-	}
-
-	if len(managedServiceConfigs) > 0 {
-		startServicesCmd := func() tea.Msg {
-			var wg sync.WaitGroup
-			// Call StartServices without the updateCb
-			_, startupErrors := m.ServiceManager.StartServices(managedServiceConfigs, &wg)
-			return AllServicesStartedMsg{InitialStartupErrors: startupErrors}
-		}
-		cmds = append(cmds, startServicesCmd)
-	}
+	cmds = append(cmds, startOrchestratorCmd)
 
 	if m.TUIChannel != nil {
 		cmds = append(cmds, ChannelReaderCmd(m.TUIChannel))

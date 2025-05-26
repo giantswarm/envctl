@@ -2,8 +2,7 @@ package reporting
 
 import (
 	// "envctl/internal/tui/model" // REMOVED import
-	"fmt"
-	"os"
+	"envctl/pkg/logging"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -18,7 +17,7 @@ type TUIReporter struct {
 // NewTUIReporter creates a new TUIReporter that sends updates to the provided TUI message channel.
 func NewTUIReporter(updateChan chan<- tea.Msg) *TUIReporter {
 	if updateChan == nil {
-		fmt.Fprintf(os.Stderr, "CRITICAL_SETUP_ERROR: NewTUIReporter called with nil updateChan. Using a dummy channel.\n")
+		logging.Error("TUIReporter", nil, "NewTUIReporter called with nil updateChan. Using a dummy channel.")
 		dummyChan := make(chan tea.Msg)
 		go func() {
 			for range dummyChan {
@@ -29,25 +28,47 @@ func NewTUIReporter(updateChan chan<- tea.Msg) *TUIReporter {
 	return &TUIReporter{updateChan: updateChan}
 }
 
-// Report sends the ManagedServiceUpdate wrapped in a ReporterUpdateMsg to the TUI's update channel.
-func (tr *TUIReporter) Report(update ManagedServiceUpdate) {
+// Report processes a ManagedServiceUpdate by sending it to the TUI via the channel.
+func (t *TUIReporter) Report(update ManagedServiceUpdate) {
+	if t.updateChan == nil {
+		return
+	}
+
+	// Set timestamp if not provided
 	if update.Timestamp.IsZero() {
 		update.Timestamp = time.Now()
 	}
 
-	if tr.updateChan == nil {
-		// This fallback should ideally use pkg/logging if the TUI channel itself is broken.
-		// However, TUIReporter's role is to send to the TUI. If it can't, a direct print is a last resort.
-		fmt.Fprintf(os.Stderr, "TUIReporter: updateChan is nil. Dropping update: %v\n", update)
+	// Send the update wrapped in a ReporterUpdateMsg
+	select {
+	case t.updateChan <- ReporterUpdateMsg{Update: update}:
+		// Successfully sent
+	default:
+		// Channel is full or closed, drop the update
+		// Log when service updates are dropped (but less verbosely than health updates)
+		if update.State == StateFailed || update.State == StateRunning {
+			// Only log important state changes
+			logging.Warn("TUIReporter", "TUI channel full, dropping service update for %s (state=%s)",
+				update.SourceLabel, update.State)
+		}
+	}
+}
+
+// ReportHealth sends a health status update to the TUI
+func (t *TUIReporter) ReportHealth(update HealthStatusUpdate) {
+	if t.updateChan == nil {
+		logging.Error("TUIReporter", nil, "ReportHealth called with nil channel")
 		return
 	}
 
+	// Send the health update wrapped in a HealthStatusMsg
+	msg := HealthStatusMsg{Update: update}
 	select {
-	case tr.updateChan <- ReporterUpdateMsg{Update: update}:
-		// Update sent successfully
+	case t.updateChan <- msg:
+		// Successfully sent
 	default:
-		// This fallback also indicates a problem with the TUI consuming messages.
-		// Using update.State for the message part, as update.Message no longer exists.
-		fmt.Fprintf(os.Stderr, "TUIReporter: Failed to send update to TUI channel (full or closed?). Dropping update for %s - %s (State: %s)\n", update.SourceType, update.SourceLabel, update.State)
+		// Channel is full or closed, drop the update
+		logging.Warn("TUIReporter", "TUI channel full/closed, dropping health update for %s (IsMC=%v)",
+			update.ClusterShortName, update.IsMC)
 	}
 }

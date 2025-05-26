@@ -8,6 +8,7 @@ import (
 	"envctl/internal/reporting" // To access mainControllerDispatch (needs to be exported or tested via model.Update)
 	"envctl/internal/tui/model" // Added for logging.LogEntry for logChan type
 	"envctl/pkg/logging"
+	"strings"
 	"testing"
 	"time"
 
@@ -108,24 +109,36 @@ func TestMainControllerDispatch_ReporterUpdateMsg_GeneratesLog(t *testing.T) {
 
 	// Step 2: Explicitly process the log entry expected from LogDebug
 	// We expect one log entry from the LogDebug call inside mainControllerDispatch for the ReporterUpdateMsg.
-	var processedLogEntry bool
-	select {
-	case logEntry := <-logChan:
-		t.Logf("LogEntry received from logChan: %+v", logEntry)
-		// Dispatch this log entry to have it added to ActivityLog
-		updatedModel1, _ = mainControllerDispatch(updatedModel1, model.NewLogEntryMsg{Entry: logEntry})
-		processedLogEntry = true
-	case <-time.After(200 * time.Millisecond): // Increased timeout slightly
-		t.Log("Timeout waiting for LogEntry from logChan")
+	// But there might be other log entries in the channel first (like InitialModel), so we need to process them all
+	var foundExpectedLog bool
+	timeout := time.After(500 * time.Millisecond)
+
+	for !foundExpectedLog {
+		select {
+		case logEntry := <-logChan:
+			t.Logf("LogEntry received from logChan: %+v", logEntry)
+			// Dispatch this log entry to have it added to ActivityLog
+			updatedModel1, _ = mainControllerDispatch(updatedModel1, model.NewLogEntryMsg{Entry: logEntry})
+
+			// Check if this is the log entry we're looking for
+			for _, logLine := range updatedModel1.ActivityLog {
+				if strings.Contains(logLine, "Received msg: reporting.ReporterUpdateMsg") {
+					foundExpectedLog = true
+					break
+				}
+			}
+		case <-timeout:
+			t.Log("Timeout waiting for expected LogEntry from logChan")
+			foundExpectedLog = false
+			goto done
+		}
 	}
 
-	assert.True(t, processedLogEntry, "Expected a log entry to be processed from LogDebug")
+done:
+	assert.True(t, foundExpectedLog, "Expected to find the ReporterUpdateMsg debug log")
 	assert.NotEmpty(t, updatedModel1.ActivityLog, "ActivityLog should not be empty after LogDebug processing")
 	if len(updatedModel1.ActivityLog) > 0 {
 		t.Logf("ActivityLog content: %v", updatedModel1.ActivityLog)
-		assert.Contains(t, updatedModel1.ActivityLog[0], "Received msg: reporting.ReporterUpdateMsg", "ActivityLog should contain the debug message for ReporterUpdateMsg")
-	} else {
-		t.Log("ActivityLog is unexpectedly empty")
 	}
 	assert.NotNil(t, cmd1, "A command should be returned after processing the first message")
 

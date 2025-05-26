@@ -42,74 +42,16 @@ func handleKubeContextResultMsg(m *model.Model, msg model.KubeContextResultMsg) 
 		}
 	}
 
-	if m.CurrentAppMode == model.ModeInitializing || m.MCHealth.LastUpdated.IsZero() {
-		LogInfo(clusterControllerSubsystem, "Initial KubeContext received (%s), triggering initial health checks.", m.CurrentKubeContext)
-		var cmds []tea.Cmd
-		if m.KubeMgr == nil {
-			LogInfo(clusterControllerSubsystem, "KubeManager not available for initial health check.")
-		} else {
-			if m.ManagementClusterName != "" {
-				mcTargetContext := m.KubeMgr.BuildMcContextName(m.ManagementClusterName)
-				cmds = append(cmds, FetchNodeStatusCmd(m.KubeMgr, mcTargetContext, true, m.ManagementClusterName))
-			}
-			if m.WorkloadClusterName != "" && m.ManagementClusterName != "" {
-				wcTargetContext := m.KubeMgr.BuildWcContextName(m.ManagementClusterName, m.WorkloadClusterName)
-				cmds = append(cmds, FetchNodeStatusCmd(m.KubeMgr, wcTargetContext, false, m.WorkloadClusterName))
-			}
-		}
-		return m, tea.Batch(cmds...)
-	}
+	// Health checks are now initiated by the orchestrator
 	return m, nil
-}
-
-// handleRequestClusterHealthUpdate schedules node-status fetches for MC and WC clusters.
-func handleRequestClusterHealthUpdate(m *model.Model) (*model.Model, tea.Cmd) {
-	var cmds []tea.Cmd
-	LogInfo(clusterControllerSubsystem, "Requesting cluster health updates at %s", time.Now().Format("15:04:05"))
-	LogDebug(m, clusterControllerSubsystem, "Health check cycle starting: MCName=%s, WCName=%s, CurrentContext=%s",
-		m.ManagementClusterName, m.WorkloadClusterName, m.CurrentKubeContext)
-
-	if m.KubeMgr == nil {
-		LogInfo(clusterControllerSubsystem, "KubeManager not available for health update.")
-		return m, nil
-	}
-
-	if m.ManagementClusterName != "" {
-		m.MCHealth.IsLoading = true
-		mcTargetContext := m.KubeMgr.BuildMcContextName(m.ManagementClusterName)
-		LogDebug(m, clusterControllerSubsystem, "Scheduling MC health check: cluster=%s, targetCtx=%s, lastUpdated=%v",
-			m.ManagementClusterName, mcTargetContext, m.MCHealth.LastUpdated)
-		cmds = append(cmds, FetchNodeStatusCmd(m.KubeMgr, mcTargetContext, true, m.ManagementClusterName))
-	} else {
-		LogDebug(m, clusterControllerSubsystem, "SKIPPED MC health check: No management cluster configured")
-	}
-
-	if m.WorkloadClusterName != "" && m.ManagementClusterName != "" {
-		m.WCHealth.IsLoading = true
-		wcTargetContext := m.KubeMgr.BuildWcContextName(m.ManagementClusterName, m.WorkloadClusterName)
-		LogDebug(m, clusterControllerSubsystem, "Scheduling WC health check: cluster=%s, targetCtx=%s, lastUpdated=%v",
-			m.WorkloadClusterName, wcTargetContext, m.WCHealth.LastUpdated)
-		cmds = append(cmds, FetchNodeStatusCmd(m.KubeMgr, wcTargetContext, false, m.WorkloadClusterName))
-	} else {
-		LogDebug(m, clusterControllerSubsystem, "SKIPPED WC health check: No workload cluster (and/or MC) configured")
-	}
-
-	if m.MCHealth.IsLoading || m.WCHealth.IsLoading {
-		m.IsLoading = true
-		LogDebug(m, clusterControllerSubsystem, "Set loading state to true for health check cycle")
-	}
-
-	cmds = append(cmds, tea.Tick(HealthUpdateInterval, func(t time.Time) tea.Msg { return model.RequestClusterHealthUpdate{} }))
-	return m, tea.Batch(cmds...)
 }
 
 // handleNodeStatusMsg applies the node-status result to the appropriate health struct.
 func handleNodeStatusMsg(m *model.Model, msg model.NodeStatusMsg) (*model.Model, tea.Cmd) {
-	LogDebug(m, clusterControllerSubsystem, "Handling NodeStatusMsg for %s (isMC: %v): Ready=%d, Total=%d, Err=%v", msg.ClusterShortName, msg.ForMC, msg.ReadyNodes, msg.TotalNodes, msg.Err)
-	if msg.DebugInfo != "" {
-		LogDebug(m, clusterControllerSubsystem, "NodeStatusMsg Full DebugInfo for %s available (enable verbose debug if needed).", msg.ClusterShortName)
-	}
+	LogDebug(m, clusterControllerSubsystem, "Handling NodeStatusMsg for %s. ForMC=%t, Nodes=%d/%d, Err=%v",
+		msg.ClusterShortName, msg.ForMC, msg.ReadyNodes, msg.TotalNodes, msg.Err)
 
+	// Update UI state
 	if msg.ForMC {
 		m.MCHealth.IsLoading = false
 		m.MCHealth.ReadyNodes = msg.ReadyNodes

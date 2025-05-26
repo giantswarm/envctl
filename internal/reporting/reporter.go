@@ -100,6 +100,9 @@ type ServiceReporter interface {
 	// Report processes an update. Implementations should be goroutine-safe
 	// if they are to be called concurrently from multiple sources.
 	Report(update ManagedServiceUpdate)
+
+	// ReportHealth processes a health status update
+	ReportHealth(update HealthStatusUpdate)
 }
 
 // ReporterUpdateMsg is the tea.Msg used by TUIReporter to send updates to the TUI.
@@ -110,5 +113,25 @@ type ReporterUpdateMsg struct {
 
 // Ensure ReporterUpdateMsg implements tea.Msg (it does implicitly by being a struct).
 var _ tea.Msg = ReporterUpdateMsg{}
+
+// HealthStatusUpdate carries k8s cluster health status information
+type HealthStatusUpdate struct {
+	Timestamp        time.Time
+	ContextName      string // The k8s context name
+	ClusterShortName string // Short name of the cluster (MC or WC)
+	IsMC             bool   // True if this is for management cluster
+	IsHealthy        bool   // Overall health status
+	ReadyNodes       int    // Number of ready nodes
+	TotalNodes       int    // Total number of nodes
+	Error            error  // Any error encountered during health check
+}
+
+// HealthStatusMsg is the tea.Msg used to send health updates to the TUI
+type HealthStatusMsg struct {
+	Update HealthStatusUpdate
+}
+
+// Ensure HealthStatusMsg implements tea.Msg
+var _ tea.Msg = HealthStatusMsg{}
 
 // Ensure reporter.go is correctly placed and has the initial definitions.

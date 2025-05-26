@@ -1,14 +1,13 @@
 package controller
 
 import (
+	"context"
 	"envctl/internal/config"
-	"envctl/internal/managers"
-	"envctl/internal/reporting"
+	"envctl/internal/orchestrator"
 	"envctl/internal/tui/model"
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -124,13 +123,41 @@ func handleKubeLoginResultMsg(m *model.Model, msg model.KubeLoginResultMsg, cmds
 	}
 
 	if msg.Err != nil {
-		LogError(connectionControllerSubsystem, msg.Err, "Login failed for %s: %v", msg.ClusterName, msg.Err)
-		m.IsLoading = false
-		clearCmd := m.SetStatusMessage(fmt.Sprintf("Login failed for %s", msg.ClusterName), model.StatusBarError, 5*time.Second)
-		return m, clearCmd
+		// Login failed
+		LogError(connectionControllerSubsystem, msg.Err, "kube login error for %s", msg.ClusterName)
+		setStatusBarMessage := m.SetStatusMessage(fmt.Sprintf("❌ Login failed: %v", msg.Err), model.StatusBarError, 5*time.Second)
+		cmds = append(cmds, setStatusBarMessage)
+
+		// Update k8s state to not authenticated
+		if m.K8sStateManager != nil {
+			context := m.KubeMgr.BuildMcContextName(msg.ClusterName)
+			if !msg.IsMC && m.ManagementClusterName != "" {
+				context = m.KubeMgr.BuildWcContextName(m.ManagementClusterName, msg.ClusterName)
+			}
+			m.K8sStateManager.SetAuthenticated(context, false)
+		}
+
+		return m, tea.Batch(cmds...)
 	}
-	LogInfo(connectionControllerSubsystem, "Login successful for: %s", msg.ClusterName)
-	clearStatusCmd := m.SetStatusMessage(fmt.Sprintf("Login OK: %s", msg.ClusterName), model.StatusBarSuccess, 3*time.Second)
+
+	// Success
+	LogInfo(connectionControllerSubsystem, "kube login success for %s", msg.ClusterName)
+
+	// Update k8s state to authenticated
+	if m.K8sStateManager != nil {
+		context := m.KubeMgr.BuildMcContextName(msg.ClusterName)
+		if !msg.IsMC && m.ManagementClusterName != "" {
+			context = m.KubeMgr.BuildWcContextName(m.ManagementClusterName, msg.ClusterName)
+		}
+		m.K8sStateManager.SetAuthenticated(context, true)
+
+		// Start health monitoring for this context
+		m.K8sStateManager.StartHealthMonitor(context, 30*time.Second)
+	}
+
+	// Clear success message from status bar after a delay
+	setStatusBarMessage := m.SetStatusMessage(fmt.Sprintf("✅ Login successful to %s", msg.ClusterName), model.StatusBarSuccess, 3*time.Second)
+	cmds = append(cmds, setStatusBarMessage)
 
 	var nextCmds []tea.Cmd
 	if msg.IsMC {
@@ -174,7 +201,6 @@ func handleKubeLoginResultMsg(m *model.Model, msg model.KubeLoginResultMsg, cmds
 		nextCmds = append(nextCmds, PerformPostLoginOperationsCmd(m.KubeMgr, targetKubeContext, m.ManagementClusterName, m.WorkloadClusterName))
 	}
 	finalCmds := append(cmds, nextCmds...)
-	finalCmds = append(finalCmds, clearStatusCmd)
 	return m, tea.Batch(finalCmds...)
 }
 
@@ -214,55 +240,87 @@ func handleContextSwitchAndReinitializeResultMsg(m *model.Model, msg model.Conte
 	LogInfo(connectionControllerSubsystem, "Successfully switched context to: %s. Re-initializing TUI services.", msg.SwitchedContext)
 	m.IsLoading = true
 
-	// Stop existing services before loading new config
-	if m.ServiceManager != nil {
-		m.ServiceManager.StopAllServices()
-		// Short delay to allow services to stop gracefully before new ones might try to use same resources
-		time.Sleep(250 * time.Millisecond)
-	} else {
-		LogInfo(connectionControllerSubsystem, "ServiceManager is nil, cannot stop services during re-initialize.")
-	}
+	// Let the orchestrator handle all service lifecycle management
+	if m.Orchestrator != nil {
+		// Stop the old orchestrator
+		m.Orchestrator.Stop()
 
-	// Load the new configuration based on the new MC/WC names
-	newEnvctlConfig, err := config.LoadConfig(msg.DesiredMCName, msg.DesiredWCName)
-	if err != nil {
-		LogError(connectionControllerSubsystem, err, "Failed to load new envctl configuration for MC: %s, WC: %s", msg.DesiredMCName, msg.DesiredWCName)
-		m.IsLoading = false
-		return m, m.SetStatusMessage("Failed to load new configuration.", model.StatusBarError, 5*time.Second)
-	}
-
-	m.ManagementClusterName = msg.DesiredMCName
-	m.WorkloadClusterName = msg.DesiredWCName
-	m.CurrentKubeContext = msg.SwitchedContext
-	m.MCHealth = model.ClusterHealthInfo{IsLoading: true}
-	if m.WorkloadClusterName != "" {
-		m.WCHealth = model.ClusterHealthInfo{IsLoading: true}
-	} else {
-		m.WCHealth = model.ClusterHealthInfo{}
-	}
-	// Update model with new loaded configs
-	m.PortForwardingConfig = newEnvctlConfig.PortForwards
-	m.MCPServerConfig = newEnvctlConfig.MCPServers
-
-	m.PortForwards = make(map[string]*model.PortForwardProcess)
-	m.McpServers = make(map[string]*model.McpServerProcess)
-
-	SetupPortForwards(m, m.ManagementClusterName, m.WorkloadClusterName) // This will use m.PortForwardingConfig
-
-	m.McpProxyOrder = nil
-	for _, cfg := range m.MCPServerConfig { // This now iterates over []config.MCPServerDefinition
-		if !cfg.Enabled {
-			continue
+		// Load the new configuration based on the new MC/WC names
+		newEnvctlConfig, err := config.LoadConfig(msg.DesiredMCName, msg.DesiredWCName)
+		if err != nil {
+			LogError(connectionControllerSubsystem, err, "Failed to load new envctl configuration for MC: %s, WC: %s", msg.DesiredMCName, msg.DesiredWCName)
+			m.IsLoading = false
+			return m, m.SetStatusMessage("Failed to load new configuration.", model.StatusBarError, 5*time.Second)
 		}
-		m.McpProxyOrder = append(m.McpProxyOrder, cfg.Name)
-		m.McpServers[cfg.Name] = &model.McpServerProcess{
-			Label:     cfg.Name,
-			Active:    true, // Active implies it should be started by ServiceManager
-			StatusMsg: "Awaiting Setup...",
-			Config:    cfg,           // Store the config.MCPServerDefinition
-			ProxyPort: cfg.ProxyPort, // Initialize with configured port
-			Pid:       0,             // Will be updated when process starts
+
+		// Update model with new cluster names and configuration
+		m.ManagementClusterName = msg.DesiredMCName
+		m.WorkloadClusterName = msg.DesiredWCName
+		m.CurrentKubeContext = msg.SwitchedContext
+		m.MCHealth = model.ClusterHealthInfo{IsLoading: true}
+		if m.WorkloadClusterName != "" {
+			m.WCHealth = model.ClusterHealthInfo{IsLoading: true}
+		} else {
+			m.WCHealth = model.ClusterHealthInfo{}
 		}
+
+		// Update model with new loaded configs
+		m.PortForwardingConfig = newEnvctlConfig.PortForwards
+		m.MCPServerConfig = newEnvctlConfig.MCPServers
+
+		// Reset UI state
+		m.PortForwards = make(map[string]*model.PortForwardProcess)
+		m.McpServers = make(map[string]*model.McpServerProcess)
+
+		SetupPortForwards(m, m.ManagementClusterName, m.WorkloadClusterName)
+
+		m.McpProxyOrder = nil
+		for _, cfg := range m.MCPServerConfig {
+			if !cfg.Enabled {
+				continue
+			}
+			m.McpProxyOrder = append(m.McpProxyOrder, cfg.Name)
+			m.McpServers[cfg.Name] = &model.McpServerProcess{
+				Label:     cfg.Name,
+				Active:    true,
+				StatusMsg: "Awaiting Setup...",
+				Config:    cfg,
+				ProxyPort: cfg.ProxyPort,
+				Pid:       0,
+			}
+		}
+
+		// Create new orchestrator with updated configuration
+		newOrch := orchestrator.New(
+			m.KubeMgr,
+			m.ServiceManager,
+			m.Reporter,
+			orchestrator.Config{
+				MCName:              m.ManagementClusterName,
+				WCName:              m.WorkloadClusterName,
+				PortForwards:        m.PortForwardingConfig,
+				MCPServers:          m.MCPServerConfig,
+				HealthCheckInterval: 15 * time.Second,
+			},
+		)
+
+		// Start the new orchestrator in a goroutine
+		go func() {
+			ctx := context.Background()
+			if err := newOrch.Start(ctx); err != nil {
+				LogError(connectionControllerSubsystem, err, "Failed to start orchestrator after context switch")
+			} else {
+				LogInfo(connectionControllerSubsystem, "Orchestrator started with MC: %s, WC: %s", m.ManagementClusterName, m.WorkloadClusterName)
+			}
+		}()
+
+		m.Orchestrator = newOrch
+		m.DependencyGraph = newOrch.GetDependencyGraph()
+
+		// Rebuild the dependency graph for the UI
+		m.DependencyGraph = BuildDependencyGraph(m)
+	} else {
+		LogInfo(connectionControllerSubsystem, "Orchestrator is nil, cannot manage services during re-initialize.")
 	}
 
 	if len(m.PortForwardOrder) > 0 {
@@ -285,51 +343,8 @@ func handleContextSwitchAndReinitializeResultMsg(m *model.Model, msg model.Conte
 			newInitCmds = append(newInitCmds, FetchNodeStatusCmd(m.KubeMgr, wcTargetContext, false, m.WorkloadClusterName))
 		}
 
-		// Build managed service configs from the newly loaded and model-updated configs
-		var managedServiceConfigs []managers.ManagedServiceConfig
-		for _, pfCfg := range m.PortForwardingConfig { // m.PortForwardingConfig is now []config.PortForwardDefinition
-			if !pfCfg.Enabled {
-				continue
-			}
-			managedServiceConfigs = append(managedServiceConfigs, managers.ManagedServiceConfig{
-				Type:   reporting.ServiceTypePortForward,
-				Label:  pfCfg.Name, // Use Name
-				Config: pfCfg,
-			})
-		}
-		for _, mcpCfg := range m.MCPServerConfig { // m.MCPServerConfig is now []config.MCPServerDefinition
-			if !mcpCfg.Enabled {
-				continue
-			}
-			managedServiceConfigs = append(managedServiceConfigs, managers.ManagedServiceConfig{
-				Type:   reporting.ServiceTypeMCPServer,
-				Label:  mcpCfg.Name,
-				Config: mcpCfg,
-			})
-		}
-
-		if len(managedServiceConfigs) > 0 && m.ServiceManager != nil {
-			startServicesCmd := func() tea.Msg {
-				var wg sync.WaitGroup
-				_, startupErrors := m.ServiceManager.StartServices(managedServiceConfigs, &wg)
-				return model.AllServicesStartedMsg{InitialStartupErrors: startupErrors}
-			}
-			newInitCmds = append(newInitCmds, startServicesCmd)
-		} else if m.ServiceManager == nil {
-			if m.Reporter != nil {
-				m.Reporter.Report(reporting.ManagedServiceUpdate{
-					Timestamp:   time.Now(),
-					SourceType:  reporting.ServiceTypeSystem,
-					SourceLabel: "ContextSwitch",
-					State:       reporting.StateFailed,
-					ErrorDetail: errors.New("ServiceManager is nil, cannot start services"),
-					IsReady:     false,
-				})
-			}
-		}
+		// The orchestrator will handle starting services, not the TUI
 	}
-	tickCmd := tea.Tick(HealthUpdateInterval, func(t time.Time) tea.Msg { return model.RequestClusterHealthUpdate{} })
-	newInitCmds = append(newInitCmds, tickCmd)
 	statusCmd := m.SetStatusMessage(fmt.Sprintf("Context: %s. Initializing...", msg.SwitchedContext), model.StatusBarSuccess, 3*time.Second)
 	finalCmdsToBatch := append(existingCmds, newInitCmds...)
 	finalCmdsToBatch = append(finalCmdsToBatch, statusCmd)

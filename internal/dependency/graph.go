@@ -27,6 +27,7 @@ const (
 	KindUnknown NodeKind = iota
 	KindMCP
 	KindPortForward
+	KindK8sConnection // Represents a kubernetes cluster connection
 )
 
 // Node represents a runtime unit (MCP proxy, port-forward, etc.) together with

@@ -1,10 +1,12 @@
 package cmd
 
 import (
+	"context"
 	"envctl/internal/color"
 	"envctl/internal/config"
 	"envctl/internal/k8smanager"
 	"envctl/internal/managers"
+	"envctl/internal/orchestrator"
 	"envctl/internal/reporting"
 	"envctl/internal/tui/controller"
 	"envctl/internal/tui/model"
@@ -13,7 +15,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"sync"
 	"syscall"
 	"time"
 
@@ -116,30 +117,37 @@ Arguments:
 				}
 			}
 
-			logging.Info("CLI", "--- Setting up background services (no-TUI mode) ---")
-			var wg sync.WaitGroup
-			activeServices, startupErrors := serviceMgr.StartServices(
-				buildManagedServiceConfigs(envctlCfg.PortForwards, envctlCfg.MCPServers),
-				&wg,
+			logging.Info("CLI", "--- Setting up orchestrator for service management ---")
+
+			// Create orchestrator for health monitoring and dependency management
+			orch := orchestrator.New(
+				kubeMgr,
+				serviceMgr,
+				consoleReporter,
+				orchestrator.Config{
+					MCName:              managementClusterArg,
+					WCName:              workloadClusterArg,
+					PortForwards:        envctlCfg.PortForwards,
+					MCPServers:          envctlCfg.MCPServers,
+					HealthCheckInterval: 15 * time.Second,
+				},
 			)
-			if len(startupErrors) > 0 {
-				logging.Error("CLI", nil, "Errors during service startup configuration:")
-				for _, e := range startupErrors {
-					logging.Error("CLI", e, "  - %v", e)
-				}
+
+			// Start orchestrator
+			ctx := context.Background()
+			if err := orch.Start(ctx); err != nil {
+				logging.Error("CLI", err, "Failed to start orchestrator: %v", err)
+				return err
 			}
-			if len(activeServices) == 0 {
-				logging.Info("CLI", "No background services were configured or started successfully. Exiting.")
-				return nil
-			}
-			logging.Info("CLI", "%d services initiated. Press Ctrl+C to stop all services and exit.", len(activeServices))
+
+			logging.Info("CLI", "Services started with health monitoring. Press Ctrl+C to stop all services and exit.")
+
 			sigChan := make(chan os.Signal, 1)
 			signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 			<-sigChan
 			logging.Info("CLI", "\n--- Shutting down services ---")
-			serviceMgr.StopAllServices()
+			orch.Stop()
 			time.Sleep(1 * time.Second)
-			logging.Info("CLI", "All services signaled to stop.")
 
 		} else { // TUI Mode
 			// This fmt.Println is pre-TUI initialization, so it's acceptable.
@@ -158,7 +166,7 @@ Arguments:
 				managementClusterArg,
 				workloadClusterArg,
 				initialKubeContext,
-				debug,
+				debug || tuiDebugMode, // Use either general debug or TUI-specific debug mode
 				envctlCfg,
 				kubeMgr,
 				logChan,
