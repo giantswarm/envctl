@@ -166,9 +166,9 @@ func StartAndManageIndividualMcpServer(
 				}
 
 				// Check if server is fully ready - expanded to handle more server types
-				if !serverReady && (strings.Contains(line, "Uvicorn running on") || 
-					strings.Contains(line, "Application startup complete.") || 
-					strings.Contains(line, "StreamableHTTP session manager started") || 
+				if !serverReady && (strings.Contains(line, "Uvicorn running on") ||
+					strings.Contains(line, "Application startup complete.") ||
+					strings.Contains(line, "StreamableHTTP session manager started") ||
 					strings.Contains(line, "Application started with StreamableHTTP session manager!") ||
 					strings.Contains(line, "Starting Grafana MCP server") || // Grafana MCP
 					strings.Contains(line, "MCP server started") || // Generic

@@ -170,3 +170,161 @@ When implementing features that need to operate in both TUI (Terminal User Inter
 *   It ranges over the channel returned by `StartAllPredefinedMcpServers` to collect `stopChan`s for each successfully initiated server, which are used for graceful shutdown on Ctrl+C.
 
 This layered approach ensures that `internal/mcpserver` is a reusable, independent engine, while the TUI and non-TUI modes adapt its usage to their specific operational and UI/output requirements.
+
+## Orchestrator and Service Manager Architecture
+
+The envctl application uses a sophisticated architecture to manage service dependencies, health monitoring, and lifecycle management. This is accomplished through two primary components: the **Orchestrator** and the **Service Manager**.
+
+### Service Manager (`internal/managers`)
+
+The Service Manager is responsible for the basic lifecycle management of services (port forwards and MCP servers). It provides a simple, dependency-agnostic interface for starting and stopping services.
+
+**Key Responsibilities:**
+- Starting batches of services
+- Stopping individual services or all services
+- Tracking active services
+- Reporting service state changes through a reporter interface
+- Managing the mapping between service labels and their configurations
+
+**Core Interface (`ServiceManagerAPI`):**
+```go
+type ServiceManagerAPI interface {
+    StartServices(configs []ManagedServiceConfig, wg *sync.WaitGroup) (map[string]chan struct{}, []error)
+    StopService(label string) error
+    StopAllServices()
+    SetReporter(reporter reporting.ServiceReporter)
+    GetServiceConfig(label string) (ManagedServiceConfig, bool)
+    IsServiceActive(label string) bool
+    GetActiveServices() []string
+}
+```
+
+**Design Principles:**
+1. **Simplicity**: The Service Manager focuses only on basic start/stop operations
+2. **No Dependency Logic**: It doesn't understand or manage dependencies between services
+3. **State Tracking**: Maintains a simple map of active services and their stop channels
+4. **Reporter Pattern**: Uses a reporter interface to notify about service state changes
+
+### Orchestrator (`internal/orchestrator`)
+
+The Orchestrator is the higher-level component that manages the overall application state, including dependency management, health monitoring, and coordinated service lifecycle operations.
+
+**Key Responsibilities:**
+- Building and managing the dependency graph
+- Monitoring Kubernetes connection health
+- Managing cascade stops when dependencies fail
+- Ensuring services start in the correct dependency order
+- Handling service restarts with dependency awareness
+- Tracking why services were stopped (manual vs dependency failure)
+
+**Core Features:**
+
+#### 1. Dependency Management
+The Orchestrator builds a dependency graph (`internal/dependency`) that models relationships between:
+- Kubernetes connections (MC and WC)
+- Port forwards (which depend on K8s connections)
+- MCP servers (which may depend on port forwards)
+
+Example dependency chain:
+```
+K8s MC Connection → prometheus-mc (port forward) → prometheus (MCP)
+K8s WC Connection → grafana-wc (port forward) → grafana (MCP)
+```
+
+#### 2. Health Monitoring
+The Orchestrator continuously monitors Kubernetes connection health:
+- Performs periodic health checks (default: 15 seconds)
+- Tracks state changes (healthy → unhealthy → healthy)
+- Only acts on state changes, not every health check
+- Reports health status through the reporter interface
+
+#### 3. Cascade Stop Logic
+When a dependency becomes unhealthy or is stopped:
+1. The Orchestrator identifies all transitive dependents using the dependency graph
+2. It stops dependent services in reverse dependency order
+3. It tracks that these services were stopped due to dependency failure
+4. Example: If K8s WC connection fails → stop dependent port forwards → stop MCPs depending on those port forwards
+
+#### 4. Automatic Recovery
+When a failed dependency recovers:
+1. The Orchestrator identifies services that were stopped due to that dependency
+2. It restarts only those services (not manually stopped ones)
+3. Services are started in proper dependency order
+4. The restart is triggered automatically without user intervention
+
+#### 5. Stop Reason Tracking
+The Orchestrator maintains a `stopReasons` map to differentiate between:
+- `StopReasonManual`: User explicitly stopped the service
+- `StopReasonDependency`: Service stopped due to dependency failure
+
+This ensures that only dependency-stopped services are restarted during recovery.
+
+### Integration and Workflow
+
+#### Startup Flow:
+1. **Orchestrator Initialization**: Creates dependency graph based on configuration
+2. **Health Check**: Performs initial K8s health checks
+3. **Service Start**: Starts only services whose dependencies are healthy
+4. **Dependency Ordering**: Uses topological sort to start services in correct order
+5. **Monitoring**: Begins periodic health monitoring
+
+#### Health State Change Flow:
+1. **Detection**: Health check detects K8s connection state change
+2. **Analysis**: Orchestrator analyzes dependency graph for affected services
+3. **Action**: 
+   - If unhealthy: Stop dependent services with cascade logic
+   - If recovered: Restart dependency-stopped services
+4. **Reporting**: Updates reported through the reporter interface
+
+#### Service Operations:
+- **Start**: Orchestrator ensures dependencies are met before starting
+- **Stop**: Orchestrator performs cascade stop for dependents
+- **Restart**: Orchestrator marks for restart and manages the lifecycle
+
+### Usage in TUI and Non-TUI Modes
+
+Both TUI and non-TUI modes use the same Orchestrator/Service Manager architecture:
+
+**TUI Mode (`internal/tui`):**
+- The TUI controller creates and manages the Orchestrator
+- Service operations (stop/restart) go through the Orchestrator
+- State updates are received via the reporter interface and converted to TUI messages
+- The TUI model tracks service states for display
+
+**Non-TUI Mode (`cmd/connect.go`):**
+- Creates Orchestrator with console reporter
+- Starts services through the Orchestrator
+- Handles graceful shutdown on interrupt
+- Displays health and service status to console
+
+### Testing Considerations
+
+The architecture supports comprehensive testing through:
+1. **Mock Interfaces**: Both Service Manager and Kube Manager can be mocked
+2. **Dependency Injection**: Components are injected, making testing easier
+3. **State Verification**: Tests can verify stop reasons and service states
+4. **Timing Control**: Health check intervals can be adjusted for faster tests
+
+Example test pattern:
+```go
+// Mock the Kubernetes manager to simulate health state changes
+kubeMgr := &mockKubeManager{}
+kubeMgr.On("GetClusterNodeHealth", ...).Return(unhealthy).Once()
+kubeMgr.On("GetClusterNodeHealth", ...).Return(healthy).Maybe()
+
+// Create orchestrator with mocks
+orch := orchestrator.New(kubeMgr, serviceMgr, reporter, config)
+
+// Verify cascade stop behavior
+// ... test assertions ...
+```
+
+### Best Practices for Extending
+
+When adding new features that involve service management:
+
+1. **Use the Orchestrator**: Don't bypass it for service operations
+2. **Update Dependencies**: If adding new service types, update the dependency graph builder
+3. **Maintain Separation**: Keep basic operations in Service Manager, complex logic in Orchestrator
+4. **Test Thoroughly**: Include tests for dependency scenarios and edge cases
+5. **Consider Health**: If the service depends on external resources, integrate with health monitoring

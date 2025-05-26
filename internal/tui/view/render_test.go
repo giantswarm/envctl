@@ -282,7 +282,7 @@ func TestRenderPortForwardingRow_Simple(t *testing.T) {
 func TestRenderMcpProxiesRow_Simple(t *testing.T) {
 	// Use specific MCPServers for this test to control their state
 	mcpDefs := []config.MCPServerDefinition{
-		{Name: "k8s-api", Enabled: true, Type: config.MCPServerTypeLocalCommand, Command: []string{"cmd1"}, Icon: "☸️"},
+		{Name: "k8s-api", Enabled: true, Type: config.MCPServerTypeLocalCommand, Command: []string{"cmd1"}, Icon: "☸"},
 		{Name: "etcd", Enabled: false, Type: config.MCPServerTypeLocalCommand, Command: []string{"cmd2"}, Icon: "🗄️"}, // Test with a disabled one
 		{Name: "other-proxy", Enabled: true, Type: config.MCPServerTypeLocalCommand, Command: []string{"cmd3"}, Icon: "⚙️"},
 	}

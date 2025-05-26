@@ -15,6 +15,12 @@ All notable changes to this project will be documented in this file.
 - New `StartServicesDependingOn` method in ServiceManager to restart services when dependencies recover
 - New `orchestrator` package that manages application state and service lifecycle for both TUI and non-TUI modes
 - New `HealthStatusUpdate` and `ReportHealth` for proper health status reporting
+- Health-aware startup: Services now wait for their K8s dependencies to be healthy before starting
+- Add comprehensive dependency management system for services
+  - Services now track why they were stopped (manual vs dependency cascade)
+  - Automatically restart services when their dependencies recover
+  - Ensure correct startup order based on dependency graph
+  - Prevent manually stopped services from auto-restarting
 
 ### Changed
 - Dependency graph now includes K8sConnection nodes as fundamental dependencies
@@ -23,6 +29,13 @@ All notable changes to this project will be documented in this file.
 - Non-TUI mode now uses the orchestrator for health monitoring and dependency management
 - TUI mode no longer performs its own health checks - the orchestrator handles all health monitoring and the TUI only displays results
 - Proper separation of concerns: orchestrator manages health checks and service lifecycle, TUI only displays status
+- Orchestrator now performs initial health check before starting services
+- Refactored TUI message handling system
+  - Introduced specialized controller/dispatcher for better separation of concerns
+  - Controllers now focus on single responsibilities
+  - Better error handling and logging throughout the message flow
+- Improved startup behavior - the UI now shows loading state until all clusters are fully loaded
+- Port forwards no longer start before K8s health checks pass - orchestrator now checks K8s health before starting dependent services
 
 ### Fixed
 - Services no longer continue running with broken k8s dependencies
@@ -32,6 +45,16 @@ All notable changes to this project will be documented in this file.
 - Fixed issue where port forwards were not stopped when k8s connection failed (k8s nodes are now skipped in StopServiceWithDependents)
 - Both TUI and non-TUI modes now have consistent service lifecycle management
 - Removed duplicated health check logic from TUI - orchestrator is the single source of truth
+- Fixed services not restarting after K8s connection recovery - `StartServicesDependingOn` now finds and restarts all transitive dependencies, not just direct ones
+- Fixed service configs being lost - `StartServicesWithDependencyOrder` now properly stores service configurations for recovery after health failures
+- Manually stopped services are correctly excluded from automatic restart when K8s connections recover
+- Fixed race condition in restart logic that could cause services to get stuck in "Stopping" state
+- Fix issue where MCPs did not restart when their required port forwards restarted
+- Fix issue where MCPs would start before their required port forwards
+- Fix transitive dependency restart - all dependent services now restart when K8s connections recover
+- Fix port forwards starting immediately without waiting for K8s health checks
+- Fix service getting stuck in "Stopping" state after restart and stop sequence
+  - Resolved cascade logic incorrectly including initiating service in its own cascade
 
 ## [Previous]
 
@@ -54,3 +77,5 @@ All notable changes to this project will be documented in this file.
 - Implemented Docker runtime with support for pull, start, stop, logs operations
 - Extended MCP server startup logic to handle containerized servers
 - Added container ID tracking in managed server info 
+
+## [0.6.0] - 2025-01-15 

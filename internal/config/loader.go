@@ -182,7 +182,7 @@ func ExampleContainerizedConfig() EnvctlConfig {
 				Name:           "kubernetes",
 				Type:           MCPServerTypeContainer,
 				Enabled:        true,
-				Icon:           "☸️",
+				Icon:           "☸",
 				Category:       "Core",
 				Image:          "giantswarm/mcp-server-kubernetes:latest",
 				ProxyPort:      8001,

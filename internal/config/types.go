@@ -153,7 +153,7 @@ func GetDefaultConfig(mcName, wcName string) EnvctlConfig {
 			Name:      "kubernetes",
 			Type:      MCPServerTypeLocalCommand,
 			Enabled:   true,
-			Icon:      "☸️",
+			Icon:      "☸",
 			Category:  "Core",
 			Command:   []string{"npx", "mcp-server-kubernetes"},
 			ProxyPort: 8001, // 0 means random port assignment
