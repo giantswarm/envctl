@@ -130,6 +130,12 @@ func StartAndManageIndividualMcpServer(
 				logLine := scanner.Text()
 				logging.Info(subsystem+"-stdout", "%s", logLine)
 			}
+			if err := scanner.Err(); err != nil {
+				// Check if the error is due to the pipe being closed (expected during shutdown)
+				if !strings.Contains(err.Error(), "file already closed") && !strings.Contains(err.Error(), "closed pipe") {
+					logging.Error(subsystem+"-stdout", err, "Error reading stdout")
+				}
+			}
 		}()
 
 		go func() {
@@ -195,7 +201,10 @@ func StartAndManageIndividualMcpServer(
 				}
 			}
 			if err := scanner.Err(); err != nil {
-				logging.Error(subsystem+"-stderr", err, "Error reading stderr")
+				// Check if the error is due to the pipe being closed (expected during shutdown)
+				if !strings.Contains(err.Error(), "file already closed") && !strings.Contains(err.Error(), "closed pipe") {
+					logging.Error(subsystem+"-stderr", err, "Error reading stderr")
+				}
 			}
 		}()
 

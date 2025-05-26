@@ -271,6 +271,27 @@ func (o *Orchestrator) handleServiceStateUpdate(update reporting.ManagedServiceU
 		}
 	}
 
+	// Check if a service has failed - need to stop dependent services
+	if update.State == reporting.StateFailed {
+		// Get the node ID for this service
+		cfg, exists := o.serviceConfigs[label]
+		if exists {
+			nodeID := o.getNodeIDForService(cfg.Label, cfg.Type)
+
+			// Mark this service as stopped due to failure
+			o.stopReasons[label] = StopReasonDependency
+
+			// Stop all dependent services
+			go func() {
+				correlationID := reporting.GenerateCorrelationID()
+				logging.Info("Orchestrator", "Service %s failed, stopping dependent services (correlationID: %s)", label, correlationID)
+				if err := o.stopServiceWithDependentsCorrelated(nodeID, "dependency_failure", correlationID); err != nil {
+					logging.Error("Orchestrator", err, "Failed to stop dependent services for failed service %s", label)
+				}
+			}()
+		}
+	}
+
 	// Check if a service has become running - might need to restart dependent services
 	if update.State == reporting.StateRunning {
 		// Get the node ID for this service

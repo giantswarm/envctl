@@ -169,6 +169,14 @@ All notable changes to this project will be documented in this file.
   - Services with `StopReasonDependency` now properly wait for their dependencies to be restored
   - When a service becomes healthy, its dependent services that were stopped due to dependency failure are automatically restarted
   - Fixed "address already in use" errors by adding proper restart delay
+- **Fixed spurious error logs when stopping MCP servers**
+  - Suppressed expected "file already closed" errors that occurred when stopping MCP server processes
+  - Added proper error handling for both stdout and stderr pipe closures during shutdown
+  - These were harmless errors but created unnecessary noise in the logs
+- **Fixed cascade stops not triggering when K8s connections fail**
+  - When a K8s connection transitions to Failed state (e.g., due to network issues), all dependent services (port forwards and MCP servers) are now properly stopped
+  - This prevents orphaned services from continuing to run when their underlying K8s connection is no longer healthy
+  - Services will automatically restart when the K8s connection recovers
 
 ### Documentation
 - Added comprehensive documentation about dependency graph implementation
