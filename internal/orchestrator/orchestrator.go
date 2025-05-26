@@ -248,6 +248,9 @@ func (o *Orchestrator) handleServiceStateUpdate(update reporting.ManagedServiceU
 
 				// Start the service with correlation tracking
 				go func() {
+					// Add a small delay to ensure the port is released
+					time.Sleep(1 * time.Second)
+
 					// Use startServiceWithDependencies to also restart any dependencies
 					if err := o.startServiceWithDependencies(label); err != nil {
 						logging.Error("Orchestrator", err, "Failed to restart service %s", label)
@@ -265,6 +268,27 @@ func (o *Orchestrator) handleServiceStateUpdate(update reporting.ManagedServiceU
 					}
 				}()
 			}
+		}
+	}
+
+	// Check if a service has become running - might need to restart dependent services
+	if update.State == reporting.StateRunning {
+		// Get the node ID for this service
+		cfg, exists := o.serviceConfigs[label]
+		if exists {
+			nodeID := o.getNodeIDForService(cfg.Label, cfg.Type)
+
+			// Check if any services were stopped due to this service failing
+			go func() {
+				// Small delay to ensure state is settled
+				time.Sleep(100 * time.Millisecond)
+
+				// Use the existing method to start services depending on this one
+				correlationID := reporting.GenerateCorrelationID()
+				if err := o.startServicesDependingOnCorrelated(nodeID, "dependency_restored", correlationID); err != nil {
+					logging.Error("Orchestrator", err, "Failed to restart dependent services for %s", label)
+				}
+			}()
 		}
 	}
 }
@@ -895,6 +919,12 @@ func (o *Orchestrator) monitorAndStartServices(ctx context.Context) {
 			for label, cfg := range o.serviceConfigs {
 				// Skip manually stopped services
 				if reason, exists := o.stopReasons[label]; exists && reason == StopReasonManual {
+					continue
+				}
+
+				// Skip services stopped due to dependency failure
+				// These should only restart when their dependencies are restored
+				if reason, exists := o.stopReasons[label]; exists && reason == StopReasonDependency {
 					continue
 				}
 

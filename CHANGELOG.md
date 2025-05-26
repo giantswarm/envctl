@@ -114,6 +114,12 @@ All notable changes to this project will be documented in this file.
     - Implemented `BackpressureNotificationMsg` for user notifications about dropped messages
     - Added configurable retry attempts with exponential backoff
     - Enhanced TUIReporter with retry queue processing and user feedback
+- **Comprehensive Documentation Suite**
+  - Added [Architecture Overview](docs/architecture.md) documenting system design, components, and principles
+  - Created [Quick Start Guide](docs/quickstart.md) for new users to get up and running quickly
+  - Added [Troubleshooting Guide](docs/troubleshooting.md) with common issues and solutions
+  - Enhanced development documentation with recent architectural improvements
+  - Documented dependency management, state management, and message flow in detail
 
 ### Changed
 - **Service Manager Refactoring**
@@ -144,6 +150,10 @@ All notable changes to this project will be documented in this file.
 - Removed unused `DependsOnServices` field from `MCPServerDefinition` - MCP servers never depend on other MCP servers
 - Enhanced `RestartService` to use the new `startServiceWithDependencies` method for dependency-aware restarts
 - Updated `handleServiceStateUpdate` to properly restart services with their dependencies
+- **Improved Service Monitoring**
+  - Fixed `monitorAndStartServices` to respect `StopReasonDependency` - services stopped due to dependency failure won't be restarted until their dependencies are restored
+  - Added automatic restart of dependent services when a dependency becomes healthy again
+  - Added 1-second delay before restarting services to ensure ports are properly released
 
 ### Fixed
 - **Port Forwarding State Issue**
@@ -154,12 +164,29 @@ All notable changes to this project will be documented in this file.
   - Removed commented-out `mcpServerProcess` struct that was marked for deletion
   - Removed duplicate `updatePortForwardFromSnapshot` and `updateMcpServerFromSnapshot` methods
   - Cleaned up unused code and improved code organization
+- **Dependency-Related Fixes**
+  - Fixed issue where MCP servers would restart even when their port forward dependencies were stopped
+  - Services with `StopReasonDependency` now properly wait for their dependencies to be restored
+  - When a service becomes healthy, its dependent services that were stopped due to dependency failure are automatically restarted
+  - Fixed "address already in use" errors by adding proper restart delay
 
 ### Documentation
 - Added comprehensive documentation about dependency graph implementation
 - Enhanced dependency management documentation with detailed examples
 - Added explanation of dependency rules and startup/restart behavior
 - Documented the relationship between stop reasons and automatic recovery
+- Created comprehensive architecture documentation covering all major components
+- Added troubleshooting guide with detailed debugging techniques
+- Created quick start guide for new users
+- Updated development guide with recent architectural improvements
+- Documented the entire dependency management system with visual diagrams
+- **Updated outdated documentation sections**
+  - Removed obsolete "Package Design for Shared Core Logic" section from development.md
+  - Updated development.md to reference the unified service architecture
+  - Fixed test examples in development.md to match current implementation
+  - Updated README.md prerequisites to remove mcp-proxy requirement
+  - Clarified non-TUI mode behavior in README.md
+  - Rewritten MCP Integration Notes in README.md to reflect YAML configuration system
 
 ### Technical Details
 - New helper functions: `NewManagedServiceUpdate()`, `WithCause()`, `WithError()`, `WithServiceData()`

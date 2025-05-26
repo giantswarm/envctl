@@ -125,51 +125,20 @@ The version number follows Semantic Versioning (MAJOR.MINOR.PATCH).
 
 For detailed information about the TUI (Terminal User Interface) architecture, components, and how it interacts with core logic, please refer to the [TUI Implementation Notes](./tui-implementation.md).
 
-## Package Design for Shared Core Logic (Example: MCP Server Management)
+## Unified Service Architecture
 
-When implementing features that need to operate in both TUI (Terminal User Interface) mode and non-TUI/CLI mode, or that manage external processes, a clean separation of concerns is crucial. The management of Management Cluster Proxy (MCP) servers serves as a good example of this approach in `envctl`.
+envctl uses a unified service architecture to manage all types of services (K8s connections, port forwards, and MCP servers) consistently. This architecture is built on two main components:
 
-**Core Principles:**
+- **Service Manager**: Handles basic lifecycle operations for all services
+- **Orchestrator**: Manages dependencies, health monitoring, and coordinated operations
 
-1.  **Dedicated Core Package:** Logic that is fundamental to the feature itself, independent of its presentation (TUI or CLI), should reside in its own internal package. For MCP servers, this is `internal/mcpserver`.
-2.  **Agnostic Core:** This core package should be agnostic to its consumers. It should not contain TUI-specific code (e.g., `tea.Msg` types) or CLI-specific code (e.g., direct `fmt.Println` for primary output).
-3.  **Static Configuration:** Default configurations for entities managed by the core package (like the list of predefined MCP servers) should reside within the core package, ideally as static data (`internal/mcpserver/config.go`). This makes the core package the single source of truth for these definitions.
-4.  **Callback/Interface for Updates:** To communicate status, logs, or errors from managed processes, the core package should use generic callbacks or interfaces. For MCP servers, `mcpserver.McpUpdateFunc` (a function type taking `mcpserver.McpProcessUpdate`) is used. The core process manager (`mcpserver.StartAndManageIndividualMcpServer`) calls this function with updates.
-5.  **Consumer Responsibility:** The consumers (TUI mode logic or non-TUI mode logic) are responsible for:
-    *   Deciding *when* and *which* core functionalities to invoke (e.g., which MCP servers to start).
-    *   Providing a mode-specific implementation of the callback (`McpUpdateFunc`). The TUI's implementation translates `McpProcessUpdate` into `tea.Msg`s for its event loop, while the non-TUI mode's implementation prints to the console.
+For a comprehensive understanding of how services are managed, including:
+- How K8s connections, port forwards, and MCP servers are treated as services
+- The dependency graph and cascade operations
+- Health monitoring and automatic recovery
+- State management and reporting
 
-**MCP Server Implementation Example (`internal/mcpserver`):**
-
-*   **`types.go`:** Defines `PredefinedMcpServer` (structure for server config), `McpProcessUpdate` (generic update bundle), and `McpUpdateFunc` (callback signature).
-*   **`config.go`:** Contains the static `PredefinedMcpServers` list.
-*   **`process.go`:** Houses `StartAndManageIndividualMcpServer`. This function:
-    *   Takes a `PredefinedMcpServer` configuration.
-    *   Internally prepares the `exec.Cmd` to run `mcp-proxy` with the correct arguments for the specified underlying server.
-    *   Manages the lifecycle of this process (start, stop signal, log streaming).
-    *   Uses the provided `McpUpdateFunc` to report all events (initial "Running" status, logs, errors, final "Stopped" status).
-    *   Returns a `stopChan` to allow the caller to signal termination, and any initial startup error.
-*   **`startup.go`:** Contains `StartAllPredefinedMcpServers`. This is a helper function primarily for the non-TUI mode:
-    *   It iterates `PredefinedMcpServers`.
-    *   For each server, it calls `StartAndManageIndividualMcpServer`.
-    *   It provides the `McpUpdateFunc` (which will be a console-printing one when called by `cmd/connect.go`).
-    *   It returns a channel of `ManagedMcpServerInfo` (containing label, PID, stopChan, initial error) allowing the caller to get details for each server as it's being initiated.
-
-**Consumption by TUI (`internal/tui/commands.go`):**
-
-*   The TUI's `startMcpProxiesCmd` iterates `mcpserver.PredefinedMcpServers`.
-*   For each server, it creates a `tea.Cmd`. This command, when executed:
-    *   Defines an `McpUpdateFunc` that converts `mcpserver.McpProcessUpdate` into a TUI-specific `tea.Msg` (e.g., `tui.mcpServerStatusUpdateMsg`) and sends it to the TUI's main event channel.
-    *   Calls `mcpserver.StartAndManageIndividualMcpServer` with the server's config and this TUI-specific update function.
-    *   Returns an initial `tui.mcpServerSetupCompletedMsg` to the TUI model, including the `stopChan` and any immediate startup error.
-
-**Consumption by Non-TUI (`cmd/connect.go`):**
-
-*   The non-TUI mode in `cmd/connect.go` calls `mcpserver.StartAllPredefinedMcpServers`.
-*   It provides an `McpUpdateFunc` that directly prints the `OutputLog` from `McpProcessUpdate` to `os.Stdout` or `os.Stderr`.
-*   It ranges over the channel returned by `StartAllPredefinedMcpServers` to collect `stopChan`s for each successfully initiated server, which are used for graceful shutdown on Ctrl+C.
-
-This layered approach ensures that `internal/mcpserver` is a reusable, independent engine, while the TUI and non-TUI modes adapt its usage to their specific operational and UI/output requirements.
+Please refer to the [Architecture Overview](architecture.md) and the sections below on the Orchestrator and Service Manager.
 
 ## Orchestrator and Service Manager Architecture
 
@@ -177,7 +146,7 @@ The envctl application uses a sophisticated architecture to manage service depen
 
 ### Service Manager (`internal/managers`)
 
-The Service Manager is responsible for the basic lifecycle management of services (port forwards and MCP servers). It provides a simple, dependency-agnostic interface for starting and stopping services.
+The Service Manager is responsible for the basic lifecycle management of services (port forwards, MCP servers, and K8s connections). It provides a simple, dependency-agnostic interface for starting and stopping services.
 
 **Key Responsibilities:**
 - Starting batches of services
@@ -185,6 +154,7 @@ The Service Manager is responsible for the basic lifecycle management of service
 - Tracking active services
 - Reporting service state changes through a reporter interface
 - Managing the mapping between service labels and their configurations
+- Managing K8s connection services (when initialized with a KubeManager)
 
 **Core Interface (`ServiceManagerAPI`):**
 ```go
@@ -204,6 +174,7 @@ type ServiceManagerAPI interface {
 2. **No Dependency Logic**: It doesn't understand or manage dependencies between services
 3. **State Tracking**: Maintains a simple map of active services and their stop channels
 4. **Reporter Pattern**: Uses a reporter interface to notify about service state changes
+5. **K8s Integration**: When created with a KubeManager, it can manage K8s connection services
 
 ### Orchestrator (`internal/orchestrator`)
 
@@ -345,13 +316,29 @@ The architecture supports comprehensive testing through:
 
 Example test pattern:
 ```go
-// Mock the Kubernetes manager to simulate health state changes
-kubeMgr := &mockKubeManager{}
-kubeMgr.On("GetClusterNodeHealth", ...).Return(unhealthy).Once()
-kubeMgr.On("GetClusterNodeHealth", ...).Return(healthy).Maybe()
+// Create mocks
+serviceMgr := newMockServiceManager()
+reporter := &mockReporter{}
 
-// Create orchestrator with mocks
-orch := orchestrator.New(kubeMgr, serviceMgr, reporter, config)
+// Configure test scenario
+cfg := Config{
+    MCName: "test-mc",
+    WCName: "test-wc",
+    PortForwards: []config.PortForwardDefinition{...},
+    MCPServers: []config.MCPServerDefinition{...},
+}
+
+// Create orchestrator
+orch := New(serviceMgr, reporter, cfg)
+
+// Simulate K8s health state changes
+orch.GetK8sStateManager().UpdateConnectionState("test-mc", state.ConnectionState{
+    IsHealthy: true,
+    NodeCount: 5,
+})
+
+// Run test scenario
+err := orch.Start(ctx)
 
 // Verify cascade stop behavior
 // ... test assertions ...
@@ -498,9 +485,177 @@ The health checking system is implemented in `internal/orchestrator/health_check
 
 ### State Reconciliation
 The TUI includes a `ReconcileState()` method that:
-- Synchronizes the UI state with the centralized StateStore
-- Updates service statuses, ports, PIDs, and error states
-- Refreshes cluster health information from the K8sStateManager
-- Ensures the UI always reflects the true state of services
+- Ensures the TUI model reflects the true state from the StateStore
+- Runs on startup and can be triggered manually
+- Prevents state drift between the TUI and the underlying services
 
 ## Dependency Management
+
+## Recent Architectural Improvements
+
+### K8s Connections as Services (Issue #46)
+Previously, K8s connections were managed separately from other services. This has been refactored to treat K8s connections as first-class services:
+
+**Benefits:**
+- Unified service management across all service types
+- Consistent health monitoring and state reporting
+- Better integration with the dependency system
+- Simplified orchestrator logic
+
+**Implementation:**
+- K8s connections are now managed by `K8sConnectionService` in `internal/managers/k8s_service.go`
+- They report state changes through the same reporting system as other services
+- Health checks are integrated into the service lifecycle
+- The old `k8smanager` package has been removed
+
+### Enhanced State Management (Issue #46)
+The state management system has been significantly improved to address issues with state duplication and message ordering:
+
+**Phase 1: Unified State Management**
+- Added helper methods to TUI Model to use StateStore as single source of truth
+- Implemented `GetServiceState()`, `GetServiceSnapshot()`, `ReconcileState()` methods
+- TUI controller now queries StateStore instead of maintaining separate state
+
+**Phase 2: Message Sequencing**
+- Added sequence numbers to `ManagedServiceUpdate` messages
+- Implemented `MessageBuffer` for handling out-of-order messages
+- Ensures state updates are applied in the correct order
+
+**Phase 3: Enhanced Correlation Tracking**
+- Added `CascadeInfo` type for tracking cascade relationships
+- Added `StateTransition` type for tracking state changes
+- StateStore automatically records transitions and cascades
+- Correlation IDs link related operations across services
+
+**Phase 4: Improved Error Handling**
+- Added retry logic for dropped critical updates
+- Implemented backpressure notifications for users
+- Enhanced TUIReporter with metrics and retry handling
+
+### Dependency-Aware Service Restart
+The orchestrator now properly handles service restarts with dependency awareness:
+
+**When Restarting a Service:**
+1. The orchestrator checks if all dependencies are running
+2. If any dependency is stopped, it's included in the restart operation
+3. All services are started in proper dependency order
+4. This ensures services always have their requirements satisfied
+
+**Example:**
+Restarting the "grafana" MCP server will automatically restart the "mc-grafana" port forward if it's not running.
+
+### Stop Reason Tracking
+Services now track why they were stopped:
+
+**Stop Reasons:**
+- `StopReasonManual`: User explicitly stopped the service
+- `StopReasonDependency`: Service stopped due to dependency failure
+
+**Behavior:**
+- Manually stopped services won't auto-restart
+- Dependency-stopped services auto-restart when dependencies recover
+- The monitoring goroutine respects these stop reasons
+
+### Improved Restart Delay
+When restarting services (especially port forwards), a 1-second delay is added to ensure:
+- Ports are properly released by the OS
+- Prevents "address already in use" errors
+- Allows graceful cleanup of resources
+
+## Testing Strategy
+
+### Unit Tests
+The codebase includes comprehensive unit tests for:
+- Orchestrator dependency management
+- Service lifecycle operations
+- State management
+- Health checking logic
+
+### Mock Interfaces
+Key interfaces are mocked for testing:
+- `ServiceManagerAPI` for service operations
+- `KubeManager` for Kubernetes operations
+- `ServiceReporter` for state reporting
+
+### Test Patterns
+Common test patterns include:
+- Simulating health state changes
+- Verifying cascade stop behavior
+- Testing restart with dependencies
+- Checking stop reason tracking
+
+Example test setup:
+```go
+// Create mocks
+serviceMgr := newMockServiceManager()
+reporter := &mockReporter{}
+
+// Configure test scenario
+cfg := Config{
+    MCName: "test-mc",
+    WCName: "test-wc",
+    PortForwards: []config.PortForwardDefinition{...},
+    MCPServers: []config.MCPServerDefinition{...},
+}
+
+// Create orchestrator
+orch := New(serviceMgr, reporter, cfg)
+
+// Simulate K8s health state changes
+orch.GetK8sStateManager().UpdateConnectionState("test-mc", state.ConnectionState{
+    IsHealthy: true,
+    NodeCount: 5,
+})
+
+// Run test scenario
+err := orch.Start(ctx)
+
+// Verify cascade stop behavior
+// ... test assertions ...
+```
+
+## Code Organization
+
+### Package Structure
+```
+internal/
+├── orchestrator/       # High-level coordination and dependency management
+│   ├── orchestrator.go # Main orchestrator logic
+│   ├── health_checker.go # Health monitoring implementation
+│   └── orchestrator_test.go # Comprehensive tests
+├── managers/          # Service lifecycle management
+│   ├── manager.go     # Service manager implementation
+│   ├── k8s_service.go # K8s connection service
+│   └── types.go       # Common types
+├── dependency/        # Dependency graph implementation
+│   └── graph.go       # Graph data structure and algorithms
+├── state/            # State management
+│   └── k8s_state.go  # K8s connection state tracking
+├── reporting/        # State reporting and updates
+│   ├── types.go      # Message types and interfaces
+│   ├── store.go      # State store implementation
+│   └── buffer.go     # Message buffering
+└── tui/              # Terminal UI implementation
+    ├── model/        # TUI state and business logic
+    ├── view/         # UI rendering
+    └── controller/   # User input handling
+```
+
+### Key Interfaces
+1. **ServiceManagerAPI**: Core service lifecycle operations
+2. **ServiceReporter**: State change notifications
+3. **K8sStateManager**: K8s connection state tracking
+4. **ServiceHealthChecker**: Health check abstraction
+
+## Future Improvements
+
+### Planned Enhancements
+1. **Persistent State**: Save and restore service state between sessions
+2. **Custom Health Checks**: Allow user-defined health check scripts
+3. **Service Groups**: Start/stop related services as a unit
+4. **Enhanced Recovery**: Exponential backoff and circuit breakers
+
+### Technical Debt
+1. **Configuration Validation**: Stronger validation of service configurations
+2. **Error Aggregation**: Better collection and presentation of multi-service errors
+3. **Performance Monitoring**: Metrics for service startup times and resource usage

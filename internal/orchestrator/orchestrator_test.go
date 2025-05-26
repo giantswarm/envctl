@@ -432,8 +432,8 @@ func TestOrchestrator_RestartService(t *testing.T) {
 	err = orch.RestartService("test-pf")
 	assert.NoError(t, err)
 
-	// Wait for restart to complete
-	time.Sleep(150 * time.Millisecond)
+	// Wait for restart to complete (includes 1 second delay + processing time)
+	time.Sleep(1200 * time.Millisecond)
 
 	// Verify stop was called
 	mu.Lock()
@@ -576,7 +576,7 @@ func TestOrchestrator_RestartServiceWithDependencies(t *testing.T) {
 	// Now restart the MCP - this should also restart the port forward dependency
 	err = orch.RestartService("test-mcp")
 	assert.NoError(t, err)
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(1200 * time.Millisecond) // Wait for restart including 1 second delay
 
 	// Verify both services are running again
 	mu.Lock()
