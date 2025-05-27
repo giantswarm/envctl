@@ -108,12 +108,12 @@ func InitializeModelV2(mcName, wcName, currentContext string, cfg config.EnvctlC
 func DefaultKeyMapV2() KeyMap {
 	return KeyMap{
 		Up: key.NewBinding(
-			key.WithKeys("up", "k"),
-			key.WithHelp("↑/k", "up"),
+			key.WithKeys("k", "up"),
+			key.WithHelp("↑/k", "navigate up"),
 		),
 		Down: key.NewBinding(
-			key.WithKeys("down", "j"),
-			key.WithHelp("↓/j", "down"),
+			key.WithKeys("j", "down"),
+			key.WithHelp("↓/j", "navigate down"),
 		),
 		Tab: key.NewBinding(
 			key.WithKeys("tab"),
@@ -121,23 +121,23 @@ func DefaultKeyMapV2() KeyMap {
 		),
 		ShiftTab: key.NewBinding(
 			key.WithKeys("shift+tab"),
-			key.WithHelp("shift+tab", "prev panel"),
+			key.WithHelp("shift+tab", "previous panel"),
 		),
 		Enter: key.NewBinding(
 			key.WithKeys("enter"),
-			key.WithHelp("enter", "select/start"),
+			key.WithHelp("enter", "select/confirm"),
 		),
 		Esc: key.NewBinding(
 			key.WithKeys("esc"),
-			key.WithHelp("esc", "back"),
+			key.WithHelp("esc", "cancel/back"),
 		),
 		Quit: key.NewBinding(
 			key.WithKeys("q", "ctrl+c"),
-			key.WithHelp("q", "quit"),
+			key.WithHelp("q/ctrl+c", "quit"),
 		),
 		Help: key.NewBinding(
-			key.WithKeys("?"),
-			key.WithHelp("?", "help"),
+			key.WithKeys("h"),
+			key.WithHelp("h", "toggle help"),
 		),
 		NewCollection: key.NewBinding(
 			key.WithKeys("n"),
@@ -148,36 +148,36 @@ func DefaultKeyMapV2() KeyMap {
 			key.WithHelp("r", "restart service"),
 		),
 		Stop: key.NewBinding(
-			key.WithKeys("s"),
-			key.WithHelp("s", "stop service"),
+			key.WithKeys("x"),
+			key.WithHelp("x", "stop service"),
 		),
 		SwitchContext: key.NewBinding(
-			key.WithKeys("c"),
-			key.WithHelp("c", "switch context"),
+			key.WithKeys("s"),
+			key.WithHelp("s", "switch k8s context"),
 		),
 		ToggleDark: key.NewBinding(
-			key.WithKeys("d"),
-			key.WithHelp("d", "toggle dark mode"),
+			key.WithKeys("D"),
+			key.WithHelp("D", "toggle dark/light mode"),
 		),
 		ToggleDebug: key.NewBinding(
-			key.WithKeys("D"),
-			key.WithHelp("D", "toggle debug"),
-		),
-		ToggleLog: key.NewBinding(
-			key.WithKeys("l"),
-			key.WithHelp("l", "toggle log"),
+			key.WithKeys("z"),
+			key.WithHelp("z", "toggle debug info"),
 		),
 		CopyLogs: key.NewBinding(
 			key.WithKeys("y"),
 			key.WithHelp("y", "copy logs"),
 		),
+		ToggleLog: key.NewBinding(
+			key.WithKeys("L"),
+			key.WithHelp("L", "toggle log overlay"),
+		),
 		ToggleMcpConfig: key.NewBinding(
-			key.WithKeys("m"),
-			key.WithHelp("m", "MCP config"),
+			key.WithKeys("C"),
+			key.WithHelp("C", "show MCP config"),
 		),
 		ToggleMcpTools: key.NewBinding(
-			key.WithKeys("t"),
-			key.WithHelp("t", "MCP tools"),
+			key.WithKeys("M"),
+			key.WithHelp("M", "show MCP tools"),
 		),
 	}
 }

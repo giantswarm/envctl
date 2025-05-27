@@ -28,12 +28,15 @@ func renderPortForwardingRowV2(m *model.ModelV2, width, maxHeight int) string {
 			pf := m.PortForwards[keys[i]]
 			if pf == nil {
 				style = color.PanelStyle
-			} else if pf.State == "failed" {
-				style = color.PanelStatusErrorStyle
-			} else if pf.State == "running" {
-				style = color.PanelStatusRunningStyle
 			} else {
-				style = color.PanelStatusInitializingStyle
+				stateLower := strings.ToLower(pf.State)
+				if stateLower == "failed" {
+					style = color.PanelStatusErrorStyle
+				} else if stateLower == "running" {
+					style = color.PanelStatusRunningStyle
+				} else {
+					style = color.PanelStatusInitializingStyle
+				}
 			}
 		} else {
 			style = color.PanelStyle
@@ -59,12 +62,17 @@ func renderPortForwardingRowV2(m *model.ModelV2, width, maxHeight int) string {
 		if i < len(keys) {
 			pf := m.PortForwards[keys[i]]
 			var bs lipgloss.Style
-			if pf.State == "failed" {
-				bs = color.PanelStatusErrorStyle
-			} else if pf.State == "running" {
-				bs = color.PanelStatusRunningStyle
+			if pf == nil {
+				bs = color.PanelStyle
 			} else {
-				bs = color.PanelStatusInitializingStyle
+				stateLower := strings.ToLower(pf.State)
+				if stateLower == "failed" {
+					bs = color.PanelStatusErrorStyle
+				} else if stateLower == "running" {
+					bs = color.PanelStatusRunningStyle
+				} else {
+					bs = color.PanelStatusInitializingStyle
+				}
 			}
 			borderSize = bs.GetHorizontalFrameSize()
 			rendered = renderPortForwardPanelV2(m, keys[i], pf, inner+borderSize)
@@ -85,15 +93,26 @@ func renderPortForwardPanelV2(m *model.ModelV2, label string, pf *api.PortForwar
 	var baseStyleForPanel, focusedBaseStyleForPanel lipgloss.Style
 	trimmedStatus := strings.TrimSpace(pf.State)
 	statusToCheck := strings.ToLower(trimmedStatus)
+	healthLower := strings.ToLower(pf.Health)
 
+	// Determine panel style based on state AND health
 	switch {
-	case pf.State == "failed" || strings.HasPrefix(statusToCheck, "error"):
+	case statusToCheck == "failed" || strings.HasPrefix(statusToCheck, "error"):
 		baseStyleForPanel = color.PanelStatusErrorStyle
 		focusedBaseStyleForPanel = color.FocusedPanelStatusErrorStyle
-	case pf.State == "running":
+	case statusToCheck == "running" && healthLower == "healthy":
+		// Running and healthy = green
 		baseStyleForPanel = color.PanelStatusRunningStyle
 		focusedBaseStyleForPanel = color.FocusedPanelStatusRunningStyle
-	case pf.State == "stopped" || strings.HasPrefix(statusToCheck, "exited") || strings.HasPrefix(statusToCheck, "killed"):
+	case statusToCheck == "running" && healthLower == "unhealthy":
+		// Running but unhealthy = error/red
+		baseStyleForPanel = color.PanelStatusErrorStyle
+		focusedBaseStyleForPanel = color.FocusedPanelStatusErrorStyle
+	case statusToCheck == "running":
+		// Running but health unknown/checking = yellow/warning
+		baseStyleForPanel = color.PanelStatusInitializingStyle
+		focusedBaseStyleForPanel = color.FocusedPanelStatusInitializingStyle
+	case statusToCheck == "stopped" || strings.HasPrefix(statusToCheck, "exited") || strings.HasPrefix(statusToCheck, "killed"):
 		baseStyleForPanel = color.PanelStatusExitedStyle
 		focusedBaseStyleForPanel = color.FocusedPanelStatusExitedStyle
 	default:
@@ -108,11 +127,11 @@ func renderPortForwardPanelV2(m *model.ModelV2, label string, pf *api.PortForwar
 
 	var contentFg lipgloss.Style
 	switch {
-	case pf.State == "failed" || strings.HasPrefix(statusToCheck, "error"):
+	case statusToCheck == "failed" || strings.HasPrefix(statusToCheck, "error") || (statusToCheck == "running" && healthLower == "unhealthy"):
 		contentFg = color.StatusMsgErrorStyle
-	case pf.State == "running":
+	case statusToCheck == "running" && healthLower == "healthy":
 		contentFg = color.StatusMsgRunningStyle
-	case pf.State == "stopped" || strings.HasPrefix(statusToCheck, "exited") || strings.HasPrefix(statusToCheck, "killed"):
+	case statusToCheck == "stopped" || strings.HasPrefix(statusToCheck, "exited") || strings.HasPrefix(statusToCheck, "killed"):
 		contentFg = color.StatusMsgExitedStyle
 	default:
 		contentFg = color.StatusMsgInitializingStyle
@@ -135,11 +154,14 @@ func renderPortForwardPanelV2(m *model.ModelV2, label string, pf *api.PortForwar
 
 	var statusIcon string
 	switch {
-	case pf.State == "running":
+	case statusToCheck == "running" && healthLower == "healthy":
 		statusIcon = SafeIcon(IconPlay)
-	case pf.State == "failed" || strings.HasPrefix(statusToCheck, "error"):
+	case statusToCheck == "running":
+		// Running but not healthy yet
+		statusIcon = SafeIcon(IconHourglass)
+	case statusToCheck == "failed" || strings.HasPrefix(statusToCheck, "error"):
 		statusIcon = SafeIcon(IconCross)
-	case pf.State == "stopped" || strings.HasPrefix(statusToCheck, "exited") || strings.HasPrefix(statusToCheck, "killed"):
+	case statusToCheck == "stopped" || strings.HasPrefix(statusToCheck, "exited") || strings.HasPrefix(statusToCheck, "killed"):
 		statusIcon = SafeIcon(IconStop)
 	default:
 		statusIcon = SafeIcon(IconHourglass)
@@ -149,10 +171,10 @@ func renderPortForwardPanelV2(m *model.ModelV2, label string, pf *api.PortForwar
 	// Add health indicator
 	b.WriteString("\n")
 	var healthIcon, healthText string
-	if pf.State == "running" && (pf.Health == "healthy" || pf.Health == "Healthy") {
+	if statusToCheck == "running" && healthLower == "healthy" {
 		healthIcon = SafeIcon(IconCheck)
 		healthText = "Healthy"
-	} else if pf.State == "failed" || pf.Health == "unhealthy" || pf.Health == "Unhealthy" {
+	} else if statusToCheck == "failed" || healthLower == "unhealthy" {
 		healthIcon = SafeIcon(IconCross)
 		healthText = "Unhealthy"
 	} else {

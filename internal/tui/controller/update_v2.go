@@ -103,8 +103,9 @@ func UpdateV2(msg tea.Msg, m *model.ModelV2) (*model.ModelV2, tea.Cmd) {
 
 	case model.NewLogEntryMsg:
 		// Format and add log entry to activity log
-		logLine := fmt.Sprintf("[%s] %s: %s",
+		logLine := fmt.Sprintf("[%s] [%s] %s: %s",
 			msg.Entry.Timestamp.Format("15:04:05"),
+			msg.Entry.Level.String(),
 			msg.Entry.Subsystem,
 			msg.Entry.Message,
 		)

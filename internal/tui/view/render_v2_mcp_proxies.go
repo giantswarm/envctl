@@ -33,17 +33,24 @@ func renderMcpProxiesRowV2(m *model.ModelV2, width, maxHeight int) string {
 	styles := make([]lipgloss.Style, numServers)
 	for i, def := range m.MCPServerConfig {
 		proc := m.MCPServers[def.Name]
-		st := ""
-		if proc != nil {
-			st = strings.ToLower(proc.State)
-		}
 		var s lipgloss.Style
-		switch {
-		case proc != nil && (proc.State == "failed" || strings.Contains(st, "error")):
-			s = color.PanelStatusErrorStyle
-		case proc != nil && proc.State == "running":
-			s = color.PanelStatusRunningStyle
-		default:
+		if proc != nil {
+			stateLower := strings.ToLower(proc.State)
+			healthLower := strings.ToLower(proc.Health)
+			switch {
+			case stateLower == "failed" || strings.Contains(stateLower, "error"):
+				s = color.PanelStatusErrorStyle
+			case stateLower == "running" && healthLower == "healthy":
+				s = color.PanelStatusRunningStyle
+			case stateLower == "running" && healthLower == "unhealthy":
+				s = color.PanelStatusErrorStyle
+			case stateLower == "running":
+				// Running but health unknown
+				s = color.PanelStatusInitializingStyle
+			default:
+				s = color.PanelStatusInitializingStyle
+			}
+		} else {
 			s = color.PanelStatusInitializingStyle
 		}
 		styles[i] = s
@@ -109,15 +116,23 @@ func renderMcpProxyPanelV2(serverName string, predefinedData config.MCPServerDef
 		if proc.Port > 0 {
 			portStr = fmt.Sprintf("Port: %d", proc.Port)
 		}
-		st := strings.ToLower(proc.State)
+		stateLower := strings.ToLower(proc.State)
+		healthLower := strings.ToLower(proc.Health)
 		switch {
-		case proc.State == "failed" || strings.Contains(st, "error"):
+		case stateLower == "failed" || strings.Contains(stateLower, "error"):
 			baseStyle = color.PanelStatusErrorStyle
 			contentFg = color.StatusMsgErrorStyle
-		case proc.State == "running":
+		case stateLower == "running" && healthLower == "healthy":
 			baseStyle = color.PanelStatusRunningStyle
 			contentFg = color.StatusMsgRunningStyle
-		case proc.State == "stopped":
+		case stateLower == "running" && healthLower == "unhealthy":
+			baseStyle = color.PanelStatusErrorStyle
+			contentFg = color.StatusMsgErrorStyle
+		case stateLower == "running":
+			// Running but health unknown
+			baseStyle = color.PanelStatusInitializingStyle
+			contentFg = color.StatusMsgInitializingStyle
+		case stateLower == "stopped":
 			baseStyle = color.PanelStatusExitedStyle
 			contentFg = color.StatusMsgExitedStyle
 		default:
@@ -150,13 +165,17 @@ func renderMcpProxyPanelV2(serverName string, predefinedData config.MCPServerDef
 	if proc == nil {
 		iconStr = SafeIcon(IconWarning)
 	} else {
-		st := strings.ToLower(proc.State)
+		stateLower := strings.ToLower(proc.State)
+		healthLower := strings.ToLower(proc.Health)
 		switch {
-		case proc.State == "failed" || strings.Contains(st, "error"):
+		case stateLower == "failed" || strings.Contains(stateLower, "error"):
 			iconStr = SafeIcon(IconCross)
-		case proc.State == "running":
+		case stateLower == "running" && healthLower == "healthy":
 			iconStr = SafeIcon(IconPlay)
-		case proc.State == "stopped":
+		case stateLower == "running":
+			// Running but not healthy yet
+			iconStr = SafeIcon(IconHourglass)
+		case stateLower == "stopped":
 			iconStr = SafeIcon(IconStop)
 		default:
 			iconStr = SafeIcon(IconHourglass)
@@ -168,10 +187,12 @@ func renderMcpProxyPanelV2(serverName string, predefinedData config.MCPServerDef
 	if proc != nil {
 		b.WriteString("\n")
 		var healthIcon, healthText string
-		if proc.State == "running" && (proc.Health == "healthy" || proc.Health == "Healthy") {
+		stateLower := strings.ToLower(proc.State)
+		healthLower := strings.ToLower(proc.Health)
+		if stateLower == "running" && healthLower == "healthy" {
 			healthIcon = SafeIcon(IconCheck)
 			healthText = "Healthy"
-		} else if proc.State == "failed" || proc.Health == "unhealthy" || proc.Health == "Unhealthy" {
+		} else if stateLower == "failed" || healthLower == "unhealthy" {
 			healthIcon = SafeIcon(IconCross)
 			healthText = "Unhealthy"
 		} else {
