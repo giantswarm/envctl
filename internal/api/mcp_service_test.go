@@ -5,7 +5,119 @@ import (
 	"envctl/internal/services"
 	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
+
+// MockServiceRegistry is a mock implementation of ServiceRegistry
+type MockServiceRegistry struct {
+	mock.Mock
+}
+
+func (m *MockServiceRegistry) Register(service services.Service) error {
+	args := m.Called(service)
+	return args.Error(0)
+}
+
+func (m *MockServiceRegistry) Unregister(label string) error {
+	args := m.Called(label)
+	return args.Error(0)
+}
+
+func (m *MockServiceRegistry) Get(label string) (services.Service, bool) {
+	args := m.Called(label)
+	if args.Get(0) == nil {
+		return nil, args.Bool(1)
+	}
+	return args.Get(0).(services.Service), args.Bool(1)
+}
+
+func (m *MockServiceRegistry) GetAll() []services.Service {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).([]services.Service)
+}
+
+func (m *MockServiceRegistry) GetByType(serviceType services.ServiceType) []services.Service {
+	args := m.Called(serviceType)
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).([]services.Service)
+}
+
+// MockService is a mock implementation of Service
+type MockService struct {
+	mock.Mock
+}
+
+func (m *MockService) GetLabel() string {
+	args := m.Called()
+	return args.String(0)
+}
+
+func (m *MockService) GetType() services.ServiceType {
+	args := m.Called()
+	return args.Get(0).(services.ServiceType)
+}
+
+func (m *MockService) GetState() services.ServiceState {
+	args := m.Called()
+	return args.Get(0).(services.ServiceState)
+}
+
+func (m *MockService) GetHealth() services.HealthStatus {
+	args := m.Called()
+	return args.Get(0).(services.HealthStatus)
+}
+
+func (m *MockService) GetLastError() error {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Error(0)
+}
+
+func (m *MockService) Start(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+
+func (m *MockService) Stop(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+
+func (m *MockService) Restart(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+
+func (m *MockService) GetDependencies() []string {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).([]string)
+}
+
+func (m *MockService) SetStateChangeCallback(callback services.StateChangeCallback) {
+	m.Called(callback)
+}
+
+// MockServiceDataProvider is a mock implementation of ServiceDataProvider
+type MockServiceDataProvider struct {
+	MockService
+}
+
+func (m *MockServiceDataProvider) GetServiceData() map[string]interface{} {
+	args := m.Called()
+	return args.Get(0).(map[string]interface{})
+}
 
 func TestNewMCPServiceAPI(t *testing.T) {
 	registry := newMockRegistry()
@@ -243,4 +355,260 @@ func TestMCPServerInfo_Defaults(t *testing.T) {
 	if info.Enabled {
 		t.Error("Expected enabled to be false by default")
 	}
+}
+
+func TestGetTools(t *testing.T) {
+	tests := []struct {
+		name          string
+		serverName    string
+		setupMocks    func(*MockServiceRegistry, *MockServiceDataProvider)
+		expectedError string
+		expectedTools []MCPTool
+	}{
+		{
+			name:       "server not found",
+			serverName: "test-server",
+			setupMocks: func(registry *MockServiceRegistry, service *MockServiceDataProvider) {
+				registry.On("Get", "test-server").Return(nil, false)
+			},
+			expectedError: "failed to get server info: MCP server test-server not found",
+		},
+		{
+			name:       "server not running",
+			serverName: "test-server",
+			setupMocks: func(registry *MockServiceRegistry, service *MockServiceDataProvider) {
+				registry.On("Get", "test-server").Return(service, true)
+				service.On("GetType").Return(services.TypeMCPServer)
+				service.On("GetLabel").Return("test-server")
+				service.On("GetState").Return(services.StateStopped)
+				service.On("GetHealth").Return(services.HealthUnknown)
+				service.On("GetLastError").Return(nil)
+				service.On("GetServiceData").Return(map[string]interface{}{
+					"name": "test-server",
+					"port": 8080,
+				})
+			},
+			expectedError: "MCP server test-server is not running (state: Stopped)",
+		},
+		{
+			name:       "server has no port",
+			serverName: "test-server",
+			setupMocks: func(registry *MockServiceRegistry, service *MockServiceDataProvider) {
+				registry.On("Get", "test-server").Return(service, true)
+				service.On("GetType").Return(services.TypeMCPServer)
+				service.On("GetLabel").Return("test-server")
+				service.On("GetState").Return(services.StateRunning)
+				service.On("GetHealth").Return(services.HealthHealthy)
+				service.On("GetLastError").Return(nil)
+				service.On("GetServiceData").Return(map[string]interface{}{
+					"name": "test-server",
+				})
+			},
+			expectedError: "MCP server test-server has no port configured",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create mocks
+			mockRegistry := new(MockServiceRegistry)
+			mockService := new(MockServiceDataProvider)
+
+			// Setup mocks
+			tt.setupMocks(mockRegistry, mockService)
+
+			// Create API
+			api := NewMCPServiceAPI(mockRegistry)
+
+			// Call GetTools
+			ctx := context.Background()
+			tools, err := api.GetTools(ctx, tt.serverName)
+
+			// Check results
+			if tt.expectedError != "" {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectedError)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expectedTools, tools)
+			}
+
+			// Verify mocks
+			mockRegistry.AssertExpectations(t)
+			mockService.AssertExpectations(t)
+		})
+	}
+}
+
+func TestGetServerInfo(t *testing.T) {
+	tests := []struct {
+		name          string
+		label         string
+		setupMocks    func(*MockServiceRegistry, *MockServiceDataProvider)
+		expectedInfo  *MCPServerInfo
+		expectedError string
+	}{
+		{
+			name:  "server not found",
+			label: "test-server",
+			setupMocks: func(registry *MockServiceRegistry, service *MockServiceDataProvider) {
+				registry.On("Get", "test-server").Return(nil, false)
+			},
+			expectedError: "MCP server test-server not found",
+		},
+		{
+			name:  "not an MCP server",
+			label: "test-server",
+			setupMocks: func(registry *MockServiceRegistry, service *MockServiceDataProvider) {
+				registry.On("Get", "test-server").Return(service, true)
+				service.On("GetType").Return(services.ServiceType("other"))
+			},
+			expectedError: "service test-server is not an MCP server",
+		},
+		{
+			name:  "successful retrieval",
+			label: "test-server",
+			setupMocks: func(registry *MockServiceRegistry, service *MockServiceDataProvider) {
+				registry.On("Get", "test-server").Return(service, true)
+				service.On("GetType").Return(services.TypeMCPServer)
+				service.On("GetLabel").Return("test-server")
+				service.On("GetState").Return(services.StateRunning)
+				service.On("GetHealth").Return(services.HealthHealthy)
+				service.On("GetLastError").Return(nil)
+				service.On("GetServiceData").Return(map[string]interface{}{
+					"name":    "Test Server",
+					"port":    8080,
+					"pid":     12345,
+					"icon":    "🔧",
+					"enabled": true,
+				})
+			},
+			expectedInfo: &MCPServerInfo{
+				Label:   "test-server",
+				Name:    "Test Server",
+				Port:    8080,
+				PID:     12345,
+				State:   "Running",
+				Health:  "Healthy",
+				Icon:    "🔧",
+				Enabled: true,
+			},
+		},
+		{
+			name:  "server with error",
+			label: "test-server",
+			setupMocks: func(registry *MockServiceRegistry, service *MockServiceDataProvider) {
+				registry.On("Get", "test-server").Return(service, true)
+				service.On("GetType").Return(services.TypeMCPServer)
+				service.On("GetLabel").Return("test-server")
+				service.On("GetState").Return(services.StateFailed)
+				service.On("GetHealth").Return(services.HealthUnhealthy)
+				service.On("GetLastError").Return(errors.New("connection failed"))
+				service.On("GetServiceData").Return(map[string]interface{}{
+					"name": "Test Server",
+				})
+			},
+			expectedInfo: &MCPServerInfo{
+				Label:  "test-server",
+				Name:   "Test Server",
+				State:  "Failed",
+				Health: "Unhealthy",
+				Error:  "connection failed",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create mocks
+			mockRegistry := new(MockServiceRegistry)
+			mockService := new(MockServiceDataProvider)
+
+			// Setup mocks
+			tt.setupMocks(mockRegistry, mockService)
+
+			// Create API
+			api := NewMCPServiceAPI(mockRegistry)
+
+			// Call GetServerInfo
+			ctx := context.Background()
+			info, err := api.GetServerInfo(ctx, tt.label)
+
+			// Check results
+			if tt.expectedError != "" {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectedError)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expectedInfo, info)
+			}
+
+			// Verify mocks
+			mockRegistry.AssertExpectations(t)
+			mockService.AssertExpectations(t)
+		})
+	}
+}
+
+func TestListServers(t *testing.T) {
+	// Create mocks
+	mockRegistry := new(MockServiceRegistry)
+	mockService1 := new(MockServiceDataProvider)
+	mockService2 := new(MockServiceDataProvider)
+
+	// Setup mocks
+	mockRegistry.On("GetByType", services.TypeMCPServer).Return([]services.Service{
+		mockService1,
+		mockService2,
+	})
+
+	// Setup registry Get calls for GetServerInfo
+	mockRegistry.On("Get", "server1").Return(mockService1, true)
+	mockRegistry.On("Get", "server2").Return(mockService2, true)
+
+	// Setup service 1
+	mockService1.On("GetLabel").Return("server1")
+	mockService1.On("GetType").Return(services.TypeMCPServer)
+	mockService1.On("GetState").Return(services.StateRunning)
+	mockService1.On("GetHealth").Return(services.HealthHealthy)
+	mockService1.On("GetLastError").Return(nil)
+	mockService1.On("GetServiceData").Return(map[string]interface{}{
+		"name": "Server 1",
+		"port": 8080,
+	})
+
+	// Setup service 2
+	mockService2.On("GetLabel").Return("server2")
+	mockService2.On("GetType").Return(services.TypeMCPServer)
+	mockService2.On("GetState").Return(services.StateStopped)
+	mockService2.On("GetHealth").Return(services.HealthUnknown)
+	mockService2.On("GetLastError").Return(nil)
+	mockService2.On("GetServiceData").Return(map[string]interface{}{
+		"name": "Server 2",
+		"port": 8081,
+	})
+
+	// Create API
+	api := NewMCPServiceAPI(mockRegistry)
+
+	// Call ListServers
+	ctx := context.Background()
+	servers, err := api.ListServers(ctx)
+
+	// Check results
+	assert.NoError(t, err)
+	assert.Len(t, servers, 2)
+	assert.Equal(t, "server1", servers[0].Label)
+	assert.Equal(t, "Server 1", servers[0].Name)
+	assert.Equal(t, 8080, servers[0].Port)
+	assert.Equal(t, "Running", servers[0].State)
+	assert.Equal(t, "server2", servers[1].Label)
+	assert.Equal(t, "Server 2", servers[1].Name)
+	assert.Equal(t, 8081, servers[1].Port)
+	assert.Equal(t, "Stopped", servers[1].State)
+
+	// Verify mocks
+	mockRegistry.AssertExpectations(t)
+	mockService1.AssertExpectations(t)
+	mockService2.AssertExpectations(t)
 }

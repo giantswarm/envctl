@@ -4,6 +4,10 @@ import (
 	"context"
 	"envctl/internal/services"
 	"fmt"
+	"time"
+
+	"github.com/mark3labs/mcp-go/client"
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // MCPServerInfo contains information about an MCP server
@@ -26,6 +30,9 @@ type MCPServiceAPI interface {
 
 	// ListServers returns information about all MCP servers
 	ListServers(ctx context.Context) ([]*MCPServerInfo, error)
+
+	// GetTools returns the list of tools exposed by an MCP server
+	GetTools(ctx context.Context, serverName string) ([]MCPTool, error)
 }
 
 // mcpServiceAPI implements MCPServiceAPI
@@ -101,4 +108,79 @@ func (api *mcpServiceAPI) ListServers(ctx context.Context) ([]*MCPServerInfo, er
 	}
 
 	return servers, nil
+}
+
+// GetTools returns the list of tools exposed by an MCP server
+func (api *mcpServiceAPI) GetTools(ctx context.Context, serverName string) ([]MCPTool, error) {
+	// Create a context with timeout
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	// Get server info to find the port
+	serverInfo, err := api.GetServerInfo(ctx, serverName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get server info: %w", err)
+	}
+
+	if serverInfo.State != "Running" {
+		return nil, fmt.Errorf("MCP server %s is not running (state: %s)", serverName, serverInfo.State)
+	}
+
+	if serverInfo.Port == 0 {
+		return nil, fmt.Errorf("MCP server %s has no port configured", serverName)
+	}
+
+	// Create MCP client using the library
+	port := serverInfo.Port
+	mcpClient, err := client.NewSSEMCPClient(fmt.Sprintf("http://localhost:%d/sse", port))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create MCP client: %w", err)
+	}
+	defer mcpClient.Close()
+
+	// Start the SSE transport
+	if err := mcpClient.Start(ctx); err != nil {
+		return nil, fmt.Errorf("failed to start MCP client: %w", err)
+	}
+
+	// Initialize the MCP protocol
+	initResult, err := mcpClient.Initialize(ctx, mcp.InitializeRequest{
+		Params: struct {
+			ProtocolVersion string                 `json:"protocolVersion"`
+			Capabilities    mcp.ClientCapabilities `json:"capabilities"`
+			ClientInfo      mcp.Implementation     `json:"clientInfo"`
+		}{
+			ProtocolVersion: "2024-11-05",
+			ClientInfo: mcp.Implementation{
+				Name:    "envctl",
+				Version: "1.0.0",
+			},
+			Capabilities: mcp.ClientCapabilities{},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize MCP protocol: %w", err)
+	}
+
+	// Check if the server supports tools
+	if initResult.Capabilities.Tools == nil {
+		return []MCPTool{}, nil // No tools available
+	}
+
+	// List available tools
+	toolsResult, err := mcpClient.ListTools(ctx, mcp.ListToolsRequest{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list tools: %w", err)
+	}
+
+	// Convert to our MCPTool type
+	tools := make([]MCPTool, 0, len(toolsResult.Tools))
+	for _, tool := range toolsResult.Tools {
+		tools = append(tools, MCPTool{
+			Name:        tool.Name,
+			Description: tool.Description,
+		})
+	}
+
+	return tools, nil
 }

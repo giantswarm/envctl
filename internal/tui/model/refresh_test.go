@@ -59,6 +59,10 @@ func (m *mockMCPServiceAPI) GetServerInfo(ctx context.Context, label string) (*a
 	return nil, nil
 }
 
+func (m *mockMCPServiceAPI) GetTools(ctx context.Context, serverName string) ([]api.MCPTool, error) {
+	return []api.MCPTool{}, nil
+}
+
 func TestRefreshServiceData(t *testing.T) {
 	tests := []struct {
 		name           string

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"envctl/internal/api"
 	"envctl/internal/kube"
 	"envctl/internal/tui/model"
@@ -126,6 +127,45 @@ func Update(msg tea.Msg, m *model.Model) (*model.Model, tea.Cmd) {
 
 		// Re-queue the log listener
 		return m, m.ListenForLogs()
+
+	case model.MCPToolsLoadedMsg:
+		// Store the loaded tools
+		m.MCPTools[msg.ServerName] = msg.Tools
+
+		// Update the viewport content with all loaded tools
+		// Make sure viewport dimensions are set first
+		if m.McpToolsViewport.Width == 0 {
+			// Use a reasonable default width if viewport hasn't been sized yet
+			m.McpToolsViewport.Width = 80
+		}
+		toolsContent := view.GenerateMcpToolsContent(m)
+		m.McpToolsViewport.SetContent(toolsContent)
+
+		return m, nil
+
+	case model.MCPToolsErrorMsg:
+		// Log the error
+		logLine := fmt.Sprintf("[%s] [ERROR] Failed to fetch tools for %s: %v",
+			time.Now().Format("15:04:05"),
+			msg.ServerName,
+			msg.Error,
+		)
+		m.ActivityLog = append(m.ActivityLog, logLine)
+		m.ActivityLogDirty = true
+
+		// Store empty tools list for this server
+		m.MCPTools[msg.ServerName] = []api.MCPTool{}
+
+		// Update the viewport content
+		// Make sure viewport dimensions are set first
+		if m.McpToolsViewport.Width == 0 {
+			// Use a reasonable default width if viewport hasn't been sized yet
+			m.McpToolsViewport.Width = 80
+		}
+		toolsContent := view.GenerateMcpToolsContent(m)
+		m.McpToolsViewport.SetContent(toolsContent)
+
+		return m, nil
 
 	case tea.KeyMsg:
 		cmds = append(cmds, handleKeyPress(m, msg))
@@ -312,10 +352,22 @@ func handleMainDashboardKeys(m *model.Model, key tea.KeyMsg) tea.Cmd {
 	case "M":
 		m.LastAppMode = m.CurrentAppMode
 		m.CurrentAppMode = model.ModeMcpToolsOverlay
-		// Generate and set tools content
-		toolsContent := view.GenerateMcpToolsContent(m)
-		m.McpToolsViewport.SetContent(toolsContent)
+		// Clear existing tools
+		m.MCPTools = make(map[string][]api.MCPTool)
+
+		// Show loading state
+		m.McpToolsViewport.SetContent("Loading MCP tools...\n")
 		m.McpToolsViewport.GotoTop()
+
+		// Fetch tools for all running MCP servers
+		var cmds []tea.Cmd
+		for serverName, serverInfo := range m.MCPServers {
+			if serverInfo.State == "Running" {
+				cmds = append(cmds, fetchMCPTools(m, serverName))
+			}
+		}
+
+		return tea.Batch(cmds...)
 
 	case "D":
 		// Toggle dark mode
@@ -445,4 +497,22 @@ func tickCmd() tea.Cmd {
 	return tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
 		return tickMsg{}
 	})
+}
+
+// fetchMCPTools returns a command to fetch tools for an MCP server
+func fetchMCPTools(m *model.Model, serverName string) tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+		tools, err := m.MCPServiceAPI.GetTools(ctx, serverName)
+		if err != nil {
+			return model.MCPToolsErrorMsg{
+				ServerName: serverName,
+				Error:      err,
+			}
+		}
+		return model.MCPToolsLoadedMsg{
+			ServerName: serverName,
+			Tools:      tools,
+		}
+	}
 }

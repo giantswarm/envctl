@@ -40,7 +40,7 @@ func renderHelpOverlay(m *model.Model) string {
 	helpLines = append(helpLines, "  h or ?         Show/hide this help")
 	helpLines = append(helpLines, "  L              Show activity log overlay")
 	helpLines = append(helpLines, "  C              Show MCP configuration")
-	helpLines = append(helpLines, "  T              Show MCP tools")
+	helpLines = append(helpLines, "  M              Show MCP tools")
 	helpLines = append(helpLines, "  D              Toggle dark mode")
 	helpLines = append(helpLines, "  z              Toggle debug mode")
 	helpLines = append(helpLines, "")
@@ -168,9 +168,8 @@ func renderMcpToolsOverlay(m *model.Model) string {
 	m.McpToolsViewport.Width = newToolsViewportWidth
 	m.McpToolsViewport.Height = newToolsViewportHeight
 
-	// Generate and set content
-	toolsContent := GenerateMcpToolsContent(m)
-	m.McpToolsViewport.SetContent(toolsContent)
+	// Content is already set by the controller when tools are loaded
+	// DO NOT set content here as it causes flickering during re-renders
 
 	viewportView := m.McpToolsViewport.View()
 	content := lipgloss.JoinVertical(lipgloss.Left, toolsTitleView, viewportView)
@@ -185,9 +184,15 @@ func renderMcpToolsOverlay(m *model.Model) string {
 	return lipgloss.JoinVertical(lipgloss.Left, overlayCanvas, statusBar)
 }
 
-// GenerateMcpToolsContent(generates MCP tools content for Model
+// GenerateMcpToolsContent generates MCP tools content for Model
 func GenerateMcpToolsContent(m *model.Model) string {
 	var content []string
+
+	// Calculate available width for wrapping (viewport width minus some padding)
+	wrapWidth := m.McpToolsViewport.Width - 4 // Leave some margin
+	if wrapWidth < 40 {
+		wrapWidth = 40 // Minimum width
+	}
 
 	for serverName, tools := range m.MCPTools {
 		content = append(content, fmt.Sprintf("=== %s ===", serverName))
@@ -195,10 +200,20 @@ func GenerateMcpToolsContent(m *model.Model) string {
 			content = append(content, "  No tools available")
 		} else {
 			for _, tool := range tools {
-				content = append(content, fmt.Sprintf("  • %s: %s", tool.Name, tool.Description))
+				// Format tool name on its own line
+				content = append(content, fmt.Sprintf("  • %s", tool.Name))
+
+				// Wrap and indent the description
+				if tool.Description != "" {
+					wrapped := wrapText(tool.Description, wrapWidth-6) // Account for "    " indentation
+					for _, line := range wrapped {
+						content = append(content, fmt.Sprintf("    %s", line))
+					}
+				}
+				content = append(content, "") // Empty line between tools
 			}
 		}
-		content = append(content, "")
+		content = append(content, "") // Empty line between servers
 	}
 
 	if len(content) == 0 {
@@ -206,4 +221,32 @@ func GenerateMcpToolsContent(m *model.Model) string {
 	}
 
 	return strings.Join(content, "\n")
+}
+
+// wrapText wraps text to fit within the specified width
+func wrapText(text string, width int) []string {
+	if width <= 0 {
+		return []string{text}
+	}
+
+	var lines []string
+	words := strings.Fields(text)
+	if len(words) == 0 {
+		return []string{}
+	}
+
+	currentLine := words[0]
+	for _, word := range words[1:] {
+		if len(currentLine)+1+len(word) <= width {
+			currentLine += " " + word
+		} else {
+			lines = append(lines, currentLine)
+			currentLine = word
+		}
+	}
+	if currentLine != "" {
+		lines = append(lines, currentLine)
+	}
+
+	return lines
 }
