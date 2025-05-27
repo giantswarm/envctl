@@ -98,12 +98,20 @@ func (m *ModelV2) RefreshServiceData() error {
 		return fmt.Errorf("failed to list K8s connections: %w", err)
 	}
 
-	m.K8sConnections = make(map[string]*api.K8sConnectionInfo)
-	m.K8sConnectionOrder = []string{}
+	// Update K8s connections while preserving order
+	newK8sConnections := make(map[string]*api.K8sConnectionInfo)
 	for _, conn := range k8sConns {
-		m.K8sConnections[conn.Label] = conn
-		m.K8sConnectionOrder = append(m.K8sConnectionOrder, conn.Label)
+		newK8sConnections[conn.Label] = conn
 	}
+
+	// Only update order if it's empty (first time)
+	if len(m.K8sConnectionOrder) == 0 {
+		m.K8sConnectionOrder = []string{}
+		for _, conn := range k8sConns {
+			m.K8sConnectionOrder = append(m.K8sConnectionOrder, conn.Label)
+		}
+	}
+	m.K8sConnections = newK8sConnections
 
 	// Refresh port forwards
 	portForwards, err := m.PortForwardAPI.ListForwards(ctx)
@@ -111,12 +119,20 @@ func (m *ModelV2) RefreshServiceData() error {
 		return fmt.Errorf("failed to list port forwards: %w", err)
 	}
 
-	m.PortForwards = make(map[string]*api.PortForwardServiceInfo)
-	m.PortForwardOrder = []string{}
+	// Update port forwards while preserving order
+	newPortForwards := make(map[string]*api.PortForwardServiceInfo)
 	for _, pf := range portForwards {
-		m.PortForwards[pf.Label] = pf
-		m.PortForwardOrder = append(m.PortForwardOrder, pf.Label)
+		newPortForwards[pf.Label] = pf
 	}
+
+	// Only update order if it's empty (first time)
+	if len(m.PortForwardOrder) == 0 {
+		m.PortForwardOrder = []string{}
+		for _, pf := range portForwards {
+			m.PortForwardOrder = append(m.PortForwardOrder, pf.Label)
+		}
+	}
+	m.PortForwards = newPortForwards
 
 	// Refresh MCP servers
 	mcpServers, err := m.MCPServiceAPI.ListServers(ctx)
@@ -124,12 +140,20 @@ func (m *ModelV2) RefreshServiceData() error {
 		return fmt.Errorf("failed to list MCP servers: %w", err)
 	}
 
-	m.MCPServers = make(map[string]*api.MCPServerInfo)
-	m.MCPServerOrder = []string{}
+	// Update MCP servers while preserving order
+	newMCPServers := make(map[string]*api.MCPServerInfo)
 	for _, mcp := range mcpServers {
-		m.MCPServers[mcp.Name] = mcp
-		m.MCPServerOrder = append(m.MCPServerOrder, mcp.Name)
+		newMCPServers[mcp.Name] = mcp
 	}
+
+	// Only update order if it's empty (first time)
+	if len(m.MCPServerOrder) == 0 {
+		m.MCPServerOrder = []string{}
+		for _, mcp := range mcpServers {
+			m.MCPServerOrder = append(m.MCPServerOrder, mcp.Name)
+		}
+	}
+	m.MCPServers = newMCPServers
 
 	return nil
 }

@@ -125,10 +125,10 @@ Arguments:
 			logging.Info("CLI", "--- Setting up orchestrator for service management ---")
 
 			ctx := context.Background()
-			
+
 			if useV2 {
 				logging.Info("CLI", "Using v2 service architecture")
-				
+
 				// Create v2 orchestrator
 				orchConfig := orchestrator.ConfigV2{
 					MCName:       managementClusterArg,
@@ -137,15 +137,15 @@ Arguments:
 					MCPServers:   envctlCfg.MCPServers,
 				}
 				orchV2 := orchestrator.NewV2(orchConfig)
-				
+
 				// Start orchestrator
 				if err := orchV2.Start(ctx); err != nil {
 					logging.Error("CLI", err, "Failed to start orchestrator v2")
 					return err
 				}
-				
+
 				logging.Info("CLI", "Services started with v2 architecture. Press Ctrl+C to stop all services and exit.")
-				
+
 				sigChan := make(chan os.Signal, 1)
 				signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 				<-sigChan
@@ -156,7 +156,7 @@ Arguments:
 				// Use v1 orchestrator
 				consoleReporter := reporting.NewConsoleReporter()
 				serviceMgr := managers.NewServiceManager(consoleReporter)
-				
+
 				// Create orchestrator for health monitoring and dependency management
 				orch := orchestrator.New(
 					serviceMgr,
@@ -195,7 +195,7 @@ Arguments:
 			defer logging.CloseTUIChannel()
 
 			// Check if we should use v2 architecture - already declared above
-			
+
 			var program *tea.Program
 			if useV2 {
 				logging.Info("CLI", "Using v2 service architecture")
@@ -203,7 +203,6 @@ Arguments:
 					managementClusterArg,
 					workloadClusterArg,
 					initialKubeContext,
-					debug || tuiDebugMode,
 					envctlCfg,
 					logChan,
 				)

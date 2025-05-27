@@ -4,6 +4,7 @@ import (
 	"context"
 	"envctl/internal/api"
 	"envctl/internal/config"
+	"envctl/internal/kube"
 	"envctl/internal/orchestrator"
 	"envctl/pkg/logging"
 	"fmt"
@@ -17,7 +18,7 @@ import (
 )
 
 // InitializeModelV2 creates and initializes a new TUI model with the new architecture
-func InitializeModelV2(mcName, wcName string, cfg config.EnvctlConfig, logChannel <-chan logging.LogEntry) (*ModelV2, error) {
+func InitializeModelV2(mcName, wcName, currentContext string, cfg config.EnvctlConfig, logChannel <-chan logging.LogEntry) (*ModelV2, error) {
 	// Create the orchestrator
 	orchConfig := orchestrator.ConfigV2{
 		MCName:       mcName,
@@ -36,6 +37,12 @@ func InitializeModelV2(mcName, wcName string, cfg config.EnvctlConfig, logChanne
 	portForwardAPI := api.NewPortForwardServiceAPI(registry)
 	k8sAPI := api.NewK8sServiceAPI(registry)
 
+	// Get current kube context if not provided
+	if currentContext == "" {
+		ctx, _ := kube.GetCurrentKubeContext()
+		currentContext = ctx
+	}
+
 	// Create the model
 	m := &ModelV2{
 		// Service Architecture
@@ -48,6 +55,7 @@ func InitializeModelV2(mcName, wcName string, cfg config.EnvctlConfig, logChanne
 		// Cluster info
 		ManagementClusterName: mcName,
 		WorkloadClusterName:   wcName,
+		CurrentKubeContext:    currentContext,
 
 		// Configuration
 		PortForwardingConfig: cfg.PortForwards,

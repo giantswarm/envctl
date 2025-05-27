@@ -226,7 +226,7 @@ func (o *OrchestratorV2) stopAllServices() error {
 	// Stop MCP servers with 3-second timeout
 	mcpCtx, mcpCancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer mcpCancel()
-	
+
 	var wg sync.WaitGroup
 	for _, service := range allServices {
 		if service.GetType() == services.TypeMCPServer {
@@ -246,7 +246,7 @@ func (o *OrchestratorV2) stopAllServices() error {
 	// Stop port forwards with 2-second timeout
 	pfCtx, pfCancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer pfCancel()
-	
+
 	for _, service := range allServices {
 		if service.GetType() == services.TypePortForward {
 			wg.Add(1)
@@ -265,7 +265,7 @@ func (o *OrchestratorV2) stopAllServices() error {
 	// Stop K8s connections with 1-second timeout (they should stop quickly)
 	k8sCtx, k8sCancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer k8sCancel()
-	
+
 	for _, service := range allServices {
 		if service.GetType() == services.TypeKubeConnection {
 			wg.Add(1)

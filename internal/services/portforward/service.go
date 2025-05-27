@@ -222,7 +222,7 @@ func (s *PortForwardService) handleStatusUpdate(status string) {
 	switch status {
 	case "Initializing", "Starting":
 		s.UpdateState(services.StateStarting, services.HealthUnknown, nil)
-	case "Running":
+	case "Running", "ForwardingActive":
 		s.UpdateState(services.StateRunning, services.HealthHealthy, nil)
 	case "Failed", "Error":
 		s.UpdateState(services.StateFailed, services.HealthUnhealthy, fmt.Errorf("port forward failed"))
