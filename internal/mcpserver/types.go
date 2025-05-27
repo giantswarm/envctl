@@ -4,7 +4,7 @@ package mcpserver
 // It focuses on the state, not verbose logs.
 type McpDiscreteStatusUpdate struct {
 	Label         string // The unique label of the MCP server instance
-	ProcessStatus string // A string indicating the npx process status, e.g., "NpxStarting", "NpxRunning", "NpxExitedWithError"
+	ProcessStatus string // A string indicating the process status, e.g., "ProcessInitializing", "ProcessStarting", "ProcessRunning", "ProcessExitedWithError"
 	ProcessErr    error  // The actual Go error object if the process failed or exited with an error
 	PID           int    // Process ID, can be useful for diagnostics
 	ProxyPort     int    // Port that mcp-proxy is listening on (0 if not yet determined)

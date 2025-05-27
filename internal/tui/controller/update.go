@@ -116,14 +116,49 @@ func mainControllerDispatch(m *model.Model, msg tea.Msg) (*model.Model, tea.Cmd)
 		m = handleClusterListResultMsg(m, msg) // Pass msg directly
 		return m, tea.Batch(cmds...)
 
-	case model.ClearStatusBarMsg: // This one might be a simple type
+	case model.ClearStatusBarMsg:
 		m.StatusBarMessage = ""
-		if m.StatusBarClearCancel != nil {
-			close(m.StatusBarClearCancel)
-			m.StatusBarClearCancel = nil
+
+	case model.MCPToolsLoadedMsg:
+		// Store the tools in the model
+		m.MCPTools[msg.ServerName] = msg.Tools
+
+		// Update status bar
+		statusCmd := m.SetStatusMessage(
+			fmt.Sprintf("✅ Loaded %d tools for %s", len(msg.Tools), msg.ServerName),
+			model.StatusBarSuccess,
+			3*time.Second,
+		)
+		cmds = append(cmds, statusCmd)
+
+		// Log the event
+		m.ActivityLog = append(m.ActivityLog, fmt.Sprintf("[INFO] Loaded %d tools for MCP server %s", len(msg.Tools), msg.ServerName))
+		m.ActivityLogDirty = true
+
+	case model.MCPToolsErrorMsg:
+		// Update status bar with error
+		statusCmd := m.SetStatusMessage(
+			fmt.Sprintf("❌ Failed to load tools for %s: %v", msg.ServerName, msg.Error),
+			model.StatusBarError,
+			5*time.Second,
+		)
+		cmds = append(cmds, statusCmd)
+
+		// Log the error
+		m.ActivityLog = append(m.ActivityLog, fmt.Sprintf("[ERROR] Failed to load tools for %s: %v", msg.ServerName, msg.Error))
+		m.ActivityLogDirty = true
+
+	case model.MCPToolUpdateMsg:
+		// Handle tool updates from subscription
+		if msg.Event.EventType == "refreshed" || msg.Event.EventType == "added" {
+			m.MCPTools[msg.Event.ServerName] = msg.Event.Tools
+			m.ActivityLog = append(m.ActivityLog, fmt.Sprintf("[INFO] Tools updated for %s (%d tools)", msg.Event.ServerName, len(msg.Event.Tools)))
+			m.ActivityLogDirty = true
+		} else if msg.Event.EventType == "cleared" {
+			delete(m.MCPTools, msg.Event.ServerName)
+			m.ActivityLog = append(m.ActivityLog, fmt.Sprintf("[INFO] Tools cleared for %s", msg.Event.ServerName))
+			m.ActivityLogDirty = true
 		}
-		// cmds = append(cmds, channelReaderCmd(m.TUIChannel))
-		return m, tea.Batch(cmds...)
 
 	case model.RestartMcpServerMsg:
 		return handleRestartMcpServerMsg(m, msg)
@@ -133,6 +168,8 @@ func mainControllerDispatch(m *model.Model, msg tea.Msg) (*model.Model, tea.Cmd)
 			m.LogViewport, cmd = m.LogViewport.Update(msg)
 		} else if m.CurrentAppMode == model.ModeMcpConfigOverlay {
 			m.McpConfigViewport, cmd = m.McpConfigViewport.Update(msg)
+		} else if m.CurrentAppMode == model.ModeMcpToolsOverlay {
+			m.McpToolsViewport, cmd = m.McpToolsViewport.Update(msg)
 		} else {
 			m.MainLogViewport, cmd = m.MainLogViewport.Update(msg)
 		}
@@ -166,6 +203,44 @@ func mainControllerDispatch(m *model.Model, msg tea.Msg) (*model.Model, tea.Cmd)
 		cmds = append(cmds, model.ListenForLogEntriesCmd(m.LogChannel))
 		// DO NOT return here. Allow fall-through to viewport refresh logic.
 
+	case reporting.ServiceStateEvent:
+		// Update the model based on the service state change
+		switch msg.ServiceType {
+		case reporting.ServiceTypeMCPServer:
+			if mcp, exists := m.McpServers[msg.SourceLabel]; exists {
+				mcp.StatusMsg = string(msg.NewState)
+				// Don't overwrite Active with IsReady - Active means the service is configured to run
+				// mcp.Active = msg.IsReady  // REMOVED - this was the bug
+				if msg.ProxyPort > 0 {
+					mcp.ProxyPort = msg.ProxyPort
+				}
+				if msg.PID > 0 {
+					mcp.Pid = msg.PID
+				}
+				m.McpServers[msg.SourceLabel] = mcp
+			}
+			if m.DebugMode {
+				LogDebug(m, controllerDispatchSubsystem, "ServiceStateEvent: %s (%s) -> %s (ready: %v)",
+					msg.SourceLabel, msg.ServiceType, msg.NewState, msg.IsReady)
+			}
+		case reporting.ServiceTypePortForward:
+			if pf, exists := m.PortForwards[msg.SourceLabel]; exists {
+				pf.StatusMsg = string(msg.NewState)
+				pf.Running = msg.IsReady
+				// Don't overwrite Active with IsReady - Active means the service is configured to run
+				// pf.Active = msg.IsReady  // REMOVED - this was the bug
+				if msg.Error != nil {
+					pf.Err = msg.Error
+				} else {
+					pf.Err = nil
+				}
+			}
+		case reporting.ServiceTypeKube:
+			// K8s health updates are handled through ReconcileState
+			// which reads from the state store
+			m.ReconcileState()
+		}
+
 	default:
 		if m.DebugMode {
 			LogDebug(m, controllerDispatchSubsystem, "Unhandled msg type in default case: %T -- Value: %v", msg, msg)
@@ -178,6 +253,8 @@ func mainControllerDispatch(m *model.Model, msg tea.Msg) (*model.Model, tea.Cmd)
 			m.LogViewport, unhandledCmd = m.LogViewport.Update(msg)
 		} else if m.CurrentAppMode == model.ModeMcpConfigOverlay {
 			m.McpConfigViewport, unhandledCmd = m.McpConfigViewport.Update(msg)
+		} else if m.CurrentAppMode == model.ModeMcpToolsOverlay {
+			m.McpToolsViewport, unhandledCmd = m.McpToolsViewport.Update(msg)
 		}
 		// Removed the 'else { m.Spinner, unhandledCmd = m.Spinner.Update(msg) }' from original, as spinner update is handled via TickMsg.
 		cmds = append(cmds, unhandledCmd)
@@ -315,9 +392,12 @@ func handleRestartMcpServerMsg(m *model.Model, msg model.RestartMcpServerMsg) (*
 func updatePortForwardFromSnapshot(pf *model.PortForwardProcess, snapshot reporting.ServiceStateSnapshot) {
 	pf.StatusMsg = string(snapshot.State)
 	pf.Running = snapshot.IsReady
-	pf.Active = snapshot.IsReady
+	// Don't overwrite Active with IsReady - Active means the service is configured to run
+	// pf.Active = snapshot.IsReady  // REMOVED - this was the bug
 	if snapshot.ErrorDetail != nil {
 		pf.Err = snapshot.ErrorDetail
+	} else {
+		pf.Err = nil
 	}
 }
 
@@ -344,24 +424,15 @@ func handleReporterUpdate(m *model.Model, update reporting.ManagedServiceUpdate)
 	// The StateStore is already updated by the TUIReporter before this handler is called.
 	// We now reconcile the UI state with the StateStore to ensure consistency.
 
-	// Get the latest state from StateStore
+	// Reconcile all state from StateStore (including K8s health)
+	m.ReconcileState()
+
+	// Get the latest state from StateStore for status bar update
 	snapshot, exists := m.GetServiceSnapshot(update.SourceLabel)
 	if !exists {
 		// Service not found in StateStore, this shouldn't happen but handle gracefully
 		logging.Warn("TUIController", "Received update for unknown service: %s", update.SourceLabel)
 		return m, nil
-	}
-
-	// Update specific model state (for PF and MCP panels) from StateStore
-	switch update.SourceType {
-	case reporting.ServiceTypePortForward:
-		if pfProcess, exists := m.PortForwards[update.SourceLabel]; exists {
-			updatePortForwardFromSnapshot(pfProcess, snapshot)
-		}
-	case reporting.ServiceTypeMCPServer:
-		if mcpProcess, exists := m.McpServers[update.SourceLabel]; exists {
-			updateMcpServerFromSnapshot(mcpProcess, snapshot)
-		}
 	}
 
 	// Update status bar based on StateStore data

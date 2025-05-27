@@ -22,10 +22,10 @@ func renderPortForwardPanel(pf *model.PortForwardProcess, m *model.Model, target
 	case pf.Running && pf.Err == nil:
 		baseStyleForPanel = color.PanelStatusRunningStyle
 		focusedBaseStyleForPanel = color.FocusedPanelStatusRunningStyle
-	case strings.HasPrefix(statusToCheck, "running (pid:"):
-		baseStyleForPanel = color.PanelStatusAttemptingStyle
-		focusedBaseStyleForPanel = color.FocusedPanelStatusAttemptingStyle
-	case strings.HasPrefix(statusToCheck, "exited") || strings.HasPrefix(statusToCheck, "killed"):
+	case strings.HasPrefix(statusToCheck, "running"):
+		baseStyleForPanel = color.PanelStatusRunningStyle
+		focusedBaseStyleForPanel = color.FocusedPanelStatusRunningStyle
+	case strings.HasPrefix(statusToCheck, "stopped") || strings.HasPrefix(statusToCheck, "exited") || strings.HasPrefix(statusToCheck, "killed"):
 		baseStyleForPanel = color.PanelStatusExitedStyle
 		focusedBaseStyleForPanel = color.FocusedPanelStatusExitedStyle
 	default:
@@ -71,12 +71,29 @@ func renderPortForwardPanel(pf *model.PortForwardProcess, m *model.Model, target
 		statusIcon = SafeIcon(IconPlay)
 	case pf.Err != nil || strings.HasPrefix(statusToCheck, "failed") || strings.HasPrefix(statusToCheck, "error"):
 		statusIcon = SafeIcon(IconCross)
-	case strings.HasPrefix(statusToCheck, "exited") || strings.HasPrefix(statusToCheck, "killed") || strings.Contains(statusToCheck, "stopped"):
+	case strings.HasPrefix(statusToCheck, "stopped") || strings.HasPrefix(statusToCheck, "exited") || strings.HasPrefix(statusToCheck, "killed"):
 		statusIcon = SafeIcon(IconStop)
 	default:
 		statusIcon = SafeIcon(IconHourglass)
 	}
 	b.WriteString(contentFg.Render(fmt.Sprintf("Status: %s%s", statusIcon, trimStatusMessage(trimmedStatus))))
+
+	// Add health indicator
+	if pf.Active {
+		b.WriteString("\n")
+		var healthIcon, healthText string
+		if pf.Running && pf.Err == nil {
+			healthIcon = SafeIcon(IconCheck)
+			healthText = "Healthy"
+		} else if pf.Err != nil {
+			healthIcon = SafeIcon(IconCross)
+			healthText = "Unhealthy"
+		} else {
+			healthIcon = SafeIcon(IconHourglass)
+			healthText = "Checking..."
+		}
+		b.WriteString(contentFg.Render(fmt.Sprintf("Health: %s%s", healthIcon, healthText)))
+	}
 
 	frame := finalPanelStyle.GetHorizontalFrameSize()
 	contentWidth := targetOuterWidth - frame

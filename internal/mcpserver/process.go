@@ -28,7 +28,7 @@ func StartAndManageIndividualMcpServer(
 	// Logging needs to be adjusted as ProxyPort is available in serverConfig.
 	logging.Info(subsystem, "Initializing MCP server %s (underlying: %s)", label, strings.Join(serverConfig.Command, " "))
 	if updateFn != nil {
-		updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "NpxInitializing", PID: 0, ProxyPort: 0})
+		updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "ProcessInitializing", PID: 0, ProxyPort: 0})
 	}
 
 	// For now, assuming mcp-proxy is available and takes the command to execute.
@@ -37,7 +37,7 @@ func StartAndManageIndividualMcpServer(
 		errMsg := fmt.Errorf("command not defined for MCP server %s", label)
 		logging.Error(subsystem, errMsg, "Cannot start MCP server")
 		if updateFn != nil {
-			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "NpxStartFailed", ProcessErr: errMsg, ProxyPort: 0})
+			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "ProcessStartFailed", ProcessErr: errMsg, ProxyPort: 0})
 		}
 		return 0, nil, errMsg
 	}
@@ -70,7 +70,7 @@ func StartAndManageIndividualMcpServer(
 	if pipeErr != nil {
 		logging.Error(subsystem, pipeErr, "Failed to create stdout pipe")
 		if updateFn != nil {
-			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "NpxStartFailed", ProcessErr: pipeErr, ProxyPort: 0})
+			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "ProcessStartFailed", ProcessErr: pipeErr, ProxyPort: 0})
 		}
 		return 0, nil, fmt.Errorf("stdout pipe for %s: %w", label, pipeErr)
 	}
@@ -79,7 +79,7 @@ func StartAndManageIndividualMcpServer(
 		stdoutPipe.Close()
 		logging.Error(subsystem, pipeErr, "Failed to create stderr pipe")
 		if updateFn != nil {
-			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "NpxStartFailed", ProcessErr: pipeErr, ProxyPort: 0})
+			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "ProcessStartFailed", ProcessErr: pipeErr, ProxyPort: 0})
 		}
 		return 0, nil, fmt.Errorf("stderr pipe for %s: %w", label, pipeErr)
 	}
@@ -94,7 +94,7 @@ func StartAndManageIndividualMcpServer(
 		stderrPipe.Close()
 		close(currentStopChan)
 		if updateFn != nil {
-			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "NpxStartFailed", ProcessErr: err, PID: 0, ProxyPort: 0})
+			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "ProcessStartFailed", ProcessErr: err, PID: 0, ProxyPort: 0})
 		}
 		return 0, nil, errMsg
 	}
@@ -109,7 +109,7 @@ func StartAndManageIndividualMcpServer(
 		updateFn(McpDiscreteStatusUpdate{
 			Label:         label,
 			PID:           processPid,
-			ProcessStatus: "NpxStarting",
+			ProcessStatus: "ProcessStarting",
 			ProxyPort:     actualPort,
 		})
 	}
@@ -161,7 +161,7 @@ func StartAndManageIndividualMcpServer(
 									updateFn(McpDiscreteStatusUpdate{
 										Label:         label,
 										PID:           processPid,
-										ProcessStatus: "NpxRunning",
+										ProcessStatus: "ProcessRunning",
 										ProxyPort:     actualPort,
 									})
 								}
@@ -186,7 +186,7 @@ func StartAndManageIndividualMcpServer(
 						updateFn(McpDiscreteStatusUpdate{
 							Label:         label,
 							PID:           processPid,
-							ProcessStatus: "NpxRunning", // Now we're actually running
+							ProcessStatus: "ProcessRunning", // Now we're actually running
 							ProxyPort:     actualPort,
 						})
 					}
@@ -213,10 +213,10 @@ func StartAndManageIndividualMcpServer(
 
 		select {
 		case err := <-processDone:
-			status := "NpxExitedGracefully"
+			status := "ProcessExitedGracefully"
 			finalErr := err
 			if err != nil {
-				status = "NpxExitedWithError"
+				status = "ProcessExitedWithError"
 				logging.Error(subsystem, err, "Process exited with error")
 			} else {
 				logging.Info(subsystem, "Process exited gracefully")
@@ -227,14 +227,14 @@ func StartAndManageIndividualMcpServer(
 
 		case <-currentStopChan:
 			logging.Debug(subsystem, "Received stop signal for PID %d", processPid)
-			finalProcessStatus := "NpxStoppedByUser"
+			finalProcessStatus := "ProcessStoppedByUser"
 			var stopErr error
 			if cmd.ProcessState == nil || !cmd.ProcessState.Exited() {
 				if err := syscall.Kill(-processPid, syscall.SIGKILL); err != nil {
 					logging.Error(subsystem, err, "Failed to kill process group for PID %d, attempting to kill main process", processPid)
 					if mainProcessKillErr := cmd.Process.Kill(); mainProcessKillErr != nil {
 						logging.Error(subsystem, mainProcessKillErr, "Failed to kill main process PID %d after group kill attempt failed", processPid)
-						finalProcessStatus = "NpxKillFailed"
+						finalProcessStatus = "ProcessKillFailed"
 						stopErr = mainProcessKillErr
 					} else {
 						logging.Debug(subsystem, "Successfully sent SIGKILL to main process PID %d (fallback)", processPid)
@@ -245,7 +245,7 @@ func StartAndManageIndividualMcpServer(
 				<-processDone
 			} else {
 				logging.Info(subsystem, "Process PID %d already exited before stop signal processing.", processPid)
-				finalProcessStatus = "NpxAlreadyExited"
+				finalProcessStatus = "ProcessAlreadyExited"
 			}
 			if updateFn != nil {
 				updateFn(McpDiscreteStatusUpdate{Label: label, PID: processPid, ProcessStatus: finalProcessStatus, ProcessErr: stopErr, ProxyPort: actualPort})

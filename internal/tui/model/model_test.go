@@ -8,7 +8,6 @@ import (
 	"envctl/internal/tui/model"
 	"os"
 	"testing"
-	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -317,65 +316,6 @@ func TestMessageHandling(t *testing.T) {
 				}
 			},
 			description: "ClearStatusBarMsg should reset the StatusBarMessage.",
-		},
-		{
-			name: "SetStatusMessage updates status bar and handles cancellation channel",
-			initialModel: func() *model.Model {
-				// Use default config for InitialModel
-				defaultCfg := config.GetDefaultConfig("mc", "wc")
-				m := model.InitialModel("mc", "wc", "ctx", false, defaultCfg, nil)
-				return m
-			},
-			// No specific message, we will call the method directly on the model in assert.
-			// However, the test structure expects a message to dispatch through AppModel.Update().
-			// To test SetStatusMessage directly on the model and its cancellation logic properly,
-			// it might be better to have a dedicated test that doesn't go through AppModel.Update()
-			// or to use a custom message that triggers this if AppModel.Update() is required.
-			// For now, let's use a dummy msg and perform assertions directly on coreModel after setup.
-			msg: model.NopMsg{}, // A dummy message that won't affect state much
-			assert: func(t *testing.T, m *model.Model) {
-				// First call to SetStatusMessage
-				cmd1 := m.SetStatusMessage("First message", model.StatusBarSuccess, 1*time.Second)
-				if m.StatusBarMessage != "First message" {
-					t.Errorf("Expected StatusBarMessage 'First message', got '%s'", m.StatusBarMessage)
-				}
-				if m.StatusBarMessageType != model.StatusBarSuccess {
-					t.Errorf("Expected StatusBarMessageType Success, got %v", m.StatusBarMessageType)
-				}
-				if m.StatusBarClearCancel == nil {
-					t.Error("Expected StatusBarClearCancel to be non-nil after first call")
-				}
-				if cmd1 == nil {
-					t.Error("Expected a non-nil tea.Cmd from SetStatusMessage")
-				}
-				cancelChan1 := m.StatusBarClearCancel
-
-				// Second call to SetStatusMessage
-				cmd2 := m.SetStatusMessage("Second message", model.StatusBarError, 1*time.Second)
-				if m.StatusBarMessage != "Second message" {
-					t.Errorf("Expected StatusBarMessage 'Second message', got '%s'", m.StatusBarMessage)
-				}
-				if m.StatusBarMessageType != model.StatusBarError {
-					t.Errorf("Expected StatusBarMessageType Error, got %v", m.StatusBarMessageType)
-				}
-				if m.StatusBarClearCancel == nil {
-					t.Error("Expected StatusBarClearCancel to be non-nil after second call")
-				}
-				if m.StatusBarClearCancel == cancelChan1 {
-					t.Error("Expected StatusBarClearCancel to be a new channel after second call")
-				}
-				// Check if the first channel was closed
-				select {
-				case <-cancelChan1:
-					// Expected: channel is closed
-				default:
-					t.Error("Expected first StatusBarClearCancel channel to be closed")
-				}
-				if cmd2 == nil {
-					t.Error("Expected a non-nil tea.Cmd from second SetStatusMessage call")
-				}
-			},
-			description: "SetStatusMessage should update message, type, and manage cancellation channel.",
 		},
 	}
 

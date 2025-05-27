@@ -1,7 +1,7 @@
 package orchestrator
 
 import (
-	"context"
+	"envctl/internal/api"
 	"envctl/internal/config"
 	"envctl/internal/dependency"
 	"envctl/internal/kube"
@@ -24,6 +24,7 @@ const (
 type Orchestrator struct {
 	serviceMgr managers.ServiceManagerAPI
 	kubeMgr    kube.Manager
+	kubeAPI    api.KubernetesAPI
 	depGraph   *dependency.Graph
 	reporter   reporting.ServiceReporter
 
@@ -35,7 +36,6 @@ type Orchestrator struct {
 
 	// Health monitoring
 	healthCheckInterval time.Duration
-	cancelHealthChecks  context.CancelFunc
 
 	// Service state tracking
 	stopReasons     map[string]StopReason                    // Track why services were stopped
@@ -68,9 +68,17 @@ func New(
 	// Create kube manager
 	kubeMgr := kube.NewManager(reporter)
 
+	// Create event bus and state store for API layer
+	eventBus := reporting.NewEventBus()
+	stateStore := reporting.NewStateStore()
+
+	// Create Kubernetes API
+	kubeAPI := api.NewKubernetesAPI(eventBus, stateStore, kubeMgr)
+
 	return &Orchestrator{
 		serviceMgr:          serviceMgr,
 		kubeMgr:             kubeMgr,
+		kubeAPI:             kubeAPI,
 		reporter:            reporter,
 		mcName:              cfg.MCName,
 		wcName:              cfg.WCName,

@@ -10,6 +10,8 @@ import (
 	"envctl/pkg/logging"
 	"time"
 
+	"envctl/internal/api"
+
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -36,6 +38,8 @@ const (
 	ModeLogOverlay
 	// ModeMcpConfigOverlay shows the MCP configuration overlay.
 	ModeMcpConfigOverlay
+	// ModeMcpToolsOverlay shows the MCP tools overlay.
+	ModeMcpToolsOverlay
 	// ModeQuitting is when the application is in the process of shutting down.
 	ModeQuitting
 	// ModeError an unrecoverable error state or a significant error message display.
@@ -57,6 +61,8 @@ func (a AppMode) String() string {
 		return "LogOverlay"
 	case ModeMcpConfigOverlay:
 		return "McpConfigOverlay"
+	case ModeMcpToolsOverlay:
+		return "McpToolsOverlay"
 	case ModeQuitting:
 		return "Quitting"
 	case ModeError:
@@ -137,6 +143,7 @@ type KeyMap struct {
 	ToggleLog       key.Binding
 	CopyLogs        key.Binding
 	ToggleMcpConfig key.Binding
+	ToggleMcpTools  key.Binding
 }
 
 // FullHelp returns bindings for the main help view.
@@ -144,7 +151,7 @@ func (k KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down, k.Tab, k.ShiftTab},
 		{k.NewCollection, k.Restart, k.Stop, k.SwitchContext, k.CopyLogs},
-		{k.Help, k.ToggleLog, k.ToggleMcpConfig, k.ToggleDark, k.ToggleDebug, k.Quit},
+		{k.Help, k.ToggleLog, k.ToggleMcpConfig, k.ToggleMcpTools, k.ToggleDark, k.ToggleDebug, k.Quit},
 	}
 }
 
@@ -197,6 +204,8 @@ type Model struct {
 	McpProxyOrder     []string
 	MCPServerConfig   []config.MCPServerDefinition
 	McpConfigViewport viewport.Model
+	// McpToolsViewport is the viewport for displaying MCP server tools
+	McpToolsViewport viewport.Model
 
 	// --- UI State & Output ---
 	ActivityLog              []string
@@ -221,10 +230,14 @@ type Model struct {
 	// --- Service Management ---
 	ServiceManager managers.ServiceManagerAPI // Interface for managing services
 	Reporter       reporting.ServiceReporter  // For sending updates to TUI/console
-	Orchestrator   *orchestrator.Orchestrator // Manages health monitoring and service lifecycle
+	Orchestrator   *orchestrator.Orchestrator
 
-	// Added for receiving logs from the logging package
+	// --- Logging ---
 	LogChannel <-chan logging.LogEntry
+
+	// --- API Layer ---
+	APIs     *api.Provider            // API provider for accessing service functionality
+	MCPTools map[string][]api.MCPTool // Cached MCP tools by server name
 }
 
 // Other structs that might need field export if used cross-package
@@ -395,54 +408,21 @@ func (m *Model) ReconcileState() {
 				// Update the port forward state from the snapshot
 				pf.StatusMsg = string(snapshot.State)
 				pf.Running = snapshot.IsReady
-				pf.Active = snapshot.IsReady
-				if snapshot.ErrorDetail != nil {
-					pf.Err = snapshot.ErrorDetail
-				} else {
-					pf.Err = nil
-				}
+				m.PortForwards[label] = pf
 			}
 		case reporting.ServiceTypeMCPServer:
 			if mcp, exists := m.McpServers[label]; exists {
 				// Update the MCP server state from the snapshot
 				mcp.StatusMsg = string(snapshot.State)
-				mcp.Active = snapshot.IsReady
+				// Don't overwrite Active with IsReady - Active means the service is configured to run
+				// mcp.Active = snapshot.IsReady  // REMOVED - this was the bug
 				if snapshot.ProxyPort > 0 {
 					mcp.ProxyPort = snapshot.ProxyPort
 				}
 				if snapshot.PID > 0 {
 					mcp.Pid = snapshot.PID
 				}
-				if snapshot.ErrorDetail != nil {
-					mcp.Err = snapshot.ErrorDetail
-				} else {
-					mcp.Err = nil
-				}
-			}
-		case reporting.ServiceTypeKube:
-			// Update cluster health info from K8s service state
-			if snapshot.K8sHealth != nil {
-				if snapshot.K8sHealth.IsMC && m.ManagementClusterName != "" {
-					m.MCHealth.IsLoading = false
-					m.MCHealth.ReadyNodes = snapshot.K8sHealth.ReadyNodes
-					m.MCHealth.TotalNodes = snapshot.K8sHealth.TotalNodes
-					if snapshot.State == reporting.StateRunning {
-						m.MCHealth.StatusError = nil
-					} else if snapshot.ErrorDetail != nil {
-						m.MCHealth.StatusError = snapshot.ErrorDetail
-					}
-					m.MCHealth.LastUpdated = snapshot.LastUpdated
-				} else if !snapshot.K8sHealth.IsMC && m.WorkloadClusterName != "" {
-					m.WCHealth.IsLoading = false
-					m.WCHealth.ReadyNodes = snapshot.K8sHealth.ReadyNodes
-					m.WCHealth.TotalNodes = snapshot.K8sHealth.TotalNodes
-					if snapshot.State == reporting.StateRunning {
-						m.WCHealth.StatusError = nil
-					} else if snapshot.ErrorDetail != nil {
-						m.WCHealth.StatusError = snapshot.ErrorDetail
-					}
-					m.WCHealth.LastUpdated = snapshot.LastUpdated
-				}
+				m.McpServers[label] = mcp
 			}
 		}
 	}

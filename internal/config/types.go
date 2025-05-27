@@ -2,6 +2,7 @@ package config
 
 import (
 	"envctl/internal/kube"
+	"time"
 )
 
 // EnvctlConfig is the top-level configuration structure for envctl.
@@ -27,18 +28,19 @@ const (
 
 // MCPServerDefinition defines how to run and manage an MCP server.
 type MCPServerDefinition struct {
-	Name     string        `yaml:"name"`               // Unique name for this server, e.g., "kubernetes", "prometheus-main"
-	Type     MCPServerType `yaml:"type"`               // "localCommand" or "container"
-	Enabled  bool          `yaml:"enabledByDefault"`   // Whether this server is started by default
-	Icon     string        `yaml:"icon,omitempty"`     // Optional: an icon/emoji for display in TUI
-	Category string        `yaml:"category,omitempty"` // Optional: for grouping in TUI, e.g., "Core", "Monitoring"
+	Name                string        `yaml:"name"`                          // Unique name for this server, e.g., "kubernetes", "prometheus-main"
+	Type                MCPServerType `yaml:"type"`                          // "localCommand" or "container"
+	Enabled             bool          `yaml:"enabledByDefault"`              // Whether this server is started by default
+	Icon                string        `yaml:"icon,omitempty"`                // Optional: an icon/emoji for display in TUI
+	Category            string        `yaml:"category,omitempty"`            // Optional: for grouping in TUI, e.g., "Core", "Monitoring"
+	HealthCheckInterval time.Duration `yaml:"healthCheckInterval,omitempty"` // Optional: custom health check interval
 
 	// Fields for Type = "localCommand"
 	Command []string          `yaml:"command,omitempty"` // Command and its arguments, e.g., ["npx", "mcp-server-kubernetes"]
-	Env     map[string]string `yaml:"env,omitempty"`     // Environment variables for the command
+	Env     map[string]string `yaml:"env,omitempty"`     // Environment variables
 
 	// MCP Proxy Configuration
-	ProxyPort int `yaml:"proxyPort,omitempty"` // Port for mcp-proxy to bind to (0 = random port)
+	ProxyPort int `yaml:"proxyPort,omitempty"` // Port for mcp-proxy to listen on (0 for random)
 
 	// Fields for Type = "container"
 	Image            string            `yaml:"image,omitempty"`            // Container image, e.g., "giantswarm/mcp-server-prometheus:latest"
@@ -64,14 +66,15 @@ type PortForwardDefinition struct {
 	// Examples: "mc", "wc", "explicit:<context-name>"
 	// "mc" means use the current MC context.
 	// "wc" means use the current WC context (if specified, otherwise fallback or error).
-	KubeContextTarget   string `yaml:"kubeContextTarget"`
-	Namespace           string `yaml:"namespace"`
-	TargetType          string `yaml:"targetType"`                    // "service", "pod", "deployment", "statefulset"
-	TargetName          string `yaml:"targetName"`                    // Name of the service, pod, etc.
-	TargetLabelSelector string `yaml:"targetLabelSelector,omitempty"` // e.g., "app=prometheus,component=server" (used if TargetName is not specific enough or for pods)
-	LocalPort           string `yaml:"localPort"`
-	RemotePort          string `yaml:"remotePort"`
-	BindAddress         string `yaml:"bindAddress,omitempty"` // Default "127.0.0.1"
+	KubeContextTarget   string        `yaml:"kubeContextTarget,omitempty"` // Optional: specific kube context
+	Namespace           string        `yaml:"namespace"`
+	TargetType          string        `yaml:"targetType"`                    // "service", "pod", "deployment", "statefulset"
+	TargetName          string        `yaml:"targetName"`                    // Name of the service, pod, etc.
+	TargetLabelSelector string        `yaml:"targetLabelSelector,omitempty"` // e.g., "app=prometheus,component=server" (used if TargetName is not specific enough or for pods)
+	LocalPort           string        `yaml:"localPort"`
+	RemotePort          string        `yaml:"remotePort"`
+	BindAddress         string        `yaml:"bindAddress,omitempty"`         // Default "127.0.0.1"
+	HealthCheckInterval time.Duration `yaml:"healthCheckInterval,omitempty"` // Optional: custom health check interval
 }
 
 // GetDefaultConfig returns the default configuration for envctl.

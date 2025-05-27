@@ -94,9 +94,12 @@ type mockServiceManager struct {
 }
 
 func newMockServiceManager() *mockServiceManager {
-	return &mockServiceManager{
+	m := &mockServiceManager{
 		activeServices: make(map[string]bool),
 	}
+	// Set up default expectations
+	m.On("GetReconciler").Return(nil).Maybe()
+	return m
 }
 
 func (m *mockServiceManager) StartServices(configs []managers.ManagedServiceConfig, wg *sync.WaitGroup) (map[string]chan struct{}, []error) {
@@ -156,6 +159,14 @@ func (m *mockServiceManager) GetActiveServices() []string {
 		labels = append(labels, label)
 	}
 	return labels
+}
+
+func (m *mockServiceManager) GetReconciler() managers.ServiceReconciler {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).(managers.ServiceReconciler)
 }
 
 // Mock Reporter

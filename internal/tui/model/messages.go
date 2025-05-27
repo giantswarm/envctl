@@ -1,6 +1,7 @@
 package model
 
 import (
+	"envctl/internal/api"
 	"envctl/internal/kube"
 	"envctl/pkg/logging"
 )
@@ -119,4 +120,21 @@ type ServiceStopResultMsg struct {
 // NewLogEntryMsg is used to send a new log entry from the logging package to the TUI controller.
 type NewLogEntryMsg struct {
 	Entry logging.LogEntry
+}
+
+// MCPToolsLoadedMsg is sent when MCP tools have been successfully loaded
+type MCPToolsLoadedMsg struct {
+	ServerName string
+	Tools      []api.MCPTool
+}
+
+// MCPToolsErrorMsg is sent when there's an error loading MCP tools
+type MCPToolsErrorMsg struct {
+	ServerName string
+	Error      error
+}
+
+// MCPToolUpdateMsg is sent when MCP tools are updated
+type MCPToolUpdateMsg struct {
+	Event api.MCPToolUpdateEvent
 }

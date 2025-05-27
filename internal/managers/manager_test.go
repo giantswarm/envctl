@@ -109,7 +109,7 @@ func setupMocks(t *testing.T) func() {
 				if mcpUpdateFn != nil {
 					mcpUpdateFn(mcpserver.McpDiscreteStatusUpdate{
 						Label:         c.Name,
-						ProcessStatus: "NpxInitializing",
+						ProcessStatus: "ProcessInitializing",
 						PID:           12345,
 					})
 
@@ -120,13 +120,13 @@ func setupMocks(t *testing.T) func() {
 					case <-timer.C:
 						mcpUpdateFn(mcpserver.McpDiscreteStatusUpdate{
 							Label:         c.Name,
-							ProcessStatus: "NpxRunning",
+							ProcessStatus: "ProcessRunning",
 							PID:           12345,
 						})
 					case <-stopChan:
 						mcpUpdateFn(mcpserver.McpDiscreteStatusUpdate{
 							Label:         c.Name,
-							ProcessStatus: "NpxStoppedByUser",
+							ProcessStatus: "ProcessStoppedByUser",
 						})
 					}
 				}

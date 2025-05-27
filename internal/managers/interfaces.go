@@ -1,8 +1,10 @@
 package managers
 
 import (
+	"context"
 	"envctl/internal/reporting"
 	"sync"
+	"time"
 )
 
 // ServiceManagerAPI defines the interface for managing services (port forwards and MCP servers).
@@ -28,4 +30,31 @@ type ServiceManagerAPI interface {
 
 	// GetActiveServices returns a list of all active service labels.
 	GetActiveServices() []string
+
+	// GetReconciler returns the service reconciler for health monitoring
+	GetReconciler() ServiceReconciler
+}
+
+// ServiceReconciler defines the interface for service health monitoring and reconciliation
+type ServiceReconciler interface {
+	// StartHealthMonitoring starts health monitoring for all services
+	StartHealthMonitoring(ctx context.Context) error
+
+	// StopHealthMonitoring stops all health monitoring
+	StopHealthMonitoring()
+
+	// CheckServiceHealth performs an immediate health check on a specific service
+	CheckServiceHealth(ctx context.Context, label string) error
+
+	// SetHealthCheckInterval sets the interval for periodic health checks
+	SetHealthCheckInterval(interval time.Duration)
+
+	// GetHealthStatus returns the current health status of a service
+	GetHealthStatus(label string) (isHealthy bool, lastCheck time.Time, err error)
+}
+
+// ServiceHealthChecker defines the interface that each service type must implement
+type ServiceHealthChecker interface {
+	// CheckHealth performs a health check and returns an error if unhealthy
+	CheckHealth(ctx context.Context) error
 }

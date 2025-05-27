@@ -30,10 +30,12 @@ func (o *Orchestrator) Start(ctx context.Context) error {
 	}
 	o.mu.Unlock()
 
-	// Start service health monitoring
-	healthCtx, cancel := context.WithCancel(ctx)
-	o.cancelHealthChecks = cancel
-	go o.StartServiceHealthMonitoring(healthCtx)
+	// Start service health monitoring using service manager's reconciler
+	if reconciler := o.serviceMgr.GetReconciler(); reconciler != nil {
+		if err := reconciler.StartHealthMonitoring(ctx); err != nil {
+			return fmt.Errorf("failed to start health monitoring: %w", err)
+		}
+	}
 
 	// Get all enabled services
 	var allServices []managers.ManagedServiceConfig
@@ -60,11 +62,11 @@ func (o *Orchestrator) Start(ctx context.Context) error {
 
 // Stop gracefully stops all services and health monitoring
 func (o *Orchestrator) Stop() {
-	if o.cancelHealthChecks != nil {
-		o.cancelHealthChecks()
-	}
-
+	// Stop health monitoring
 	if o.serviceMgr != nil {
+		if reconciler := o.serviceMgr.GetReconciler(); reconciler != nil {
+			reconciler.StopHealthMonitoring()
+		}
 		o.serviceMgr.StopAllServices()
 	}
 }
@@ -120,7 +122,7 @@ func (o *Orchestrator) createK8sConnectionServices() []managers.ManagedServiceCo
 			Name:                fmt.Sprintf("k8s-mc-%s", o.mcName),
 			ContextName:         mcContext,
 			IsMC:                true,
-			HealthCheckInterval: 15 * time.Second,
+			HealthCheckInterval: o.healthCheckInterval,
 		}
 
 		services = append(services, managers.ManagedServiceConfig{
@@ -137,7 +139,7 @@ func (o *Orchestrator) createK8sConnectionServices() []managers.ManagedServiceCo
 			Name:                fmt.Sprintf("k8s-wc-%s", o.wcName),
 			ContextName:         wcContext,
 			IsMC:                false,
-			HealthCheckInterval: 15 * time.Second,
+			HealthCheckInterval: o.healthCheckInterval,
 		}
 
 		services = append(services, managers.ManagedServiceConfig{

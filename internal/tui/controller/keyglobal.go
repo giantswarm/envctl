@@ -53,6 +53,20 @@ func handleKeyMsgGlobal(m *model.Model, keyMsg tea.KeyMsg, existingCmds []tea.Cm
 		}
 	}
 
+	if m.CurrentAppMode == model.ModeMcpToolsOverlay {
+		// Pass all unhandled keys to McpToolsViewport for its own handling (like scrolling)
+		var vpCmd tea.Cmd
+		switch keyMsg.String() {
+		case "T", "esc":
+			m.CurrentAppMode = model.ModeMainDashboard
+			return m, nil
+		// k, up, j, down, etc. are handled by the default case below for this overlay
+		default:
+			m.McpToolsViewport, vpCmd = m.McpToolsViewport.Update(keyMsg)
+			return m, vpCmd
+		}
+	}
+
 	if m.CurrentAppMode == model.ModeLogOverlay {
 		// TEMPORARY TEST FOR HORIZONTAL SCROLLING
 		if keyMsg.Type == tea.KeyRunes && keyMsg.String() == "H" { // Using Shift+H for test trigger
@@ -134,6 +148,27 @@ func handleKeyMsgGlobal(m *model.Model, keyMsg tea.KeyMsg, existingCmds []tea.Cm
 			configJSON := GenerateMcpConfigJson(m.MCPServerConfig, m.McpServers)
 			m.McpConfigViewport.SetContent(configJSON)
 			m.McpConfigViewport.GotoTop() // Reset scroll position
+		}
+		return m, nil
+	case key.Matches(keyMsg, m.Keys.ToggleMcpTools):
+		if m.CurrentAppMode == model.ModeMcpToolsOverlay {
+			m.CurrentAppMode = model.ModeMainDashboard
+		} else {
+			m.CurrentAppMode = model.ModeMcpToolsOverlay
+			// Trigger loading of tools for all running MCP servers if not already loaded
+			var toolCmds []tea.Cmd
+			for _, mcp := range m.McpServers {
+				if mcp.Active && strings.Contains(mcp.StatusMsg, "Running") {
+					// Check if we already have tools for this server
+					if _, hasTools := m.MCPTools[mcp.Label]; !hasTools {
+						toolCmds = append(toolCmds, model.FetchMCPToolsCmd(m.APIs, mcp.Label))
+					}
+				}
+			}
+			if len(toolCmds) > 0 {
+				cmds = append(cmds, toolCmds...)
+				return m, tea.Batch(cmds...)
+			}
 		}
 		return m, nil
 	case key.Matches(keyMsg, m.Keys.Restart): // RESTART focused PF or MCP service

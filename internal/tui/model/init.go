@@ -7,7 +7,6 @@ import (
 	"envctl/internal/reporting"
 	"envctl/pkg/logging"
 	"errors"
-	"fmt"
 	"time"
 
 	"envctl/internal/orchestrator"
@@ -19,6 +18,9 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"envctl/internal/api"
+	"envctl/internal/kube"
 )
 
 // DefaultKeyMap returns a KeyMap with the default bindings used by the TUI.
@@ -93,6 +95,10 @@ func DefaultKeyMap() KeyMap { // Returns model.KeyMap (KeyMap is in this package
 			key.WithKeys("C"),
 			key.WithHelp("C", "show MCP config"),
 		),
+		ToggleMcpTools: key.NewBinding(
+			key.WithKeys("T"),
+			key.WithHelp("T", "show MCP tools"),
+		),
 	}
 }
 
@@ -105,15 +111,56 @@ func InitialModel(
 	cfg config.EnvctlConfig,
 	logChannel <-chan logging.LogEntry,
 ) *Model {
-	// Create the TUI reporter and service manager
+	// Create event bus and state store
+	eventBus := reporting.NewEventBus()
+	stateStore := reporting.NewStateStore()
+
+	// Create the event bus adapter
+	eventBusAdapter := reporting.NewEventBusAdapter(eventBus, stateStore)
+
+	// Create the TUI reporter with the same state store
 	tuiChannel := make(chan tea.Msg, 100)
-	tuiReporter := reporting.NewTUIReporter(tuiChannel)
-	serviceMgr := managers.NewServiceManager(tuiReporter)
+	tuiReporterConfig := reporting.DefaultTUIReporterConfig()
+	tuiReporterConfig.StateStore = stateStore // Use the same state store!
+	tuiReporter := reporting.NewTUIReporterWithConfig(tuiChannel, tuiReporterConfig)
+
+	// Subscribe TUI to service state events from the event bus
+	// This ensures the TUI receives all state updates
+	serviceStateFilter := reporting.FilterByType(
+		reporting.EventTypeServiceStarting,
+		reporting.EventTypeServiceRunning,
+		reporting.EventTypeServiceStopping,
+		reporting.EventTypeServiceStopped,
+		reporting.EventTypeServiceFailed,
+		reporting.EventTypeServiceRetrying,
+		reporting.EventTypeHealthCheck,
+	)
+
+	eventBus.Subscribe(serviceStateFilter, func(event reporting.Event) {
+		// Convert event to TUI message
+		if stateEvent, ok := event.(*reporting.ServiceStateEvent); ok {
+			// Send the event directly to the TUI channel
+			select {
+			case tuiChannel <- *stateEvent:
+				// Event sent successfully
+			default:
+				// Channel full, log warning
+				logging.Warn("TUIModel", "TUI channel full, dropping service state event for %s", stateEvent.SourceLabel)
+			}
+		}
+	})
+
+	// Create service manager with the reporter
+	serviceMgr := managers.NewServiceManager(eventBusAdapter)
+
+	// Create API provider first (needed by orchestrator)
+	kubeMgr := kube.NewManager(eventBusAdapter)
+	apiProvider := api.NewProvider(eventBus, stateStore, kubeMgr)
 
 	// Create the orchestrator
 	orch := orchestrator.New(
 		serviceMgr,
-		tuiReporter,
+		eventBusAdapter,
 		orchestrator.Config{
 			MCName:              mcName,
 			WCName:              wcName,
@@ -123,107 +170,90 @@ func InitialModel(
 		},
 	)
 
-	m := &Model{
-		Width:                 80, // Default, will be updated
-		Height:                24, // Default, will be updated
-		QuitApp:               false,
-		CurrentAppMode:        ModeInitializing,
-		FocusedPanelKey:       "",
-		ActivityLog:           []string{},
-		ManagementClusterName: mcName,
-		WorkloadClusterName:   wcName,
-		CurrentKubeContext:    currentContext,
-		ServiceManager:        serviceMgr,
-		Reporter:              tuiReporter,
-		Orchestrator:          orch,
-		TUIChannel:            tuiChannel,
-		PortForwards:          make(map[string]*PortForwardProcess),
-		McpServers:            make(map[string]*McpServerProcess),
-		ClusterInfo:           nil, // Initialize as nil, will be populated later
-		DebugMode:             debugMode,
-		PortForwardingConfig:  cfg.PortForwards,
-		MCPServerConfig:       cfg.MCPServers,
-		// The orchestrator now manages K8s state
-		LogChannel:           logChannel,
-		StatusBarMessage:     "",
-		StatusBarMessageType: StatusBarInfo,
+	// Create port forward processes map
+	portForwards := make(map[string]*PortForwardProcess)
+	portForwardOrder := []string{}
+	for _, pf := range cfg.PortForwards {
+		if pf.Enabled {
+			portForwards[pf.Name] = &PortForwardProcess{
+				Label:     pf.Name,
+				Config:    pf,
+				Active:    true,
+				StatusMsg: "Not started",
+			}
+			portForwardOrder = append(portForwardOrder, pf.Name)
+		}
 	}
 
-	// Initialize UI components
-	ti := textinput.New()
-	ti.Placeholder = "Management Cluster"
-	ti.CharLimit = 156
-	ti.Width = 50
-	m.NewConnectionInput = ti
-	m.CurrentInputStep = McInputStep
+	// Create MCP server processes map
+	mcpServers := make(map[string]*McpServerProcess)
+	mcpProxyOrder := []string{}
+	for _, mcp := range cfg.MCPServers {
+		if mcp.Enabled {
+			mcpServers[mcp.Name] = &McpServerProcess{
+				Label:     mcp.Name,
+				Config:    mcp,
+				Active:    true,
+				StatusMsg: "Not started",
+			}
+			mcpProxyOrder = append(mcpProxyOrder, mcp.Name)
+		}
+	}
 
-	// Initialize viewports
-	m.LogViewport = viewport.New(0, 0)
-	m.MainLogViewport = viewport.New(0, 0)
-	m.McpConfigViewport = viewport.New(0, 0)
-
-	// Initialize spinner
+	// Create spinner
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
-	m.Spinner = s
 
-	// Initialize other UI state
-	m.IsLoading = true
-	m.Keys = DefaultKeyMap()
-	m.Help = help.New()
-	m.ColorMode = fmt.Sprintf("%s (Dark: %v)", lipgloss.ColorProfile().String(), true)
-	m.MCHealth = ClusterHealthInfo{IsLoading: true}
+	// Create viewports
+	logVp := viewport.New(80, 10)
+	logVp.SetContent("Activity log will appear here...")
 
-	// Populate PortForwards and McpServers with initial placeholder data
-	// This ensures that when status updates arrive, the map entries exist.
-	for _, pfCfg := range m.PortForwardingConfig {
-		if !pfCfg.Enabled {
-			continue
-		}
-		m.PortForwardOrder = append(m.PortForwardOrder, pfCfg.Name)
-		m.PortForwards[pfCfg.Name] = &PortForwardProcess{
-			Label:     pfCfg.Name,
-			StatusMsg: "Initializing...",
-			Active:    false,
-			Running:   false,
-			Config:    pfCfg,
-		}
+	mainLogVp := viewport.New(80, 10)
+	mainLogVp.SetContent("Main log will appear here...")
+
+	mcpConfigVp := viewport.New(80, 20)
+	mcpToolsVp := viewport.New(80, 20)
+
+	// Create text input for new connection
+	ti := textinput.New()
+	ti.Placeholder = "Enter management cluster name"
+	ti.Focus()
+	ti.CharLimit = 156
+	ti.Width = 50
+
+	return &Model{
+		CurrentAppMode:        ModeInitializing,
+		ManagementClusterName: mcName,
+		WorkloadClusterName:   wcName,
+		CurrentKubeContext:    currentContext,
+		DebugMode:             debugMode,
+		PortForwardingConfig:  cfg.PortForwards,
+		PortForwards:          portForwards,
+		PortForwardOrder:      portForwardOrder,
+		McpServers:            mcpServers,
+		McpProxyOrder:         mcpProxyOrder,
+		MCPServerConfig:       cfg.MCPServers,
+		ActivityLog:           []string{},
+		LogViewport:           logVp,
+		MainLogViewport:       mainLogVp,
+		McpConfigViewport:     mcpConfigVp,
+		McpToolsViewport:      mcpToolsVp,
+		Spinner:               s,
+		NewConnectionInput:    ti,
+		CurrentInputStep:      McInputStep,
+		Keys:                  DefaultKeyMap(),
+		Help:                  help.New(),
+		TUIChannel:            tuiChannel,
+		ServiceManager:        serviceMgr,
+		Reporter:              tuiReporter,
+		Orchestrator:          orch,
+		LogChannel:            logChannel,
+		APIs:                  apiProvider,
+		MCPTools:              make(map[string][]api.MCPTool),
+		StatusBarMessage:      "",
+		StatusBarMessageType:  StatusBarInfo,
 	}
-
-	for _, mcpCfg := range m.MCPServerConfig {
-		if !mcpCfg.Enabled {
-			continue
-		}
-		m.McpProxyOrder = append(m.McpProxyOrder, mcpCfg.Name)
-		m.McpServers[mcpCfg.Name] = &McpServerProcess{
-			Label:     mcpCfg.Name,
-			StatusMsg: "Initializing...",
-			Active:    false,
-			Config:    mcpCfg,
-			ProxyPort: mcpCfg.ProxyPort,
-			Pid:       0,
-		}
-	}
-
-	// m.Help.ShowAll = true // Help styling removed for now
-
-	// Basic initialization that CAN be done within model package:
-	if wcName != "" {
-		m.WCHealth = ClusterHealthInfo{IsLoading: true}
-	}
-
-	// McpProxyOrder will be initialized by the controller.
-	m.McpProxyOrder = nil // Initialize explicitly
-
-	// Initial focused panel can be set here if it's a sensible default not requiring controller logic
-	if len(m.PortForwardOrder) > 0 { // PortForwardOrder will be empty now initially
-		// m.FocusedPanelKey = m.PortForwardOrder[0] // This will need to be set by controller after SetupPortForwards
-	} else if mcName != "" {
-		m.FocusedPanelKey = McPaneFocusKey // McPaneFocusKey is a model constant
-	} // Else, FocusedPanelKey remains empty, controller can set it.
-
-	return m
 }
 
 // ChannelReaderCmd returns a Bubbletea command that forwards messages from the given channel.

@@ -276,6 +276,37 @@ func Render(m *model.Model) string {
 		overlayCanvas := lipgloss.Place(m.Width, m.Height-1, lipgloss.Center, lipgloss.Center, cfgOverlay, lipgloss.WithWhitespaceBackground(lipgloss.AdaptiveColor{Light: "rgba(0,0,0,0.1)", Dark: "rgba(0,0,0,0.6)"}))
 		statusBar := renderStatusBar(m, m.Width)
 		return lipgloss.JoinVertical(lipgloss.Left, overlayCanvas, statusBar)
+	case model.ModeMcpToolsOverlay:
+		// MCP Tools overlay
+		toolsTitleText := SafeIcon(IconGear) + " MCP Server Tools  (↑/↓ scroll  •  Esc close)"
+		toolsTitleView := color.LogPanelTitleStyle.Render(toolsTitleText)
+		toolsTitleHeight := lipgloss.Height(toolsTitleView)
+
+		toolsOverlayTotalWidth := int(float64(m.Width) * 0.8)
+		toolsOverlayTotalHeight := int(float64(m.Height) * 0.7)
+
+		newToolsViewportWidth := toolsOverlayTotalWidth - color.McpConfigOverlayStyle.GetHorizontalFrameSize()
+		newToolsViewportHeight := toolsOverlayTotalHeight - color.McpConfigOverlayStyle.GetVerticalFrameSize() - toolsTitleHeight
+
+		if newToolsViewportWidth < 0 {
+			newToolsViewportWidth = 0
+		}
+		if newToolsViewportHeight < 0 {
+			newToolsViewportHeight = 0
+		}
+
+		// Update viewport dimensions
+		m.McpToolsViewport.Width = newToolsViewportWidth
+		m.McpToolsViewport.Height = newToolsViewportHeight
+
+		// Generate and set content
+		toolsContent := GenerateMcpToolsContent(m)
+		m.McpToolsViewport.SetContent(toolsContent)
+
+		toolsOverlay := renderMcpToolsOverlay(m, toolsOverlayTotalWidth, toolsOverlayTotalHeight)
+		overlayCanvas := lipgloss.Place(m.Width, m.Height-1, lipgloss.Center, lipgloss.Center, toolsOverlay, lipgloss.WithWhitespaceBackground(lipgloss.AdaptiveColor{Light: "rgba(0,0,0,0.1)", Dark: "rgba(0,0,0,0.6)"}))
+		statusBar := renderStatusBar(m, m.Width)
+		return lipgloss.JoinVertical(lipgloss.Left, overlayCanvas, statusBar)
 	default:
 		return color.StatusStyle.Render(fmt.Sprintf("Unhandled application mode: %s", m.CurrentAppMode.String()))
 	}

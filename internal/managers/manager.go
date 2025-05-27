@@ -1,6 +1,7 @@
 package managers
 
 import (
+	"context"
 	"envctl/internal/config"
 	"envctl/internal/mcpserver"
 	"envctl/internal/portforwarding"
@@ -8,6 +9,7 @@ import (
 	"envctl/pkg/logging"
 	"fmt"
 	"sync"
+	"time"
 )
 
 // ServiceManager implements the ServiceManagerAPI interface.
@@ -16,6 +18,7 @@ type ServiceManager struct {
 	activeServices map[string]chan struct{}        // Map of service label to its stop channel
 	serviceConfigs map[string]ManagedServiceConfig // Map label to its original ManagedServiceConfig
 	reporter       reporting.ServiceReporter
+	reconciler     *serviceReconciler
 	mu             sync.Mutex
 	portForwards   map[string]chan struct{}
 	mcpServers     map[string]chan struct{}
@@ -23,13 +26,15 @@ type ServiceManager struct {
 
 // NewServiceManager creates a new instance of ServiceManager
 func NewServiceManager(reporter reporting.ServiceReporter) ServiceManagerAPI {
-	return &ServiceManager{
+	sm := &ServiceManager{
 		activeServices: make(map[string]chan struct{}),
 		serviceConfigs: make(map[string]ManagedServiceConfig),
 		reporter:       reporter,
 		portForwards:   make(map[string]chan struct{}),
 		mcpServers:     make(map[string]chan struct{}),
 	}
+	sm.reconciler = newServiceReconciler(sm)
+	return sm
 }
 
 // SetReporter allows changing the reporter after initialization
@@ -233,6 +238,10 @@ func (sm *ServiceManager) createPortForwardUpdateAdapter(pfOriginalLabels map[st
 					state,
 				).WithCause("port_forward_status_change")
 
+				// Explicitly set IsReady based on the callback's isOpReady parameter
+				// This overrides the default IsReady = (state == StateRunning) logic
+				update.IsReady = isOpReady
+
 				if operationErr != nil {
 					update = update.WithError(operationErr)
 				}
@@ -243,6 +252,10 @@ func (sm *ServiceManager) createPortForwardUpdateAdapter(pfOriginalLabels map[st
 			// Clean up if stopped
 			if state == reporting.StateStopped || state == reporting.StateFailed {
 				delete(sm.activeServices, originalLabel)
+				// Clean up health checker
+				if sm.reconciler != nil {
+					sm.reconciler.cleanupHealthChecker(originalLabel)
+				}
 			}
 		}
 	}
@@ -262,13 +275,15 @@ func (sm *ServiceManager) createMCPUpdateAdapter(mcpOriginalLabels map[string]st
 		// Map status to state
 		var state reporting.ServiceState
 		switch mcpStatusUpdate.ProcessStatus {
-		case "NpxStarting", "Initializing", "NpxInitializing":
+		case "ProcessStarting", "ProcessInitializing", "Initializing":
 			state = reporting.StateStarting
-		case "NpxRunning":
+		case "ProcessRunning":
 			state = reporting.StateRunning
-		case "NpxStoppedByUser", "NpxExitedGracefully":
+		case "ProcessStopping":
+			state = reporting.StateStopping
+		case "ProcessStopped", "ProcessExited", "ProcessKilled":
 			state = reporting.StateStopped
-		case "NpxStartFailed", "NpxExitedWithError":
+		case "ProcessFailed", "ProcessError":
 			state = reporting.StateFailed
 		default:
 			state = reporting.StateUnknown
@@ -280,11 +295,15 @@ func (sm *ServiceManager) createMCPUpdateAdapter(mcpOriginalLabels map[string]st
 
 		// Only report if state changed
 		var lastReportedState reporting.ServiceState
+		var lastIsReady bool
+		var lastProxyPort int
 		known := false
 		if sm.reporter != nil && sm.reporter.GetStateStore() != nil {
 			snapshot, exists := sm.reporter.GetStateStore().GetServiceState(originalLabel)
 			if exists {
 				lastReportedState = snapshot.State
+				lastIsReady = snapshot.IsReady
+				lastProxyPort = snapshot.ProxyPort
 				known = true
 			}
 		}
@@ -316,6 +335,15 @@ func (sm *ServiceManager) createMCPUpdateAdapter(mcpOriginalLabels map[string]st
 				).WithCause("mcp_server_status_change").
 					WithServiceData(mcpStatusUpdate.ProxyPort, mcpStatusUpdate.PID)
 
+				// For MCP servers, preserve the last known IsReady state when reporting state changes
+				// The reconciler will update IsReady separately based on health checks
+				if known {
+					update.IsReady = lastIsReady
+				} else {
+					// For new services, IsReady defaults to false until health check passes
+					update.IsReady = false
+				}
+
 				if mcpStatusUpdate.ProcessErr != nil {
 					update = update.WithError(mcpStatusUpdate.ProcessErr)
 				}
@@ -323,9 +351,28 @@ func (sm *ServiceManager) createMCPUpdateAdapter(mcpOriginalLabels map[string]st
 				sm.reporter.Report(update)
 			}
 
+			// If the MCP server just reported its port for the first time and is running, trigger immediate health check
+			if state == reporting.StateRunning && mcpStatusUpdate.ProxyPort > 0 && lastProxyPort == 0 && sm.reconciler != nil {
+				go func() {
+					// Small delay to ensure state store is updated
+					time.Sleep(100 * time.Millisecond)
+					ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+					defer cancel()
+					if err := sm.reconciler.CheckServiceHealth(ctx, originalLabel); err != nil {
+						logging.Debug("ServiceManager", "Initial health check failed for %s: %v", originalLabel, err)
+					} else {
+						logging.Debug("ServiceManager", "Initial health check succeeded for %s", originalLabel)
+					}
+				}()
+			}
+
 			// Clean up if stopped
 			if state == reporting.StateStopped || state == reporting.StateFailed {
 				delete(sm.activeServices, originalLabel)
+				// Clean up health checker
+				if sm.reconciler != nil {
+					sm.reconciler.cleanupHealthChecker(originalLabel)
+				}
 			}
 		}
 	}
@@ -434,3 +481,26 @@ func (sm *ServiceManager) GetActiveServices() []string {
 // - StopServiceWithDependents: Removed (orchestrator handles this)
 // - StartServicesDependingOn: Removed (orchestrator handles this)
 // - StartServicesWithDependencyOrder: Removed (orchestrator handles this)
+
+// GetReconciler returns the service reconciler for health monitoring
+func (sm *ServiceManager) GetReconciler() ServiceReconciler {
+	return sm.reconciler
+}
+
+// mapMCPServerState maps MCP server-specific states to generic service states
+func mapMCPServerState(mcpState string) reporting.ServiceState {
+	switch mcpState {
+	case "ProcessStarting", "ProcessInitializing", "Initializing":
+		return reporting.StateStarting
+	case "ProcessRunning":
+		return reporting.StateRunning
+	case "ProcessStopping":
+		return reporting.StateStopping
+	case "ProcessStopped", "ProcessExited", "ProcessKilled":
+		return reporting.StateStopped
+	case "ProcessFailed", "ProcessError":
+		return reporting.StateFailed
+	default:
+		return reporting.StateUnknown
+	}
+}

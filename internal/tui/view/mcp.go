@@ -34,6 +34,9 @@ func renderMcpProxyPanel(serverName string, predefinedData config.MCPServerDefin
 		case strings.Contains(st, "running"):
 			baseStyle = color.PanelStatusRunningStyle
 			contentFg = color.StatusMsgRunningStyle
+		case strings.Contains(st, "stopped"):
+			baseStyle = color.PanelStatusExitedStyle
+			contentFg = color.StatusMsgExitedStyle
 		default:
 			baseStyle = color.PanelStatusInitializingStyle
 			contentFg = color.StatusMsgInitializingStyle
@@ -77,6 +80,24 @@ func renderMcpProxyPanel(serverName string, predefinedData config.MCPServerDefin
 		}
 	}
 	b.WriteString(contentFg.Render(fmt.Sprintf("Status: %s%s", iconStr, trimStatusMessage(statusMsg))))
+
+	// Add health indicator
+	if proc != nil && proc.Active {
+		b.WriteString("\n")
+		var healthIcon, healthText string
+		// Check if the service is ready based on the state store
+		if m.IsServiceReady(serverName) {
+			healthIcon = SafeIcon(IconCheck)
+			healthText = "Healthy"
+		} else if proc.Err != nil {
+			healthIcon = SafeIcon(IconCross)
+			healthText = "Unhealthy"
+		} else {
+			healthIcon = SafeIcon(IconHourglass)
+			healthText = "Checking..."
+		}
+		b.WriteString(contentFg.Render(fmt.Sprintf("Health: %s%s", healthIcon, healthText)))
+	}
 
 	frame := final.GetHorizontalFrameSize()
 	width := targetOuterWidth - frame
