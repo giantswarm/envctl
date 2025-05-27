@@ -94,12 +94,12 @@ Arguments:
 			return fmt.Errorf("failed to load envctl configuration: %w", err)
 		}
 
+		// Check if we should use v2 architecture
+		useV2 := os.Getenv("ENVCTL_V2") == "true"
+
 		if noTUI {
 			// logging.InitForCLI was already called above.
 			logging.Info("CLI", "Running in no-TUI mode.")
-
-			consoleReporter := reporting.NewConsoleReporter()
-			serviceMgr := managers.NewServiceManager(consoleReporter)
 
 			// ... (rest of CLI mode logic using logging.* for its own messages) ...
 			if managementClusterArg != "" {
@@ -123,34 +123,67 @@ Arguments:
 
 			logging.Info("CLI", "--- Setting up orchestrator for service management ---")
 
-			// Create orchestrator for health monitoring and dependency management
-			orch := orchestrator.New(
-				serviceMgr,
-				consoleReporter,
-				orchestrator.Config{
-					MCName:              managementClusterArg,
-					WCName:              workloadClusterArg,
-					PortForwards:        envctlCfg.PortForwards,
-					MCPServers:          envctlCfg.MCPServers,
-					HealthCheckInterval: 15 * time.Second,
-				},
-			)
-
-			// Start orchestrator
 			ctx := context.Background()
-			if err := orch.Start(ctx); err != nil {
-				logging.Error("CLI", err, "Failed to start orchestrator: %v", err)
-				return err
+			
+			if useV2 {
+				logging.Info("CLI", "Using v2 service architecture")
+				
+				// Create v2 orchestrator
+				orchConfig := orchestrator.ConfigV2{
+					MCName:       managementClusterArg,
+					WCName:       workloadClusterArg,
+					PortForwards: envctlCfg.PortForwards,
+					MCPServers:   envctlCfg.MCPServers,
+				}
+				orchV2 := orchestrator.NewV2(orchConfig)
+				
+				// Start orchestrator
+				if err := orchV2.Start(ctx); err != nil {
+					logging.Error("CLI", err, "Failed to start orchestrator v2")
+					return err
+				}
+				
+				logging.Info("CLI", "Services started with v2 architecture. Press Ctrl+C to stop all services and exit.")
+				
+				sigChan := make(chan os.Signal, 1)
+				signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+				<-sigChan
+				logging.Info("CLI", "\n--- Shutting down services ---")
+				orchV2.Stop()
+				time.Sleep(1 * time.Second)
+			} else {
+				// Use v1 orchestrator
+				consoleReporter := reporting.NewConsoleReporter()
+				serviceMgr := managers.NewServiceManager(consoleReporter)
+				
+				// Create orchestrator for health monitoring and dependency management
+				orch := orchestrator.New(
+					serviceMgr,
+					consoleReporter,
+					orchestrator.Config{
+						MCName:              managementClusterArg,
+						WCName:              workloadClusterArg,
+						PortForwards:        envctlCfg.PortForwards,
+						MCPServers:          envctlCfg.MCPServers,
+						HealthCheckInterval: 15 * time.Second,
+					},
+				)
+
+				// Start orchestrator
+				if err := orch.Start(ctx); err != nil {
+					logging.Error("CLI", err, "Failed to start orchestrator: %v", err)
+					return err
+				}
+
+				logging.Info("CLI", "Services started with health monitoring. Press Ctrl+C to stop all services and exit.")
+
+				sigChan := make(chan os.Signal, 1)
+				signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+				<-sigChan
+				logging.Info("CLI", "\n--- Shutting down services ---")
+				orch.Stop()
+				time.Sleep(1 * time.Second)
 			}
-
-			logging.Info("CLI", "Services started with health monitoring. Press Ctrl+C to stop all services and exit.")
-
-			sigChan := make(chan os.Signal, 1)
-			signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-			<-sigChan
-			logging.Info("CLI", "\n--- Shutting down services ---")
-			orch.Stop()
-			time.Sleep(1 * time.Second)
 
 		} else { // TUI Mode
 			// This fmt.Println is pre-TUI initialization, so it's acceptable.
@@ -160,9 +193,8 @@ Arguments:
 			logChan := logging.InitForTUI(appLogLevel)
 			defer logging.CloseTUIChannel()
 
-			// Check if we should use v2 architecture
-			useV2 := os.Getenv("ENVCTL_V2") == "true"
-
+			// Check if we should use v2 architecture - already declared above
+			
 			var program *tea.Program
 			if useV2 {
 				logging.Info("CLI", "Using v2 service architecture")

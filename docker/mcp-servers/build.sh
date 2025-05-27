@@ -4,7 +4,7 @@
 set -e
 
 # Configuration
-REGISTRY="${REGISTRY:-giantswarm}"
+REGISTRY="${REGISTRY:-ghcr.io/giantswarm}"
 VERSION="${VERSION:-latest}"
 
 # Colors for output
