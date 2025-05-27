@@ -179,8 +179,9 @@ func (m *ModelV2) Init() tea.Cmd {
 	return tea.Batch(
 		m.Spinner.Tick,
 		m.startOrchestrator(),
-		m.listenForStateChanges(),
-		m.listenForLogs(),
+		m.ListenForStateChanges(),
+		m.ListenForLogs(),
+		ChannelReaderCmd(m.TUIChannel),
 	)
 }
 
@@ -226,34 +227,24 @@ func (m *ModelV2) startOrchestrator() tea.Cmd {
 	}
 }
 
-// listenForStateChanges listens for service state change events
-func (m *ModelV2) listenForStateChanges() tea.Cmd {
+// ListenForStateChanges listens for service state change events
+func (m *ModelV2) ListenForStateChanges() tea.Cmd {
 	return func() tea.Msg {
-		for event := range m.StateChangeEvents {
-			m.TUIChannel <- event
+		event, ok := <-m.StateChangeEvents
+		if !ok {
+			return nil
 		}
-		return nil
+		return event
 	}
 }
 
-// listenForLogs listens for log entries
-func (m *ModelV2) listenForLogs() tea.Cmd {
+// ListenForLogs listens for log entries
+func (m *ModelV2) ListenForLogs() tea.Cmd {
 	return func() tea.Msg {
-		for entry := range m.LogChannel {
-			logLine := fmt.Sprintf("[%s] %s: %s",
-				entry.Timestamp.Format("15:04:05"),
-				entry.Subsystem,
-				entry.Message,
-			)
-
-			m.ActivityLog = append(m.ActivityLog, logLine)
-			m.ActivityLogDirty = true
-
-			// Limit log size
-			if len(m.ActivityLog) > MaxActivityLogLines {
-				m.ActivityLog = m.ActivityLog[len(m.ActivityLog)-MaxActivityLogLines:]
-			}
+		entry, ok := <-m.LogChannel
+		if !ok {
+			return nil
 		}
-		return nil
+		return NewLogEntryMsg{Entry: entry}
 	}
 }

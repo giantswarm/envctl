@@ -80,8 +80,36 @@ func UpdateV2(msg tea.Msg, m *model.ModelV2) (*model.ModelV2, tea.Cmd) {
 		m.StatusBarMessage = ""
 		m.StatusBarMessageType = model.StatusBarInfo
 
+	case model.NewLogEntryMsg:
+		// Format and add log entry to activity log
+		logLine := fmt.Sprintf("[%s] %s: %s",
+			msg.Entry.Timestamp.Format("15:04:05"),
+			msg.Entry.Subsystem,
+			msg.Entry.Message,
+		)
+		m.ActivityLog = append(m.ActivityLog, logLine)
+		m.ActivityLogDirty = true
+
+		// Limit log size
+		if len(m.ActivityLog) > model.MaxActivityLogLines {
+			m.ActivityLog = m.ActivityLog[len(m.ActivityLog)-model.MaxActivityLogLines:]
+		}
+
+		// Re-queue the log listener
+		return m, m.ListenForLogs()
+
 	case tea.KeyMsg:
 		cmds = append(cmds, handleKeyPressV2(m, msg))
+	}
+
+	// Re-queue listeners for continuous operation
+	if _, ok := msg.(api.ServiceStateChangedEvent); ok {
+		cmds = append(cmds, m.ListenForStateChanges())
+	}
+
+	// Re-queue channel reader
+	if msg != nil {
+		cmds = append(cmds, model.ChannelReaderCmd(m.TUIChannel))
 	}
 
 	return m, tea.Batch(cmds...)

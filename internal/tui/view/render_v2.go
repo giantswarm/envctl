@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 
+	"envctl/internal/api"
+
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -120,40 +122,167 @@ func renderHeaderV2(m *model.ModelV2, width int) string {
 }
 
 func renderContextPanesRowV2(m *model.ModelV2, width, maxHeight int) string {
-	// Render K8s connections
-	var panes []string
-
+	// Look for MC and WC connections
+	var mcConn, wcConn *api.K8sConnectionInfo
+	
 	for label, conn := range m.K8sConnections {
-		status := "●"
-		statusColor := color.ErrorStyle
-		if conn.Health == "healthy" {
-			statusColor = color.HealthGoodStyle
+		if strings.Contains(label, "mc-") && strings.Contains(label, m.ManagementClusterName) {
+			mcConn = conn
+		} else if strings.Contains(label, "wc-") && strings.Contains(label, m.WorkloadClusterName) {
+			wcConn = conn
 		}
-		status = statusColor.Render("●")
-
-		content := fmt.Sprintf("%s %s\nNodes: %d/%d", status, label, conn.ReadyNodes, conn.TotalNodes)
-		pane := color.PanelStatusDefaultStyle.Width(width/2 - 1).Height(maxHeight).Render(content)
-		panes = append(panes, pane)
 	}
 
-	if len(panes) == 0 {
-		return color.PanelStatusDefaultStyle.Width(width).Height(maxHeight).Render("No K8s connections")
+	// Render MC pane
+	mcPane := renderMcPaneV2(m, mcConn, width/2)
+	
+	// If we have a WC, render both side by side
+	if wcConn != nil && m.WorkloadClusterName != "" {
+		wcPane := renderWcPaneV2(m, wcConn, width/2)
+		return lipgloss.JoinHorizontal(lipgloss.Top, mcPane, wcPane)
+	}
+	
+	// Otherwise just render MC pane full width
+	return renderMcPaneV2(m, mcConn, width)
+}
+
+func renderMcPaneV2(m *model.ModelV2, conn *api.K8sConnectionInfo, paneWidth int) string {
+	mcName := m.ManagementClusterName
+	if mcName == "" {
+		mcName = "N/A"
 	}
 
-	return lipgloss.JoinHorizontal(lipgloss.Left, panes...)
+	// Check if MC is active
+	isMcActive := m.CurrentKubeContext != "" && strings.Contains(m.CurrentKubeContext, m.ManagementClusterName)
+	
+	activeString := ""
+	if isMcActive {
+		activeString = " (Active)"
+	}
+
+	content := fmt.Sprintf("%s MC: %s%s", SafeIcon(IconKubernetes), mcName, activeString)
+	
+	// Add health status
+	if conn != nil {
+		healthIcon := SafeIcon(IconCheck)
+		healthStyle := color.HealthGoodStyle
+		
+		if conn.Health != "healthy" {
+			healthIcon = SafeIcon(IconWarning)
+			healthStyle = color.HealthWarnStyle
+		}
+		
+		healthText := fmt.Sprintf("%s Nodes: %d/%d", healthIcon, conn.ReadyNodes, conn.TotalNodes)
+		content += "\n" + healthStyle.Render(healthText)
+	} else {
+		content += "\n" + color.HealthLoadingStyle.Render(SafeIcon(IconHourglass) + " Nodes: Loading...")
+	}
+
+	// Determine pane style
+	paneStyle := color.ContextPaneStyle
+	if isMcActive {
+		paneStyle = color.ActiveContextPaneStyle
+	}
+	if m.FocusedPanelKey == "k8s-mc-"+m.ManagementClusterName {
+		if isMcActive {
+			paneStyle = color.FocusedAndActiveContextPaneStyle
+		} else {
+			paneStyle = color.FocusedContextPaneStyle
+		}
+	}
+	
+	return paneStyle.Width(paneWidth - paneStyle.GetHorizontalFrameSize()).Render(content)
+}
+
+func renderWcPaneV2(m *model.ModelV2, conn *api.K8sConnectionInfo, paneWidth int) string {
+	wcName := m.WorkloadClusterName
+	if wcName == "" {
+		return ""
+	}
+
+	// Check if WC is active
+	isWcActive := m.CurrentKubeContext != "" && strings.Contains(m.CurrentKubeContext, m.WorkloadClusterName)
+	
+	activeString := ""
+	if isWcActive {
+		activeString = " (Active)"
+	}
+
+	content := fmt.Sprintf("%s WC: %s%s", SafeIcon(IconKubernetes), wcName, activeString)
+	
+	// Add health status
+	if conn != nil {
+		healthIcon := SafeIcon(IconCheck)
+		healthStyle := color.HealthGoodStyle
+		
+		if conn.Health != "healthy" {
+			healthIcon = SafeIcon(IconWarning)
+			healthStyle = color.HealthWarnStyle
+		}
+		
+		healthText := fmt.Sprintf("%s Nodes: %d/%d", healthIcon, conn.ReadyNodes, conn.TotalNodes)
+		content += "\n" + healthStyle.Render(healthText)
+	} else {
+		content += "\n" + color.HealthLoadingStyle.Render(SafeIcon(IconHourglass) + " Nodes: Loading...")
+	}
+
+	// Determine pane style
+	paneStyle := color.ContextPaneStyle
+	if isWcActive {
+		paneStyle = color.ActiveContextPaneStyle
+	}
+	if m.FocusedPanelKey == "k8s-wc-"+m.WorkloadClusterName {
+		if isWcActive {
+			paneStyle = color.FocusedAndActiveContextPaneStyle
+		} else {
+			paneStyle = color.FocusedContextPaneStyle
+		}
+	}
+	
+	return paneStyle.Width(paneWidth - paneStyle.GetHorizontalFrameSize()).Render(content)
 }
 
 func renderPortForwardingRowV2(m *model.ModelV2, width, maxHeight int) string {
-	title := color.PortTitleStyle.Render("Port Forwards")
+	title := color.PortTitleStyle.Render(SafeIcon(IconLink) + " Port Forwards")
 
 	var content []string
-	for label, pf := range m.PortForwards {
-		status := "○"
-		if pf.State == "running" {
-			status = color.HealthGoodStyle.Render("●")
+	
+	// Use the ordered list to maintain consistent ordering
+	for _, label := range m.PortForwardOrder {
+		pf, exists := m.PortForwards[label]
+		if !exists {
+			continue
 		}
-		line := fmt.Sprintf("%s %s → localhost:%d", status, label, pf.LocalPort)
-		content = append(content, line)
+		
+		statusIcon := SafeIcon(IconStop)
+		statusStyle := color.HealthLoadingStyle
+		statusText := "Starting"
+		
+		switch pf.State {
+		case "running":
+			statusIcon = SafeIcon(IconCheck)
+			statusStyle = color.HealthGoodStyle
+			statusText = "Running"
+		case "failed":
+			statusIcon = SafeIcon(IconCross)
+			statusStyle = color.HealthErrorStyle
+			statusText = "Failed"
+		case "stopped":
+			statusIcon = SafeIcon(IconStop)
+			statusStyle = color.HealthWarnStyle
+			statusText = "Stopped"
+		}
+		
+		// Format: icon name
+		// Port: localPort → targetType/targetName
+		// Status: statusText • Health: healthStatus
+		line1 := fmt.Sprintf("%s %s", pf.Icon, pf.Name)
+		line2 := fmt.Sprintf("Port: %d:%d → %s/%s", pf.LocalPort, pf.RemotePort, pf.TargetType, pf.TargetName)
+		line3 := fmt.Sprintf("Status: %s %s • Health: %s %s", 
+			statusStyle.Render(statusIcon), statusText,
+			statusStyle.Render(statusIcon), pf.Health)
+		
+		content = append(content, line1, line2, line3, "")
 	}
 
 	if len(content) == 0 {
@@ -161,28 +290,93 @@ func renderPortForwardingRowV2(m *model.ModelV2, width, maxHeight int) string {
 	}
 
 	body := strings.Join(content, "\n")
-	return color.PanelStatusDefaultStyle.Width(width).Height(maxHeight).Render(title + "\n" + body)
+	return color.PanelStatusDefaultStyle.Width(width).Height(maxHeight).Render(title + "\n\n" + body)
 }
 
 func renderMcpProxiesRowV2(m *model.ModelV2, width, maxHeight int) string {
-	title := color.PortTitleStyle.Render("MCP Servers")
-
-	var content []string
-	for label, mcp := range m.MCPServers {
-		status := "○"
-		if mcp.State == "running" {
-			status = color.HealthGoodStyle.Render("●")
+	// Split width into 3 columns for MCP servers
+	colWidth := width / 3
+	var columns []string
+	
+	// Use the ordered list to maintain consistent ordering
+	for i, name := range m.MCPServerOrder {
+		mcp, exists := m.MCPServers[name]
+		if !exists {
+			continue
 		}
-		line := fmt.Sprintf("%s %s (port: %d)", status, label, mcp.Port)
-		content = append(content, line)
+		
+		// Determine which column this MCP server goes in
+		colIndex := i % 3
+		if colIndex >= len(columns) {
+			columns = append(columns, "")
+		}
+		
+		statusIcon := SafeIcon(IconStop)
+		pidText := "N/A"
+		portText := "N/A"
+		statusText := "Starting"
+		healthText := "Checking..."
+		
+		switch mcp.State {
+		case "running":
+			statusIcon = SafeIcon(IconPlay)
+			statusText = "Running"
+			if mcp.PID > 0 {
+				pidText = fmt.Sprintf("%d", mcp.PID)
+			}
+			if mcp.Port > 0 {
+				portText = fmt.Sprintf("%d", mcp.Port)
+			}
+			healthText = mcp.Health
+		case "failed":
+			statusIcon = SafeIcon(IconCross)
+			statusText = "Failed"
+			healthText = "Error"
+		case "stopped":
+			statusIcon = SafeIcon(IconStop)
+			statusText = "Stopped"
+			healthText = "N/A"
+		}
+		
+		// Format the MCP server info
+		content := fmt.Sprintf("%s %s %s\n", statusIcon, mcp.Icon, mcp.Name)
+		content += fmt.Sprintf("PID: %s\n", pidText)
+		content += fmt.Sprintf("Port: %s\n", portText)
+		content += fmt.Sprintf("Status: %s\n", statusText)
+		content += fmt.Sprintf("Health: %s", healthText)
+		
+		// Style based on state and focus
+		paneStyle := color.PanelStatusDefaultStyle
+		if mcp.State == "running" {
+			paneStyle = color.PanelStatusRunningStyle
+		} else if mcp.State == "failed" {
+			paneStyle = color.PanelStatusErrorStyle
+		}
+		
+		if m.FocusedPanelKey == name {
+			if mcp.State == "running" {
+				paneStyle = color.FocusedPanelStatusRunningStyle
+			} else if mcp.State == "failed" {
+				paneStyle = color.FocusedPanelStatusErrorStyle
+			} else {
+				paneStyle = color.FocusedPanelStatusDefaultStyle
+			}
+		}
+		
+		pane := paneStyle.Width(colWidth - 2).Render(content)
+		columns[colIndex] += pane + "\n"
 	}
-
-	if len(content) == 0 {
-		content = append(content, "No MCP servers configured")
+	
+	if len(columns) == 0 {
+		return color.PanelStatusDefaultStyle.Width(width).Height(maxHeight).Render("No MCP servers configured")
 	}
-
-	body := strings.Join(content, "\n")
-	return color.PanelStatusDefaultStyle.Width(width).Height(maxHeight).Render(title + "\n" + body)
+	
+	// Join columns horizontally
+	mcpRow := lipgloss.JoinHorizontal(lipgloss.Top, columns...)
+	
+	// Add title
+	title := color.PortTitleStyle.Render(SafeIcon(IconGear) + " MCP Servers")
+	return color.PanelStatusDefaultStyle.Width(width).Height(maxHeight).Render(title + "\n" + mcpRow)
 }
 
 func renderCombinedLogPanelV2(m *model.ModelV2, width, height int) string {
