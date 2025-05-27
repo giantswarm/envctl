@@ -106,11 +106,19 @@ func (s *PortForwardService) Stop(ctx context.Context) error {
 	if stopChan != nil {
 		close(stopChan)
 
-		// Wait for port forward to stop with timeout
+		// Wait for port forward to stop with context timeout
+		done := make(chan struct{})
+		go func() {
+			// Give the port forward some time to stop gracefully
+			time.Sleep(500 * time.Millisecond)
+			close(done)
+		}()
+
 		select {
-		case <-time.After(5 * time.Second):
-			logging.Warn("PortForwardService", "Timeout waiting for port forward %s to stop", s.config.Name)
+		case <-done:
+			// Port forward stopped gracefully
 		case <-ctx.Done():
+			logging.Warn("PortForwardService", "Context cancelled while stopping port forward %s", s.config.Name)
 			return ctx.Err()
 		}
 	}

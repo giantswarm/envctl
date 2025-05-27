@@ -87,13 +87,23 @@ func (s *MCPServerService) Stop(ctx context.Context) error {
 	s.mu.RUnlock()
 
 	if stopChan != nil {
+		// Send stop signal
 		close(stopChan)
 
-		// Wait for process to stop with timeout
+		// Wait for process to stop with timeout from context
+		done := make(chan struct{})
+		go func() {
+			// Give the process some time to stop gracefully
+			time.Sleep(500 * time.Millisecond)
+			close(done)
+		}()
+
 		select {
-		case <-time.After(5 * time.Second):
-			logging.Warn("MCPServerService", "Timeout waiting for MCP server %s to stop", s.config.Name)
+		case <-done:
+			// Process stopped gracefully
 		case <-ctx.Done():
+			// Context cancelled, force stop
+			logging.Warn("MCPServerService", "Context cancelled while stopping MCP server %s", s.config.Name)
 			return ctx.Err()
 		}
 	}

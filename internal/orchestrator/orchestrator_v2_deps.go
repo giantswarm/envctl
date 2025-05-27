@@ -7,6 +7,7 @@ import (
 	"envctl/pkg/logging"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -222,33 +223,65 @@ func (o *OrchestratorV2) stopAllServices() error {
 
 	// Stop in reverse order: MCP servers first, then port forwards, then K8s connections
 
-	// Stop MCP servers
+	// Stop MCP servers with 3-second timeout
+	mcpCtx, mcpCancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer mcpCancel()
+	
+	var wg sync.WaitGroup
 	for _, service := range allServices {
 		if service.GetType() == services.TypeMCPServer {
-			if err := service.Stop(context.Background()); err != nil {
-				logging.Error("OrchestratorV2", err, "Failed to stop MCP server %s", service.GetLabel())
-			}
+			wg.Add(1)
+			go func(svc services.Service) {
+				defer wg.Done()
+				if err := svc.Stop(mcpCtx); err != nil && err != context.DeadlineExceeded {
+					logging.Error("OrchestratorV2", err, "Failed to stop MCP server %s", svc.GetLabel())
+				} else {
+					logging.Debug("OrchestratorV2", "Stopped MCP server %s", svc.GetLabel())
+				}
+			}(service)
 		}
 	}
+	wg.Wait()
 
-	// Stop port forwards
+	// Stop port forwards with 2-second timeout
+	pfCtx, pfCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer pfCancel()
+	
 	for _, service := range allServices {
 		if service.GetType() == services.TypePortForward {
-			if err := service.Stop(context.Background()); err != nil {
-				logging.Error("OrchestratorV2", err, "Failed to stop port forward %s", service.GetLabel())
-			}
+			wg.Add(1)
+			go func(svc services.Service) {
+				defer wg.Done()
+				if err := svc.Stop(pfCtx); err != nil && err != context.DeadlineExceeded {
+					logging.Error("OrchestratorV2", err, "Failed to stop port forward %s", svc.GetLabel())
+				} else {
+					logging.Debug("OrchestratorV2", "Stopped port forward %s", svc.GetLabel())
+				}
+			}(service)
 		}
 	}
+	wg.Wait()
 
-	// Stop K8s connections
+	// Stop K8s connections with 1-second timeout (they should stop quickly)
+	k8sCtx, k8sCancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer k8sCancel()
+	
 	for _, service := range allServices {
 		if service.GetType() == services.TypeKubeConnection {
-			if err := service.Stop(context.Background()); err != nil {
-				logging.Error("OrchestratorV2", err, "Failed to stop K8s connection %s", service.GetLabel())
-			}
+			wg.Add(1)
+			go func(svc services.Service) {
+				defer wg.Done()
+				if err := svc.Stop(k8sCtx); err != nil && err != context.DeadlineExceeded {
+					logging.Error("OrchestratorV2", err, "Failed to stop K8s connection %s", svc.GetLabel())
+				} else {
+					logging.Debug("OrchestratorV2", "Stopped K8s connection %s", svc.GetLabel())
+				}
+			}(service)
 		}
 	}
+	wg.Wait()
 
+	logging.Info("OrchestratorV2", "All services stopped")
 	return nil
 }
 

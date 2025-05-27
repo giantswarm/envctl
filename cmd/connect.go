@@ -96,6 +96,7 @@ Arguments:
 
 		// Check if we should use v2 architecture
 		useV2 := os.Getenv("ENVCTL_V2") == "true"
+		logging.Info("CLI", "ENVCTL_V2 environment variable: %s, useV2: %v", os.Getenv("ENVCTL_V2"), useV2)
 
 		if noTUI {
 			// logging.InitForCLI was already called above.
