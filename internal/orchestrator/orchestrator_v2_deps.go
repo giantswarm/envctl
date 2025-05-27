@@ -321,12 +321,91 @@ func (o *OrchestratorV2) monitorServices() {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
+	// Track previous states to detect state changes
+	previousStates := make(map[string]services.ServiceState)
+
 	for {
 		select {
 		case <-o.ctx.Done():
 			return
 		case <-ticker.C:
 			o.checkAndRestartFailedServices()
+			o.checkForStateChanges(previousStates)
+		}
+	}
+}
+
+// checkForStateChanges monitors for service state changes and handles dependent service restarts
+func (o *OrchestratorV2) checkForStateChanges(previousStates map[string]services.ServiceState) {
+	allServices := o.registry.GetAll()
+
+	for _, service := range allServices {
+		label := service.GetLabel()
+		currentState := service.GetState()
+		previousState, hadPrevious := previousStates[label]
+
+		// Update the state tracking
+		previousStates[label] = currentState
+
+		// Check if service just became running
+		if hadPrevious && previousState != services.StateRunning && currentState == services.StateRunning {
+			logging.Info("OrchestratorV2", "Service %s became running, checking for dependent services to restart", label)
+
+			// Start dependent services that were stopped due to dependency failure
+			go o.startDependentServices(label)
+		}
+	}
+}
+
+// startDependentServices starts services that depend on the given service and were stopped due to dependency failure
+func (o *OrchestratorV2) startDependentServices(label string) {
+	nodeID := o.getNodeIDForService(label)
+
+	// Find all services that depend on this one
+	allServices := o.registry.GetAll()
+	var servicesToStart []string
+
+	for _, service := range allServices {
+		depLabel := service.GetLabel()
+
+		// Skip if service is already running
+		if service.GetState() == services.StateRunning {
+			continue
+		}
+
+		// Check if this service was stopped due to dependency failure
+		o.mu.RLock()
+		reason, hasReason := o.stopReasons[depLabel]
+		o.mu.RUnlock()
+
+		if hasReason && reason == StopReasonDependency {
+			// Check if this service depends on the recovered service
+			depNodeID := o.getNodeIDForService(depLabel)
+			node := o.depGraph.Get(dependency.NodeID(depNodeID))
+
+			if node != nil {
+				for _, dep := range node.DependsOn {
+					if string(dep) == nodeID {
+						servicesToStart = append(servicesToStart, depLabel)
+						break
+					}
+				}
+			}
+		}
+	}
+
+	// Start the dependent services
+	for _, depLabel := range servicesToStart {
+		logging.Info("OrchestratorV2", "Restarting dependent service %s after %s became running", depLabel, label)
+
+		// Clear the stop reason
+		o.mu.Lock()
+		delete(o.stopReasons, depLabel)
+		o.mu.Unlock()
+
+		// Start the service
+		if err := o.StartService(depLabel); err != nil {
+			logging.Error("OrchestratorV2", err, "Failed to restart dependent service %s", depLabel)
 		}
 	}
 }
