@@ -23,9 +23,8 @@ import (
 
 // MCP server specific types, variables, and init functions are now in internal/mcpserver
 
-var noTUI bool        // Variable to store the value of the --no-tui flag
-var tuiDebugMode bool // Variable to store the value of the --debug-tui flag for TUI
-var debug bool        // General debug flag, distinct from tuiDebugMode for now if needed
+var noTUI bool // Variable to store the value of the --no-tui flag
+var debug bool // General debug flag for verbose logging
 
 // connectCmdDef defines the connect command structure
 var connectCmdDef = &cobra.Command{
@@ -203,6 +202,7 @@ Arguments:
 					managementClusterArg,
 					workloadClusterArg,
 					initialKubeContext,
+					debug,
 					envctlCfg,
 					logChan,
 				)
@@ -216,7 +216,7 @@ Arguments:
 					managementClusterArg,
 					workloadClusterArg,
 					initialKubeContext,
-					debug || tuiDebugMode, // Use either general debug or TUI-specific debug mode
+					debug, // Use general debug mode
 					envctlCfg,
 					logChan,
 				)
@@ -286,8 +286,6 @@ func buildManagedServiceConfigs(pfConfigs []config.PortForwardDefinition, mcpCon
 func init() {
 	rootCmd.AddCommand(connectCmdDef)
 	connectCmdDef.Flags().BoolVar(&noTUI, "no-tui", false, "Disable TUI and run port forwarding in the background")
-	// Flag for TUI specific debug features (e.g. showing debug panel in TUI)
-	connectCmdDef.Flags().BoolVar(&tuiDebugMode, "debug-tui", false, "Enable TUI debug mode from startup (shows extra logs, debug panel)")
 	// General debug flag for more verbose logging across the application, including non-TUI parts if applicable
 	connectCmdDef.Flags().BoolVar(&debug, "debug", false, "Enable general debug logging")
 }

@@ -11,6 +11,7 @@ import (
 // NewProgramV2 creates a new Bubble Tea program with the new service architecture
 func NewProgramV2(
 	mcName, wcName, currentKubeContext string,
+	debugMode bool,
 	cfg config.EnvctlConfig,
 	logChannel <-chan logging.LogEntry,
 ) (*tea.Program, error) {
@@ -19,6 +20,7 @@ func NewProgramV2(
 		mcName,
 		wcName,
 		currentKubeContext,
+		debugMode,
 		cfg,
 		logChannel,
 	)

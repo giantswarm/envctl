@@ -36,7 +36,7 @@ func TestInitializeModelV2(t *testing.T) {
 	defer close(logChan)
 
 	// Initialize ModelV2
-	m, err := InitializeModelV2("test-mc", "test-wc", "test-context", cfg, logChan)
+	m, err := InitializeModelV2("test-mc", "test-wc", "test-context", false, cfg, logChan)
 	if err != nil {
 		t.Fatalf("Failed to initialize ModelV2: %v", err)
 	}

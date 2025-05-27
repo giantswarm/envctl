@@ -18,7 +18,7 @@ import (
 )
 
 // InitializeModelV2 creates and initializes a new TUI model with the new architecture
-func InitializeModelV2(mcName, wcName, currentContext string, cfg config.EnvctlConfig, logChannel <-chan logging.LogEntry) (*ModelV2, error) {
+func InitializeModelV2(mcName, wcName, currentContext string, debugMode bool, cfg config.EnvctlConfig, logChannel <-chan logging.LogEntry) (*ModelV2, error) {
 	// Create the orchestrator
 	orchConfig := orchestrator.ConfigV2{
 		MCName:       mcName,
@@ -64,6 +64,7 @@ func InitializeModelV2(mcName, wcName, currentContext string, cfg config.EnvctlC
 		// UI State
 		CurrentAppMode: ModeInitializing,
 		ColorMode:      "auto",
+		DebugMode:      debugMode,
 
 		// Data structures
 		K8sConnections: make(map[string]*api.K8sConnectionInfo),
