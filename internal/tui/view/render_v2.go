@@ -243,140 +243,360 @@ func renderWcPaneV2(m *model.ModelV2, conn *api.K8sConnectionInfo, paneWidth int
 }
 
 func renderPortForwardingRowV2(m *model.ModelV2, width, maxHeight int) string {
-	title := color.PortTitleStyle.Render(SafeIcon(IconLink) + " Port Forwards")
-
-	var content []string
+	// Render port forwards as a grid of panels, up to 3 columns
+	const maxCols = 3
 	
-	// Use the ordered list to maintain consistent ordering
-	for _, label := range m.PortForwardOrder {
+	// Get number of port forwards
+	numPFs := len(m.PortForwardOrder)
+	if numPFs == 0 {
+		return color.PanelStatusDefaultStyle.Width(width).Height(maxHeight).Render(
+			color.PortTitleStyle.Render(SafeIcon(IconLink) + " Port Forwards") + "\n\nNo port forwards configured")
+	}
+	
+	// Determine number of columns to display
+	displayCols := numPFs
+	if displayCols > maxCols {
+		displayCols = maxCols
+	}
+	
+	// Calculate total border width
+	totalBorderWidth := 0
+	for i := 0; i < displayCols && i < numPFs; i++ {
+		totalBorderWidth += color.PanelStatusDefaultStyle.GetHorizontalFrameSize()
+	}
+	
+	// Calculate inner width for content
+	innerWidth := width - totalBorderWidth
+	if innerWidth < 0 {
+		innerWidth = 0
+	}
+	
+	// Distribute width among columns
+	baseInnerWidth := 0
+	if displayCols > 0 {
+		baseInnerWidth = innerWidth / displayCols
+	}
+	remainder := 0
+	if displayCols > 0 {
+		remainder = innerWidth % displayCols
+	}
+	
+	// Render each port forward as a panel
+	var panels []string
+	for i := 0; i < displayCols && i < numPFs; i++ {
+		label := m.PortForwardOrder[i]
 		pf, exists := m.PortForwards[label]
 		if !exists {
 			continue
 		}
 		
-		statusIcon := SafeIcon(IconStop)
-		statusStyle := color.HealthLoadingStyle
-		statusText := "Starting"
-		
-		switch pf.State {
-		case "running":
-			statusIcon = SafeIcon(IconCheck)
-			statusStyle = color.HealthGoodStyle
-			statusText = "Running"
-		case "failed":
-			statusIcon = SafeIcon(IconCross)
-			statusStyle = color.HealthErrorStyle
-			statusText = "Failed"
-		case "stopped":
-			statusIcon = SafeIcon(IconStop)
-			statusStyle = color.HealthWarnStyle
-			statusText = "Stopped"
+		// Calculate width for this panel
+		panelInnerWidth := baseInnerWidth
+		if i < remainder {
+			panelInnerWidth++
 		}
 		
-		// Format: icon name
-		// Port: localPort → targetType/targetName
-		// Status: statusText • Health: healthStatus
-		line1 := fmt.Sprintf("%s %s", pf.Icon, pf.Name)
-		line2 := fmt.Sprintf("Port: %d:%d → %s/%s", pf.LocalPort, pf.RemotePort, pf.TargetType, pf.TargetName)
-		line3 := fmt.Sprintf("Status: %s %s • Health: %s %s", 
-			statusStyle.Render(statusIcon), statusText,
-			statusStyle.Render(statusIcon), pf.Health)
-		
-		content = append(content, line1, line2, line3, "")
+		// Render the panel
+		panel := renderPortForwardPanelV2(m, label, pf, panelInnerWidth + color.PanelStatusDefaultStyle.GetHorizontalFrameSize())
+		panels = append(panels, panel)
 	}
-
-	if len(content) == 0 {
-		content = append(content, "No port forwards configured")
+	
+	// Add empty panels to fill up to 3 columns
+	for i := len(panels); i < maxCols; i++ {
+		panelInnerWidth := baseInnerWidth
+		if i < remainder {
+			panelInnerWidth++
+		}
+		emptyPanel := color.PanelStyle.Width(panelInnerWidth).Render("")
+		panels = append(panels, emptyPanel)
 	}
+	
+	// Join panels horizontally
+	pfRow := lipgloss.JoinHorizontal(lipgloss.Top, panels...)
+	
+	// Wrap with proper height constraint
+	return lipgloss.NewStyle().
+		Width(width).
+		MaxHeight(maxHeight).
+		Align(lipgloss.Left).
+		Render(pfRow)
+}
 
-	body := strings.Join(content, "\n")
-	return color.PanelStatusDefaultStyle.Width(width).Height(maxHeight).Render(title + "\n\n" + body)
+func renderPortForwardPanelV2(m *model.ModelV2, label string, pf *api.PortForwardServiceInfo, targetWidth int) string {
+	// Determine panel style based on state
+	var baseStyle lipgloss.Style
+	var contentStyle lipgloss.Style
+	
+	switch pf.State {
+	case "running":
+		baseStyle = color.PanelStatusRunningStyle
+		contentStyle = color.StatusMsgRunningStyle
+	case "failed":
+		baseStyle = color.PanelStatusErrorStyle
+		contentStyle = color.StatusMsgErrorStyle
+	case "stopped":
+		baseStyle = color.PanelStatusExitedStyle
+		contentStyle = color.StatusMsgExitedStyle
+	default:
+		baseStyle = color.PanelStatusInitializingStyle
+		contentStyle = color.StatusMsgInitializingStyle
+	}
+	
+	// Apply focus style
+	if m.FocusedPanelKey == label {
+		switch pf.State {
+		case "running":
+			baseStyle = color.FocusedPanelStatusRunningStyle
+		case "failed":
+			baseStyle = color.FocusedPanelStatusErrorStyle
+		case "stopped":
+			baseStyle = color.FocusedPanelStatusExitedStyle
+		default:
+			baseStyle = color.FocusedPanelStatusInitializingStyle
+		}
+	}
+	
+	// Build content
+	var content strings.Builder
+	
+	// Title with icon
+	icon := pf.Icon
+	if icon == "" {
+		icon = SafeIcon(IconLink)
+	}
+	content.WriteString(color.PortTitleStyle.Render(icon + " " + pf.Name))
+	content.WriteString("\n")
+	
+	// Port info
+	content.WriteString(fmt.Sprintf("Port: %d:%d", pf.LocalPort, pf.RemotePort))
+	content.WriteString("\n")
+	
+	// Target info
+	content.WriteString(fmt.Sprintf("Target: %s/%s", pf.TargetType, pf.TargetName))
+	content.WriteString("\n")
+	
+	// Status with icon
+	statusIcon := SafeIcon(IconHourglass)
+	statusText := "Starting"
+	switch pf.State {
+	case "running":
+		statusIcon = SafeIcon(IconPlay)
+		statusText = "Running"
+	case "failed":
+		statusIcon = SafeIcon(IconCross)
+		statusText = "Failed"
+	case "stopped":
+		statusIcon = SafeIcon(IconStop)
+		statusText = "Stopped"
+	}
+	content.WriteString(contentStyle.Render(fmt.Sprintf("Status: %s %s", statusIcon, statusText)))
+	
+	// Health indicator
+	if pf.State == "running" || pf.State == "starting" {
+		content.WriteString("\n")
+		healthIcon := SafeIcon(IconHourglass)
+		healthText := "Checking..."
+		if pf.State == "running" && pf.Health == "healthy" {
+			healthIcon = SafeIcon(IconCheck)
+			healthText = "Healthy"
+		} else if pf.Health == "unhealthy" {
+			healthIcon = SafeIcon(IconCross)
+			healthText = "Unhealthy"
+		}
+		content.WriteString(contentStyle.Render(fmt.Sprintf("Health: %s %s", healthIcon, healthText)))
+	}
+	
+	// Calculate actual width for content
+	frameSize := baseStyle.GetHorizontalFrameSize()
+	contentWidth := targetWidth - frameSize
+	if contentWidth < 0 {
+		contentWidth = 0
+	}
+	
+	// Render the panel
+	return baseStyle.Width(contentWidth).Render(content.String())
 }
 
 func renderMcpProxiesRowV2(m *model.ModelV2, width, maxHeight int) string {
-	// Split width into 3 columns for MCP servers
-	colWidth := width / 3
-	var columns []string
+	// Render MCP servers as individual panels, up to 3 columns
+	const maxCols = 3
 	
-	// Use the ordered list to maintain consistent ordering
-	for i, name := range m.MCPServerOrder {
+	// Calculate how many servers we have
+	numServers := len(m.MCPServerOrder)
+	if numServers == 0 {
+		return color.PanelStatusDefaultStyle.Width(width).Height(maxHeight).Render("No MCP servers configured")
+	}
+	
+	// Determine number of columns to display
+	displayCols := numServers
+	if displayCols > maxCols {
+		displayCols = maxCols
+	}
+	
+	// Calculate width for each column
+	// First, account for borders of each panel
+	totalBorderWidth := 0
+	for i := 0; i < displayCols && i < numServers; i++ {
+		// Each panel has a border
+		totalBorderWidth += color.PanelStatusDefaultStyle.GetHorizontalFrameSize()
+	}
+	
+	// Calculate inner width available for content
+	innerWidth := width - totalBorderWidth
+	if innerWidth < 0 {
+		innerWidth = 0
+	}
+	
+	// Distribute width evenly among columns
+	baseInnerWidth := 0
+	if displayCols > 0 {
+		baseInnerWidth = innerWidth / displayCols
+	}
+	remainder := 0
+	if displayCols > 0 {
+		remainder = innerWidth % displayCols
+	}
+	
+	// Render each MCP server as a panel
+	var panels []string
+	for i := 0; i < displayCols && i < numServers; i++ {
+		name := m.MCPServerOrder[i]
 		mcp, exists := m.MCPServers[name]
 		if !exists {
 			continue
 		}
 		
-		// Determine which column this MCP server goes in
-		colIndex := i % 3
-		if colIndex >= len(columns) {
-			columns = append(columns, "")
+		// Calculate width for this panel
+		panelInnerWidth := baseInnerWidth
+		if i < remainder {
+			panelInnerWidth++ // Distribute remainder
 		}
 		
-		statusIcon := SafeIcon(IconStop)
-		pidText := "N/A"
-		portText := "N/A"
-		statusText := "Starting"
-		healthText := "Checking..."
-		
-		switch mcp.State {
-		case "running":
-			statusIcon = SafeIcon(IconPlay)
-			statusText = "Running"
-			if mcp.PID > 0 {
-				pidText = fmt.Sprintf("%d", mcp.PID)
-			}
-			if mcp.Port > 0 {
-				portText = fmt.Sprintf("%d", mcp.Port)
-			}
-			healthText = mcp.Health
-		case "failed":
-			statusIcon = SafeIcon(IconCross)
-			statusText = "Failed"
-			healthText = "Error"
-		case "stopped":
-			statusIcon = SafeIcon(IconStop)
-			statusText = "Stopped"
-			healthText = "N/A"
-		}
-		
-		// Format the MCP server info
-		content := fmt.Sprintf("%s %s %s\n", statusIcon, mcp.Icon, mcp.Name)
-		content += fmt.Sprintf("PID: %s\n", pidText)
-		content += fmt.Sprintf("Port: %s\n", portText)
-		content += fmt.Sprintf("Status: %s\n", statusText)
-		content += fmt.Sprintf("Health: %s", healthText)
-		
-		// Style based on state and focus
-		paneStyle := color.PanelStatusDefaultStyle
-		if mcp.State == "running" {
-			paneStyle = color.PanelStatusRunningStyle
-		} else if mcp.State == "failed" {
-			paneStyle = color.PanelStatusErrorStyle
-		}
-		
-		if m.FocusedPanelKey == name {
-			if mcp.State == "running" {
-				paneStyle = color.FocusedPanelStatusRunningStyle
-			} else if mcp.State == "failed" {
-				paneStyle = color.FocusedPanelStatusErrorStyle
-			} else {
-				paneStyle = color.FocusedPanelStatusDefaultStyle
-			}
-		}
-		
-		pane := paneStyle.Width(colWidth - 2).Render(content)
-		columns[colIndex] += pane + "\n"
+		// Render the panel
+		panel := renderMcpPanelV2(m, name, mcp, panelInnerWidth + color.PanelStatusDefaultStyle.GetHorizontalFrameSize())
+		panels = append(panels, panel)
 	}
 	
-	if len(columns) == 0 {
-		return color.PanelStatusDefaultStyle.Width(width).Height(maxHeight).Render("No MCP servers configured")
+	// Add empty panels if needed to fill up to 3 columns
+	for i := len(panels); i < maxCols; i++ {
+		panelInnerWidth := baseInnerWidth
+		if i < remainder {
+			panelInnerWidth++
+		}
+		emptyPanel := color.PanelStyle.Width(panelInnerWidth).Render("")
+		panels = append(panels, emptyPanel)
 	}
 	
-	// Join columns horizontally
-	mcpRow := lipgloss.JoinHorizontal(lipgloss.Top, columns...)
+	// Join panels horizontally
+	mcpRow := lipgloss.JoinHorizontal(lipgloss.Top, panels...)
 	
-	// Add title
+	// Add title above the panels
 	title := color.PortTitleStyle.Render(SafeIcon(IconGear) + " MCP Servers")
-	return color.PanelStatusDefaultStyle.Width(width).Height(maxHeight).Render(title + "\n" + mcpRow)
+	fullContent := lipgloss.JoinVertical(lipgloss.Left, title, mcpRow)
+	
+	// Wrap in a container with proper height
+	return lipgloss.NewStyle().
+		Width(width).
+		MaxHeight(maxHeight).
+		Align(lipgloss.Left).
+		Render(fullContent)
+}
+
+func renderMcpPanelV2(m *model.ModelV2, name string, mcp *api.MCPServerInfo, targetWidth int) string {
+	// Determine panel style based on state
+	var baseStyle lipgloss.Style
+	var contentStyle lipgloss.Style
+	
+	switch mcp.State {
+	case "running":
+		baseStyle = color.PanelStatusRunningStyle
+		contentStyle = color.StatusMsgRunningStyle
+	case "failed":
+		baseStyle = color.PanelStatusErrorStyle
+		contentStyle = color.StatusMsgErrorStyle
+	case "stopped":
+		baseStyle = color.PanelStatusExitedStyle
+		contentStyle = color.StatusMsgExitedStyle
+	default:
+		baseStyle = color.PanelStatusInitializingStyle
+		contentStyle = color.StatusMsgInitializingStyle
+	}
+	
+	// Apply focus style if this panel is focused
+	if m.FocusedPanelKey == name {
+		if mcp.State == "running" {
+			baseStyle = color.FocusedPanelStatusRunningStyle
+		} else if mcp.State == "failed" {
+			baseStyle = color.FocusedPanelStatusErrorStyle
+		} else {
+			baseStyle = color.FocusedPanelStatusDefaultStyle
+		}
+	}
+	
+	// Build content
+	var content strings.Builder
+	
+	// Title with icon
+	icon := mcp.Icon
+	if icon == "" {
+		icon = SafeIcon(IconGear)
+	}
+	content.WriteString(color.PortTitleStyle.Render(icon + " " + name))
+	content.WriteString("\n")
+	
+	// PID
+	pidStr := "PID: N/A"
+	if mcp.PID > 0 {
+		pidStr = fmt.Sprintf("PID: %d", mcp.PID)
+	}
+	content.WriteString(pidStr)
+	content.WriteString("\n")
+	
+	// Port
+	portStr := "Port: N/A"
+	if mcp.Port > 0 {
+		portStr = fmt.Sprintf("Port: %d", mcp.Port)
+	}
+	content.WriteString(portStr)
+	content.WriteString("\n")
+	
+	// Status with icon
+	statusIcon := SafeIcon(IconHourglass)
+	statusText := "Starting"
+	switch mcp.State {
+	case "running":
+		statusIcon = SafeIcon(IconPlay)
+		statusText = "Running"
+	case "failed":
+		statusIcon = SafeIcon(IconCross)
+		statusText = "Failed"
+	case "stopped":
+		statusIcon = SafeIcon(IconStop)
+		statusText = "Stopped"
+	}
+	content.WriteString(contentStyle.Render(fmt.Sprintf("Status: %s %s", statusIcon, statusText)))
+	
+	// Health
+	healthIcon := SafeIcon(IconHourglass)
+	healthText := "Checking..."
+	if mcp.State == "running" && mcp.Health == "healthy" {
+		healthIcon = SafeIcon(IconCheck)
+		healthText = "Healthy"
+	} else if mcp.State == "failed" || mcp.Health == "unhealthy" {
+		healthIcon = SafeIcon(IconCross)
+		healthText = "Unhealthy"
+	}
+	content.WriteString(contentStyle.Render(fmt.Sprintf("Health: %s %s", healthIcon, healthText)))
+	
+	// Calculate actual width for content
+	frameSize := baseStyle.GetHorizontalFrameSize()
+	contentWidth := targetWidth - frameSize
+	if contentWidth < 0 {
+		contentWidth = 0
+	}
+	
+	// Render the panel
+	return baseStyle.Width(contentWidth).Render(content.String())
 }
 
 func renderCombinedLogPanelV2(m *model.ModelV2, width, height int) string {
