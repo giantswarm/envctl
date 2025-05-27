@@ -18,7 +18,7 @@ func RenderV2(m *model.ModelV2) string {
 		if m.Width == 0 || m.Height == 0 {
 			return color.StatusStyle.Render("Initializing... (waiting for window size)")
 		}
-		return color.StatusStyle.Render("Initializing...")
+		return color.StatusStyle.Render(fmt.Sprintf("%s Initializing...", m.Spinner.View()))
 	case model.ModeNewConnectionInput:
 		return renderNewConnectionInputViewV2(m, m.Width)
 	case model.ModeMainDashboard:

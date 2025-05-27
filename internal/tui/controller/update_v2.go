@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -23,6 +24,19 @@ func UpdateV2(msg tea.Msg, m *model.ModelV2) (*model.ModelV2, tea.Cmd) {
 		m.MainLogViewport.Width = msg.Width
 		m.MainLogViewport.Height = msg.Height / 3
 		return m, nil
+
+	case spinner.TickMsg:
+		// Update spinner
+		var cmd tea.Cmd
+		m.Spinner, cmd = m.Spinner.Update(msg)
+		return m, cmd
+
+	case model.InitializationCompleteMsg:
+		// Orchestrator initialization is complete, switch to main dashboard
+		m.CurrentAppMode = model.ModeMainDashboard
+		// Refresh service data to ensure we have the latest state
+		cmds = append(cmds, refreshServiceData(m))
+		return m, tea.Batch(cmds...)
 
 	case api.ServiceStateChangedEvent:
 		// Handle service state changes

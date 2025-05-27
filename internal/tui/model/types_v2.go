@@ -234,6 +234,10 @@ type ServiceStoppedMsg struct {
 	Label string
 }
 
+// ServiceRestartedMsg indicates a service was restarted
 type ServiceRestartedMsg struct {
 	Label string
 }
+
+// InitializationCompleteMsg indicates that the orchestrator initialization is complete
+type InitializationCompleteMsg struct{}

@@ -221,8 +221,8 @@ func (m *ModelV2) startOrchestrator() tea.Cmd {
 			}
 		}
 
-		m.CurrentAppMode = ModeMainDashboard
-		return nil
+		// Return a message to indicate initialization is complete
+		return InitializationCompleteMsg{}
 	}
 }
 
