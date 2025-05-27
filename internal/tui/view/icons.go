@@ -7,6 +7,29 @@ import (
 	"github.com/mattn/go-runewidth"
 )
 
+// Icon constants
+const (
+	IconCheck      = "✔" // U+2714
+	IconCross      = "❌" // U+274C
+	IconWarning    = "⚠" // U+26A0 without VS16
+	IconHourglass  = "⏳" // U+23F3 (keep)
+	IconSpinner    = "🔄" // maybe leave
+	IconFire       = "🔥" // U+1F525 (for very critical errors)
+	IconSparkles   = "✨" // U+2728 (for success messages)
+	IconThumbsUp   = "👍" // U+1F44D
+	IconThumbsDown = "👎" // U+1F44E
+	IconLightbulb  = "💡" // U+1F4A1
+	IconKubernetes = "☸" // U+2638
+	IconDesktop    = "💻" // U+1F4BB
+	IconLink       = "🔗" // U+1F517
+	IconPlay       = "▶" // U+25B6 without VS16
+	IconStop       = "⏹" // U+23F9 without VS16
+	IconServer     = "🖥" // U+1F5A5 without VS16
+	IconGear       = "⚙" // U+2699 without VS16
+	IconScroll     = "📜" // U+1F4DC
+	IconInfo       = "ℹ" // U+2139 without VS16
+)
+
 // SafeIcon wraps an icon with proper spacing to prevent rendering issues
 // It ensures that an icon doesn't "swallow" the next character by adding
 // spaces depending on the display width of the icon:

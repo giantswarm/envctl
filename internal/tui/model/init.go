@@ -2,14 +2,12 @@ package model
 
 import (
 	"context"
+	"envctl/internal/api"
 	"envctl/internal/config"
-	"envctl/internal/managers"
-	"envctl/internal/reporting"
-	"envctl/pkg/logging"
-	"errors"
-	"time"
-
+	"envctl/internal/kube"
 	"envctl/internal/orchestrator"
+	"envctl/pkg/logging"
+	"fmt"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
@@ -17,15 +15,98 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-
-	"envctl/internal/api"
-	"envctl/internal/kube"
 )
 
-// DefaultKeyMap returns a KeyMap with the default bindings used by the TUI.
-// Moved from controller package.
-func DefaultKeyMap() KeyMap { // Returns model.KeyMap (KeyMap is in this package)
+// InitializeModel creates and initializes a new TUI model with the new architecture
+func InitializeModel(mcName, wcName, currentContext string, debugMode bool, cfg config.EnvctlConfig, logChannel <-chan logging.LogEntry) (*Model, error) {
+	// Create the orchestrator
+	orchConfig := orchestrator.Config{
+		MCName:       mcName,
+		WCName:       wcName,
+		PortForwards: cfg.PortForwards,
+		MCPServers:   cfg.MCPServers,
+	}
+	orch := orchestrator.New(orchConfig)
+
+	// Get the service registry
+	registry := orch.GetServiceRegistry()
+
+	// Create APIs
+	orchestratorAPI := api.NewOrchestratorAPI(orch, registry)
+	mcpAPI := api.NewMCPServiceAPI(registry)
+	portForwardAPI := api.NewPortForwardServiceAPI(registry)
+	k8sAPI := api.NewK8sServiceAPI(registry)
+
+	// Get current kube context if not provided
+	if currentContext == "" {
+		ctx, _ := kube.GetCurrentKubeContext()
+		currentContext = ctx
+	}
+
+	// Create the model
+	m := &Model{
+		// Service Architecture
+		Orchestrator:    orch,
+		OrchestratorAPI: orchestratorAPI,
+		MCPServiceAPI:   mcpAPI,
+		PortForwardAPI:  portForwardAPI,
+		K8sServiceAPI:   k8sAPI,
+
+		// Cluster info
+		ManagementClusterName: mcName,
+		WorkloadClusterName:   wcName,
+		CurrentKubeContext:    currentContext,
+
+		// Configuration
+		PortForwardingConfig: cfg.PortForwards,
+		MCPServerConfig:      cfg.MCPServers,
+
+		// UI State
+		CurrentAppMode: ModeInitializing,
+		ColorMode:      "auto",
+		DebugMode:      debugMode,
+
+		// Data structures
+		K8sConnections: make(map[string]*api.K8sConnectionInfo),
+		PortForwards:   make(map[string]*api.PortForwardServiceInfo),
+		MCPServers:     make(map[string]*api.MCPServerInfo),
+		MCPTools:       make(map[string][]api.MCPTool),
+
+		// UI Components
+		Spinner:            spinner.New(),
+		LogViewport:        viewport.New(80, 20),
+		MainLogViewport:    viewport.New(80, 10),
+		McpConfigViewport:  viewport.New(80, 20),
+		McpToolsViewport:   viewport.New(80, 20),
+		NewConnectionInput: textinput.New(),
+		Help:               help.New(),
+		Keys:               DefaultKeyMap(),
+
+		// Channels
+		TUIChannel: make(chan tea.Msg, 100),
+		LogChannel: logChannel,
+
+		// Activity log
+		ActivityLog: []string{},
+	}
+
+	// Subscribe to state changes
+	m.StateChangeEvents = m.OrchestratorAPI.SubscribeToStateChanges()
+
+	// Configure spinner
+	m.Spinner.Spinner = spinner.Dot
+
+	// Configure text input
+	m.NewConnectionInput.Placeholder = "Enter MC name"
+	m.NewConnectionInput.Focus()
+	m.NewConnectionInput.CharLimit = 50
+	m.NewConnectionInput.Width = 30
+
+	return m, nil
+}
+
+// DefaultKeyMap returns the default key bindings
+func DefaultKeyMap() KeyMap {
 	return KeyMap{
 		Up: key.NewBinding(
 			key.WithKeys("k", "up"),
@@ -96,227 +177,94 @@ func DefaultKeyMap() KeyMap { // Returns model.KeyMap (KeyMap is in this package
 			key.WithHelp("C", "show MCP config"),
 		),
 		ToggleMcpTools: key.NewBinding(
-			key.WithKeys("T"),
-			key.WithHelp("T", "show MCP tools"),
+			key.WithKeys("M"),
+			key.WithHelp("M", "show MCP tools"),
 		),
 	}
 }
 
-// InitialModel constructs the initial model with sensible defaults.
-func InitialModel(
-	mcName string,
-	wcName string,
-	currentContext string,
-	debugMode bool,
-	cfg config.EnvctlConfig,
-	logChannel <-chan logging.LogEntry,
-) *Model {
-	// Create event bus and state store
-	eventBus := reporting.NewEventBus()
-	stateStore := reporting.NewStateStore()
-
-	// Create the event bus adapter
-	eventBusAdapter := reporting.NewEventBusAdapter(eventBus, stateStore)
-
-	// Create the TUI reporter with the same state store
-	tuiChannel := make(chan tea.Msg, 100)
-	tuiReporterConfig := reporting.DefaultTUIReporterConfig()
-	tuiReporterConfig.StateStore = stateStore // Use the same state store!
-	tuiReporter := reporting.NewTUIReporterWithConfig(tuiChannel, tuiReporterConfig)
-
-	// Subscribe TUI to service state events from the event bus
-	// This ensures the TUI receives all state updates
-	serviceStateFilter := reporting.FilterByType(
-		reporting.EventTypeServiceStarting,
-		reporting.EventTypeServiceRunning,
-		reporting.EventTypeServiceStopping,
-		reporting.EventTypeServiceStopped,
-		reporting.EventTypeServiceFailed,
-		reporting.EventTypeServiceRetrying,
-		reporting.EventTypeHealthCheck,
-	)
-
-	eventBus.Subscribe(serviceStateFilter, func(event reporting.Event) {
-		// Convert event to TUI message
-		if stateEvent, ok := event.(*reporting.ServiceStateEvent); ok {
-			// Send the event directly to the TUI channel
-			select {
-			case tuiChannel <- *stateEvent:
-				// Event sent successfully
-			default:
-				// Channel full, log warning
-				logging.Warn("TUIModel", "TUI channel full, dropping service state event for %s", stateEvent.SourceLabel)
-			}
-		}
-	})
-
-	// Create service manager with the reporter
-	serviceMgr := managers.NewServiceManager(eventBusAdapter)
-
-	// Create API provider first (needed by orchestrator)
-	kubeMgr := kube.NewManager(eventBusAdapter)
-	apiProvider := api.NewProvider(eventBus, stateStore, kubeMgr)
-
-	// Create the orchestrator
-	orch := orchestrator.New(
-		serviceMgr,
-		eventBusAdapter,
-		orchestrator.Config{
-			MCName:              mcName,
-			WCName:              wcName,
-			PortForwards:        cfg.PortForwards,
-			MCPServers:          cfg.MCPServers,
-			HealthCheckInterval: 15 * time.Second,
-		},
-	)
-
-	// Create port forward processes map
-	portForwards := make(map[string]*PortForwardProcess)
-	portForwardOrder := []string{}
-	for _, pf := range cfg.PortForwards {
-		if pf.Enabled {
-			portForwards[pf.Name] = &PortForwardProcess{
-				Label:     pf.Name,
-				Config:    pf,
-				Active:    true,
-				StatusMsg: "Not started",
-			}
-			portForwardOrder = append(portForwardOrder, pf.Name)
-		}
-	}
-
-	// Create MCP server processes map
-	mcpServers := make(map[string]*McpServerProcess)
-	mcpProxyOrder := []string{}
-	for _, mcp := range cfg.MCPServers {
-		if mcp.Enabled {
-			mcpServers[mcp.Name] = &McpServerProcess{
-				Label:     mcp.Name,
-				Config:    mcp,
-				Active:    true,
-				StatusMsg: "Not started",
-			}
-			mcpProxyOrder = append(mcpProxyOrder, mcp.Name)
-		}
-	}
-
-	// Create spinner
-	s := spinner.New()
-	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
-
-	// Create viewports
-	logVp := viewport.New(80, 10)
-	logVp.SetContent("Activity log will appear here...")
-
-	mainLogVp := viewport.New(80, 10)
-	mainLogVp.SetContent("Main log will appear here...")
-
-	mcpConfigVp := viewport.New(80, 20)
-	mcpToolsVp := viewport.New(80, 20)
-
-	// Create text input for new connection
-	ti := textinput.New()
-	ti.Placeholder = "Enter management cluster name"
-	ti.Focus()
-	ti.CharLimit = 156
-	ti.Width = 50
-
-	return &Model{
-		CurrentAppMode:        ModeInitializing,
-		ManagementClusterName: mcName,
-		WorkloadClusterName:   wcName,
-		CurrentKubeContext:    currentContext,
-		DebugMode:             debugMode,
-		PortForwardingConfig:  cfg.PortForwards,
-		PortForwards:          portForwards,
-		PortForwardOrder:      portForwardOrder,
-		McpServers:            mcpServers,
-		McpProxyOrder:         mcpProxyOrder,
-		MCPServerConfig:       cfg.MCPServers,
-		ActivityLog:           []string{},
-		LogViewport:           logVp,
-		MainLogViewport:       mainLogVp,
-		McpConfigViewport:     mcpConfigVp,
-		McpToolsViewport:      mcpToolsVp,
-		Spinner:               s,
-		NewConnectionInput:    ti,
-		CurrentInputStep:      McInputStep,
-		Keys:                  DefaultKeyMap(),
-		Help:                  help.New(),
-		TUIChannel:            tuiChannel,
-		ServiceManager:        serviceMgr,
-		Reporter:              tuiReporter,
-		Orchestrator:          orch,
-		LogChannel:            logChannel,
-		APIs:                  apiProvider,
-		MCPTools:              make(map[string][]api.MCPTool),
-		StatusBarMessage:      "",
-		StatusBarMessageType:  StatusBarInfo,
-	}
-}
-
-// ChannelReaderCmd returns a Bubbletea command that forwards messages from the given channel.
-func ChannelReaderCmd(ch chan tea.Msg) tea.Cmd {
-	return func() tea.Msg {
-		msg := <-ch
-		return msg
-	}
-}
-
-// Init implements tea.Model and starts asynchronous bootstrap tasks.
-// It now starts the orchestrator which handles service lifecycle and health monitoring.
+// Init implements the tea.Model interface
 func (m *Model) Init() tea.Cmd {
-	var cmds []tea.Cmd
+	return tea.Batch(
+		m.Spinner.Tick,
+		m.startOrchestrator(),
+		m.ListenForStateChanges(),
+		m.ListenForLogs(),
+		ChannelReaderCmd(m.TUIChannel),
+	)
+}
 
-	if m.Orchestrator == nil {
-		errMsg := "Orchestrator not initialized in TUI model"
-		logging.Error("ModelInit", errors.New(errMsg), "%s", errMsg)
-		m.QuittingMessage = errMsg
-		return tea.Quit
-	}
+// Update implements the tea.Model interface
+func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// For now, just return the model unchanged
+	// The actual update logic will be handled by a wrapper
+	return m, nil
+}
 
-	// Start the orchestrator (which will start services and monitor health)
-	startOrchestratorCmd := func() tea.Msg {
+// View implements the tea.Model interface
+func (m *Model) View() string {
+	// For now, return a simple view
+	// The actual view will be handled by a wrapper
+	return fmt.Sprintf("envctl - Services: %d K8s, %d Port Forwards, %d MCP Servers\n\nPress ? for help, q to quit",
+		len(m.K8sConnections),
+		len(m.PortForwards),
+		len(m.MCPServers),
+	)
+}
+
+// startOrchestrator starts the orchestrator
+func (m *Model) startOrchestrator() tea.Cmd {
+	return func() tea.Msg {
 		ctx := context.Background()
 		if err := m.Orchestrator.Start(ctx); err != nil {
-			logging.Error("ModelInit", err, "Failed to start orchestrator")
-			return AllServicesStartedMsg{InitialStartupErrors: []error{err}}
+			return ServiceErrorMsg{
+				Label: "orchestrator",
+				Err:   err,
+			}
 		}
-		// Update dependency graph from orchestrator
-		m.DependencyGraph = m.Orchestrator.GetDependencyGraph()
 
-		// Reconcile state after orchestrator starts to ensure UI consistency
-		m.ReconcileState()
+		// Initial data refresh
+		if err := m.RefreshServiceData(); err != nil {
+			return ServiceErrorMsg{
+				Label: "refresh",
+				Err:   err,
+			}
+		}
 
-		logging.Info("ModelInit", "Orchestrator started successfully")
-		return AllServicesStartedMsg{InitialStartupErrors: nil}
+		// Return a message to indicate initialization is complete
+		return InitializationCompleteMsg{}
 	}
-	cmds = append(cmds, startOrchestratorCmd)
-
-	if m.TUIChannel != nil {
-		cmds = append(cmds, ChannelReaderCmd(m.TUIChannel))
-	}
-
-	if m.LogChannel != nil {
-		cmds = append(cmds, ListenForLogEntriesCmd(m.LogChannel))
-	}
-
-	cmds = append(cmds, m.Spinner.Tick)
-
-	return tea.Batch(cmds...)
 }
 
-// ListenForLogEntriesCmd returns a Bubbletea command that listens on the LogChannel
-// and forwards new log entries as NewLogEntryMsg.
-func ListenForLogEntriesCmd(logChan <-chan logging.LogEntry) tea.Cmd {
+// ListenForStateChanges listens for service state change events
+func (m *Model) ListenForStateChanges() tea.Cmd {
 	return func() tea.Msg {
-		entry, ok := <-logChan
+		event, ok := <-m.StateChangeEvents
 		if !ok {
-			// Channel has been closed, perhaps return a specific nil message or a special "closed" message
-			// For now, returning nil will stop this command from re-queueing if Bubble Tea handles it that way.
+			return nil
+		}
+		return event
+	}
+}
+
+// ListenForLogs listens for log entries
+func (m *Model) ListenForLogs() tea.Cmd {
+	return func() tea.Msg {
+		entry, ok := <-m.LogChannel
+		if !ok {
 			return nil
 		}
 		return NewLogEntryMsg{Entry: entry}
+	}
+}
+
+// ChannelReaderCmd reads messages from a channel and returns them as tea.Msg
+func ChannelReaderCmd(ch <-chan tea.Msg) tea.Cmd {
+	return func() tea.Msg {
+		msg, ok := <-ch
+		if !ok {
+			return nil
+		}
+		return msg
 	}
 }

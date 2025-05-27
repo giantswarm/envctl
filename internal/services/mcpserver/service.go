@@ -169,23 +169,32 @@ func (s *MCPServerService) CheckHealth(ctx context.Context) (services.HealthStat
 	}
 	s.mu.RUnlock()
 
+	var health services.HealthStatus
+	var err error
+
 	if port == 0 {
-		return services.HealthUnknown, fmt.Errorf("MCP server port not available yet")
+		health = services.HealthUnknown
+		err = fmt.Errorf("MCP server port not available yet")
+	} else if s.GetState() == services.StateRunning {
+		// TODO: Implement actual health check against the MCP server endpoint
+		// For now, just check if the process is running
+		health = services.HealthHealthy
+		err = nil
+	} else {
+		health = services.HealthUnhealthy
+		err = nil
 	}
 
-	// TODO: Implement actual health check against the MCP server endpoint
-	// For now, just check if the process is running
-	if s.GetState() == services.StateRunning {
-		return services.HealthHealthy, nil
-	}
+	// Update the service's health status
+	s.UpdateHealth(health)
 
-	return services.HealthUnhealthy, nil
+	return health, err
 }
 
 // GetHealthCheckInterval implements HealthChecker
 func (s *MCPServerService) GetHealthCheckInterval() time.Duration {
-	// MCP servers should be checked every 30 seconds
-	return 30 * time.Second
+	// MCP servers should be checked every 10 seconds for more responsive health updates
+	return 10 * time.Second
 }
 
 // monitorProcess monitors the MCP server process for updates

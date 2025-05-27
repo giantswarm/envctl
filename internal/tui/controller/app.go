@@ -1,107 +1,43 @@
 package controller
 
 import (
-	// For mcpserver.MCPServerConfig type if needed by other funcs in this pkg
 	"envctl/internal/tui/model"
 	"envctl/internal/tui/view"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// AppModel is the top-level tea.Model for the application.
-// It holds the actual data model and coordinates updates via controller logic.
+// AppModel wraps the model to handle updates and views
 type AppModel struct {
 	model *model.Model
-	// If controller needs its own state or services, they go here
-	// or are part of a separate Controller struct embedded/held here.
 }
 
-// GetModel returns the internal model.Model instance.
-// This is useful for testing or specific scenarios where direct access is needed.
-func (a *AppModel) GetModel() *model.Model {
-	return a.model
+// NewAppModel creates a new app wrapper
+func NewAppModel(m *model.Model) AppModel {
+	return AppModel{model: m}
 }
 
-// NewAppModel creates a new AppModel.
-func NewAppModel(m *model.Model, mcName, wcName string) *AppModel {
-	app := &AppModel{model: m}
+// Init implements tea.Model
+func (a AppModel) Init() tea.Cmd {
+	return a.model.Init()
+}
 
-	// PredefinedMcpServers is now set in model.InitialModel via parameter as MCPServerConfig
-
-	// Initialize McpProxyOrder based on the predefined servers in the model
-	app.model.McpProxyOrder = nil                   // Initialize explicitly
-	for _, cfg := range app.model.MCPServerConfig { // Use renamed field
-		app.model.McpProxyOrder = append(app.model.McpProxyOrder, cfg.Name)
+// Update implements tea.Model
+func (a AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Handle window size updates
+	if msg, ok := msg.(tea.WindowSizeMsg); ok {
+		a.model.Width = msg.Width
+		a.model.Height = msg.Height
+		return a, nil
 	}
 
-	// Configure initial port-forwards and dependency graph using controller functions
-	SetupPortForwards(app.model, mcName, wcName)
-	app.model.DependencyGraph = BuildDependencyGraph(app.model)
-
-	// Set initial focused panel key (logic moved from model.InitialModel)
-	if len(app.model.PortForwardOrder) > 0 {
-		app.model.FocusedPanelKey = app.model.PortForwardOrder[0]
-	} else if mcName != "" { // mcName is the initial management cluster name
-		app.model.FocusedPanelKey = model.McPaneFocusKey // McPaneFocusKey is a model constant
-	} // Else, FocusedPanelKey remains empty or default from model.InitialModel
-
-	return app
-}
-
-// Init initializes the AppModel.
-func (a *AppModel) Init() tea.Cmd {
-	var modelCmds tea.Cmd
-	if a.model != nil {
-		modelCmds = a.model.Init() // This now starts services via ServiceManager
-	}
-
-	var controllerCmds []tea.Cmd
-
-	// Fetch initial data
-	controllerCmds = append(controllerCmds, GetCurrentKubeContextCmd())
-	controllerCmds = append(controllerCmds, FetchClusterListCmd())
-
-	// Health checks are now handled by the orchestrator
-	// tickCmd := tea.Tick(HealthUpdateInterval, func(t time.Time) tea.Msg { return model.RequestClusterHealthUpdate{} })
-	// controllerCmds = append(controllerCmds, tickCmd)
-
-	finalCmds := []tea.Cmd{modelCmds}
-	finalCmds = append(finalCmds, controllerCmds...)
-
-	return tea.Batch(finalCmds...)
-}
-
-// View renders the UI by delegating to the view package with the current model.
-func (a *AppModel) View() string {
-	if a.model != nil {
-		return view.Render(a.model)
-	}
-	return "Error: model not initialized in AppModel"
-}
-
-// Update is the main message loop for the application.
-// It uses controller logic (handlers) to update the model based on messages.
-func (a *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if a.model == nil {
-		// Should not happen if initialized correctly
-		return a, tea.Quit
-	}
-	model.RecordMsgSample(msg) // Call model.RecordMsgSample
-
-	// Delegate to a central dispatch function within the controller package
-	// This dispatch function will contain the main switch statement for messages
-	// and call the appropriate controller.handleXYZ functions.
-	var cmd tea.Cmd
-	// The handlers will modify a.model directly or return a new one.
-	// For now, assume they modify in place and return updated model and cmd.
-	// This mainControllerDispatch needs to be created.
-	updatedModel, cmd := mainControllerDispatch(a.model, msg)
-	a.model = updatedModel // Ensure our model reference is updated if a new one is returned
-
+	// Let the update function handle all other messages
+	updatedModel, cmd := Update(msg, a.model)
+	a.model = updatedModel
 	return a, cmd
 }
 
-// mainControllerDispatch will be the new home for the switch from model.Update
-// It will be defined in another controller file (e.g., controller_update.go or similar)
-// For now, this is a placeholder for the edit tool.
-// func mainControllerDispatch(m *model.Model, msg tea.Msg) (*model.Model, tea.Cmd) { /* ... */ }
+// View implements tea.Model
+func (a AppModel) View() string {
+	return view.Render(a.model)
+}

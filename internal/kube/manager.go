@@ -2,11 +2,12 @@ package kube
 
 import (
 	"context"
-	"envctl/internal/reporting"
 	"envctl/pkg/logging"
 	"fmt"
 	"sync"
-	"time"
+
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 )
 
 // Manager provides Kubernetes cluster management functionality
@@ -33,28 +34,17 @@ type Manager interface {
 
 // manager implements the Manager interface
 type manager struct {
-	reporter reporting.ServiceReporter
-	mu       sync.RWMutex
+	clientCache map[string]*kubernetes.Clientset
+	configCache map[string]*rest.Config
+	mu          sync.RWMutex
 }
 
 // NewManager creates a new Kubernetes manager
-func NewManager(reporter reporting.ServiceReporter) Manager {
-	if reporter == nil {
-		reporter = reporting.NewConsoleReporter()
-	}
+func NewManager(reporter interface{}) Manager {
+	// Reporter is no longer used
 	return &manager{
-		reporter: reporter,
-	}
-}
-
-// SetReporter allows changing the reporter after initialization
-func (m *manager) SetReporter(reporter reporting.ServiceReporter) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if reporter == nil {
-		m.reporter = reporting.NewConsoleReporter()
-	} else {
-		m.reporter = reporter
+		clientCache: make(map[string]*kubernetes.Clientset),
+		configCache: make(map[string]*rest.Config),
 	}
 }
 
@@ -63,46 +53,8 @@ func (m *manager) Login(clusterName string) (string, string, error) {
 	subsystem := fmt.Sprintf("KubeLogin-%s", clusterName)
 	logging.Debug(subsystem, "Attempting to login to cluster: %s", clusterName)
 
-	// Report login starting
-	if m.reporter != nil {
-		m.reporter.Report(reporting.ManagedServiceUpdate{
-			Timestamp:   time.Now(),
-			SourceType:  reporting.ServiceTypeKube,
-			SourceLabel: "Login-" + clusterName,
-			State:       reporting.StateStarting,
-			CausedBy:    "user_login",
-		})
-	}
-
 	// Perform the actual login
 	stdout, stderr, err := LoginToKubeCluster(clusterName)
-
-	// Report result
-	if err != nil {
-		logging.Error(subsystem, err, "Login failed")
-		if m.reporter != nil {
-			m.reporter.Report(reporting.ManagedServiceUpdate{
-				Timestamp:   time.Now(),
-				SourceType:  reporting.ServiceTypeKube,
-				SourceLabel: "Login-" + clusterName,
-				State:       reporting.StateFailed,
-				ErrorDetail: err,
-				CausedBy:    "user_login",
-			})
-		}
-	} else {
-		logging.Info(subsystem, "Login successful")
-		if m.reporter != nil {
-			m.reporter.Report(reporting.ManagedServiceUpdate{
-				Timestamp:   time.Now(),
-				SourceType:  reporting.ServiceTypeKube,
-				SourceLabel: "Login-" + clusterName,
-				State:       reporting.StateRunning,
-				IsReady:     true,
-				CausedBy:    "user_login",
-			})
-		}
-	}
 
 	return stdout, stderr, err
 }
@@ -122,44 +74,7 @@ func (m *manager) SwitchContext(targetContextName string) error {
 	subsystem := fmt.Sprintf("KubeSwitchContext-%s", targetContextName)
 	logging.Info(subsystem, "Attempting to switch Kubernetes context to: %s", targetContextName)
 
-	// Report switch starting
-	if m.reporter != nil {
-		m.reporter.Report(reporting.ManagedServiceUpdate{
-			Timestamp:   time.Now(),
-			SourceType:  reporting.ServiceTypeKube,
-			SourceLabel: "SwitchContext",
-			State:       reporting.StateStarting,
-			CausedBy:    "context_switch",
-		})
-	}
-
 	err := SwitchKubeContext(targetContextName)
-
-	if err != nil {
-		logging.Error(subsystem, err, "Context switch failed")
-		if m.reporter != nil {
-			m.reporter.Report(reporting.ManagedServiceUpdate{
-				Timestamp:   time.Now(),
-				SourceType:  reporting.ServiceTypeKube,
-				SourceLabel: "SwitchContext",
-				State:       reporting.StateFailed,
-				ErrorDetail: err,
-				CausedBy:    "context_switch",
-			})
-		}
-	} else {
-		logging.Info(subsystem, "Context switch successful")
-		if m.reporter != nil {
-			m.reporter.Report(reporting.ManagedServiceUpdate{
-				Timestamp:   time.Now(),
-				SourceType:  reporting.ServiceTypeKube,
-				SourceLabel: "SwitchContext",
-				State:       reporting.StateRunning,
-				IsReady:     true,
-				CausedBy:    "context_switch",
-			})
-		}
-	}
 
 	return err
 }
@@ -203,31 +118,10 @@ func (m *manager) GetClusterNodeHealth(ctx context.Context, kubeContextName stri
 	debugOperation := fmt.Sprintf("GetClusterNodeHealth-%s", kubeContextName)
 	logging.Debug(debugOperation, "Fetching node health for context: %s", kubeContextName)
 
-	// Report health check starting
-	if m.reporter != nil {
-		m.reporter.Report(reporting.ManagedServiceUpdate{
-			Timestamp:   time.Now(),
-			SourceType:  reporting.ServiceTypeKube,
-			SourceLabel: "HealthCheck-" + kubeContextName,
-			State:       reporting.StateStarting,
-			CausedBy:    "health_check",
-		})
-	}
-
 	// Get clientset for the context
 	clientset, err := GetClientsetForContext(ctx, kubeContextName)
 	if err != nil {
 		logging.Error(debugOperation, err, "Failed to create clientset")
-		if m.reporter != nil {
-			m.reporter.Report(reporting.ManagedServiceUpdate{
-				Timestamp:   time.Now(),
-				SourceType:  reporting.ServiceTypeKube,
-				SourceLabel: "HealthCheck-" + kubeContextName,
-				State:       reporting.StateFailed,
-				ErrorDetail: err,
-				CausedBy:    "health_check",
-			})
-		}
 		return NodeHealth{Error: err}, err
 	}
 
@@ -239,33 +133,6 @@ func (m *manager) GetClusterNodeHealth(ctx context.Context, kubeContextName stri
 		Error:      err,
 	}
 
-	// Report result
-	if err != nil {
-		logging.Error(debugOperation, err, "Health check failed")
-		if m.reporter != nil {
-			m.reporter.Report(reporting.ManagedServiceUpdate{
-				Timestamp:   time.Now(),
-				SourceType:  reporting.ServiceTypeKube,
-				SourceLabel: "HealthCheck-" + kubeContextName,
-				State:       reporting.StateFailed,
-				ErrorDetail: err,
-				CausedBy:    "health_check",
-			})
-		}
-	} else {
-		logging.Debug(debugOperation, "Health check successful: %d/%d nodes ready", readyNodes, totalNodes)
-		if m.reporter != nil {
-			m.reporter.Report(reporting.ManagedServiceUpdate{
-				Timestamp:   time.Now(),
-				SourceType:  reporting.ServiceTypeKube,
-				SourceLabel: "HealthCheck-" + kubeContextName,
-				State:       reporting.StateRunning,
-				IsReady:     true,
-				CausedBy:    "health_check",
-			})
-		}
-	}
-
 	return health, err
 }
 
@@ -274,44 +141,7 @@ func (m *manager) DetermineClusterProvider(ctx context.Context, kubeContextName 
 	subsystem := fmt.Sprintf("DetermineClusterProvider-%s", kubeContextName)
 	logging.Debug(subsystem, "Determining cluster provider for context: %s", kubeContextName)
 
-	// Report operation starting
-	if m.reporter != nil {
-		m.reporter.Report(reporting.ManagedServiceUpdate{
-			Timestamp:   time.Now(),
-			SourceType:  reporting.ServiceTypeKube,
-			SourceLabel: subsystem,
-			State:       reporting.StateStarting,
-			CausedBy:    "provider_check",
-		})
-	}
-
 	provider, err := DetermineClusterProvider(ctx, kubeContextName)
-
-	if err != nil {
-		logging.Error(subsystem, err, "Failed to determine provider")
-		if m.reporter != nil {
-			m.reporter.Report(reporting.ManagedServiceUpdate{
-				Timestamp:   time.Now(),
-				SourceType:  reporting.ServiceTypeKube,
-				SourceLabel: subsystem,
-				State:       reporting.StateFailed,
-				ErrorDetail: err,
-				CausedBy:    "provider_check",
-			})
-		}
-	} else {
-		logging.Info(subsystem, "Determined provider: %s", provider)
-		if m.reporter != nil {
-			m.reporter.Report(reporting.ManagedServiceUpdate{
-				Timestamp:   time.Now(),
-				SourceType:  reporting.ServiceTypeKube,
-				SourceLabel: subsystem,
-				State:       reporting.StateRunning,
-				IsReady:     true,
-				CausedBy:    "provider_check",
-			})
-		}
-	}
 
 	return provider, err
 }

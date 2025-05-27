@@ -5,9 +5,7 @@ import (
 	"envctl/internal/color"
 	"envctl/internal/config"
 	"envctl/internal/kube"
-	"envctl/internal/managers"
 	"envctl/internal/orchestrator"
-	"envctl/internal/reporting"
 	"envctl/internal/tui/controller"
 	"envctl/pkg/logging"
 	"fmt"
@@ -17,7 +15,7 @@ import (
 	"time"
 
 	// For TUI program
-	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/spf13/cobra"
 )
 
@@ -93,10 +91,6 @@ Arguments:
 			return fmt.Errorf("failed to load envctl configuration: %w", err)
 		}
 
-		// Check if we should use v2 architecture
-		useV2 := os.Getenv("ENVCTL_V2") == "true"
-		logging.Info("CLI", "ENVCTL_V2 environment variable: %s, useV2: %v", os.Getenv("ENVCTL_V2"), useV2)
-
 		if noTUI {
 			// logging.InitForCLI was already called above.
 			logging.Info("CLI", "Running in no-TUI mode.")
@@ -125,65 +119,29 @@ Arguments:
 
 			ctx := context.Background()
 
-			if useV2 {
-				logging.Info("CLI", "Using v2 service architecture")
-
-				// Create v2 orchestrator
-				orchConfig := orchestrator.ConfigV2{
-					MCName:       managementClusterArg,
-					WCName:       workloadClusterArg,
-					PortForwards: envctlCfg.PortForwards,
-					MCPServers:   envctlCfg.MCPServers,
-				}
-				orchV2 := orchestrator.NewV2(orchConfig)
-
-				// Start orchestrator
-				if err := orchV2.Start(ctx); err != nil {
-					logging.Error("CLI", err, "Failed to start orchestrator v2")
-					return err
-				}
-
-				logging.Info("CLI", "Services started with v2 architecture. Press Ctrl+C to stop all services and exit.")
-
-				sigChan := make(chan os.Signal, 1)
-				signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-				<-sigChan
-				logging.Info("CLI", "\n--- Shutting down services ---")
-				orchV2.Stop()
-				time.Sleep(1 * time.Second)
-			} else {
-				// Use v1 orchestrator
-				consoleReporter := reporting.NewConsoleReporter()
-				serviceMgr := managers.NewServiceManager(consoleReporter)
-
-				// Create orchestrator for health monitoring and dependency management
-				orch := orchestrator.New(
-					serviceMgr,
-					consoleReporter,
-					orchestrator.Config{
-						MCName:              managementClusterArg,
-						WCName:              workloadClusterArg,
-						PortForwards:        envctlCfg.PortForwards,
-						MCPServers:          envctlCfg.MCPServers,
-						HealthCheckInterval: 15 * time.Second,
-					},
-				)
-
-				// Start orchestrator
-				if err := orch.Start(ctx); err != nil {
-					logging.Error("CLI", err, "Failed to start orchestrator: %v", err)
-					return err
-				}
-
-				logging.Info("CLI", "Services started with health monitoring. Press Ctrl+C to stop all services and exit.")
-
-				sigChan := make(chan os.Signal, 1)
-				signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-				<-sigChan
-				logging.Info("CLI", "\n--- Shutting down services ---")
-				orch.Stop()
-				time.Sleep(1 * time.Second)
+			// Create orchestrator
+			orchConfig := orchestrator.Config{
+				MCName:       managementClusterArg,
+				WCName:       workloadClusterArg,
+				PortForwards: envctlCfg.PortForwards,
+				MCPServers:   envctlCfg.MCPServers,
 			}
+			orch := orchestrator.New(orchConfig)
+
+			// Start orchestrator
+			if err := orch.Start(ctx); err != nil {
+				logging.Error("CLI", err, "Failed to start orchestrator")
+				return err
+			}
+
+			logging.Info("CLI", "Services started. Press Ctrl+C to stop all services and exit.")
+
+			sigChan := make(chan os.Signal, 1)
+			signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+			<-sigChan
+			logging.Info("CLI", "\n--- Shutting down services ---")
+			orch.Stop()
+			time.Sleep(1 * time.Second)
 
 		} else { // TUI Mode
 			// This fmt.Println is pre-TUI initialization, so it's acceptable.
@@ -193,36 +151,20 @@ Arguments:
 			logChan := logging.InitForTUI(appLogLevel)
 			defer logging.CloseTUIChannel()
 
-			// Check if we should use v2 architecture - already declared above
-
-			var program *tea.Program
-			if useV2 {
-				logging.Info("CLI", "Using v2 service architecture")
-				p, err := controller.NewProgramV2(
-					managementClusterArg,
-					workloadClusterArg,
-					initialKubeContext,
-					debug,
-					envctlCfg,
-					logChan,
-				)
-				if err != nil {
-					logging.Error("TUI-Lifecycle", err, "Error creating TUI program v2")
-					return err
-				}
-				program = p
-			} else {
-				program = controller.NewProgram(
-					managementClusterArg,
-					workloadClusterArg,
-					initialKubeContext,
-					debug, // Use general debug mode
-					envctlCfg,
-					logChan,
-				)
+			p, err := controller.NewProgram(
+				managementClusterArg,
+				workloadClusterArg,
+				initialKubeContext,
+				debug,
+				envctlCfg,
+				logChan,
+			)
+			if err != nil {
+				logging.Error("TUI-Lifecycle", err, "Error creating TUI program")
+				return err
 			}
 
-			if _, err := program.Run(); err != nil {
+			if _, err := p.Run(); err != nil {
 				// Log this error using the TUI logger if possible, or fallback
 				logging.Error("TUI-Lifecycle", err, "Error running TUI program")
 				return err
@@ -255,32 +197,6 @@ Arguments:
 		}
 		return candidates, cobra.ShellCompDirectiveNoFileComp
 	},
-}
-
-// buildManagedServiceConfigs is a helper to create the config slice for ServiceManager.
-func buildManagedServiceConfigs(pfConfigs []config.PortForwardDefinition, mcpConfigs []config.MCPServerDefinition) []managers.ManagedServiceConfig {
-	var managedServiceConfigs []managers.ManagedServiceConfig
-	for _, pfCfg := range pfConfigs {
-		if !pfCfg.Enabled { // Only add enabled port-forwards
-			continue
-		}
-		managedServiceConfigs = append(managedServiceConfigs, managers.ManagedServiceConfig{
-			Type:   reporting.ServiceTypePortForward,
-			Label:  pfCfg.Name, // Using Name from new struct
-			Config: pfCfg,
-		})
-	}
-	for _, mcpCfg := range mcpConfigs {
-		if !mcpCfg.Enabled { // Only add enabled MCP servers
-			continue
-		}
-		managedServiceConfigs = append(managedServiceConfigs, managers.ManagedServiceConfig{
-			Type:   reporting.ServiceTypeMCPServer,
-			Label:  mcpCfg.Name, // Name is already correct
-			Config: mcpCfg,
-		})
-	}
-	return managedServiceConfigs
 }
 
 func init() {

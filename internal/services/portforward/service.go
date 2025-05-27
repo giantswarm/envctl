@@ -180,19 +180,32 @@ func (s *PortForwardService) CheckHealth(ctx context.Context) (services.HealthSt
 	// A more sophisticated check could try to connect to the local port
 	state := s.GetState()
 
+	var health services.HealthStatus
+	var err error
+
 	switch state {
 	case services.StateRunning:
 		// TODO: Could implement actual port connectivity check here
-		return services.HealthHealthy, nil
+		health = services.HealthHealthy
+		err = nil
 	case services.StateFailed:
-		return services.HealthUnhealthy, fmt.Errorf("port forward is in failed state")
+		health = services.HealthUnhealthy
+		err = fmt.Errorf("port forward is in failed state")
 	case services.StateStarting:
-		return services.HealthChecking, nil
+		health = services.HealthChecking
+		err = nil
 	case services.StateStopped, services.StateStopping:
-		return services.HealthUnknown, nil
+		health = services.HealthUnknown
+		err = nil
 	default:
-		return services.HealthUnknown, nil
+		health = services.HealthUnknown
+		err = nil
 	}
+
+	// Update the service's health status
+	s.UpdateHealth(health)
+
+	return health, err
 }
 
 // GetHealthCheckInterval implements HealthChecker
@@ -200,8 +213,8 @@ func (s *PortForwardService) GetHealthCheckInterval() time.Duration {
 	if s.config.HealthCheckInterval > 0 {
 		return s.config.HealthCheckInterval
 	}
-	// Default to 30 seconds for port forwards
-	return 30 * time.Second
+	// Default to 10 seconds for port forwards for more responsive health updates
+	return 10 * time.Second
 }
 
 // monitorStatus monitors the port forward status channel

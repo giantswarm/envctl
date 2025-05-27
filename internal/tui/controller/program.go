@@ -8,28 +8,30 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// NewProgram initializes the entire TUI application, including the model and controller.
+// NewProgram creates a new Bubble Tea program with the new service architecture
 func NewProgram(
 	mcName, wcName, currentKubeContext string,
-	tuiDebugMode bool,
-	envctlCfg config.EnvctlConfig,
-	logChan <-chan logging.LogEntry,
-) *tea.Program {
-	// Initialize the core data model. ServiceManager is now created within InitialModel.
-	m := model.InitialModel(
+	debugMode bool,
+	cfg config.EnvctlConfig,
+	logChannel <-chan logging.LogEntry,
+) (*tea.Program, error) {
+	// Initialize the model with the new architecture
+	m, err := model.InitializeModel(
 		mcName,
 		wcName,
 		currentKubeContext,
-		tuiDebugMode,
-		envctlCfg,
-		logChan,
+		debugMode,
+		cfg,
+		logChannel,
 	)
+	if err != nil {
+		return nil, err
+	}
 
-	// Setup AppModel which acts as the controller layer for Bubble Tea.
-	// It takes the initialized model.
-	appModel := NewAppModel(m, mcName, wcName)
+	// Create the app wrapper
+	app := NewAppModel(m)
 
-	// Create and return the Bubble Tea program.
-	// Program execution starts when p.Run() is called by the caller.
-	return tea.NewProgram(appModel, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	// Create and return the program
+	p := tea.NewProgram(app, tea.WithAltScreen())
+	return p, nil
 }

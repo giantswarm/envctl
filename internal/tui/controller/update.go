@@ -1,528 +1,448 @@
 package controller
 
 import (
-	"envctl/internal/reporting"
+	"envctl/internal/api"
+	"envctl/internal/kube"
 	"envctl/internal/tui/model"
-	"envctl/internal/tui/view" // Import for logging.LogEntry
+	"envctl/internal/tui/view"
 	"envctl/pkg/logging"
-
-	// Added import for logging.LogEntry
-	// Already imported, ensure it's used or linter will complain
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
-
-	// May be needed for some view-related constants if not moved
-	"errors"
+	"github.com/charmbracelet/lipgloss"
 )
 
-const controllerDispatchSubsystem = "ControllerDispatch"
-
-// mainControllerDispatch is the central message routing function for the TUI application.
-// It receives all Bubble Tea messages and directs them to the appropriate handler functions
-// based on the message type and current application mode.
-// It's responsible for updating the model and queuing up any necessary commands.
-func mainControllerDispatch(m *model.Model, msg tea.Msg) (*model.Model, tea.Cmd) {
+// Update handles messages for the new service architecture
+func Update(msg tea.Msg, m *model.Model) (*model.Model, tea.Cmd) {
 	var cmds []tea.Cmd
-	var cmd tea.Cmd
 
-	// Logging for received messages (from original model.Update)
-	switch msg.(type) {
-	case spinner.TickMsg, tea.MouseMsg, model.NewLogEntryMsg: // Exclude NewLogEntryMsg from this verbose debug log
-		// No log for these frequent or self-referential messages
-	default:
-		if m.DebugMode {
-			LogDebug(m, controllerDispatchSubsystem, "Received msg: %T -- Value: %v", msg, msg)
-		}
-	}
-
-	// Global quit shortcuts (from original model.Update)
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "q":
-			m.CurrentAppMode = model.ModeQuitting
-			m.QuittingMessage = "Shutting down services..."
-
-			// Signal the orchestrator to stop all services
-			if m.Orchestrator != nil {
-				m.Orchestrator.Stop()
-			}
-
-			// Optionally, provide immediate visual feedback if desired, though Orchestrator handles actual stopping.
-			// The old logic for direct stopChan closure is now handled by Orchestrator.
-			// for _, pf := range m.PortForwards { // This part is now managed by Orchestrator
-			// 	if pf.StopChan != nil { ... }
-			// }
-			// if m.McpServers != nil { // This part is now managed by Orchestrator
-			// 	for name, proc := range m.McpServers { ... }
-			// }
-
-			model.FinalizeMsgSampling()
-			cmds = append(cmds, tea.Quit) // tea.Quit is the primary command to exit Bubble Tea
-			// We might want a small delay or a message to confirm shutdown before Quit,
-			// but Stop is asynchronous in terms of when goroutines actually end.
-			// The WaitGroup in cmd/connect.go handles waiting for actual process termination for CLI mode.
-			// For TUI, tea.Quit will terminate the UI loop.
-			return m, tea.Batch(cmds...)
-		case "ctrl+c":
-			// Consider if Stop should also be called here for a cleaner exit,
-			// though ctrl+c is often more abrupt.
-			if m.Orchestrator != nil {
-				m.Orchestrator.Stop()
-			}
-			model.FinalizeMsgSampling()
-			return m, tea.Quit
-		}
-	}
-
-	// Mode specific handling & message processing (main switch from model.Update)
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		if m.CurrentAppMode == model.ModeNewConnectionInput && m.NewConnectionInput.Focused() {
-			return handleKeyMsgInputMode(m, msg) // Calls controller handler
-		} else {
-			// This part of key handling (overlays, debug) might also be in handleKeyMsgGlobal
-			// or needs to be carefully merged.
-			// For now, let's assume handleKeyMsgGlobal covers non-input mode keys.
-			return handleKeyMsgGlobal(m, msg, cmds) // Calls controller handler
-		}
-
 	case tea.WindowSizeMsg:
-		return handleWindowSizeMsg(m, msg) // Calls controller handler
+		m.Width = msg.Width
+		m.Height = msg.Height
+		// Update viewport sizes
+		m.LogViewport.Width = msg.Width
+		m.LogViewport.Height = msg.Height - 10 // Leave room for header/footer
+		m.MainLogViewport.Width = msg.Width
+		m.MainLogViewport.Height = msg.Height / 3
+		return m, nil
 
-	case model.SubmitNewConnectionMsg:
-		return handleSubmitNewConnectionMsg(m, msg, cmds) // Calls controller handler
-	case model.KubeLoginResultMsg:
-		LogDebug(m, controllerDispatchSubsystem, "Matched KubeLoginResultMsg. Routing to handler...")
-		return handleKubeLoginResultMsg(m, msg, cmds) // Pass msg directly
-	case model.ContextSwitchAndReinitializeResultMsg:
-		LogDebug(m, controllerDispatchSubsystem, "Matched ContextSwitchAndReinitializeResultMsg. Routing to handler...")
-		return handleContextSwitchAndReinitializeResultMsg(m, msg, cmds) // Pass msg directly
+	case spinner.TickMsg:
+		// Update spinner
+		var cmd tea.Cmd
+		m.Spinner, cmd = m.Spinner.Update(msg)
+		return m, cmd
 
-	case model.KubeContextResultMsg:
-		LogDebug(m, controllerDispatchSubsystem, "Matched KubeContextResultMsg. Routing to handler...")
-		return handleKubeContextResultMsg(m, msg) // Pass msg directly
-	case model.KubeContextSwitchedMsg:
-		LogDebug(m, controllerDispatchSubsystem, "Matched KubeContextSwitchedMsg. Routing to handler...")
-		return handleKubeContextSwitchedMsg(m, msg) // Pass msg directly
-	case model.NodeStatusMsg:
-		LogDebug(m, controllerDispatchSubsystem, "Matched NodeStatusMsg. Routing to handler...")
-		return handleNodeStatusMsg(m, msg) // Pass msg directly
-	case model.ClusterListResultMsg:
-		LogDebug(m, controllerDispatchSubsystem, "Matched ClusterListResultMsg. Routing to handler...")
-		m = handleClusterListResultMsg(m, msg) // Pass msg directly
+	case model.InitializationCompleteMsg:
+		// Orchestrator initialization is complete, switch to main dashboard
+		m.CurrentAppMode = model.ModeMainDashboard
+		// Start periodic refresh ticker
+		cmds = append(cmds, tickCmd())
+		// Add a small delay to ensure services have started
+		cmds = append(cmds, tea.Tick(1*time.Second, func(t time.Time) tea.Msg {
+			return refreshServiceDataMsg{}
+		}))
 		return m, tea.Batch(cmds...)
+
+	case tickMsg:
+		// Periodic refresh
+		cmds = append(cmds, refreshServiceData(m))
+		// Continue ticking
+		cmds = append(cmds, tickCmd())
+		return m, tea.Batch(cmds...)
+
+	case refreshServiceDataMsg:
+		// Refresh service data after delay
+		cmds = append(cmds, refreshServiceData(m))
+		return m, tea.Batch(cmds...)
+
+	case api.ServiceStateChangedEvent:
+		// Handle service state changes
+		cmds = append(cmds, handleServiceStateChange(m, msg))
+
+	case model.ServiceStartedMsg:
+		cmds = append(cmds, m.SetStatusMessage(
+			fmt.Sprintf("Service %s started", msg.Label),
+			model.StatusBarSuccess,
+			3*time.Second,
+		))
+		// Refresh service data
+		cmds = append(cmds, refreshServiceData(m))
+
+	case model.ServiceStoppedMsg:
+		cmds = append(cmds, m.SetStatusMessage(
+			fmt.Sprintf("Service %s stopped", msg.Label),
+			model.StatusBarInfo,
+			3*time.Second,
+		))
+		// Refresh service data
+		cmds = append(cmds, refreshServiceData(m))
+
+	case model.ServiceRestartedMsg:
+		cmds = append(cmds, m.SetStatusMessage(
+			fmt.Sprintf("Service %s restarted", msg.Label),
+			model.StatusBarSuccess,
+			3*time.Second,
+		))
+		// Refresh service data
+		cmds = append(cmds, refreshServiceData(m))
+
+	case model.ServiceErrorMsg:
+		cmds = append(cmds, m.SetStatusMessage(
+			fmt.Sprintf("Error with service %s: %v", msg.Label, msg.Err),
+			model.StatusBarError,
+			5*time.Second,
+		))
 
 	case model.ClearStatusBarMsg:
 		m.StatusBarMessage = ""
-
-	case model.MCPToolsLoadedMsg:
-		// Store the tools in the model
-		m.MCPTools[msg.ServerName] = msg.Tools
-
-		// Update status bar
-		statusCmd := m.SetStatusMessage(
-			fmt.Sprintf("✅ Loaded %d tools for %s", len(msg.Tools), msg.ServerName),
-			model.StatusBarSuccess,
-			3*time.Second,
-		)
-		cmds = append(cmds, statusCmd)
-
-		// Log the event
-		m.ActivityLog = append(m.ActivityLog, fmt.Sprintf("[INFO] Loaded %d tools for MCP server %s", len(msg.Tools), msg.ServerName))
-		m.ActivityLogDirty = true
-
-	case model.MCPToolsErrorMsg:
-		// Update status bar with error
-		statusCmd := m.SetStatusMessage(
-			fmt.Sprintf("❌ Failed to load tools for %s: %v", msg.ServerName, msg.Error),
-			model.StatusBarError,
-			5*time.Second,
-		)
-		cmds = append(cmds, statusCmd)
-
-		// Log the error
-		m.ActivityLog = append(m.ActivityLog, fmt.Sprintf("[ERROR] Failed to load tools for %s: %v", msg.ServerName, msg.Error))
-		m.ActivityLogDirty = true
-
-	case model.MCPToolUpdateMsg:
-		// Handle tool updates from subscription
-		if msg.Event.EventType == "refreshed" || msg.Event.EventType == "added" {
-			m.MCPTools[msg.Event.ServerName] = msg.Event.Tools
-			m.ActivityLog = append(m.ActivityLog, fmt.Sprintf("[INFO] Tools updated for %s (%d tools)", msg.Event.ServerName, len(msg.Event.Tools)))
-			m.ActivityLogDirty = true
-		} else if msg.Event.EventType == "cleared" {
-			delete(m.MCPTools, msg.Event.ServerName)
-			m.ActivityLog = append(m.ActivityLog, fmt.Sprintf("[INFO] Tools cleared for %s", msg.Event.ServerName))
-			m.ActivityLogDirty = true
-		}
-
-	case model.RestartMcpServerMsg:
-		return handleRestartMcpServerMsg(m, msg)
-
-	case tea.MouseMsg:
-		if m.CurrentAppMode == model.ModeLogOverlay {
-			m.LogViewport, cmd = m.LogViewport.Update(msg)
-		} else if m.CurrentAppMode == model.ModeMcpConfigOverlay {
-			m.McpConfigViewport, cmd = m.McpConfigViewport.Update(msg)
-		} else if m.CurrentAppMode == model.ModeMcpToolsOverlay {
-			m.McpToolsViewport, cmd = m.McpToolsViewport.Update(msg)
-		} else {
-			m.MainLogViewport, cmd = m.MainLogViewport.Update(msg)
-		}
-		cmds = append(cmds, cmd)
-
-	case spinner.TickMsg:
-		var spinCmd tea.Cmd
-		m.Spinner, spinCmd = m.Spinner.Update(msg)
-		cmds = append(cmds, spinCmd)
-		return m, tea.Batch(cmds...)
-
-	case reporting.ReporterUpdateMsg:
-		m, cmd = handleReporterUpdate(m, msg.Update)
-		// We must batch its command with ChannelReaderCmd if we intend to keep listening.
-		cmds = append(cmds, cmd, model.ChannelReaderCmd(m.TUIChannel))
-		// No early return here, let it fall through to viewport updates if ActivityLogDirty was set indirectly
-		// (though handleReporterUpdate doesn't directly modify ActivityLog anymore)
-
-	case reporting.BackpressureNotificationMsg:
-		m, cmd = handleBackpressureNotification(m, msg)
-		cmds = append(cmds, cmd, model.ChannelReaderCmd(m.TUIChannel))
-
-	case model.AllServicesStartedMsg:
-		return handleAllServicesStartedMsg(m, msg)
-	case model.ServiceStopResultMsg:
-		return handleServiceStopResultMsg(m, msg)
+		m.StatusBarMessageType = model.StatusBarInfo
 
 	case model.NewLogEntryMsg:
-		m = handleNewLogEntry(m, msg) // handleNewLogEntry modifies m (sets ActivityLogDirty)
-		// The command to re-listen for log entries should be added to the batch.
-		cmds = append(cmds, model.ListenForLogEntriesCmd(m.LogChannel))
-		// DO NOT return here. Allow fall-through to viewport refresh logic.
-
-	case reporting.ServiceStateEvent:
-		// Update the model based on the service state change
-		switch msg.ServiceType {
-		case reporting.ServiceTypeMCPServer:
-			if mcp, exists := m.McpServers[msg.SourceLabel]; exists {
-				mcp.StatusMsg = string(msg.NewState)
-				// Don't overwrite Active with IsReady - Active means the service is configured to run
-				// mcp.Active = msg.IsReady  // REMOVED - this was the bug
-				if msg.ProxyPort > 0 {
-					mcp.ProxyPort = msg.ProxyPort
-				}
-				if msg.PID > 0 {
-					mcp.Pid = msg.PID
-				}
-				m.McpServers[msg.SourceLabel] = mcp
-			}
-			if m.DebugMode {
-				LogDebug(m, controllerDispatchSubsystem, "ServiceStateEvent: %s (%s) -> %s (ready: %v)",
-					msg.SourceLabel, msg.ServiceType, msg.NewState, msg.IsReady)
-			}
-		case reporting.ServiceTypePortForward:
-			if pf, exists := m.PortForwards[msg.SourceLabel]; exists {
-				pf.StatusMsg = string(msg.NewState)
-				pf.Running = msg.IsReady
-				// Don't overwrite Active with IsReady - Active means the service is configured to run
-				// pf.Active = msg.IsReady  // REMOVED - this was the bug
-				if msg.Error != nil {
-					pf.Err = msg.Error
-				} else {
-					pf.Err = nil
-				}
-			}
-		case reporting.ServiceTypeKube:
-			// K8s health updates are handled through ReconcileState
-			// which reads from the state store
-			m.ReconcileState()
+		// Filter logs based on debug mode
+		if !m.DebugMode && msg.Entry.Level == logging.LevelDebug {
+			// Skip debug logs when not in debug mode
+			return m, m.ListenForLogs()
 		}
 
-	default:
-		if m.DebugMode {
-			LogDebug(m, controllerDispatchSubsystem, "Unhandled msg type in default case: %T -- Value: %v", msg, msg)
+		// Format and add log entry to activity log
+		logLine := fmt.Sprintf("[%s] [%s] %s: %s",
+			msg.Entry.Timestamp.Format("15:04:05"),
+			msg.Entry.Level.String(),
+			msg.Entry.Subsystem,
+			msg.Entry.Message,
+		)
+		m.ActivityLog = append(m.ActivityLog, logLine)
+		m.ActivityLogDirty = true
+
+		// Limit log size
+		if len(m.ActivityLog) > model.MaxActivityLogLines {
+			m.ActivityLog = m.ActivityLog[len(m.ActivityLog)-model.MaxActivityLogLines:]
 		}
-		// Logic for unhandled messages (from original model.Update)
-		var unhandledCmd tea.Cmd
-		if m.CurrentAppMode == model.ModeNewConnectionInput && m.NewConnectionInput.Focused() {
-			m.NewConnectionInput, unhandledCmd = m.NewConnectionInput.Update(msg)
-		} else if m.CurrentAppMode == model.ModeLogOverlay {
-			m.LogViewport, unhandledCmd = m.LogViewport.Update(msg)
-		} else if m.CurrentAppMode == model.ModeMcpConfigOverlay {
-			m.McpConfigViewport, unhandledCmd = m.McpConfigViewport.Update(msg)
-		} else if m.CurrentAppMode == model.ModeMcpToolsOverlay {
-			m.McpToolsViewport, unhandledCmd = m.McpToolsViewport.Update(msg)
+
+		// Re-queue the log listener
+		return m, m.ListenForLogs()
+
+	case tea.KeyMsg:
+		cmds = append(cmds, handleKeyPress(m, msg))
+
+	case model.KubeContextSwitchedMsg:
+		// Handle context switch result
+		if msg.Err != nil {
+			cmds = append(cmds, m.SetStatusMessage(
+				fmt.Sprintf("Failed to switch context: %v", msg.Err),
+				model.StatusBarError,
+				5*time.Second,
+			))
+		} else {
+			m.CurrentKubeContext = msg.TargetContext
+			cmds = append(cmds, m.SetStatusMessage(
+				fmt.Sprintf("Switched to context: %s", msg.TargetContext),
+				model.StatusBarSuccess,
+				3*time.Second,
+			))
 		}
-		// Removed the 'else { m.Spinner, unhandledCmd = m.Spinner.Update(msg) }' from original, as spinner update is handled via TickMsg.
-		cmds = append(cmds, unhandledCmd)
 	}
 
-	// Consolidate viewport refresh logic here, to be run after all message handling (unless a handler returned early).
-	logOverlayWidthChanged := m.LogViewportLastWidth != m.LogViewport.Width
-	mainLogPanelWidthChanged := m.MainLogViewportLastWidth != m.MainLogViewport.Width
-
-	if m.ActivityLogDirty || logOverlayWidthChanged {
-		preparedLogOverlay := view.PrepareLogContent(m.ActivityLog, m.LogViewport.Width)
-		m.LogViewport.SetContent(preparedLogOverlay)
-		if m.CurrentAppMode == model.ModeLogOverlay && m.LogViewport.YOffset == 0 && m.LogViewport.AtBottom() {
-			// Only autoscroll if already at bottom or just activated, to avoid jumping while user is scrolling.
-			m.LogViewport.GotoBottom()
-		}
-		m.LogViewportLastWidth = m.LogViewport.Width
+	// Re-queue listeners for continuous operation
+	if _, ok := msg.(api.ServiceStateChangedEvent); ok {
+		cmds = append(cmds, m.ListenForStateChanges())
 	}
 
-	if m.ActivityLogDirty || mainLogPanelWidthChanged {
-		preparedMainLog := view.PrepareLogContent(m.ActivityLog, m.MainLogViewport.Width)
-		m.MainLogViewport.SetContent(preparedMainLog)
-		m.MainLogViewport.GotoBottom() // Main log always scrolls to bottom
-		m.MainLogViewportLastWidth = m.MainLogViewport.Width
-	}
-
-	if m.ActivityLogDirty { // This is key: reset *after* viewports have used it.
-		m.ActivityLogDirty = false
+	// Re-queue channel reader
+	if msg != nil {
+		cmds = append(cmds, model.ChannelReaderCmd(m.TUIChannel))
 	}
 
 	return m, tea.Batch(cmds...)
 }
 
-// NEW HANDLER FUNCTIONS
+// handleServiceStateChange processes service state change events
+func handleServiceStateChange(m *model.Model, event api.ServiceStateChangedEvent) tea.Cmd {
+	// Log the state change
+	logMsg := fmt.Sprintf("[%s] %s: %s → %s",
+		time.Now().Format("15:04:05"),
+		event.Label,
+		event.OldState,
+		event.NewState,
+	)
 
-func handleAllServicesStartedMsg(m *model.Model, msg model.AllServicesStartedMsg) (*model.Model, tea.Cmd) {
-	if m.Reporter != nil {
-		m.Reporter.Report(reporting.ManagedServiceUpdate{
-			Timestamp:   time.Now(),
-			SourceType:  reporting.ServiceTypeSystem,
-			SourceLabel: "ServiceManager",
-			State:       reporting.StateRunning, // Assuming 'all services started' means the system is running
-			IsReady:     true,
-		})
-	} else {
-		// Fallback if reporter is somehow nil. This should use pkg/logging now.
-		// logging.Info("ServiceManager", "All service startup commands processed by ServiceManager (no reporter).")
-		// For now, let's keep it simple and assume reporter is available or this path is unlikely.
-		// If we need a direct log here, it should be: model.AddRawLineToActivityLog(m, FormatSomehow("[INFO] [System - ServiceManager] All services started"))
-		// But the goal is to use pkg/logging for everything.
-		// For now, let's assume pkg/logging is used by ServiceManager itself to log this.
-		// The fallback to AppendActivityLog is being removed as per plan.
+	if event.Error != nil {
+		logMsg += fmt.Sprintf(" (error: %v)", event.Error)
 	}
-	m.IsLoading = false // Signifies initial batch dispatch of services is done.
 
-	if len(msg.InitialStartupErrors) > 0 {
-		for _, err := range msg.InitialStartupErrors {
-			if m.Reporter != nil {
-				m.Reporter.Report(reporting.ManagedServiceUpdate{
-					Timestamp:   time.Now(),
-					SourceType:  reporting.ServiceTypeSystem,
-					SourceLabel: "ServiceManagerInit",
-					State:       reporting.StateFailed, // Or a specific 'PartialFailure' state if we define one
-					ErrorDetail: err,
-					IsReady:     false, // Or true if some services are up despite errors
-				})
-			} else {
-				// Fallback logging, same note as above, should ideally not be needed.
-				// logging.Error("ServiceManagerInit", err, "Initial service startup error (no reporter).")
+	m.ActivityLog = append(m.ActivityLog, logMsg)
+	m.ActivityLogDirty = true
+
+	// Limit activity log size
+	if len(m.ActivityLog) > model.MaxActivityLogLines {
+		m.ActivityLog = m.ActivityLog[len(m.ActivityLog)-model.MaxActivityLogLines:]
+	}
+
+	// Refresh service data to get latest state
+	return refreshServiceData(m)
+}
+
+// refreshServiceData returns a command to refresh all service data
+func refreshServiceData(m *model.Model) tea.Cmd {
+	return func() tea.Msg {
+		if err := m.RefreshServiceData(); err != nil {
+			return model.ServiceErrorMsg{
+				Label: "refresh",
+				Err:   err,
 			}
 		}
-	}
-	return m, nil
-}
-
-func handleServiceStopResultMsg(m *model.Model, msg model.ServiceStopResultMsg) (*model.Model, tea.Cmd) {
-	var state reporting.ServiceState
-
-	if msg.Err != nil {
-		state = reporting.StateFailed // Or a more specific "StopFailed" state
-	} else {
-		state = reporting.StateStopped
-	}
-
-	if m.Reporter != nil {
-		m.Reporter.Report(reporting.ManagedServiceUpdate{
-			Timestamp:   time.Now(),
-			SourceType:  reporting.ServiceTypeSystem, // Or determine actual type if service is known
-			SourceLabel: msg.Label,                   // Label of the service being stopped
-			State:       state,
-			IsReady:     false, // A stopped/failed service is not ready
-			ErrorDetail: msg.Err,
-		})
-	} else {
-		// Fallback logging, should ideally not be needed.
-		// if msg.Err != nil {
-		// 	logging.Error("ServiceManager", msg.Err, "Error processing stop for service '%s' (no reporter)", msg.Label)
-		// } else {
-		// 	logging.Info("ServiceManager", "Service '%s' stop signal processed (no reporter).", msg.Label)
-		// }
-	}
-	return m, nil
-}
-
-func handleRestartMcpServerMsg(m *model.Model, msg model.RestartMcpServerMsg) (*model.Model, tea.Cmd) {
-	// Log initial request using the new pkg/logging system
-	LogInfo(controllerSubsystem, "User requested restart for MCP server: %s", msg.Label)
-
-	if m.Orchestrator == nil {
-		errMsg := fmt.Sprintf("Orchestrator not available to restart service: %s", msg.Label)
-		// Log this error using pkg/logging
-		LogError(controllerSubsystem, errors.New(errMsg), "Attempted to restart service without Orchestrator")
-		return m, m.SetStatusMessage(errMsg, model.StatusBarError, 5*time.Second)
-	}
-
-	// Orchestrator.RestartService will handle the restart with proper dependency management
-	err := m.Orchestrator.RestartService(msg.Label)
-
-	statusBarMsg := fmt.Sprintf("Restart initiated for %s...", msg.Label)
-	statusBarMsgType := model.StatusBarInfo
-	var statusCmd tea.Cmd
-
-	if err != nil {
-		statusBarMsg = fmt.Sprintf("Error initiating restart for %s: %v", msg.Label, err)
-		statusBarMsgType = model.StatusBarError
-		// Log the error of *initiating* the restart
-		LogError(controllerSubsystem, err, "Error initiating restart for service %s", msg.Label)
-	}
-	statusCmd = m.SetStatusMessage(statusBarMsg, statusBarMsgType, 5*time.Second)
-
-	return m, statusCmd
-}
-
-// updatePortForwardFromSnapshot updates a PortForwardProcess from a StateStore snapshot
-func updatePortForwardFromSnapshot(pf *model.PortForwardProcess, snapshot reporting.ServiceStateSnapshot) {
-	pf.StatusMsg = string(snapshot.State)
-	pf.Running = snapshot.IsReady
-	// Don't overwrite Active with IsReady - Active means the service is configured to run
-	// pf.Active = snapshot.IsReady  // REMOVED - this was the bug
-	if snapshot.ErrorDetail != nil {
-		pf.Err = snapshot.ErrorDetail
-	} else {
-		pf.Err = nil
+		return serviceDataRefreshedMsg{}
 	}
 }
 
-// updateMcpServerFromSnapshot updates a McpServerProcess from a StateStore snapshot
-func updateMcpServerFromSnapshot(mcp *model.McpServerProcess, snapshot reporting.ServiceStateSnapshot) {
-	mcp.StatusMsg = string(snapshot.State)
-	mcp.Active = snapshot.IsReady
-	if snapshot.ProxyPort > 0 {
-		mcp.ProxyPort = snapshot.ProxyPort
-	}
-	if snapshot.PID > 0 {
-		mcp.Pid = snapshot.PID
-	}
-	if snapshot.ErrorDetail != nil {
-		mcp.Err = snapshot.ErrorDetail
-	}
-}
+// handleKeyPress handles keyboard input for the new model
+func handleKeyPress(m *model.Model, key tea.KeyMsg) tea.Cmd {
+	// Handle overlay-specific keys first
+	switch m.CurrentAppMode {
+	case model.ModeHelpOverlay:
+		switch key.String() {
+		case "esc", "?", "h", "q":
+			m.CurrentAppMode = m.LastAppMode
+		}
+		return nil
 
-func handleReporterUpdate(m *model.Model, update reporting.ManagedServiceUpdate) (*model.Model, tea.Cmd) {
-	// The new ManagedServiceUpdate focuses on State. We no longer log its content directly here.
-	// State changes are already logged by ServiceManager via pkg/logging.
-	// This handler is now primarily for updating the UI based on the reported service state.
-
-	// The StateStore is already updated by the TUIReporter before this handler is called.
-	// We now reconcile the UI state with the StateStore to ensure consistency.
-
-	// Reconcile all state from StateStore (including K8s health)
-	m.ReconcileState()
-
-	// Get the latest state from StateStore for status bar update
-	snapshot, exists := m.GetServiceSnapshot(update.SourceLabel)
-	if !exists {
-		// Service not found in StateStore, this shouldn't happen but handle gracefully
-		logging.Warn("TUIController", "Received update for unknown service: %s", update.SourceLabel)
-		return m, nil
-	}
-
-	// Update status bar based on StateStore data
-	var statusCmd tea.Cmd
-	statusBarMsg := ""
-	statusBarMsgType := model.StatusBarInfo // Default
-
-	if snapshot.State != "" { // Only update status bar if there's a meaningful state
-		statusPrefix := fmt.Sprintf("[%s - %s]", snapshot.SourceType, snapshot.Label)
-
-		if snapshot.ErrorDetail != nil {
-			statusBarMsgType = model.StatusBarError
-			statusBarMsg = fmt.Sprintf("%s %s: %s", statusPrefix, snapshot.State, snapshot.ErrorDetail.Error())
-		} else {
-			statusBarMsg = fmt.Sprintf("%s %s", statusPrefix, snapshot.State)
-			// Add port info to status bar for MCP servers
-			if snapshot.SourceType == reporting.ServiceTypeMCPServer && snapshot.ProxyPort > 0 {
-				statusBarMsg += fmt.Sprintf(" (port: %d)", snapshot.ProxyPort)
+	case model.ModeLogOverlay:
+		switch key.String() {
+		case "L", "esc", "q":
+			m.CurrentAppMode = m.LastAppMode
+		case "y":
+			// Copy logs to clipboard
+			if err := clipboard.WriteAll(strings.Join(m.ActivityLog, "\n")); err != nil {
+				return m.SetStatusMessage("Copy logs failed", model.StatusBarError, 3*time.Second)
 			}
-			// Add PID info to status bar for MCP servers
-			if snapshot.SourceType == reporting.ServiceTypeMCPServer && snapshot.PID > 0 {
-				statusBarMsg += fmt.Sprintf(" [PID: %d]", snapshot.PID)
+			return m.SetStatusMessage("Logs copied to clipboard", model.StatusBarSuccess, 3*time.Second)
+		default:
+			// Pass other keys to viewport for scrolling
+			var vpCmd tea.Cmd
+			m.LogViewport, vpCmd = m.LogViewport.Update(key)
+			return vpCmd
+		}
+		return nil
+
+	case model.ModeMcpConfigOverlay:
+		switch key.String() {
+		case "C", "esc", "q":
+			m.CurrentAppMode = m.LastAppMode
+		case "y":
+			// Copy MCP config to clipboard
+			configStr := GenerateMcpConfigJson(m.MCPServerConfig, m.MCPServers)
+			if err := clipboard.WriteAll(configStr); err != nil {
+				return m.SetStatusMessage("Copy MCP config failed", model.StatusBarError, 3*time.Second)
 			}
-			switch snapshot.State {
-			case reporting.StateFailed:
-				statusBarMsgType = model.StatusBarError
-			case reporting.StateUnknown:
-				statusBarMsgType = model.StatusBarWarning
-			case reporting.StateRunning:
-				statusBarMsgType = model.StatusBarSuccess
-			case reporting.StateStarting, reporting.StateStopping, reporting.StateRetrying, reporting.StateStopped:
-				statusBarMsgType = model.StatusBarInfo // Default to Info for transient/stopped states
-			default:
-				statusBarMsgType = model.StatusBarInfo
+			return m.SetStatusMessage("MCP config copied", model.StatusBarSuccess, 3*time.Second)
+		default:
+			// Pass other keys to viewport for scrolling
+			var vpCmd tea.Cmd
+			m.McpConfigViewport, vpCmd = m.McpConfigViewport.Update(key)
+			return vpCmd
+		}
+		return nil
+
+	case model.ModeMcpToolsOverlay:
+		switch key.String() {
+		case "M", "esc", "q":
+			m.CurrentAppMode = m.LastAppMode
+		default:
+			// Pass other keys to viewport for scrolling
+			var vpCmd tea.Cmd
+			m.McpToolsViewport, vpCmd = m.McpToolsViewport.Update(key)
+			return vpCmd
+		}
+		return nil
+
+	case model.ModeMainDashboard:
+		return handleMainDashboardKeys(m, key)
+	}
+
+	return nil
+}
+
+// handleMainDashboardKeys handles keys in the main dashboard
+func handleMainDashboardKeys(m *model.Model, key tea.KeyMsg) tea.Cmd {
+	switch key.String() {
+	case "q", "ctrl+c":
+		m.QuitApp = true
+		m.CurrentAppMode = model.ModeQuitting
+		m.QuittingMessage = "Shutting down services..."
+		// Stop the orchestrator to clean up all services
+		if m.Orchestrator != nil {
+			go func() {
+				m.Orchestrator.Stop()
+			}()
+		}
+		// Give services a moment to stop gracefully
+		return tea.Sequence(
+			tea.Tick(500*time.Millisecond, func(t time.Time) tea.Msg {
+				return tea.Quit()
+			}),
+		)
+
+	case "?", "h":
+		m.LastAppMode = m.CurrentAppMode
+		m.CurrentAppMode = model.ModeHelpOverlay
+
+	case "L":
+		m.LastAppMode = m.CurrentAppMode
+		m.CurrentAppMode = model.ModeLogOverlay
+		// Prepare log content for viewport
+		if m.LogViewport.Width > 0 {
+			preparedContent := PrepareLogContent(m.ActivityLog, m.LogViewport.Width)
+			m.LogViewport.SetContent(preparedContent)
+			m.LogViewport.GotoBottom()
+		}
+
+	case "C":
+		m.LastAppMode = m.CurrentAppMode
+		m.CurrentAppMode = model.ModeMcpConfigOverlay
+		// Populate the viewport content when entering the mode
+		configJSON := GenerateMcpConfigJson(m.MCPServerConfig, m.MCPServers)
+		m.McpConfigViewport.SetContent(configJSON)
+		m.McpConfigViewport.GotoTop()
+
+	case "M":
+		m.LastAppMode = m.CurrentAppMode
+		m.CurrentAppMode = model.ModeMcpToolsOverlay
+		// Generate and set tools content
+		toolsContent := view.GenerateMcpToolsContent(m)
+		m.McpToolsViewport.SetContent(toolsContent)
+		m.McpToolsViewport.GotoTop()
+
+	case "D":
+		// Toggle dark mode
+		currentIsDark := lipgloss.HasDarkBackground()
+		lipgloss.SetHasDarkBackground(!currentIsDark)
+		colorProfile := lipgloss.ColorProfile().String()
+		m.ColorMode = fmt.Sprintf("%s (Dark: %v)", colorProfile, !currentIsDark)
+
+	case "z":
+		// Toggle debug mode
+		m.DebugMode = !m.DebugMode
+
+	case "r":
+		// Restart focused service
+		if m.FocusedPanelKey != "" {
+			return m.RestartService(m.FocusedPanelKey)
+		}
+
+	case "x":
+		// Stop focused service
+		if m.FocusedPanelKey != "" {
+			return m.StopService(m.FocusedPanelKey)
+		}
+
+	case "enter":
+		// Start focused service if stopped
+		if m.FocusedPanelKey != "" {
+			// Check if service is stopped
+			if svc, exists := m.MCPServers[m.FocusedPanelKey]; exists && svc.State != "running" {
+				return m.StartService(m.FocusedPanelKey)
+			}
+			if pf, exists := m.PortForwards[m.FocusedPanelKey]; exists && pf.State != "running" {
+				return m.StartService(m.FocusedPanelKey)
 			}
 		}
 
-		// Filter out less important status updates from the status bar to avoid noise
-		showInStatusBar := true
-		switch snapshot.State {
-		case reporting.StateStarting, reporting.StateStopping, reporting.StateRetrying:
-			if !m.DebugMode { // Only show these transient states in status bar if TUI debug mode is on
-				showInStatusBar = false
-			}
+	case "s":
+		// Context switch for K8s connections
+		if m.FocusedPanelKey == model.McPaneFocusKey && m.ManagementClusterName != "" {
+			// Switch to MC context
+			kubeMgr := kube.NewManager(nil)
+			target := kubeMgr.BuildMcContextName(m.ManagementClusterName)
+			return PerformSwitchKubeContextCmd(target)
+		} else if m.FocusedPanelKey == model.WcPaneFocusKey && m.WorkloadClusterName != "" && m.ManagementClusterName != "" {
+			// Switch to WC context
+			kubeMgr := kube.NewManager(nil)
+			target := kubeMgr.BuildWcContextName(m.ManagementClusterName, m.WorkloadClusterName)
+			return PerformSwitchKubeContextCmd(target)
 		}
 
-		if showInStatusBar && statusBarMsg != "" {
-			statusCmd = m.SetStatusMessage(statusBarMsg, statusBarMsgType, 3*time.Second)
-		}
+	case "tab":
+		// Cycle through focusable panels
+		cycleFocus(m, 1)
+
+	case "shift+tab":
+		// Cycle backwards through focusable panels
+		cycleFocus(m, -1)
+
+	case "k", "up":
+		// Move focus up
+		cycleFocus(m, -1)
+
+	case "j", "down":
+		// Move focus down
+		cycleFocus(m, 1)
 	}
 
-	return m, statusCmd
+	return nil
 }
 
-func handleNewLogEntry(m *model.Model, msg model.NewLogEntryMsg) *model.Model {
-	entry := msg.Entry
+// cycleFocus moves focus between panels
+func cycleFocus(m *model.Model, direction int) {
+	// Build list of focusable items
+	var focusableItems []string
 
-	// Only add to TUI activity log if the level is INFO or above,
-	// OR if TUI debug mode is enabled (m.DebugMode is true).
-	// Assumes LogLevel enum order: Debug < Info < Warn < Error.
-	if entry.Level >= logging.LevelInfo || m.DebugMode {
-		logLine := fmt.Sprintf("%s [%s] [%s] %s",
-			entry.Timestamp.Format("15:04:05.000"),
-			entry.Level.String(),
-			entry.Subsystem,
-			entry.Message)
-
-		if entry.Err != nil {
-			logLine = fmt.Sprintf("%s -- Error: %v", logLine, entry.Err)
-		}
-		model.AddRawLineToActivityLog(m, logLine)
+	// Add MC pane
+	if m.ManagementClusterName != "" {
+		focusableItems = append(focusableItems, model.McPaneFocusKey)
 	}
-	return m
+
+	// Add WC pane
+	if m.WorkloadClusterName != "" {
+		focusableItems = append(focusableItems, model.WcPaneFocusKey)
+	}
+
+	// Add port forwards
+	focusableItems = append(focusableItems, m.PortForwardOrder...)
+
+	// Add MCP servers
+	focusableItems = append(focusableItems, m.MCPServerOrder...)
+
+	if len(focusableItems) == 0 {
+		return
+	}
+
+	// Find current index
+	currentIdx := -1
+	for i, item := range focusableItems {
+		if item == m.FocusedPanelKey {
+			currentIdx = i
+			break
+		}
+	}
+
+	// Calculate next index
+	nextIdx := currentIdx + direction
+	if nextIdx < 0 {
+		nextIdx = len(focusableItems) - 1
+	} else if nextIdx >= len(focusableItems) {
+		nextIdx = 0
+	}
+
+	m.FocusedPanelKey = focusableItems[nextIdx]
 }
 
-func handleBackpressureNotification(m *model.Model, notification reporting.BackpressureNotificationMsg) (*model.Model, tea.Cmd) {
-	// Set timestamp if not provided
-	if notification.Timestamp.IsZero() {
-		notification.Timestamp = time.Now()
-	}
+// serviceDataRefreshedMsg indicates service data has been refreshed
+type serviceDataRefreshedMsg struct{}
 
-	// Create a warning message for the user
-	warningMsg := fmt.Sprintf("⚠️  Critical update dropped for %s (state: %s) - %s",
-		notification.ServiceLabel, notification.DroppedState, notification.Reason)
+// refreshServiceDataMsg indicates we should refresh service data
+type refreshServiceDataMsg struct{}
 
-	// Show in status bar with warning type
-	statusCmd := m.SetStatusMessage(warningMsg, model.StatusBarWarning, 10*time.Second)
+// tickMsg is sent periodically to refresh service data
+type tickMsg struct{}
 
-	// Log the notification
-	logging.Warn("TUIController", "Backpressure notification: %s", warningMsg)
-
-	return m, statusCmd
+// tickCmd returns a command that sends a tick message after a delay
+func tickCmd() tea.Cmd {
+	return tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
+		return tickMsg{}
+	})
 }

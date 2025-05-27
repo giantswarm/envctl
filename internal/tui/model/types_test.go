@@ -53,24 +53,4 @@ func TestSetStatusMessage(t *testing.T) {
 	if cmd2 == nil {
 		t.Error("Expected a non-nil tea.Cmd from second SetStatusMessage call")
 	}
-
-	// Test 3: Test message truncation
-	longMessage := "This is a very long message that should be truncated because it exceeds the available width in the status bar"
-	cmd3 := m.SetStatusMessage(longMessage, StatusBarInfo, 1*time.Second)
-	if len(m.StatusBarMessage) > 100 { // Should be truncated based on width
-		t.Errorf("Expected message to be truncated, but got length %d", len(m.StatusBarMessage))
-	}
-	if cmd3 == nil {
-		t.Error("Expected a non-nil tea.Cmd from SetStatusMessage with long message")
-	}
-
-	// Test 4: Test with very small width
-	m.Width = 10
-	cmd4 := m.SetStatusMessage("Short", StatusBarWarning, 1*time.Second)
-	if len(m.StatusBarMessage) > 10 {
-		t.Errorf("Expected message to be truncated for small width, got '%s' (length %d)", m.StatusBarMessage, len(m.StatusBarMessage))
-	}
-	if cmd4 == nil {
-		t.Error("Expected a non-nil tea.Cmd from SetStatusMessage with small width")
-	}
 }

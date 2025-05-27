@@ -138,3 +138,21 @@ type MCPToolsErrorMsg struct {
 type MCPToolUpdateMsg struct {
 	Event api.MCPToolUpdateEvent
 }
+
+// ServiceStartedMsg indicates a service was started
+type ServiceStartedMsg struct {
+	Label string
+}
+
+// ServiceStoppedMsg indicates a service was stopped
+type ServiceStoppedMsg struct {
+	Label string
+}
+
+// ServiceRestartedMsg indicates a service was restarted
+type ServiceRestartedMsg struct {
+	Label string
+}
+
+// InitializationCompleteMsg indicates that the orchestrator initialization is complete
+type InitializationCompleteMsg struct{}
