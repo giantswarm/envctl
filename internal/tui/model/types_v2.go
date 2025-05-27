@@ -37,29 +37,29 @@ type ModelV2 struct {
 	WorkloadClusterName   string
 	CurrentKubeContext    string
 	QuittingMessage       string
-	
+
 	// Service Architecture Components
-	Orchestrator      *orchestrator.OrchestratorV2
-	OrchestratorAPI   api.OrchestratorAPI
-	MCPServiceAPI     api.MCPServiceAPI
-	PortForwardAPI    api.PortForwardServiceAPI
-	K8sServiceAPI     api.K8sServiceAPI
-	
+	Orchestrator    *orchestrator.OrchestratorV2
+	OrchestratorAPI api.OrchestratorAPI
+	MCPServiceAPI   api.MCPServiceAPI
+	PortForwardAPI  api.PortForwardServiceAPI
+	K8sServiceAPI   api.K8sServiceAPI
+
 	// Cached service data for display
-	K8sConnections    map[string]*api.K8sConnectionInfo
-	PortForwards      map[string]*api.PortForwardServiceInfo
-	MCPServers        map[string]*api.MCPServerInfo
-	MCPTools          map[string][]api.MCPTool
-	
+	K8sConnections map[string]*api.K8sConnectionInfo
+	PortForwards   map[string]*api.PortForwardServiceInfo
+	MCPServers     map[string]*api.MCPServerInfo
+	MCPTools       map[string][]api.MCPTool
+
 	// Service ordering for display
 	K8sConnectionOrder []string
 	PortForwardOrder   []string
 	MCPServerOrder     []string
-	
+
 	// Configuration
 	PortForwardingConfig []config.PortForwardDefinition
 	MCPServerConfig      []config.MCPServerDefinition
-	
+
 	// UI State & Output
 	ActivityLog              []string
 	ActivityLogDirty         bool
@@ -80,10 +80,10 @@ type ModelV2 struct {
 	StatusBarMessage         string
 	StatusBarMessageType     MessageType
 	StatusBarClearCancel     chan struct{}
-	
+
 	// Logging
 	LogChannel <-chan logging.LogEntry
-	
+
 	// Event subscription
 	StateChangeEvents <-chan api.ServiceStateChangedEvent
 }
@@ -91,46 +91,46 @@ type ModelV2 struct {
 // RefreshServiceData fetches the latest service data from APIs
 func (m *ModelV2) RefreshServiceData() error {
 	ctx := context.Background()
-	
+
 	// Refresh K8s connections
 	k8sConns, err := m.K8sServiceAPI.ListConnections(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to list K8s connections: %w", err)
 	}
-	
+
 	m.K8sConnections = make(map[string]*api.K8sConnectionInfo)
 	m.K8sConnectionOrder = []string{}
 	for _, conn := range k8sConns {
 		m.K8sConnections[conn.Label] = conn
 		m.K8sConnectionOrder = append(m.K8sConnectionOrder, conn.Label)
 	}
-	
+
 	// Refresh port forwards
 	portForwards, err := m.PortForwardAPI.ListForwards(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to list port forwards: %w", err)
 	}
-	
+
 	m.PortForwards = make(map[string]*api.PortForwardServiceInfo)
 	m.PortForwardOrder = []string{}
 	for _, pf := range portForwards {
 		m.PortForwards[pf.Label] = pf
 		m.PortForwardOrder = append(m.PortForwardOrder, pf.Label)
 	}
-	
+
 	// Refresh MCP servers
 	mcpServers, err := m.MCPServiceAPI.ListServers(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to list MCP servers: %w", err)
 	}
-	
+
 	m.MCPServers = make(map[string]*api.MCPServerInfo)
 	m.MCPServerOrder = []string{}
 	for _, mcp := range mcpServers {
 		m.MCPServers[mcp.Name] = mcp
 		m.MCPServerOrder = append(m.MCPServerOrder, mcp.Name)
 	}
-	
+
 	return nil
 }
 
@@ -207,14 +207,14 @@ func (m *ModelV2) SetStatusMessage(message string, msgType MessageType, clearAft
 	// Implementation similar to original but simplified
 	m.StatusBarMessage = message
 	m.StatusBarMessageType = msgType
-	
+
 	if m.StatusBarClearCancel != nil {
 		close(m.StatusBarClearCancel)
 	}
-	
+
 	m.StatusBarClearCancel = make(chan struct{})
 	captured := m.StatusBarClearCancel
-	
+
 	return tea.Tick(clearAfter, func(t time.Time) tea.Msg {
 		select {
 		case <-captured:
@@ -236,4 +236,4 @@ type ServiceStoppedMsg struct {
 
 type ServiceRestartedMsg struct {
 	Label string
-} 
+}

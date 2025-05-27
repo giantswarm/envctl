@@ -26,16 +26,16 @@ func InitializeModelV2(mcName, wcName string, cfg config.EnvctlConfig, logChanne
 		MCPServers:   cfg.MCPServers,
 	}
 	orch := orchestrator.NewV2(orchConfig)
-	
+
 	// Get the service registry
 	registry := orch.GetServiceRegistry()
-	
+
 	// Create APIs
 	orchestratorAPI := api.NewOrchestratorAPI(orch, registry)
 	mcpAPI := api.NewMCPServiceAPI(registry)
 	portForwardAPI := api.NewPortForwardServiceAPI(registry)
 	k8sAPI := api.NewK8sServiceAPI(registry)
-	
+
 	// Create the model
 	m := &ModelV2{
 		// Service Architecture
@@ -44,25 +44,25 @@ func InitializeModelV2(mcName, wcName string, cfg config.EnvctlConfig, logChanne
 		MCPServiceAPI:   mcpAPI,
 		PortForwardAPI:  portForwardAPI,
 		K8sServiceAPI:   k8sAPI,
-		
+
 		// Cluster info
 		ManagementClusterName: mcName,
 		WorkloadClusterName:   wcName,
-		
+
 		// Configuration
 		PortForwardingConfig: cfg.PortForwards,
 		MCPServerConfig:      cfg.MCPServers,
-		
+
 		// UI State
 		CurrentAppMode: ModeInitializing,
 		ColorMode:      "auto",
-		
+
 		// Data structures
 		K8sConnections: make(map[string]*api.K8sConnectionInfo),
 		PortForwards:   make(map[string]*api.PortForwardServiceInfo),
 		MCPServers:     make(map[string]*api.MCPServerInfo),
 		MCPTools:       make(map[string][]api.MCPTool),
-		
+
 		// UI Components
 		Spinner:            spinner.New(),
 		LogViewport:        viewport.New(80, 20),
@@ -72,27 +72,27 @@ func InitializeModelV2(mcName, wcName string, cfg config.EnvctlConfig, logChanne
 		NewConnectionInput: textinput.New(),
 		Help:               help.New(),
 		Keys:               DefaultKeyMapV2(),
-		
+
 		// Channels
 		TUIChannel: make(chan tea.Msg, 100),
 		LogChannel: logChannel,
-		
+
 		// Activity log
 		ActivityLog: []string{},
 	}
-	
+
 	// Subscribe to state changes
 	m.StateChangeEvents = m.OrchestratorAPI.SubscribeToStateChanges()
-	
+
 	// Configure spinner
 	m.Spinner.Spinner = spinner.Dot
-	
+
 	// Configure text input
 	m.NewConnectionInput.Placeholder = "Enter MC name"
 	m.NewConnectionInput.Focus()
 	m.NewConnectionInput.CharLimit = 50
 	m.NewConnectionInput.Width = 30
-	
+
 	return m, nil
 }
 
@@ -187,14 +187,14 @@ func (m *ModelV2) Init() tea.Cmd {
 // Update implements the tea.Model interface
 func (m *ModelV2) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// For now, just return the model unchanged
-	// The actual update logic will be in the controller
+	// The actual update logic will be handled by a wrapper
 	return m, nil
 }
 
 // View implements the tea.Model interface
 func (m *ModelV2) View() string {
 	// For now, return a simple view
-	// This will be replaced with the actual view implementation
+	// The actual view will be handled by a wrapper
 	return fmt.Sprintf("envctl v2 - Services: %d K8s, %d Port Forwards, %d MCP Servers\n\nPress ? for help, q to quit",
 		len(m.K8sConnections),
 		len(m.PortForwards),
@@ -212,7 +212,7 @@ func (m *ModelV2) startOrchestrator() tea.Cmd {
 				Err:   err,
 			}
 		}
-		
+
 		// Initial data refresh
 		if err := m.RefreshServiceData(); err != nil {
 			return ServiceErrorMsg{
@@ -220,7 +220,7 @@ func (m *ModelV2) startOrchestrator() tea.Cmd {
 				Err:   err,
 			}
 		}
-		
+
 		m.CurrentAppMode = ModeMainDashboard
 		return nil
 	}
@@ -245,10 +245,10 @@ func (m *ModelV2) listenForLogs() tea.Cmd {
 				entry.Subsystem,
 				entry.Message,
 			)
-			
+
 			m.ActivityLog = append(m.ActivityLog, logLine)
 			m.ActivityLogDirty = true
-			
+
 			// Limit log size
 			if len(m.ActivityLog) > MaxActivityLogLines {
 				m.ActivityLog = m.ActivityLog[len(m.ActivityLog)-MaxActivityLogLines:]
@@ -256,4 +256,4 @@ func (m *ModelV2) listenForLogs() tea.Cmd {
 		}
 		return nil
 	}
-} 
+}

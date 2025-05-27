@@ -82,19 +82,19 @@ func handleServiceStateChange(m *model.ModelV2, event api.ServiceStateChangedEve
 		event.OldState,
 		event.NewState,
 	)
-	
+
 	if event.Error != nil {
 		logMsg += fmt.Sprintf(" (error: %v)", event.Error)
 	}
-	
+
 	m.ActivityLog = append(m.ActivityLog, logMsg)
 	m.ActivityLogDirty = true
-	
+
 	// Limit activity log size
 	if len(m.ActivityLog) > model.MaxActivityLogLines {
 		m.ActivityLog = m.ActivityLog[len(m.ActivityLog)-model.MaxActivityLogLines:]
 	}
-	
+
 	// Refresh service data to get latest state
 	return refreshServiceData(m)
 }
@@ -126,7 +126,7 @@ func handleKeyPressV2(m *model.ModelV2, key tea.KeyMsg) tea.Cmd {
 			m.CurrentAppMode = m.LastAppMode
 		}
 	}
-	
+
 	return nil
 }
 
@@ -136,27 +136,27 @@ func handleMainDashboardKeysV2(m *model.ModelV2, key tea.KeyMsg) tea.Cmd {
 	case "q", "ctrl+c":
 		m.QuitApp = true
 		return tea.Quit
-		
+
 	case "?":
 		m.LastAppMode = m.CurrentAppMode
 		m.CurrentAppMode = model.ModeHelpOverlay
-		
+
 	case "l":
 		m.LastAppMode = m.CurrentAppMode
 		m.CurrentAppMode = model.ModeLogOverlay
-		
+
 	case "r":
 		// Restart focused service
 		if m.FocusedPanelKey != "" {
 			return m.RestartService(m.FocusedPanelKey)
 		}
-		
+
 	case "s":
 		// Stop focused service
 		if m.FocusedPanelKey != "" {
 			return m.StopService(m.FocusedPanelKey)
 		}
-		
+
 	case "enter":
 		// Start focused service if stopped
 		if m.FocusedPanelKey != "" {
@@ -168,16 +168,16 @@ func handleMainDashboardKeysV2(m *model.ModelV2, key tea.KeyMsg) tea.Cmd {
 				return m.StartService(m.FocusedPanelKey)
 			}
 		}
-		
+
 	case "tab":
 		// Cycle through focusable panels
 		cycleFocus(m, 1)
-		
+
 	case "shift+tab":
 		// Cycle backwards through focusable panels
 		cycleFocus(m, -1)
 	}
-	
+
 	return nil
 }
 
@@ -185,20 +185,20 @@ func handleMainDashboardKeysV2(m *model.ModelV2, key tea.KeyMsg) tea.Cmd {
 func cycleFocus(m *model.ModelV2, direction int) {
 	// Build list of focusable items
 	var focusableItems []string
-	
+
 	// Add K8s connections
 	focusableItems = append(focusableItems, m.K8sConnectionOrder...)
-	
+
 	// Add port forwards
 	focusableItems = append(focusableItems, m.PortForwardOrder...)
-	
+
 	// Add MCP servers
 	focusableItems = append(focusableItems, m.MCPServerOrder...)
-	
+
 	if len(focusableItems) == 0 {
 		return
 	}
-	
+
 	// Find current index
 	currentIdx := -1
 	for i, item := range focusableItems {
@@ -207,7 +207,7 @@ func cycleFocus(m *model.ModelV2, direction int) {
 			break
 		}
 	}
-	
+
 	// Calculate next index
 	nextIdx := currentIdx + direction
 	if nextIdx < 0 {
@@ -215,9 +215,9 @@ func cycleFocus(m *model.ModelV2, direction int) {
 	} else if nextIdx >= len(focusableItems) {
 		nextIdx = 0
 	}
-	
+
 	m.FocusedPanelKey = focusableItems[nextIdx]
 }
 
 // serviceDataRefreshedMsg indicates service data has been refreshed
-type serviceDataRefreshedMsg struct{} 
+type serviceDataRefreshedMsg struct{}

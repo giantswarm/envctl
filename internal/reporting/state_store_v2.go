@@ -33,7 +33,7 @@ func NewStateStoreV2() *StateStoreV2 {
 func (s *StateStoreV2) UpdateState(label string, serviceType ServiceType, state ServiceState, health HealthStatus, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	s.states[label] = ServiceStateV2{
 		Label:       label,
 		Type:        serviceType,
@@ -48,7 +48,7 @@ func (s *StateStoreV2) UpdateState(label string, serviceType ServiceType, state 
 func (s *StateStoreV2) GetState(label string) (ServiceStateV2, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	state, exists := s.states[label]
 	return state, exists
 }
@@ -57,7 +57,7 @@ func (s *StateStoreV2) GetState(label string) (ServiceStateV2, bool) {
 func (s *StateStoreV2) GetAllStates() map[string]ServiceStateV2 {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	// Return a copy to prevent external modifications
 	copy := make(map[string]ServiceStateV2)
 	for k, v := range s.states {
@@ -70,7 +70,7 @@ func (s *StateStoreV2) GetAllStates() map[string]ServiceStateV2 {
 func (s *StateStoreV2) GetStatesByType(serviceType ServiceType) map[string]ServiceStateV2 {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	result := make(map[string]ServiceStateV2)
 	for label, state := range s.states {
 		if state.Type == serviceType {
@@ -84,7 +84,7 @@ func (s *StateStoreV2) GetStatesByType(serviceType ServiceType) map[string]Servi
 func (s *StateStoreV2) RemoveState(label string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	delete(s.states, label)
 }
 
@@ -92,7 +92,7 @@ func (s *StateStoreV2) RemoveState(label string) {
 func (s *StateStoreV2) Clear() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	s.states = make(map[string]ServiceStateV2)
 }
 
@@ -104,4 +104,4 @@ const (
 	HealthHealthy   HealthStatus = "healthy"
 	HealthUnhealthy HealthStatus = "unhealthy"
 	HealthChecking  HealthStatus = "checking"
-) 
+)

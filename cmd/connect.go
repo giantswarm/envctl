@@ -17,6 +17,7 @@ import (
 	"time"
 
 	// For TUI program
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 )
 
@@ -159,14 +160,35 @@ Arguments:
 			logChan := logging.InitForTUI(appLogLevel)
 			defer logging.CloseTUIChannel()
 
-			program := controller.NewProgram(
-				managementClusterArg,
-				workloadClusterArg,
-				initialKubeContext,
-				debug || tuiDebugMode, // Use either general debug or TUI-specific debug mode
-				envctlCfg,
-				logChan,
-			)
+			// Check if we should use v2 architecture
+			useV2 := os.Getenv("ENVCTL_V2") == "true"
+
+			var program *tea.Program
+			if useV2 {
+				logging.Info("CLI", "Using v2 service architecture")
+				p, err := controller.NewProgramV2(
+					managementClusterArg,
+					workloadClusterArg,
+					initialKubeContext,
+					debug || tuiDebugMode,
+					envctlCfg,
+					logChan,
+				)
+				if err != nil {
+					logging.Error("TUI-Lifecycle", err, "Error creating TUI program v2")
+					return err
+				}
+				program = p
+			} else {
+				program = controller.NewProgram(
+					managementClusterArg,
+					workloadClusterArg,
+					initialKubeContext,
+					debug || tuiDebugMode, // Use either general debug or TUI-specific debug mode
+					envctlCfg,
+					logChan,
+				)
+			}
 
 			if _, err := program.Run(); err != nil {
 				// Log this error using the TUI logger if possible, or fallback

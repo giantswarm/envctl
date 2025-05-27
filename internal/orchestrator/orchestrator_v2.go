@@ -16,24 +16,24 @@ import (
 
 // OrchestratorV2 manages services using the new service registry architecture
 type OrchestratorV2 struct {
-	registry   services.ServiceRegistry
-	kubeMgr    kube.Manager
-	depGraph   *dependency.Graph
-	
+	registry services.ServiceRegistry
+	kubeMgr  kube.Manager
+	depGraph *dependency.Graph
+
 	// Configuration
 	mcName       string
 	wcName       string
 	portForwards []config.PortForwardDefinition
 	mcpServers   []config.MCPServerDefinition
-	
+
 	// Service tracking
 	stopReasons     map[string]StopReason
 	pendingRestarts map[string]bool
-	
+
 	// Context for cancellation
 	ctx        context.Context
 	cancelFunc context.CancelFunc
-	
+
 	mu sync.RWMutex
 }
 
@@ -49,10 +49,10 @@ type ConfigV2 struct {
 func NewV2(cfg ConfigV2) *OrchestratorV2 {
 	// Create service registry
 	registry := services.NewRegistry()
-	
+
 	// Create kube manager
 	kubeMgr := kube.NewManager(nil)
-	
+
 	return &OrchestratorV2{
 		registry:        registry,
 		kubeMgr:         kubeMgr,
@@ -69,23 +69,23 @@ func NewV2(cfg ConfigV2) *OrchestratorV2 {
 func (o *OrchestratorV2) Start(ctx context.Context) error {
 	// Create cancellable context
 	o.ctx, o.cancelFunc = context.WithCancel(ctx)
-	
+
 	// Build dependency graph
 	o.depGraph = o.buildDependencyGraph()
-	
+
 	// Register all services
 	if err := o.registerServices(); err != nil {
 		return fmt.Errorf("failed to register services: %w", err)
 	}
-	
+
 	// Start services in dependency order
 	if err := o.startServicesInOrder(); err != nil {
 		return fmt.Errorf("failed to start services: %w", err)
 	}
-	
+
 	// Start monitoring for service health and restarts
 	go o.monitorServices()
-	
+
 	return nil
 }
 
@@ -94,7 +94,7 @@ func (o *OrchestratorV2) Stop() error {
 	if o.cancelFunc != nil {
 		o.cancelFunc()
 	}
-	
+
 	// Stop all services in reverse dependency order
 	return o.stopAllServices()
 }
@@ -105,22 +105,22 @@ func (o *OrchestratorV2) StartService(label string) error {
 	if !exists {
 		return fmt.Errorf("service %s not found", label)
 	}
-	
+
 	// Check dependencies first
 	if err := o.checkDependencies(label); err != nil {
 		return fmt.Errorf("dependency check failed: %w", err)
 	}
-	
+
 	// Start the service
 	if err := service.Start(o.ctx); err != nil {
 		return fmt.Errorf("failed to start service %s: %w", label, err)
 	}
-	
+
 	// Remove from stop reasons if it was there
 	o.mu.Lock()
 	delete(o.stopReasons, label)
 	o.mu.Unlock()
-	
+
 	logging.Info("OrchestratorV2", "Started service: %s", label)
 	return nil
 }
@@ -131,22 +131,22 @@ func (o *OrchestratorV2) StopService(label string) error {
 	if !exists {
 		return fmt.Errorf("service %s not found", label)
 	}
-	
+
 	// Mark as manually stopped
 	o.mu.Lock()
 	o.stopReasons[label] = StopReasonManual
 	o.mu.Unlock()
-	
+
 	// Stop the service
 	if err := service.Stop(o.ctx); err != nil {
 		return fmt.Errorf("failed to stop service %s: %w", label, err)
 	}
-	
+
 	// Stop dependent services
 	if err := o.stopDependentServices(label); err != nil {
 		logging.Error("OrchestratorV2", err, "Failed to stop dependent services for %s", label)
 	}
-	
+
 	logging.Info("OrchestratorV2", "Stopped service: %s", label)
 	return nil
 }
@@ -157,12 +157,12 @@ func (o *OrchestratorV2) RestartService(label string) error {
 	if !exists {
 		return fmt.Errorf("service %s not found", label)
 	}
-	
+
 	// Restart the service
 	if err := service.Restart(o.ctx); err != nil {
 		return fmt.Errorf("failed to restart service %s: %w", label, err)
 	}
-	
+
 	logging.Info("OrchestratorV2", "Restarted service: %s", label)
 	return nil
 }
@@ -178,17 +178,17 @@ func (o *OrchestratorV2) registerServices() error {
 	if err := o.registerK8sServices(); err != nil {
 		return fmt.Errorf("failed to register K8s services: %w", err)
 	}
-	
+
 	// Register port forward services
 	if err := o.registerPortForwardServices(); err != nil {
 		return fmt.Errorf("failed to register port forward services: %w", err)
 	}
-	
+
 	// Register MCP server services
 	if err := o.registerMCPServices(); err != nil {
 		return fmt.Errorf("failed to register MCP services: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -198,24 +198,24 @@ func (o *OrchestratorV2) registerK8sServices() error {
 	if o.mcName != "" {
 		mcContext := o.kubeMgr.BuildMcContextName(o.mcName)
 		mcLabel := fmt.Sprintf("k8s-mc-%s", o.mcName)
-		
+
 		mcService := k8s.NewK8sConnectionService(mcLabel, mcContext, true, o.kubeMgr)
 		o.registry.Register(mcService)
-		
+
 		logging.Debug("OrchestratorV2", "Registered K8s MC service: %s", mcLabel)
 	}
-	
+
 	// Register WC connection if configured
 	if o.wcName != "" && o.mcName != "" {
 		wcContext := o.kubeMgr.BuildWcContextName(o.mcName, o.wcName)
 		wcLabel := fmt.Sprintf("k8s-wc-%s", o.wcName)
-		
+
 		wcService := k8s.NewK8sConnectionService(wcLabel, wcContext, false, o.kubeMgr)
 		o.registry.Register(wcService)
-		
+
 		logging.Debug("OrchestratorV2", "Registered K8s WC service: %s", wcLabel)
 	}
-	
+
 	return nil
 }
 
@@ -225,13 +225,13 @@ func (o *OrchestratorV2) registerPortForwardServices() error {
 		if !pf.Enabled {
 			continue
 		}
-		
+
 		pfService := portforward.NewPortForwardService(pf, o.kubeMgr)
 		o.registry.Register(pfService)
-		
+
 		logging.Debug("OrchestratorV2", "Registered port forward service: %s", pf.Name)
 	}
-	
+
 	return nil
 }
 
@@ -241,12 +241,12 @@ func (o *OrchestratorV2) registerMCPServices() error {
 		if !mcp.Enabled {
 			continue
 		}
-		
+
 		mcpService := mcpserver.NewMCPServerService(mcp)
 		o.registry.Register(mcpService)
-		
+
 		logging.Debug("OrchestratorV2", "Registered MCP server service: %s", mcp.Name)
 	}
-	
+
 	return nil
-} 
+}
