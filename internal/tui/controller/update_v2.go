@@ -5,6 +5,7 @@ import (
 	"envctl/internal/kube"
 	"envctl/internal/tui/model"
 	"envctl/internal/tui/view"
+	"envctl/pkg/logging"
 	"fmt"
 	"strings"
 	"time"
@@ -102,6 +103,12 @@ func UpdateV2(msg tea.Msg, m *model.ModelV2) (*model.ModelV2, tea.Cmd) {
 		m.StatusBarMessageType = model.StatusBarInfo
 
 	case model.NewLogEntryMsg:
+		// Filter logs based on debug mode
+		if !m.DebugMode && msg.Entry.Level == logging.LevelDebug {
+			// Skip debug logs when not in debug mode
+			return m, m.ListenForLogs()
+		}
+
 		// Format and add log entry to activity log
 		logLine := fmt.Sprintf("[%s] [%s] %s: %s",
 			msg.Entry.Timestamp.Format("15:04:05"),
