@@ -149,10 +149,10 @@ func renderPortForwardPanelV2(m *model.ModelV2, label string, pf *api.PortForwar
 	// Add health indicator
 	b.WriteString("\n")
 	var healthIcon, healthText string
-	if pf.State == "running" && pf.Health == "healthy" {
+	if pf.State == "running" && (pf.Health == "healthy" || pf.Health == "Healthy") {
 		healthIcon = SafeIcon(IconCheck)
 		healthText = "Healthy"
-	} else if pf.State == "failed" || pf.Health == "unhealthy" {
+	} else if pf.State == "failed" || pf.Health == "unhealthy" || pf.Health == "Unhealthy" {
 		healthIcon = SafeIcon(IconCross)
 		healthText = "Unhealthy"
 	} else {

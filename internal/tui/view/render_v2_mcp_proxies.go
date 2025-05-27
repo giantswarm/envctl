@@ -168,10 +168,10 @@ func renderMcpProxyPanelV2(serverName string, predefinedData config.MCPServerDef
 	if proc != nil {
 		b.WriteString("\n")
 		var healthIcon, healthText string
-		if proc.State == "running" && proc.Health == "healthy" {
+		if proc.State == "running" && (proc.Health == "healthy" || proc.Health == "Healthy") {
 			healthIcon = SafeIcon(IconCheck)
 			healthText = "Healthy"
-		} else if proc.State == "failed" || proc.Health == "unhealthy" {
+		} else if proc.State == "failed" || proc.Health == "unhealthy" || proc.Health == "Unhealthy" {
 			healthIcon = SafeIcon(IconCross)
 			healthText = "Unhealthy"
 		} else {

@@ -121,6 +121,23 @@ func UpdateV2(msg tea.Msg, m *model.ModelV2) (*model.ModelV2, tea.Cmd) {
 
 	case tea.KeyMsg:
 		cmds = append(cmds, handleKeyPressV2(m, msg))
+
+	case model.KubeContextSwitchedMsg:
+		// Handle context switch result
+		if msg.Err != nil {
+			cmds = append(cmds, m.SetStatusMessage(
+				fmt.Sprintf("Failed to switch context: %v", msg.Err),
+				model.StatusBarError,
+				5*time.Second,
+			))
+		} else {
+			m.CurrentKubeContext = msg.TargetContext
+			cmds = append(cmds, m.SetStatusMessage(
+				fmt.Sprintf("Switched to context: %s", msg.TargetContext),
+				model.StatusBarSuccess,
+				3*time.Second,
+			))
+		}
 	}
 
 	// Re-queue listeners for continuous operation
@@ -181,14 +198,14 @@ func handleKeyPressV2(m *model.ModelV2, key tea.KeyMsg) tea.Cmd {
 	switch m.CurrentAppMode {
 	case model.ModeHelpOverlay:
 		switch key.String() {
-		case "esc", "?", "h":
+		case "esc", "?", "h", "q":
 			m.CurrentAppMode = m.LastAppMode
 		}
 		return nil
 
 	case model.ModeLogOverlay:
 		switch key.String() {
-		case "L", "esc":
+		case "L", "esc", "q":
 			m.CurrentAppMode = m.LastAppMode
 		case "y":
 			// Copy logs to clipboard
@@ -206,7 +223,7 @@ func handleKeyPressV2(m *model.ModelV2, key tea.KeyMsg) tea.Cmd {
 
 	case model.ModeMcpConfigOverlay:
 		switch key.String() {
-		case "C", "esc":
+		case "C", "esc", "q":
 			m.CurrentAppMode = m.LastAppMode
 		case "y":
 			// Copy MCP config to clipboard
@@ -225,7 +242,7 @@ func handleKeyPressV2(m *model.ModelV2, key tea.KeyMsg) tea.Cmd {
 
 	case model.ModeMcpToolsOverlay:
 		switch key.String() {
-		case "T", "esc":
+		case "M", "esc", "q":
 			m.CurrentAppMode = m.LastAppMode
 		default:
 			// Pass other keys to viewport for scrolling
@@ -247,7 +264,20 @@ func handleMainDashboardKeysV2(m *model.ModelV2, key tea.KeyMsg) tea.Cmd {
 	switch key.String() {
 	case "q", "ctrl+c":
 		m.QuitApp = true
-		return tea.Quit
+		m.CurrentAppMode = model.ModeQuitting
+		m.QuittingMessage = "Shutting down services..."
+		// Stop the orchestrator to clean up all services
+		if m.Orchestrator != nil {
+			go func() {
+				m.Orchestrator.Stop()
+			}()
+		}
+		// Give services a moment to stop gracefully
+		return tea.Sequence(
+			tea.Tick(500*time.Millisecond, func(t time.Time) tea.Msg {
+				return tea.Quit()
+			}),
+		)
 
 	case "?", "h":
 		m.LastAppMode = m.CurrentAppMode
@@ -271,7 +301,7 @@ func handleMainDashboardKeysV2(m *model.ModelV2, key tea.KeyMsg) tea.Cmd {
 		m.McpConfigViewport.SetContent(configJSON)
 		m.McpConfigViewport.GotoTop()
 
-	case "T":
+	case "M":
 		m.LastAppMode = m.CurrentAppMode
 		m.CurrentAppMode = model.ModeMcpToolsOverlay
 		// Generate and set tools content

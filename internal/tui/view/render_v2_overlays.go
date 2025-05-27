@@ -22,37 +22,70 @@ func renderHelpOverlayV2(m *model.ModelV2) string {
 	// Match v1 exactly
 	titleView := color.HelpTitleStyle.Render("KEYBOARD SHORTCUTS")
 
-	// Build help content
+	// Build help content matching v1 format
 	var helpLines []string
-	helpLines = append(helpLines, "")
-	helpLines = append(helpLines, "Navigation:")
-	helpLines = append(helpLines, "  Tab/Shift+Tab  Navigate between panels")
-	helpLines = append(helpLines, "  ↑/↓ or j/k     Move focus up/down")
-	helpLines = append(helpLines, "  q              Quit application")
-	helpLines = append(helpLines, "")
-	helpLines = append(helpLines, "Service Control:")
-	helpLines = append(helpLines, "  Enter          Start stopped service")
-	helpLines = append(helpLines, "  r              Restart focused service")
-	helpLines = append(helpLines, "  x              Stop focused service")
-	helpLines = append(helpLines, "  s              Switch to focused K8s context")
-	helpLines = append(helpLines, "")
-	helpLines = append(helpLines, "View Controls:")
-	helpLines = append(helpLines, "  h or ?         Show/hide this help")
-	helpLines = append(helpLines, "  L              Show activity log overlay")
-	helpLines = append(helpLines, "  C              Show MCP configuration")
-	helpLines = append(helpLines, "  T              Show MCP tools")
-	helpLines = append(helpLines, "  D              Toggle dark mode")
-	helpLines = append(helpLines, "  z              Toggle debug mode")
-	helpLines = append(helpLines, "")
-	helpLines = append(helpLines, "In Overlays:")
-	helpLines = append(helpLines, "  Esc            Close overlay")
-	helpLines = append(helpLines, "  y              Copy content to clipboard")
-	helpLines = append(helpLines, "  ↑/↓            Scroll content")
+
+	// Column 1 - Navigation
+	col1 := []string{
+		"↑/k        Move focus up",
+		"↓/j        Move focus down",
+		"Tab        Next panel",
+		"Shift+Tab  Previous panel",
+	}
+
+	// Column 2 - Service Control
+	col2 := []string{
+		"n          New connection",
+		"r          Restart service",
+		"x          Stop service",
+		"s          Switch K8s context",
+		"y          Copy to clipboard",
+	}
+
+	// Column 3 - View Controls
+	col3 := []string{
+		"h/?        Toggle help",
+		"L          Activity log",
+		"C          MCP configuration",
+		"M          MCP tools",
+		"D          Toggle dark mode",
+		"z          Toggle debug mode",
+		"q          Quit",
+	}
+
+	// Find max lines
+	maxLines := len(col1)
+	if len(col2) > maxLines {
+		maxLines = len(col2)
+	}
+	if len(col3) > maxLines {
+		maxLines = len(col3)
+	}
+
+	// Pad columns to same length
+	for len(col1) < maxLines {
+		col1 = append(col1, "")
+	}
+	for len(col2) < maxLines {
+		col2 = append(col2, "")
+	}
+	for len(col3) < maxLines {
+		col3 = append(col3, "")
+	}
+
+	// Build lines with proper spacing
+	helpLines = append(helpLines, "") // Empty line after title
+	for i := 0; i < maxLines; i++ {
+		line := fmt.Sprintf("%-25s%-30s%-25s", col1[i], col2[i], col3[i])
+		helpLines = append(helpLines, line)
+	}
 
 	helpContent := strings.Join(helpLines, "\n")
+	finalContent := titleView + "\n" + helpContent
 
-	container := color.CenteredOverlayContainerStyle.Render(titleView + "\n" + helpContent)
-	return lipgloss.Place(m.Width, m.Height, lipgloss.Center, lipgloss.Center, container)
+	container := color.CenteredOverlayContainerStyle.Render(finalContent)
+	return lipgloss.Place(m.Width, m.Height, lipgloss.Center, lipgloss.Center, container,
+		lipgloss.WithWhitespaceBackground(lipgloss.AdaptiveColor{Light: "rgba(0,0,0,0.1)", Dark: "rgba(0,0,0,0.6)"}))
 }
 
 // renderLogOverlayV2 renders the log overlay
