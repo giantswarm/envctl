@@ -40,6 +40,12 @@ func PrepareLogContent(lines []string, maxWidth int) string {
 		return "No logs yet..."
 	}
 
+	// Handle edge cases for maxWidth
+	if maxWidth <= 0 {
+		// If maxWidth is invalid, just join lines without wrapping
+		return strings.Join(lines, "\n")
+	}
+
 	// Join lines and handle wrapping
 	content := strings.Join(lines, "\n")
 

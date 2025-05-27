@@ -20,6 +20,9 @@ type DockerRuntime struct {
 	// We could add configuration here like docker socket path, etc.
 }
 
+// execCommandContext is a variable to allow mocking in tests
+var execCommandContext = exec.CommandContext
+
 // NewDockerRuntime creates a new Docker runtime instance
 func NewDockerRuntime() (*DockerRuntime, error) {
 	// Check if docker is available
@@ -28,7 +31,8 @@ func NewDockerRuntime() (*DockerRuntime, error) {
 	}
 
 	// Check if docker daemon is accessible
-	cmd := exec.Command("docker", "info")
+	ctx := context.Background()
+	cmd := execCommandContext(ctx, "docker", "info")
 	if err := cmd.Run(); err != nil {
 		return nil, fmt.Errorf("docker daemon not accessible: %w", err)
 	}
@@ -41,14 +45,14 @@ func (d *DockerRuntime) PullImage(ctx context.Context, image string) error {
 	logging.Info(dockerSubsystem, "Checking if image %s exists locally", image)
 
 	// Check if image exists
-	checkCmd := exec.CommandContext(ctx, "docker", "image", "inspect", image)
+	checkCmd := execCommandContext(ctx, "docker", "image", "inspect", image)
 	if err := checkCmd.Run(); err == nil {
 		logging.Debug(dockerSubsystem, "Image %s already exists", image)
 		return nil
 	}
 
 	logging.Info(dockerSubsystem, "Pulling image %s", image)
-	pullCmd := exec.CommandContext(ctx, "docker", "pull", image)
+	pullCmd := execCommandContext(ctx, "docker", "pull", image)
 	pullCmd.Stdout = os.Stdout
 	pullCmd.Stderr = os.Stderr
 
@@ -103,7 +107,7 @@ func (d *DockerRuntime) StartContainer(ctx context.Context, config ContainerConf
 
 	logging.Debug(dockerSubsystem, "Starting container with command: docker %s", strings.Join(args, " "))
 
-	cmd := exec.CommandContext(ctx, "docker", args...)
+	cmd := execCommandContext(ctx, "docker", args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("failed to start container: %w\nOutput: %s", err, string(output))
@@ -127,7 +131,7 @@ func (d *DockerRuntime) StopContainer(ctx context.Context, containerID string) e
 	}
 	logging.Info(dockerSubsystem, "Stopping container %s", shortID)
 
-	cmd := exec.CommandContext(ctx, "docker", "stop", containerID)
+	cmd := execCommandContext(ctx, "docker", "stop", containerID)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to stop container %s: %w", shortID, err)
 	}
@@ -137,7 +141,7 @@ func (d *DockerRuntime) StopContainer(ctx context.Context, containerID string) e
 
 // GetContainerLogs returns a reader for container logs
 func (d *DockerRuntime) GetContainerLogs(ctx context.Context, containerID string) (io.ReadCloser, error) {
-	cmd := exec.CommandContext(ctx, "docker", "logs", "-f", containerID)
+	cmd := execCommandContext(ctx, "docker", "logs", "-f", containerID)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -174,7 +178,7 @@ func (d *DockerRuntime) GetContainerLogs(ctx context.Context, containerID string
 
 // IsContainerRunning checks if a container is running
 func (d *DockerRuntime) IsContainerRunning(ctx context.Context, containerID string) (bool, error) {
-	cmd := exec.CommandContext(ctx, "docker", "inspect", "-f", "{{.State.Running}}", containerID)
+	cmd := execCommandContext(ctx, "docker", "inspect", "-f", "{{.State.Running}}", containerID)
 	output, err := cmd.Output()
 	if err != nil {
 		shortID := containerID
@@ -195,7 +199,7 @@ func (d *DockerRuntime) GetContainerPort(ctx context.Context, containerID string
 	}
 
 	// Use docker port command to get the mapping
-	cmd := exec.CommandContext(ctx, "docker", "port", containerID, containerPort)
+	cmd := execCommandContext(ctx, "docker", "port", containerID, containerPort)
 	output, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("failed to get port mapping for %s:%s: %w", shortID, containerPort, err)
@@ -225,7 +229,7 @@ func (d *DockerRuntime) RemoveContainer(ctx context.Context, containerID string)
 	}
 	logging.Debug(dockerSubsystem, "Removing container %s", shortID)
 
-	cmd := exec.CommandContext(ctx, "docker", "rm", "-f", containerID)
+	cmd := execCommandContext(ctx, "docker", "rm", "-f", containerID)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to remove container %s: %w", shortID, err)
 	}

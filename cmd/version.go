@@ -15,7 +15,7 @@ func newVersionCmd() *cobra.Command {
 		Long:  `All software has versions. This is envctl's.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			// rootCmd.Version is expected to be set, typically in root.go during build time.
-			fmt.Printf("envctl version %s\n", rootCmd.Version)
+			fmt.Fprintf(cmd.OutOrStdout(), "envctl version %s\n", rootCmd.Version)
 		},
 	}
 }

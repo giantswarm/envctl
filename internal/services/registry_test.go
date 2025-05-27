@@ -1,0 +1,356 @@
+package services
+
+import (
+	"context"
+	"testing"
+)
+
+// testService implements the Service interface for testing
+type testService struct {
+	label        string
+	serviceType  ServiceType
+	state        ServiceState
+	health       HealthStatus
+	lastError    error
+	dependencies []string
+	callback     StateChangeCallback
+}
+
+func (s *testService) Start(ctx context.Context) error {
+	return nil
+}
+
+func (s *testService) Stop(ctx context.Context) error {
+	return nil
+}
+
+func (s *testService) Restart(ctx context.Context) error {
+	return nil
+}
+
+func (s *testService) GetState() ServiceState {
+	return s.state
+}
+
+func (s *testService) GetHealth() HealthStatus {
+	return s.health
+}
+
+func (s *testService) GetLastError() error {
+	return s.lastError
+}
+
+func (s *testService) GetLabel() string {
+	return s.label
+}
+
+func (s *testService) GetType() ServiceType {
+	return s.serviceType
+}
+
+func (s *testService) GetDependencies() []string {
+	return s.dependencies
+}
+
+func (s *testService) SetStateChangeCallback(callback StateChangeCallback) {
+	s.callback = callback
+}
+
+func TestNewRegistry(t *testing.T) {
+	registry := NewRegistry()
+	if registry == nil {
+		t.Error("Expected NewRegistry to return non-nil registry")
+	}
+}
+
+func TestRegister(t *testing.T) {
+	registry := NewRegistry()
+
+	// Test registering a valid service
+	service := &testService{
+		label:       "test-service",
+		serviceType: TypeKubeConnection,
+		state:       StateRunning,
+		health:      HealthHealthy,
+	}
+
+	err := registry.Register(service)
+	if err != nil {
+		t.Fatalf("Unexpected error registering service: %v", err)
+	}
+
+	// Test registering nil service
+	err = registry.Register(nil)
+	if err == nil {
+		t.Error("Expected error when registering nil service")
+	}
+
+	if err.Error() != "cannot register nil service" {
+		t.Errorf("Expected specific error message, got: %s", err.Error())
+	}
+
+	// Test registering service with empty label
+	emptyLabelService := &testService{
+		label:       "",
+		serviceType: TypePortForward,
+	}
+
+	err = registry.Register(emptyLabelService)
+	if err == nil {
+		t.Error("Expected error when registering service with empty label")
+	}
+
+	if err.Error() != "service has empty label" {
+		t.Errorf("Expected specific error message, got: %s", err.Error())
+	}
+
+	// Test registering duplicate service
+	duplicateService := &testService{
+		label:       "test-service",
+		serviceType: TypeMCPServer,
+	}
+
+	err = registry.Register(duplicateService)
+	if err == nil {
+		t.Error("Expected error when registering duplicate service")
+	}
+
+	if err.Error() != "service test-service already registered" {
+		t.Errorf("Expected specific error message, got: %s", err.Error())
+	}
+}
+
+func TestGet(t *testing.T) {
+	registry := NewRegistry()
+
+	// Test getting non-existent service
+	_, exists := registry.Get("nonexistent")
+	if exists {
+		t.Error("Expected service to not exist")
+	}
+
+	// Register a service
+	service := &testService{
+		label:       "get-test",
+		serviceType: TypeKubeConnection,
+		state:       StateRunning,
+		health:      HealthHealthy,
+	}
+
+	registry.Register(service)
+
+	// Test getting existing service
+	retrieved, exists := registry.Get("get-test")
+	if !exists {
+		t.Error("Expected service to exist")
+	}
+
+	if retrieved != service {
+		t.Error("Expected to get the same service instance")
+	}
+
+	if retrieved.GetLabel() != "get-test" {
+		t.Errorf("Expected label 'get-test', got %s", retrieved.GetLabel())
+	}
+}
+
+func TestUnregister(t *testing.T) {
+	registry := NewRegistry()
+
+	// Test unregistering non-existent service
+	err := registry.Unregister("nonexistent")
+	if err == nil {
+		t.Error("Expected error when unregistering non-existent service")
+	}
+
+	if err.Error() != "service nonexistent not found" {
+		t.Errorf("Expected specific error message, got: %s", err.Error())
+	}
+
+	// Register a service
+	service := &testService{
+		label:       "unregister-test",
+		serviceType: TypePortForward,
+	}
+
+	registry.Register(service)
+
+	// Verify service exists
+	_, exists := registry.Get("unregister-test")
+	if !exists {
+		t.Error("Expected service to exist before unregistering")
+	}
+
+	// Unregister the service
+	err = registry.Unregister("unregister-test")
+	if err != nil {
+		t.Fatalf("Unexpected error unregistering service: %v", err)
+	}
+
+	// Verify service no longer exists
+	_, exists = registry.Get("unregister-test")
+	if exists {
+		t.Error("Expected service to not exist after unregistering")
+	}
+}
+
+func TestGetAll(t *testing.T) {
+	registry := NewRegistry()
+
+	// Test getting all from empty registry
+	services := registry.GetAll()
+	if len(services) != 0 {
+		t.Errorf("Expected 0 services, got %d", len(services))
+	}
+
+	// Register multiple services
+	service1 := &testService{
+		label:       "service-1",
+		serviceType: TypeKubeConnection,
+	}
+
+	service2 := &testService{
+		label:       "service-2",
+		serviceType: TypePortForward,
+	}
+
+	service3 := &testService{
+		label:       "service-3",
+		serviceType: TypeMCPServer,
+	}
+
+	registry.Register(service1)
+	registry.Register(service2)
+	registry.Register(service3)
+
+	// Test getting all services
+	services = registry.GetAll()
+	if len(services) != 3 {
+		t.Errorf("Expected 3 services, got %d", len(services))
+	}
+
+	// Verify all services are present
+	labels := make(map[string]bool)
+	for _, service := range services {
+		labels[service.GetLabel()] = true
+	}
+
+	expectedLabels := []string{"service-1", "service-2", "service-3"}
+	for _, label := range expectedLabels {
+		if !labels[label] {
+			t.Errorf("Expected service %s to be in GetAll result", label)
+		}
+	}
+}
+
+func TestGetByType(t *testing.T) {
+	registry := NewRegistry()
+
+	// Register services of different types
+	k8sService1 := &testService{
+		label:       "k8s-1",
+		serviceType: TypeKubeConnection,
+	}
+
+	k8sService2 := &testService{
+		label:       "k8s-2",
+		serviceType: TypeKubeConnection,
+	}
+
+	pfService := &testService{
+		label:       "pf-1",
+		serviceType: TypePortForward,
+	}
+
+	mcpService := &testService{
+		label:       "mcp-1",
+		serviceType: TypeMCPServer,
+	}
+
+	registry.Register(k8sService1)
+	registry.Register(k8sService2)
+	registry.Register(pfService)
+	registry.Register(mcpService)
+
+	// Test getting K8s services
+	k8sServices := registry.GetByType(TypeKubeConnection)
+	if len(k8sServices) != 2 {
+		t.Errorf("Expected 2 K8s services, got %d", len(k8sServices))
+	}
+
+	k8sLabels := make(map[string]bool)
+	for _, service := range k8sServices {
+		k8sLabels[service.GetLabel()] = true
+		if service.GetType() != TypeKubeConnection {
+			t.Errorf("Expected K8s service type, got %s", service.GetType())
+		}
+	}
+
+	if !k8sLabels["k8s-1"] || !k8sLabels["k8s-2"] {
+		t.Error("Expected both K8s services in result")
+	}
+
+	// Test getting port forward services
+	pfServices := registry.GetByType(TypePortForward)
+	if len(pfServices) != 1 {
+		t.Errorf("Expected 1 port forward service, got %d", len(pfServices))
+	}
+
+	if pfServices[0].GetLabel() != "pf-1" {
+		t.Errorf("Expected port forward service 'pf-1', got %s", pfServices[0].GetLabel())
+	}
+
+	// Test getting MCP services
+	mcpServices := registry.GetByType(TypeMCPServer)
+	if len(mcpServices) != 1 {
+		t.Errorf("Expected 1 MCP service, got %d", len(mcpServices))
+	}
+
+	if mcpServices[0].GetLabel() != "mcp-1" {
+		t.Errorf("Expected MCP service 'mcp-1', got %s", mcpServices[0].GetLabel())
+	}
+
+	// Test getting non-existent type (this should return empty slice)
+	unknownServices := registry.GetByType(ServiceType("unknown"))
+	if len(unknownServices) != 0 {
+		t.Errorf("Expected 0 services for unknown type, got %d", len(unknownServices))
+	}
+}
+
+func TestRegistryConcurrency(t *testing.T) {
+	registry := NewRegistry()
+
+	// Test concurrent registration and retrieval
+	done := make(chan bool, 2)
+
+	// Goroutine 1: Register services
+	go func() {
+		for i := 0; i < 10; i++ {
+			service := &testService{
+				label:       "concurrent-" + string(rune('0'+i)),
+				serviceType: TypeKubeConnection,
+			}
+			registry.Register(service)
+		}
+		done <- true
+	}()
+
+	// Goroutine 2: Get services
+	go func() {
+		for i := 0; i < 10; i++ {
+			registry.GetAll()
+			registry.GetByType(TypeKubeConnection)
+		}
+		done <- true
+	}()
+
+	// Wait for both goroutines to complete
+	<-done
+	<-done
+
+	// Verify final state
+	services := registry.GetAll()
+	if len(services) != 10 {
+		t.Errorf("Expected 10 services after concurrent operations, got %d", len(services))
+	}
+}

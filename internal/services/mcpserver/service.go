@@ -11,6 +11,26 @@ import (
 	"time"
 )
 
+// mcpServerStarter is an interface for starting MCP servers (used for testing)
+type mcpServerStarter interface {
+	StartAndManageIndividualMcpServer(
+		serverConfig config.MCPServerDefinition,
+		updateFn mcpserver.McpUpdateFunc,
+		wg *sync.WaitGroup,
+	) (pid int, stopChan chan struct{}, initialError error)
+}
+
+// defaultMCPServerStarter implements mcpServerStarter using the real mcpserver package
+type defaultMCPServerStarter struct{}
+
+func (d *defaultMCPServerStarter) StartAndManageIndividualMcpServer(
+	serverConfig config.MCPServerDefinition,
+	updateFn mcpserver.McpUpdateFunc,
+	wg *sync.WaitGroup,
+) (pid int, stopChan chan struct{}, initialError error) {
+	return mcpserver.StartAndManageIndividualMcpServer(serverConfig, updateFn, wg)
+}
+
 // MCPServerService implements the Service interface for MCP servers
 type MCPServerService struct {
 	*services.BaseService
@@ -23,6 +43,9 @@ type MCPServerService struct {
 
 	// Internal state from the mcpserver package
 	updateChan chan mcpserver.McpDiscreteStatusUpdate
+
+	// For testing
+	starter mcpServerStarter
 }
 
 // NewMCPServerService creates a new MCP server service
@@ -37,6 +60,7 @@ func NewMCPServerService(cfg config.MCPServerDefinition) *MCPServerService {
 		BaseService: services.NewBaseService(cfg.Name, services.TypeMCPServer, deps),
 		config:      cfg,
 		updateChan:  make(chan mcpserver.McpDiscreteStatusUpdate, 10),
+		starter:     &defaultMCPServerStarter{},
 	}
 }
 
@@ -59,7 +83,7 @@ func (s *MCPServerService) Start(ctx context.Context) error {
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
 
-	pid, stopChan, err := mcpserver.StartAndManageIndividualMcpServer(
+	pid, stopChan, err := s.starter.StartAndManageIndividualMcpServer(
 		s.config,
 		updateFn,
 		wg,
