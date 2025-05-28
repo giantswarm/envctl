@@ -11,21 +11,32 @@ import (
 	"time"
 )
 
-// buildDependencyGraph builds the dependency graph for all services
+// buildDependencyGraph builds the dependency graph for all services.
+// This graph is crucial for:
+// 1. Starting services in the correct order (dependencies first)
+// 2. Stopping dependent services when a dependency fails
+// 3. Auto-restarting services when their dependencies recover
+//
+// The graph structure reflects the service hierarchy:
+// - K8s connections have no dependencies (foundation layer)
+// - Port forwards depend on K8s connections
+// - MCP servers may depend on port forwards
 func (o *Orchestrator) buildDependencyGraph() *dependency.Graph {
 	graph := dependency.New()
 
-	// Add K8s connection nodes
+	// Add K8s connection nodes - these are the foundation services
 	if o.mcName != "" {
 		mcLabel := fmt.Sprintf("k8s-mc-%s", o.mcName)
 		graph.AddNode(dependency.Node{
 			ID:           dependency.NodeID(mcLabel),
 			FriendlyName: fmt.Sprintf("K8s MC: %s", o.mcName),
 			Kind:         dependency.KindK8sConnection,
-			DependsOn:    []dependency.NodeID{},
+			DependsOn:    []dependency.NodeID{}, // No dependencies
 		})
 	}
 
+	// WC connections depend on MC connections because they need the MC
+	// to be available for proper cluster access through Teleport
 	if o.wcName != "" && o.mcName != "" {
 		wcLabel := fmt.Sprintf("k8s-wc-%s", o.wcName)
 		mcLabel := fmt.Sprintf("k8s-mc-%s", o.mcName)
@@ -37,7 +48,7 @@ func (o *Orchestrator) buildDependencyGraph() *dependency.Graph {
 		})
 	}
 
-	// Add port forward nodes and dependencies
+	// Add port forward nodes and their K8s connection dependencies
 	for _, pf := range o.portForwards {
 		if !pf.Enabled {
 			continue
@@ -47,6 +58,7 @@ func (o *Orchestrator) buildDependencyGraph() *dependency.Graph {
 		var deps []dependency.NodeID
 
 		// Port forwards depend on their target K8s connection
+		// We determine this by checking if the context name contains the cluster name
 		if pf.KubeContextTarget != "" {
 			var k8sNodeID string
 			if strings.Contains(pf.KubeContextTarget, o.wcName) && o.wcName != "" {
@@ -68,7 +80,7 @@ func (o *Orchestrator) buildDependencyGraph() *dependency.Graph {
 		})
 	}
 
-	// Add MCP server nodes and dependencies
+	// Add MCP server nodes and their port forward dependencies
 	for _, mcp := range o.mcpServers {
 		if !mcp.Enabled {
 			continue
@@ -78,9 +90,10 @@ func (o *Orchestrator) buildDependencyGraph() *dependency.Graph {
 		var deps []dependency.NodeID
 
 		// MCP servers depend on their configured port forwards
+		// This ensures required services are accessible before starting the MCP server
 		for _, pfName := range mcp.RequiresPortForwards {
 			depNodeID := dependency.NodeID("pf:" + pfName)
-			// Check if the port forward exists
+			// Verify the port forward exists and is enabled
 			for _, pf := range o.portForwards {
 				if pf.Name == pfName && pf.Enabled {
 					deps = append(deps, depNodeID)
@@ -100,7 +113,17 @@ func (o *Orchestrator) buildDependencyGraph() *dependency.Graph {
 	return graph
 }
 
-// startServicesInOrder starts all services in dependency order
+// startServicesInOrder starts all services in dependency order.
+// This ensures that dependencies are running before dependent services start.
+// The method respects manual stop decisions - services that were manually
+// stopped by the user will not be started automatically.
+//
+// Current implementation uses a simple ordering approach:
+// 1. K8s connections first (foundation)
+// 2. Port forwards second (depend on K8s)
+// 3. MCP servers last (may depend on port forwards)
+//
+// TODO: Implement proper topological sorting for more complex dependency graphs
 func (o *Orchestrator) startServicesInOrder() error {
 	// Get all services that should be started
 	var servicesToStart []string
@@ -109,7 +132,7 @@ func (o *Orchestrator) startServicesInOrder() error {
 	for _, service := range allServices {
 		label := service.GetLabel()
 
-		// Skip manually stopped services
+		// Skip manually stopped services to respect user intent
 		o.mu.RLock()
 		if reason, exists := o.stopReasons[label]; exists && reason == StopReasonManual {
 			o.mu.RUnlock()
@@ -120,10 +143,7 @@ func (o *Orchestrator) startServicesInOrder() error {
 		servicesToStart = append(servicesToStart, label)
 	}
 
-	// For now, use a simple approach: start K8s connections first, then port forwards, then MCP servers
-	// This is a temporary solution until we implement proper topological sorting
-
-	// Start K8s connections first
+	// Start K8s connections first as they are the foundation
 	for _, label := range servicesToStart {
 		service, _ := o.registry.Get(label)
 		if service.GetType() == services.TypeKubeConnection {
@@ -133,10 +153,10 @@ func (o *Orchestrator) startServicesInOrder() error {
 		}
 	}
 
-	// Wait a bit for K8s connections to be ready
+	// Wait for K8s connections to stabilize before starting dependent services
 	time.Sleep(500 * time.Millisecond)
 
-	// Start port forwards
+	// Start port forwards which depend on K8s connections
 	for _, label := range servicesToStart {
 		service, _ := o.registry.Get(label)
 		if service.GetType() == services.TypePortForward {
@@ -146,10 +166,10 @@ func (o *Orchestrator) startServicesInOrder() error {
 		}
 	}
 
-	// Wait a bit for port forwards to be ready
+	// Wait for port forwards to be ready before starting MCP servers
 	time.Sleep(500 * time.Millisecond)
 
-	// Start MCP servers
+	// Start MCP servers which may depend on port forwards
 	for _, label := range servicesToStart {
 		service, _ := o.registry.Get(label)
 		if service.GetType() == services.TypeMCPServer {
@@ -162,14 +182,18 @@ func (o *Orchestrator) startServicesInOrder() error {
 	return nil
 }
 
-// checkDependencies checks if all dependencies of a service are running
+// checkDependencies checks if all dependencies of a service are running.
+// This is called before starting a service to ensure its prerequisites are met.
+// If any dependency is not running, an error is returned with details about
+// which dependency is missing.
 func (o *Orchestrator) checkDependencies(label string) error {
 	nodeID := o.getNodeIDForService(label)
 	node := o.depGraph.Get(dependency.NodeID(nodeID))
 	if node == nil {
-		return nil // No node in graph, no dependencies
+		return nil // No node in graph means no dependencies
 	}
 
+	// Check each dependency
 	for _, depNodeID := range node.DependsOn {
 		depLabel := o.getLabelFromNodeID(string(depNodeID))
 		depService, exists := o.registry.Get(depLabel)
@@ -178,6 +202,7 @@ func (o *Orchestrator) checkDependencies(label string) error {
 			return fmt.Errorf("dependency %s not found", depLabel)
 		}
 
+		// Dependency must be in running state
 		if depService.GetState() != services.StateRunning {
 			return fmt.Errorf("dependency %s is not running (state: %s)", depLabel, depService.GetState())
 		}
@@ -186,7 +211,10 @@ func (o *Orchestrator) checkDependencies(label string) error {
 	return nil
 }
 
-// stopDependentServices stops all services that depend on the given service
+// stopDependentServices stops all services that depend on the given service.
+// This is called when a service is stopped (either manually or due to failure)
+// to maintain system consistency. Services stopped this way are marked with
+// StopReasonDependency so they can be auto-restarted when the dependency recovers.
 func (o *Orchestrator) stopDependentServices(label string) error {
 	nodeID := o.getNodeIDForService(label)
 	dependents := o.depGraph.Dependents(dependency.NodeID(nodeID))
@@ -195,7 +223,7 @@ func (o *Orchestrator) stopDependentServices(label string) error {
 	for _, depNodeID := range dependents {
 		depLabel := o.getLabelFromNodeID(string(depNodeID))
 
-		// Mark as stopped due to dependency
+		// Mark as stopped due to dependency (enables auto-restart)
 		o.mu.Lock()
 		o.stopReasons[depLabel] = StopReasonDependency
 		o.mu.Unlock()
@@ -217,13 +245,19 @@ func (o *Orchestrator) stopDependentServices(label string) error {
 	return nil
 }
 
-// stopAllServices stops all services in reverse dependency order
+// stopAllServices stops all services in reverse dependency order.
+// This ensures dependent services are stopped before their dependencies,
+// preventing errors during shutdown. The method uses timeouts to ensure
+// shutdown completes even if some services hang.
+//
+// Stop order with timeouts:
+// 1. MCP servers (3 seconds) - may need time to clean up
+// 2. Port forwards (2 seconds) - kubectl processes to terminate
+// 3. K8s connections (1 second) - should stop quickly
 func (o *Orchestrator) stopAllServices() error {
 	allServices := o.registry.GetAll()
 
-	// Stop in reverse order: MCP servers first, then port forwards, then K8s connections
-
-	// Stop MCP servers with 3-second timeout
+	// Stop MCP servers first with 3-second timeout
 	mcpCtx, mcpCancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer mcpCancel()
 
@@ -262,7 +296,7 @@ func (o *Orchestrator) stopAllServices() error {
 	}
 	wg.Wait()
 
-	// Stop K8s connections with 1-second timeout (they should stop quickly)
+	// Stop K8s connections last with 1-second timeout
 	k8sCtx, k8sCancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer k8sCancel()
 
@@ -285,7 +319,13 @@ func (o *Orchestrator) stopAllServices() error {
 	return nil
 }
 
-// getNodeIDForService converts a service label to a dependency graph node ID
+// getNodeIDForService converts a service label to a dependency graph node ID.
+// The node ID format depends on the service type:
+// - Port forwards: "pf:{label}"
+// - MCP servers: "mcp:{label}"
+// - K8s connections: use label directly
+//
+// This mapping allows us to correlate services with their dependency graph nodes.
 func (o *Orchestrator) getNodeIDForService(label string) string {
 	// Get service to determine type
 	service, exists := o.registry.Get(label)
@@ -306,7 +346,8 @@ func (o *Orchestrator) getNodeIDForService(label string) string {
 	}
 }
 
-// getLabelFromNodeID extracts the service label from a node ID
+// getLabelFromNodeID extracts the service label from a node ID.
+// This reverses the mapping done by getNodeIDForService.
 func (o *Orchestrator) getLabelFromNodeID(nodeID string) string {
 	if strings.HasPrefix(nodeID, "pf:") {
 		return strings.TrimPrefix(nodeID, "pf:")
@@ -316,7 +357,12 @@ func (o *Orchestrator) getLabelFromNodeID(nodeID string) string {
 	return nodeID
 }
 
-// monitorServices monitors service health and handles restarts
+// monitorServices is the main monitoring loop that handles:
+// 1. Periodic health checks for all services
+// 2. Auto-restart of failed services (if not manually stopped)
+// 3. Detection of state changes to trigger dependent service restarts
+//
+// This method runs in a separate goroutine for the lifetime of the orchestrator.
 func (o *Orchestrator) monitorServices() {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
@@ -324,7 +370,7 @@ func (o *Orchestrator) monitorServices() {
 	// Track previous states to detect state changes
 	previousStates := make(map[string]services.ServiceState)
 
-	// Wait a short time for services to start before starting health checkers
+	// Wait for initial service startup before beginning health checks
 	time.Sleep(500 * time.Millisecond)
 
 	// Start health check goroutines for services that support it
@@ -335,109 +381,21 @@ func (o *Orchestrator) monitorServices() {
 		case <-o.ctx.Done():
 			return
 		case <-ticker.C:
+			// Check for failed services that should be restarted
 			o.checkAndRestartFailedServices()
+			// Check for state changes that might trigger dependent restarts
 			o.checkForStateChanges(previousStates)
 		}
 	}
 }
 
-// startHealthCheckers starts health check goroutines for services that support health checking
-func (o *Orchestrator) startHealthCheckers() {
-	allServices := o.registry.GetAll()
-
-	logging.Debug("Orchestrator", "Starting health checkers for %d services", len(allServices))
-
-	for _, service := range allServices {
-		label := service.GetLabel()
-
-		// Skip if health checker already running for this service
-		o.mu.RLock()
-		if o.healthCheckers[label] {
-			o.mu.RUnlock()
-			continue
-		}
-		o.mu.RUnlock()
-
-		// Check if service implements HealthChecker
-		if healthChecker, ok := service.(services.HealthChecker); ok {
-			logging.Debug("Orchestrator", "Starting health checker for service: %s", label)
-
-			// Mark health checker as running
-			o.mu.Lock()
-			o.healthCheckers[label] = true
-			o.mu.Unlock()
-
-			// Start a goroutine for this service's health checks
-			go o.runHealthChecksForService(service, healthChecker)
-		} else {
-			logging.Debug("Orchestrator", "Service %s does not implement HealthChecker", label)
-		}
-	}
-}
-
-// runHealthChecksForService runs periodic health checks for a single service
-func (o *Orchestrator) runHealthChecksForService(service services.Service, healthChecker services.HealthChecker) {
-	label := service.GetLabel()
-	defer func() {
-		// Clean up health checker tracking when goroutine exits
-		o.mu.Lock()
-		delete(o.healthCheckers, label)
-		o.mu.Unlock()
-		logging.Debug("Orchestrator", "Health check goroutine stopped for %s", label)
-	}()
-
-	interval := healthChecker.GetHealthCheckInterval()
-	if interval <= 0 {
-		interval = 30 * time.Second // Default interval
-	}
-
-	logging.Debug("Orchestrator", "Health check goroutine started for %s with interval %v", label, interval)
-
-	// Perform initial health check immediately
-	if service.GetState() == services.StateRunning {
-		ctx, cancel := context.WithTimeout(o.ctx, 5*time.Second)
-		health, err := healthChecker.CheckHealth(ctx)
-		cancel()
-
-		if err != nil {
-			logging.Debug("Orchestrator", "Initial health check failed for %s: %v", label, err)
-		} else {
-			logging.Debug("Orchestrator", "Initial health check for %s: %s", label, health)
-		}
-	}
-
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-o.ctx.Done():
-			return
-		case <-ticker.C:
-			// Only check health if service is running
-			if service.GetState() == services.StateRunning {
-				ctx, cancel := context.WithTimeout(o.ctx, 5*time.Second)
-				health, err := healthChecker.CheckHealth(ctx)
-				cancel()
-
-				if err != nil {
-					logging.Debug("Orchestrator", "Health check failed for %s: %v", service.GetLabel(), err)
-				} else {
-					logging.Debug("Orchestrator", "Health check for %s: %s", service.GetLabel(), health)
-				}
-
-				// The service should update its own health status internally
-				// based on the CheckHealth result
-			} else {
-				// Service is not running, stop health checks
-				logging.Debug("Orchestrator", "Service %s is not running, stopping health checks", label)
-				return
-			}
-		}
-	}
-}
-
-// checkForStateChanges monitors for service state changes and handles dependent service restarts
+// checkForStateChanges monitors for service state changes and handles dependent service restarts.
+// When a service transitions from non-running to running state, this method:
+// 1. Starts a health checker for the newly running service (if applicable)
+// 2. Triggers restart of dependent services that were stopped due to dependency failure
+//
+// This enables the auto-recovery cascade: when a failed dependency recovers,
+// all services that depended on it are automatically restarted.
 func (o *Orchestrator) checkForStateChanges(previousStates map[string]services.ServiceState) {
 	allServices := o.registry.GetAll()
 
@@ -453,7 +411,7 @@ func (o *Orchestrator) checkForStateChanges(previousStates map[string]services.S
 		if hadPrevious && previousState != services.StateRunning && currentState == services.StateRunning {
 			logging.Info("Orchestrator", "Service %s became running, checking for dependent services to restart", label)
 
-			// Start health checker for this service if it implements HealthChecker and doesn't have one running
+			// Start health checker for this service if needed
 			o.mu.RLock()
 			hasHealthChecker := o.healthCheckers[label]
 			o.mu.RUnlock()
@@ -472,12 +430,16 @@ func (o *Orchestrator) checkForStateChanges(previousStates map[string]services.S
 			}
 
 			// Start dependent services that were stopped due to dependency failure
+			// This is done in a goroutine to avoid blocking the monitor loop
 			go o.startDependentServices(label)
 		}
 	}
 }
 
-// startDependentServices starts services that depend on the given service and were stopped due to dependency failure
+// startDependentServices starts services that depend on the given service and were stopped due to dependency failure.
+// This is the auto-recovery mechanism: when a dependency recovers, services that were
+// automatically stopped (not manually) are restarted. This maintains the service
+// dependency invariant while respecting user intent for manual stops.
 func (o *Orchestrator) startDependentServices(label string) {
 	nodeID := o.getNodeIDForService(label)
 
@@ -526,38 +488,6 @@ func (o *Orchestrator) startDependentServices(label string) {
 		// Start the service
 		if err := o.StartService(depLabel); err != nil {
 			logging.Error("Orchestrator", err, "Failed to restart dependent service %s", depLabel)
-		}
-	}
-}
-
-// checkAndRestartFailedServices checks for failed services and restarts them if needed
-func (o *Orchestrator) checkAndRestartFailedServices() {
-	allServices := o.registry.GetAll()
-
-	for _, service := range allServices {
-		label := service.GetLabel()
-
-		// Skip manually stopped services
-		o.mu.RLock()
-		if reason, exists := o.stopReasons[label]; exists && reason == StopReasonManual {
-			o.mu.RUnlock()
-			continue
-		}
-		o.mu.RUnlock()
-
-		// Check if service has failed
-		if service.GetState() == services.StateFailed {
-			// Check if dependencies are still satisfied
-			if err := o.checkDependencies(label); err != nil {
-				logging.Debug("Orchestrator", "Skipping restart of %s: %v", label, err)
-				continue
-			}
-
-			// Attempt to restart
-			logging.Info("Orchestrator", "Attempting to restart failed service: %s", label)
-			if err := service.Restart(o.ctx); err != nil {
-				logging.Error("Orchestrator", err, "Failed to restart service %s", label)
-			}
 		}
 	}
 }

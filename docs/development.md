@@ -138,221 +138,7 @@ For a comprehensive understanding of how services are managed, including:
 - Health monitoring and automatic recovery
 - State management and reporting
 
-Please refer to the [Architecture Overview](architecture.md) and the sections below on the Orchestrator and Service Manager.
-
-## Orchestrator and Service Manager Architecture
-
-The envctl application uses a sophisticated architecture to manage service dependencies, health monitoring, and lifecycle management. This is accomplished through two primary components: the **Orchestrator** and the **Service Manager**.
-
-### Service Manager (`internal/managers`)
-
-The Service Manager is responsible for the basic lifecycle management of services (port forwards, MCP servers, and K8s connections). It provides a simple, dependency-agnostic interface for starting and stopping services.
-
-**Key Responsibilities:**
-- Starting batches of services
-- Stopping individual services or all services
-- Tracking active services
-- Reporting service state changes through a reporter interface
-- Managing the mapping between service labels and their configurations
-- Managing K8s connection services (when initialized with a KubeManager)
-
-**Core Interface (`ServiceManagerAPI`):**
-```go
-type ServiceManagerAPI interface {
-    StartServices(configs []ManagedServiceConfig, wg *sync.WaitGroup) (map[string]chan struct{}, []error)
-    StopService(label string) error
-    StopAllServices()
-    SetReporter(reporter reporting.ServiceReporter)
-    GetServiceConfig(label string) (ManagedServiceConfig, bool)
-    IsServiceActive(label string) bool
-    GetActiveServices() []string
-}
-```
-
-**Design Principles:**
-1. **Simplicity**: The Service Manager focuses only on basic start/stop operations
-2. **No Dependency Logic**: It doesn't understand or manage dependencies between services
-3. **State Tracking**: Maintains a simple map of active services and their stop channels
-4. **Reporter Pattern**: Uses a reporter interface to notify about service state changes
-5. **K8s Integration**: When created with a KubeManager, it can manage K8s connection services
-
-### Orchestrator (`internal/orchestrator`)
-
-The Orchestrator is the higher-level component that manages the overall application state, including dependency management, health monitoring, and coordinated service lifecycle operations.
-
-**Key Responsibilities:**
-- Building and managing the dependency graph
-- Monitoring Kubernetes connection health
-- Managing cascade stops when dependencies fail
-- Ensuring services start in the correct dependency order
-- Handling service restarts with dependency awareness
-- Tracking why services were stopped (manual vs dependency failure)
-
-**Core Features:**
-
-#### 1. Dependency Management
-The Orchestrator builds a dependency graph (`internal/dependency`) that models relationships between:
-- Kubernetes connections (MC and WC)
-- Port forwards (which depend on K8s connections)
-- MCP servers (which may depend on port forwards)
-
-Example dependency chain:
-```
-K8s MC Connection → prometheus-mc (port forward) → prometheus (MCP)
-K8s WC Connection → grafana-wc (port forward) → grafana (MCP)
-```
-
-**Dependency Graph Structure:**
-- **Nodes**: Each service (K8s connection, port forward, or MCP server) is a node in the graph
-- **Edges**: Dependencies are directed edges from dependent to dependency
-- **Node Types**: `KindK8sConnection`, `KindPortForward`, `KindMCP`
-- **Node IDs**: Prefixed strings like `k8s:context-name`, `pf:service-name`, `mcp:server-name`
-
-**Dependency Rules:**
-1. **Port Forwards** depend on their target K8s connection (specified by `KubeContextTarget`)
-2. **MCP Servers** can depend on:
-   - Port forwards (specified in `RequiresPortForwards` array)
-   - K8s connections (e.g., the "kubernetes" MCP depends on MC connection)
-3. **K8s Connections** have no dependencies (they are the foundation)
-
-**Starting Services with Dependencies:**
-When starting services, the Orchestrator:
-1. Groups services by dependency levels using topological sort
-2. Starts services level by level (level 0 first, then 1, etc.)
-3. Waits for services in each level to become ready before starting the next level
-4. Only starts services whose K8s dependencies are healthy
-
-Example startup order:
-- Level 0: K8s connections (no dependencies)
-- Level 1: Port forwards (depend on K8s connections)
-- Level 2: MCP servers (depend on port forwards)
-
-**Restarting Services with Dependencies:**
-When restarting a service, the Orchestrator now ensures all its dependencies are also running:
-1. Checks if the service's dependencies are active
-2. If any dependency is not active, it includes it for restart
-3. Starts all services (the requested one plus its dependencies) in dependency order
-4. This ensures a service always has its requirements satisfied
-
-For example, restarting the "grafana" MCP server will also restart the "grafana-mc" port forward if it's not running.
-
-#### 2. Health Monitoring
-The Orchestrator continuously monitors Kubernetes connection health:
-- Performs periodic health checks (default: 15 seconds)
-- Tracks state changes (healthy → unhealthy → healthy)
-- Only acts on state changes, not every health check
-- Reports health status through the reporter interface
-
-#### 3. Cascade Stop Logic
-When a dependency becomes unhealthy or is stopped:
-1. The Orchestrator identifies all transitive dependents using the dependency graph
-2. It stops dependent services in reverse dependency order
-3. It tracks that these services were stopped due to dependency failure (`StopReasonDependency`)
-4. Example: If K8s WC connection fails → stop dependent port forwards → stop MCPs depending on those port forwards
-
-**Stop Reasons:**
-- `StopReasonManual`: User explicitly stopped the service (won't auto-restart)
-- `StopReasonDependency`: Service stopped due to dependency failure (will auto-restart when dependency recovers)
-
-#### 4. Automatic Recovery
-When a failed dependency recovers:
-1. The Orchestrator identifies services that were stopped due to that dependency
-2. It restarts only those services (not manually stopped ones)
-3. Services are started in proper dependency order
-4. The restart is triggered automatically without user intervention
-
-#### 5. Stop Reason Tracking
-The Orchestrator maintains a `stopReasons` map to differentiate between:
-- `StopReasonManual`: User explicitly stopped the service
-- `StopReasonDependency`: Service stopped due to dependency failure
-
-This ensures that only dependency-stopped services are restarted during recovery.
-
-### Integration and Workflow
-
-#### Startup Flow:
-1. **Orchestrator Initialization**: Creates dependency graph based on configuration
-2. **Health Check**: Performs initial K8s health checks
-3. **Service Start**: Starts only services whose dependencies are healthy
-4. **Dependency Ordering**: Uses topological sort to start services in correct order
-5. **Monitoring**: Begins periodic health monitoring
-
-#### Health State Change Flow:
-1. **Detection**: Health check detects K8s connection state change
-2. **Analysis**: Orchestrator analyzes dependency graph for affected services
-3. **Action**: 
-   - If unhealthy: Stop dependent services with cascade logic
-   - If recovered: Restart dependency-stopped services
-4. **Reporting**: Updates reported through the reporter interface
-
-#### Service Operations:
-- **Start**: Orchestrator ensures dependencies are met before starting
-- **Stop**: Orchestrator performs cascade stop for dependents
-- **Restart**: Orchestrator marks for restart and manages the lifecycle
-
-### Usage in TUI and Non-TUI Modes
-
-Both TUI and non-TUI modes use the same Orchestrator/Service Manager architecture:
-
-**TUI Mode (`internal/tui`):**
-- The TUI controller creates and manages the Orchestrator
-- Service operations (stop/restart) go through the Orchestrator
-- State updates are received via the reporter interface and converted to TUI messages
-- The TUI model tracks service states for display
-
-**Non-TUI Mode (`cmd/connect.go`):**
-- Creates Orchestrator with console reporter
-- Starts services through the Orchestrator
-- Handles graceful shutdown on interrupt
-- Displays health and service status to console
-
-### Testing Considerations
-
-The architecture supports comprehensive testing through:
-1. **Mock Interfaces**: Both Service Manager and Kube Manager can be mocked
-2. **Dependency Injection**: Components are injected, making testing easier
-3. **State Verification**: Tests can verify stop reasons and service states
-4. **Timing Control**: Health check intervals can be adjusted for faster tests
-
-Example test pattern:
-```go
-// Create mocks
-serviceMgr := newMockServiceManager()
-reporter := &mockReporter{}
-
-// Configure test scenario
-cfg := Config{
-    MCName: "test-mc",
-    WCName: "test-wc",
-    PortForwards: []config.PortForwardDefinition{...},
-    MCPServers: []config.MCPServerDefinition{...},
-}
-
-// Create orchestrator
-orch := New(serviceMgr, reporter, cfg)
-
-// Simulate K8s health state changes
-orch.GetK8sStateManager().UpdateConnectionState("test-mc", state.ConnectionState{
-    IsHealthy: true,
-    NodeCount: 5,
-})
-
-// Run test scenario
-err := orch.Start(ctx)
-
-// Verify cascade stop behavior
-// ... test assertions ...
-```
-
-### Best Practices for Extending
-
-When adding new features that involve service management:
-
-1. **Use the Orchestrator**: Don't bypass it for service operations
-2. **Update Dependencies**: If adding new service types, update the dependency graph builder
-3. **Maintain Separation**: Keep basic operations in Service Manager, complex logic in Orchestrator
-4. **Test Thoroughly**: Include tests for dependency scenarios and edge cases
-5. **Consider Health**: If the service depends on external resources, integrate with health monitoring
+Please refer to the [Architecture Overview](architecture.md) and the sections below on the Orchestrator and Service Architecture.
 
 ## Dependency Graph Implementation
 
@@ -477,7 +263,7 @@ envctl includes comprehensive health monitoring for all managed services:
 - Failed health checks are reported but don't automatically stop the service
 
 ### Health Check Implementation
-The health checking system is implemented in `internal/orchestrator/health_checker.go` with:
+The health checking system is implemented in `internal/orchestrator/orchestrator_health.go` with:
 - `ServiceHealthChecker` interface for extensibility
 - `MCPHealthChecker` for MCP server validation
 - `PortForwardHealthChecker` for port forward validation
@@ -492,21 +278,6 @@ The TUI includes a `ReconcileState()` method that:
 ## Dependency Management
 
 ## Recent Architectural Improvements
-
-### K8s Connections as Services (Issue #46)
-Previously, K8s connections were managed separately from other services. This has been refactored to treat K8s connections as first-class services:
-
-**Benefits:**
-- Unified service management across all service types
-- Consistent health monitoring and state reporting
-- Better integration with the dependency system
-- Simplified orchestrator logic
-
-**Implementation:**
-- K8s connections are now managed by `K8sConnectionService` in `internal/managers/k8s_service.go`
-- They report state changes through the same reporting system as other services
-- Health checks are integrated into the service lifecycle
-- The old `k8smanager` package has been removed
 
 ### Enhanced State Management (Issue #46)
 The state management system has been significantly improved to address issues with state duplication and message ordering:
@@ -573,9 +344,10 @@ The codebase includes comprehensive unit tests for:
 
 ### Mock Interfaces
 Key interfaces are mocked for testing:
-- `ServiceManagerAPI` for service operations
+- `Service` interface for creating mock services
+- `ServiceRegistry` for service registration and discovery
 - `KubeManager` for Kubernetes operations
-- `ServiceReporter` for state reporting
+- `HealthChecker` for service health checks
 
 ### Test Patterns
 Common test patterns include:
@@ -584,12 +356,8 @@ Common test patterns include:
 - Testing restart with dependencies
 - Checking stop reason tracking
 
-Example test setup:
+Example test pattern:
 ```go
-// Create mocks
-serviceMgr := newMockServiceManager()
-reporter := &mockReporter{}
-
 // Configure test scenario
 cfg := Config{
     MCName: "test-mc",
@@ -599,18 +367,20 @@ cfg := Config{
 }
 
 // Create orchestrator
-orch := New(serviceMgr, reporter, cfg)
+orch := New(cfg)
 
-// Simulate K8s health state changes
-orch.GetK8sStateManager().UpdateConnectionState("test-mc", state.ConnectionState{
-    IsHealthy: true,
-    NodeCount: 5,
-})
-
-// Run test scenario
+// Start orchestrator
+ctx := context.Background()
 err := orch.Start(ctx)
 
+// Get a service and check its state
+service, exists := orch.GetServiceRegistry().Get("k8s-mc-test-mc")
+assert.True(t, exists)
+assert.Equal(t, services.StateRunning, service.GetState())
+
 // Verify cascade stop behavior
+err = orch.StopService("k8s-mc-test-mc")
+// Check that dependent services were stopped
 // ... test assertions ...
 ```
 
@@ -619,33 +389,36 @@ err := orch.Start(ctx)
 ### Package Structure
 ```
 internal/
-├── orchestrator/       # High-level coordination and dependency management
-│   ├── orchestrator.go # Main orchestrator logic
-│   ├── health_checker.go # Health monitoring implementation
-│   └── orchestrator_test.go # Comprehensive tests
-├── managers/          # Service lifecycle management
-│   ├── manager.go     # Service manager implementation
-│   ├── k8s_service.go # K8s connection service
-│   └── types.go       # Common types
-├── dependency/        # Dependency graph implementation
-│   └── graph.go       # Graph data structure and algorithms
-├── state/            # State management
-│   └── k8s_state.go  # K8s connection state tracking
-├── reporting/        # State reporting and updates
-│   ├── types.go      # Message types and interfaces
-│   ├── store.go      # State store implementation
-│   └── buffer.go     # Message buffering
-└── tui/              # Terminal UI implementation
-    ├── model/        # TUI state and business logic
-    ├── view/         # UI rendering
-    └── controller/   # User input handling
+├── orchestrator/         # High-level coordination and dependency management
+│   ├── orchestrator.go   # Main orchestrator logic
+│   ├── orchestrator_deps.go  # Dependency management functions
+│   ├── orchestrator_health.go # Health monitoring functions
+│   └── orchestrator_test.go   # Comprehensive tests
+├── services/            # Service abstraction and registry
+│   ├── interface.go     # Service interface definitions
+│   ├── registry.go      # Service registry implementation
+│   ├── k8s/            # K8s connection service
+│   ├── portforward/    # Port forward service
+│   └── mcpserver/      # MCP server service
+├── dependency/          # Dependency graph implementation
+│   └── graph.go        # Graph data structure and algorithms
+├── kube/               # Kubernetes cluster management
+│   └── manager.go      # Kubernetes operations
+├── api/                # API layer for service management
+│   └── interfaces.go   # API interface definitions
+├── config/             # Configuration management
+│   └── types.go        # Configuration structures
+└── tui/                # Terminal UI implementation
+    ├── model/          # TUI state and business logic
+    ├── view/           # UI rendering
+    └── controller/     # User input handling
 ```
 
 ### Key Interfaces
-1. **ServiceManagerAPI**: Core service lifecycle operations
-2. **ServiceReporter**: State change notifications
-3. **K8sStateManager**: K8s connection state tracking
-4. **ServiceHealthChecker**: Health check abstraction
+1. **ServiceRegistry**: Service registration and discovery
+2. **Service**: Common interface for all service types
+3. **OrchestratorAPI**: High-level service orchestration
+4. **HealthChecker**: Service health checking interface
 
 ## Future Improvements
 
@@ -659,3 +432,69 @@ internal/
 1. **Configuration Validation**: Stronger validation of service configurations
 2. **Error Aggregation**: Better collection and presentation of multi-service errors
 3. **Performance Monitoring**: Metrics for service startup times and resource usage
+
+## Orchestrator and Service Architecture
+
+The envctl application uses a sophisticated architecture to manage service dependencies, health monitoring, and lifecycle management. This is accomplished through the **Orchestrator** working with a **Service Registry** pattern.
+
+### Service Registry (`internal/services`)
+
+The Service Registry provides a centralized repository for all services in the system. It uses a flexible and extensible architecture where all services implement a common interface.
+
+**Key Components:**
+- **ServiceRegistry**: Interface for registering and retrieving services
+- **Service**: Common interface implemented by all service types
+- **ServiceType**: Enumeration of service types (K8s, PortForward, MCPServer)
+
+**Core Interface (`ServiceRegistry`):**
+```go
+type ServiceRegistry interface {
+    Register(service Service) error
+    Unregister(label string) error
+    Get(label string) (Service, bool)
+    GetAll() []Service
+    GetByType(serviceType ServiceType) []Service
+}
+```
+
+**Service Interface:**
+```go
+type Service interface {
+    GetLabel() string
+    GetType() ServiceType
+    GetState() ServiceState
+    GetHealth() ServiceHealth
+    Start(ctx context.Context) error
+    Stop(ctx context.Context) error
+    Restart(ctx context.Context) error
+}
+```
+
+**Design Principles:**
+1. **Unified Interface**: All services implement the same interface regardless of type
+2. **Self-Contained**: Each service manages its own lifecycle and state
+3. **Registry Pattern**: Services are registered centrally for easy discovery
+4. **Type Safety**: Strong typing ensures compile-time checks
+5. **Extensibility**: New service types can be added by implementing the interface
+
+### K8s Connections as Services
+Previously, K8s connections were managed separately from other services. This has been refactored to treat K8s connections as first-class services:
+
+**Benefits:**
+- Unified service management across all service types
+- Consistent health monitoring and state reporting
+- Better integration with the dependency system
+- Simplified orchestrator logic
+
+**Implementation:**
+- K8s connections are now managed by `K8sConnectionService` in `internal/services/k8s/`
+- They implement the common `Service` interface like all other services
+- Health checks are integrated into the service lifecycle
+- State changes are tracked consistently across all service types
+
+### Health Check Implementation
+The health checking system is implemented through:
+- Health monitoring functions in `internal/orchestrator/orchestrator_health.go`
+- Services that implement the `HealthChecker` interface can provide their own health checks
+- The orchestrator automatically starts health check goroutines for services that support it
+- Health checks run at intervals specified by each service (default 30 seconds)

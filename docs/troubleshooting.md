@@ -89,25 +89,16 @@ This is expected behavior. envctl maintains dependency relationships:
 
 Set the log level before starting envctl:
 ```bash
-export LOG_LEVEL=DEBUG
-envctl connect <mc> <wc>
+envctl connect <mc> <wc> --debug
 ```
 
 ### 2. View Service Logs
 
 In the TUI:
 - Press 'L' to toggle log view
-- Use arrow keys to select different services
-- Press 'c' to clear logs
+- Press 'y' to copy logs
 
-### 3. Check Service Dependencies
-
-In the TUI:
-- Press 'd' to view dependency graph
-- Look for broken dependency chains
-- Verify all required services are configured
-
-### 4. Manual Service Testing
+### 3. Manual Service Testing
 
 Test services outside envctl:
 
@@ -125,7 +116,7 @@ which mcp-server-prometheus
 mcp-server-prometheus --prometheus-url http://localhost:8080
 ```
 
-### 5. State Inspection
+### 4. State Inspection
 
 Check service states in the TUI:
 - Green: Running
@@ -253,8 +244,7 @@ MCP Server Failed
 
 **Solutions:**
 1. Increase health check intervals in config
-2. Clear logs regularly (press 'c' in log view)
-3. Profile MCP server performance
+2. Profile MCP server performance
 
 ### Memory Leaks
 
@@ -293,8 +283,7 @@ If envctl is in an inconsistent state:
 1. Stop envctl (Ctrl+C or 'q' in TUI)
 2. Kill any remaining processes:
    ```bash
-   pkill -f "mcp-server"
-   pkill -f "kubectl port-forward"
+   pkill -f "mcp-proxy"
    ```
 3. Clear temporary files:
    ```bash
@@ -355,7 +344,7 @@ When reporting issues, include:
 
 3. **Debug logs:**
    ```bash
-   LOG_LEVEL=DEBUG envctl connect <mc> <wc> 2>&1 | tee envctl.log
+   envctl connect <mc> <wc> --debug --no-tui 2>&1 | tee envctl.log
    ```
 
 4. **System information:**
@@ -372,8 +361,6 @@ Key log patterns to look for:
 - `[ERROR]` - Critical failures
 - `[WARN]` - Potential issues
 - `Failed to` - Operation failures
-- `correlationID` - Track related operations
-- `cascade` - Dependency-related stops
 
 ### Common Error Messages
 

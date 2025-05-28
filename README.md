@@ -13,9 +13,24 @@ It automates the process of logging into clusters via Teleport (`tsh`) and setti
 *   **Port-Forwarding Management:** 
     *   Prometheus and Grafana services (always from the Management Cluster)
     *   Alloy Metrics (from the Workload Cluster if specified, otherwise from the Management Cluster)
+    *   Custom port forwards via YAML configuration
 *   **Interactive Terminal UI:** View cluster status, manage port forwards, and monitor connections in a polished terminal interface.
 *   **Teleport Integration:** Uses your existing `tsh` setup for Kubernetes access.
 *   **Shell Completion:** Provides dynamic command-line completion for cluster names (Bash & Zsh).
+*   **Service Dependency Management:** Automatically handles service dependencies and cascading operations.
+*   **Health Monitoring:** Continuous health checks for all services with automatic recovery.
+*   **Flexible Configuration:** Layer-based configuration system (default → user → project).
+*   **MCP Server Support:** Run Model Context Protocol servers as local commands or Docker containers.
+
+## What's New 🎉
+
+### Recent Improvements
+- **Unified Service Architecture:** All components (K8s connections, port forwards, MCP servers) are now managed as services with consistent lifecycle management
+- **Advanced Dependency Management:** Services automatically start/stop based on their dependencies with intelligent cascade handling
+- **Health Monitoring:** Continuous health checks for all services with automatic recovery when dependencies are restored
+- **Enhanced State Management:** Centralized state store with event-driven updates and correlation tracking
+- **Improved Error Handling:** Better error messages, retry logic, and graceful degradation
+- **Comprehensive Documentation:** New architecture docs, troubleshooting guide, and quick start guide
 
 ## Releases & Changelog 📦
 
@@ -95,18 +110,16 @@ envctl self-update
 
 # Use the CLI mode without TUI (for scripts or CI environments)
 # This mode will:
-# - Log into the specified cluster(s) via tsh.
-# - Set the Kubernetes context.
-# - Start port-forwarding for:
-#   - Prometheus (MC) on localhost:8080
-#   - Grafana (MC) on localhost:3000
-#   - Alloy Metrics (on localhost:12345):
-#     - For the Workload Cluster (WC) if specified.
-#     - For the Management Cluster (MC) if only an MC is specified.
+# - Log into the specified cluster(s) via tsh
+# - Set the Kubernetes context
+# - Start port-forwarding for configured services
 # - Start configured MCP servers (if their executables are available)
 # - Keep running until interrupted (Ctrl+C)
 # - All services stop when envctl exits
 envctl connect <management-cluster> [workload-cluster-shortname] --no-tui
+
+# Enable debug logging for troubleshooting
+envctl connect <management-cluster> --debug
 ```
 
 **Arguments for `connect`:**
@@ -141,7 +154,7 @@ envctl connect <management-cluster> [workload-cluster-shortname] --no-tui
     *   Starts port-forwarding for Prometheus using the *management cluster* context (`teleport.giantswarm.io-myinstallation`) to `localhost:8080`.
     *   Starts port-forwarding for Grafana using the *management cluster* context (`teleport.giantswarm.io-myinstallation`) to `localhost:3000`.
     *   Starts port-forwarding for Alloy metrics using the *workload cluster* context (`teleport.giantswarm.io-myinstallation-myworkloadcluster`) to `localhost:12345`.
-    *   Prints a summary and instructions for MCP.
+    *   Displays all services in the TUI with health status
 
 ## Terminal User Interface 🖥️
 
@@ -153,6 +166,8 @@ When running `envctl connect`, the Terminal User Interface (TUI) provides a visu
 
 - **Cluster Status Monitoring**: View real-time health status of both management and workload clusters
 - **Port Forward Management**: Monitor active port forwards with status indicators
+- **MCP Server Status**: Track MCP server health and available tools
+- **Service Dependencies**: Visual indicators show service relationships
 - **Log Viewer**: View operation logs directly in the terminal
 - **Keyboard Navigation**: Easily navigate between panels with Tab/Shift+Tab
 - **Dark Mode Support**: Toggle between light and dark themes with 'D' key
@@ -262,6 +277,13 @@ envctl connect myinstallation <TAB>      # Shows short names of workload cluster
 
 Configurations are loaded in layers (default, user-global, project-specific), with later layers overriding earlier ones. You can manage global settings, define how MCP servers are run (as local commands or containers), and specify detailed port-forwarding rules, including dynamic Kubernetes context targeting (`"mc"`, `"wc"`, or explicit contexts).
 
+### Configuration Examples
+
+See the [examples directory](docs/examples/) for:
+- [Basic configuration](docs/examples/basic-config.yaml) - Minimal setup for getting started
+- [Advanced configuration](docs/examples/advanced-config.yaml) - Complex scenarios with custom services
+- [Containerized MCP servers](docs/examples/containerized-config.yaml) - Running MCP servers in Docker
+
 For a detailed explanation of the configuration file structure, all available options, and comprehensive examples, please see the [**Flexible Configuration Documentation (docs/configuration.md)**](docs/configuration.md).
 
 ## Documentation 📚
@@ -363,11 +385,20 @@ You can customize MCP servers through:
 
 For more details on configuration options, see the [Configuration Guide](docs/configuration.md).
 
+## Contributing 🤝
+
+We welcome contributions! Please see our [Development Guide](docs/development.md) for details on:
+- Setting up your development environment
+- Running tests
+- Understanding the architecture
+- Submitting pull requests
+
 ## Future Development 🔮
 
 *   Support for connecting to Loki.
 *   Direct SSH access integration.
 *   Connections for specific cloud providers (AWS, Azure, GCP).
-*   More robust background process management.
+*   Enhanced monitoring and alerting capabilities.
+*   Plugin system for custom extensions.
 
 --- 

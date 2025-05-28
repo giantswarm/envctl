@@ -63,20 +63,6 @@ The central coordinator that manages all services and their dependencies.
 - **Smart Restart**: When a service is restarted, its dependencies are checked and started if needed
 - **Stop Reason Tracking**: Distinguishes between manual stops and dependency-caused stops
 
-### 2. Service Manager (`internal/managers/`)
-Handles the lifecycle of individual services.
-
-**Managed Service Types:**
-- K8s Connections
-- Port Forwards
-- MCP Servers
-
-**Key Operations:**
-- `StartServices()`: Starts multiple services concurrently
-- `StopService()`: Stops a specific service
-- `IsServiceActive()`: Checks if a service is running
-- `StopAllServices()`: Gracefully stops all services
-
 ### 3. State Management (`internal/state/` and `internal/reporting/`)
 Manages service state and provides state persistence.
 
@@ -232,6 +218,14 @@ const (
 - State changes trigger notifications to all listeners
 - Correlation IDs track related state changes
 
+### 3. State Management
+Manages service state through the service registry and individual service implementations.
+
+**Components:**
+- **Service Registry**: Central repository for all services and their states
+- **Service State**: Each service manages its own state internally
+- **State Tracking**: Services report state changes through their interface
+
 ## Message Flow
 
 ### 1. Service Start Flow
@@ -383,4 +377,25 @@ See [configuration.md](configuration.md) for detailed configuration options.
 5. **Enhanced Recovery**
    - Exponential backoff
    - Circuit breakers
-   - Automatic rollback 
+   - Automatic rollback
+
+### 2. Service Registry (`internal/services/`)
+Provides centralized service management through a registry pattern.
+
+**Managed Service Types:**
+- K8s Connections (`internal/services/k8s/`)
+- Port Forwards (`internal/services/portforward/`)
+- MCP Servers (`internal/services/mcpserver/`)
+
+**Key Operations:**
+- `Register()`: Add a service to the registry
+- `Get()`: Retrieve a service by label
+- `GetAll()`: Get all registered services
+- `GetByType()`: Get services of a specific type
+
+**Service Interface:**
+All services implement a common interface for lifecycle management:
+- `Start()`: Start the service
+- `Stop()`: Stop the service
+- `GetState()`: Get current service state
+- `GetHealth()`: Get service health status 

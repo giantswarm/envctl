@@ -1,0 +1,61 @@
+# Basic envctl configuration example
+# This file demonstrates a minimal configuration for envctl
+
+# Port forwards define which services to expose locally
+portForwards:
+  # Prometheus from the management cluster
+  - name: mc-prometheus
+    enabled: true
+    namespace: mimir
+    service: prometheus-operated
+    localPort: 8080
+    remotePort: 9090
+    kubeContextTarget: "mc"  # Target the management cluster
+
+  # Grafana from the management cluster  
+  - name: mc-grafana
+    enabled: true
+    namespace: mimir
+    service: grafana
+    localPort: 3000
+    remotePort: 3000
+    kubeContextTarget: "mc"
+
+  # Alloy metrics - targets WC if available, otherwise MC
+  - name: alloy-metrics
+    enabled: true
+    namespace: kube-system
+    service: alloy-metrics
+    localPort: 12345
+    remotePort: 12345
+    kubeContextTarget: "dynamic"  # Automatically selects WC or MC
+
+# MCP servers provide AI assistants with access to your clusters
+mcpServers:
+  # Kubernetes MCP server for cluster operations
+  - name: kubernetes
+    enabled: true
+    type: localCommand
+    command: ["mcp-server-kubernetes"]
+    proxyPort: 8001
+    requiresK8sConnection: "mc"  # Requires MC connection
+
+  # Prometheus MCP server for metrics queries
+  - name: prometheus
+    enabled: true
+    type: localCommand
+    command: ["mcp-server-prometheus"]
+    proxyPort: 8002
+    requiresPortForwards: ["mc-prometheus"]  # Depends on prometheus port forward
+    env:
+      PROMETHEUS_URL: "http://localhost:8080"
+
+  # Grafana MCP server for dashboard access
+  - name: grafana
+    enabled: true
+    type: localCommand
+    command: ["mcp-server-grafana"]
+    proxyPort: 8003
+    requiresPortForwards: ["mc-grafana"]  # Depends on grafana port forward
+    env:
+      GRAFANA_URL: "http://localhost:3000" 

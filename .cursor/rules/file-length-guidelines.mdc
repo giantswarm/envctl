@@ -10,7 +10,7 @@ To maintain code readability and manageability, follow these guidelines for file
 ### Target File Length
 - **Aim for files around 300 lines** of code (excluding comments and blank lines)
 - Files exceeding 500 lines should be considered for splitting
-- Test files can be slightly longer (up to 400-500 lines) if they contain many test cases
+- This file length limit is also relevant for all other files in this repo (docs, README, etc.)
 - Check the file length with `wc -l` before finishing a task
 
 ### How to Split Large Files

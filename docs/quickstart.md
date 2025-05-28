@@ -38,7 +38,7 @@ envctl connect <mc-name> <wc-name>
 
 Example:
 ```bash
-envctl connect gazelle operations
+envctl connect myinstallation mycluster
 ```
 
 ### 2. Understanding the TUI
@@ -46,39 +46,60 @@ envctl connect gazelle operations
 When you run envctl, you'll see a Terminal User Interface (TUI) with several panels:
 
 ```
-┌─ Cluster Info ─────────────────┐ ┌─ Services ─────────────────────┐
-│ MC: gazelle (9/9 nodes)        │ │ ▶ K8s Connections              │
-│ WC: operations (8/8 nodes)     │ │   ● k8s-mc-gazelle      [Running] │
-│                                │ │   ● k8s-wc-operations   [Running] │
-└────────────────────────────────┘ │ ▶ Port Forwards                │
-                                   │   ● mc-prometheus       [Running] │
-┌─ Logs ─────────────────────────┐ │   ● mc-grafana         [Running] │
-│ [INFO] Port forward started... │ │ ▶ MCP Servers                  │
-│ [INFO] Service is ready...     │ │   ● prometheus         [Running] │
+┌─ Cluster Info ─────────────────┐ ┌─ Cluster Info ─────────────────┐
+│ ☸ MC: installation            │ │ ☸ WC: cluster (Active)         │
+│ ✔ Nodes: 9/9                  │ │ ✔ Nodes: 8/8                   │
 └────────────────────────────────┘ └────────────────────────────────┘
+
+┌─ Port Forwards ─────────────────────────────────────────────────────┐
+│ 🔗 mc-prometheus        Port: 8080:80         [Running]             │
+│ 🔗 mc-grafana          Port: 3000:3000        [Running]             │
+│ 🔗 alloy-metrics       Port: 12345:12345      [Running]             │
+└─────────────────────────────────────────────────────────────────────┘
+
+┌─ MCP Servers ───────────────────────────────────────────────────────┐
+│ ☸ kubernetes           Port: 8001            [Running]             │
+│ 🔥 prometheus          Port: 8002             [Running]             │
+│ 📊 grafana             Port: 8003             [Running]             │
+└─────────────────────────────────────────────────────────────────────┘
+
+┌─ Logs ──────────────────────────────────────────────────────────────┐
+│ [INFO] K8s connection established to myinstallation                 │
+│ [INFO] Port forward mc-prometheus started on localhost:8080         │
+│ [INFO] MCP server kubernetes is ready on port 8001                  │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
 ### 3. Navigation
 
 **Basic Controls:**
-- `↑/↓` - Navigate between services
-- `Tab` - Switch between panels
-- `Enter` - Expand/collapse service groups
-- `Space` - Select a service
-- `q` - Quit envctl
+- `Tab` / `Shift+Tab` - Navigate between panels
+- `↑/↓` or `j/k` - Move up/down within panels
+- `Enter` - Start a stopped service
+- `q` / `Ctrl+C` - Quit envctl
 
 **Service Controls:**
 - `x` - Stop selected service
-- `s` - Start selected service
 - `r` - Restart selected service
+- `s` - Switch to the K8s context of the selected cluster
 
 **View Controls:**
-- `L` - Toggle log view
-- `d` - Show dependency graph
-- `c` - Clear logs (when in log view)
-- `h` - Show help
+- `h` or `?` - Show help overlay
+- `L` - Toggle log overlay
+- `C` - Show MCP configuration
+- `M` - Show MCP tools
+- `D` - Toggle dark/light mode
+- `z` - Toggle debug mode
+- `y` - Copy logs/config (when in overlay)
+- `Esc` - Close overlays
 
 ### 4. Service Management
+
+#### Service Dependencies
+envctl manages services in a dependency hierarchy:
+- **K8s Connections** - Foundation layer (no dependencies)
+- **Port Forwards** - Depend on K8s connections
+- **MCP Servers** - May depend on port forwards
 
 #### Starting Services
 Services start automatically based on their dependencies:
@@ -102,7 +123,7 @@ Press `r` to restart a service. envctl will:
 ### 1. Access Prometheus
 ```bash
 # Start envctl
-envctl connect gazelle
+envctl connect myinstallation
 
 # Prometheus will be available at http://localhost:8080
 # The mc-prometheus port forward is automatically created
@@ -111,7 +132,7 @@ envctl connect gazelle
 ### 2. Access Grafana
 ```bash
 # Start envctl
-envctl connect gazelle
+envctl connect myinstallation
 
 # Grafana will be available at http://localhost:3000
 # The mc-grafana port forward is automatically created
@@ -122,17 +143,18 @@ MCP servers require the executables to be installed:
 
 ```bash
 # Install MCP servers (example)
-npm install -g @modelcontextprotocol/server-prometheus
 npm install -g @modelcontextprotocol/server-kubernetes
+npm install -g @modelcontextprotocol/server-prometheus
+npm install -g @modelcontextprotocol/server-grafana
 
 # Start envctl - MCP servers will start automatically
-envctl connect gazelle
+envctl connect myinstallation
 ```
 
 ### 4. Work with Workload Clusters
 ```bash
 # Connect to both MC and WC
-envctl connect gazelle operations
+envctl connect myinstallation mycluster
 
 # This enables:
 # - Alloy metrics port forward from the WC
@@ -167,8 +189,8 @@ portForwards:
     targetName: my-service-name
     localPort: "9999"
     remotePort: "80"
-    kubeContextTarget: mc  # or "wc"
-    enabled: true
+    kubeContextTarget: "mc"  # or "wc"
+    enabledByDefault: true
 
 mcpServers:
   - name: custom-mcp
@@ -176,7 +198,7 @@ mcpServers:
     command: ["my-mcp-server"]
     proxyPort: 8100
     requiresPortForwards: []
-    enabled: true
+    enabledByDefault: true
 ```
 
 ## Troubleshooting
@@ -223,7 +245,7 @@ The service colors indicate status:
 - ⚫ Gray = Stopped
 
 ### 2. Dependency Awareness
-Services with `(dependency)` were stopped because their dependency failed. They'll restart automatically when the dependency recovers.
+Services show their dependencies and will indicate when they're stopped due to a dependency failure. They'll restart automatically when the dependency recovers.
 
 ### 3. Logs are Your Friend
 Always check logs when something goes wrong. The log panel shows real-time output from all services.

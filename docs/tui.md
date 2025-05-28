@@ -10,14 +10,15 @@ The TUI is designed to provide real-time feedback about:
 - Cluster connection status (Management and Workload Clusters)
 - Node health for connected clusters
 - Active port forwarding processes
+- MCP (Model Context Protocol) server status
 - Operation logs and events
 
 It also enables interactive operations like:
-- Navigating between panels with keyboard shortcuts
-- Starting new connections to different clusters
-- Restarting port forwards
+- Starting, stopping, and restarting services
+- Navigating between service panels with keyboard shortcuts
 - Switching Kubernetes contexts
-- Viewing detailed logs
+- Viewing detailed logs and configurations
+- Monitoring service dependencies
 
 ## Screenshots
 
@@ -28,7 +29,9 @@ The main interface provides a complete view of:
 - Header with navigation hints
 - Management and Workload Cluster status panes
 - Port forwarding panels for each service
+- MCP server panels with tool information
 - Activity log with real-time updates
+- Status bar showing overall system health
 
 ### Help Overlay
 ![Help Overlay](images/tui-help-overlay.png)
@@ -40,8 +43,14 @@ The help overlay displays all available keyboard shortcuts, organized by categor
 
 The log overlay provides expanded view of logs, particularly useful for:
 - Debugging connection issues
-- Monitoring port forward activity
-- Viewing detailed cluster information
+- Monitoring service activity
+- Viewing detailed error messages
+
+### MCP Config Overlay
+The MCP config overlay (accessed with 'C') displays the JSON configuration for MCP servers, which can be copied to clipboard.
+
+### MCP Tools Overlay
+The MCP tools overlay (accessed with 'M') shows available tools for each running MCP server.
 
 ### Dark Mode
 ![Dark Mode](images/tui-dark-mode.png)
@@ -50,210 +59,226 @@ Dark mode provides optimal visibility in low-light environments and reduced eye 
 
 ## Architecture
 
-The TUI follows the Model-View-Update (MVU) architecture pattern, as commonly implemented in Bubble Tea applications, with a clear separation into Model, View, and Controller (MVC) components:
+The TUI is part of a larger service-based architecture that provides clean separation of concerns:
 
-### Model (`internal/tui/model/`)
+### Service Architecture Overview
 
-The core application state and data structures are maintained in the `model` package. Key files include:
-- `types.go`: Defines the main `Model` struct holding all TUI state (cluster information, health, port forwarding status, UI elements like viewports, input fields, current app mode, etc.), along with important enums (`AppMode`, `MessageType`, `OverallAppStatus`) and data-holding structs.
-- `messages.go`: Defines all custom message types used for communication within the TUI (e.g., `PortForwardSetupResultMsg`, `NodeStatusMsg`, `ClearStatusBarMsg`).
-- `init.go`: Contains the `InitialModel` function to set up the default state.
+1. **Service Layer** (`internal/services/`): Defines core service interfaces and implementations
+2. **Orchestrator** (`internal/orchestrator/`): Manages service lifecycle and dependencies
+3. **API Layer** (`internal/api/`): Provides clean interfaces for service interaction
+4. **TUI Layer** (`internal/tui/`): Implements the terminal interface using MVC pattern
 
-The Model package is responsible for holding the state and does not contain business logic for how the state changes, nor how it is rendered.
+### TUI Component Structure (MVC)
 
-### View (`internal/tui/view/`)
+The TUI follows the Model-View-Controller (MVC) pattern:
 
-The `view` package is responsible for rendering the current state of the `model.Model` into a string for display in the terminal.
-- `render.go`: Contains the main `Render(m *model.Model)` function, which acts as a switchboard to call specific rendering functions based on the `CurrentAppMode`.
-- Various other files like `context.go`, `portforward.go`, `mcp.go`, `log.go`, `status.go` contain helper functions to render specific parts of the UI (e.g., cluster panes, port forward panels, log views, status bar).
-- `styles.go`: Centralizes all `lipgloss` styling definitions for consistent appearance.
+#### Model (`internal/tui/model/`)
+Maintains the application state and data structures:
+- `types.go`: Core `Model` struct, enums, and data types
+- `messages.go`: All `tea.Msg` types for internal communication
+- `init.go`: Model initialization and setup
 
-The `controller.AppModel`'s `View()` method calls `view.Render()` with the current model to get the UI string. The View package only reads from the model and should not modify it or contain business logic.
+#### View (`internal/tui/view/`)
+Responsible for rendering the UI:
+- `render.go`: Main render function and mode switching
+- `render_dashboard.go`: Dashboard layout orchestration
+- `render_context_panes.go`: K8s connection panels
+- `render_port_forwarding.go`: Port forward service panels
+- `render_mcp_proxies.go`: MCP server panels
+- `render_overlays.go`: Help, log, and config overlays
+- `colors.go`, `icons.go`: Visual elements (imports from `internal/color/`)
 
-### Controller (`internal/tui/controller/`)
+#### Controller (`internal/tui/controller/`)
+Handles user input and orchestrates updates:
+- `app.go`: Main `AppModel` implementing `tea.Model`
+- `update.go`: Central message handling and dispatch
+- `helpers.go`: Utility functions
+- `program.go`: Program initialization
 
-The `controller` package orchestrates the application, handles user input, manages application flow, and updates the model.
-- `app.go`: Defines `AppModel`, which is the top-level `tea.Model` for the application. Its `Init()` method sets up initial commands, `Update()` delegates message handling, and `View()` delegates rendering.
-- `update.go`: Contains `mainControllerDispatch(m *model.Model, msg tea.Msg)`, which is the central message handling switch. It routes messages to specific handler functions within the controller package.
-- Handler files (e.g., `keyglobal.go`, `keyinput.go`, `connection.go`, `cluster.go`, `portforward.go`, `mcpserver.go`): Contain functions that process specific `tea.Msg` types or user actions (like key presses), perform business logic, and update the `model.Model`.
-- `commands.go`: Defines functions that return `tea.Cmd` for performing asynchronous operations (e.g., fetching cluster status, logging into clusters, managing port forwards).
-- `logger.go`: Provides logging helper functions that write to the TUI's activity log within the model.
+## Service Types
 
-This separation ensures that user interactions, state updates, and rendering logic are distinct and managed within their respective components.
+The TUI manages three main types of services:
 
-## Component Structure
+### 1. Kubernetes Connections
+- Establish and maintain connections to clusters via Teleport
+- Display connection health and node status
+- Support for Management Cluster (MC) and Workload Cluster (WC)
 
-The TUI is composed of several distinct sections:
+### 2. Port Forwards
+- Create and manage kubectl port-forward tunnels
+- Monitor connection status and handle automatic recovery
+- Configurable through YAML configuration files
 
-1. **Header**: Displays the application title, keyboard hints, and optional debug info
-2. **Cluster Information Panes**: Shows MC and WC connection details and node health
-3. **Service Panels (Port Forwards & MCP Servers)**: Displays active port forwards and managed MCP server processes. 
-    *   The services listed here are now fully configurable via `envctl`'s YAML configuration files (see `docs/configuration.md`).
-    *   Each panel can display an `icon` and be grouped by `category` if specified in its configuration.
-    *   Status indicators show the current state (e.g., running, starting, failed).
-4. **Activity Log**: Shows a scrollable log of recent operations and events
+### 3. MCP Servers
+- Run Model Context Protocol servers for AI integration
+- Support for both local command and container-based servers
+- Display available tools when servers are healthy
 
 ## Message System
 
-The TUI uses an asynchronous message system to handle events from port forwarding, Kubernetes operations, and UI interactions:
+The TUI uses an event-driven message system:
 
-- Custom message types (like `portForwardStatusUpdateMsg`) defined throughout the codebase
-- A channel-based approach with `TUIChannel` to safely receive messages from background goroutines
-- The `channelReaderCmd` function ensures continuous processing of these messages
+### Event Sources
+1. **Service State Changes**: From the orchestrator when services change state
+2. **Log Events**: From the centralized logging system
+3. **User Input**: Keyboard and mouse events
+4. **Periodic Updates**: Timer-based refresh of service data
+
+### Message Flow
+```
+Service Event → API Layer → TUI Channel → Controller Update → Model Update → View Render
+```
 
 ## Styling
 
-All UI styling is centralized in `styles.go` using the [Lipgloss](https://github.com/charmbracelet/lipgloss) library:
+All UI styling is centralized in the `internal/color/` package:
 
 - Adaptive colors that work in both light and dark modes
-- Consistent borders, padding, and margins
-- Status-specific styling (e.g., error states in red, success in green)
+- Consistent semantic colors (success=green, error=red, etc.)
+- Reusable style compositions
+- Status-specific styling for service panels
+
+See the [TUI Style Guide](./tui-styleguide.md) for detailed styling information.
 
 ## Key Features
 
-### Responsive Layout
+### Service Management
 
-- Automatically adapts to terminal window size changes
-- Degrades gracefully to simpler layouts for small terminals
-- Maintains full-width consistency for all panels
+- **Start/Stop/Restart**: Control services with keyboard shortcuts
+- **Dependency Awareness**: Services start/stop in dependency order
+- **Health Monitoring**: Real-time health status for all services
+- **Automatic Recovery**: Failed services are automatically restarted
 
 ### Keyboard Navigation
 
-- Tab/Shift+Tab to navigate between panels
-- ESC to exit overlays
-- Shortcut keys for common operations
-
-### Port Forward Management
-
-- Monitor active port forwards with status indicators.
-- The specific port forwards (like Prometheus, Grafana, Alloy Metrics) and their target Kubernetes contexts (`kubeContextTarget`) are defined in the `envctl` configuration files (`config.yaml`). While defaults are provided, users can override these or add new custom port forwards.
-- For example, while Prometheus and Grafana typically target the Management Cluster (MC), and Alloy Metrics might target the Workload Cluster (WC) or MC, these are not hardcoded and depend on their respective `PortForwardDefinition` in the loaded configuration.
-- Restart individual port forwards when needed using the 'r' key with the panel focused.
-
-### Dark Mode Support
-
-- Complete dark mode support with 'D' key toggle
-- Adaptive colors for all UI elements
-- Proper contrast in both modes for readability
+| Key | Action |
+|-----|--------|
+| Tab/Shift+Tab | Navigate between panels |
+| ↑/↓ or j/k | Move focus up/down |
+| Enter | Start stopped service |
+| r | Restart focused service |
+| x | Stop focused service |
+| s | Switch to focused cluster's context |
+| h or ? | Show help overlay |
+| L | Show log overlay |
+| C | Show MCP config overlay |
+| M | Show MCP tools overlay |
+| D | Toggle dark mode |
+| z | Toggle debug mode |
+| q or Ctrl+C | Quit application |
 
 ### Focus System
 
-- Focused panels have distinct visual styling
-- Focus can be moved between all interactive elements
-- Current focus affects context-specific operations (e.g., 'r' to restart focused port forward)
+- Focused panels have distinct blue thick borders
+- Focus affects context-specific operations
+- Tab through all services in order
+- Visual feedback for focused element
 
-### Overlays
+### Responsive Layout
 
-- Help overlay ('h') displays all keyboard shortcuts
-- Log overlay ('L') for expanded log viewing when screen space is limited
+The TUI automatically adapts to terminal size:
+- Dynamic space distribution between components
+- Graceful degradation for small terminals
+- Overlay modes for constrained spaces
+- Maintains aspect ratios and readability
 
 ## Implementation Details
 
-### Port Forwarding Management
+### Service Integration
 
-Port forwards are managed by:
-- `internal/portforwarding/` package: Logic for establishing and managing port-forward connections based on `config.PortForwardDefinition` from the loaded configuration.
-- `internal/managers/service_manager.go`: Orchestrates starting and stopping port forwards as a type of managed service.
-- The `model.PortForwardProcess` struct in `internal/tui/model/types.go` tracks the runtime state (including target context, status, output, errors) for each port-forward displayed in the TUI.
-- Status update messages keep the UI in sync with the actual process status.
+The TUI integrates with services through the API layer:
 
-### MCP Server Management (New Section or Enhanced)
+```go
+// Service APIs used by TUI
+type Model struct {
+    OrchestratorAPI api.OrchestratorAPI
+    K8sServiceAPI   api.K8sServiceAPI
+    PortForwardAPI  api.PortForwardServiceAPI
+    MCPServiceAPI   api.MCPServiceAPI
+}
+```
 
-MCP (Model Context Protocol) servers are managed similarly:
-- `internal/mcpserver/` package: Logic for running local command MCP servers, often via `mcp-proxy` (container-type MCP servers are managed by the chosen container runtime).
-- `internal/managers/service_manager.go`: Orchestrates starting and stopping MCP servers.
-- The list of MCP servers, their types (`localCommand` or `container`), how they are run (command, image, environment variables, port mappings), and their dependencies are defined in the `mcpServers` section of the `config.yaml` files.
-- The `model.McpServerProcess` struct in `internal/tui/model/types.go` tracks the runtime state for each MCP server displayed.
+### State Management
 
-### Context Switching
+The TUI maintains:
+1. **Cached Service Data**: For efficient rendering
+2. **UI State**: Focus, overlays, viewports
+3. **Event Subscriptions**: For real-time updates
 
-The TUI handles context switching through:
-- `connection_flow.go`: Functions to manage the connection flow
-- `handlers.go`: Event handlers for keyboard shortcuts
-- Asynchronous operations to update the UI as contexts change
+### Performance Optimizations
 
-### Viewport Management
+- Selective re-rendering based on changed data
+- Efficient event handling through channels
+- Periodic refresh with configurable intervals
+- Resource cleanup on service stop
 
-Scrollable log views are implemented using Bubble Tea's viewport component:
-- `mainLogViewport`: For the in-line log panel
-- `logViewport`: For the expandable log overlay
-- Mouse wheel scrolling support in both viewports
+## Configuration
 
-### Debug Features
+The services displayed in the TUI are configured through YAML files:
 
-The TUI includes debugging capabilities:
-- Toggle debug mode with 'z' key
-- View raw dimensions and layout calculations
-- Detect and display color profile information
+### Port Forwards
+```yaml
+portForwards:
+  - name: prometheus
+    namespace: monitoring
+    service: prometheus-server
+    localPort: 9090
+    remotePort: 80
+    kubeContextTarget: mc
+```
 
-## File Structure
-
-The TUI codebase is organized into the following main packages and key files within `internal/tui/`:
-
-- **`model/`**: Contains the application's state and data structures.
-    - `types.go`: Core `Model` struct, enums, and other data types.
-    - `messages.go`: All `tea.Msg` type definitions for TUI internal communication.
-    - `init.go`: `InitialModel()` constructor.
-    - `export.go`: Types that might be needed by other TUI sub-packages but are fundamentally model types.
-- **`view/`**: Responsible for rendering the UI based on the model.
-    - `render.go`: Main `Render()` function.
-    - `styles.go`: All `lipgloss` UI styling definitions.
-    - `context.go`, `portforward.go`, `mcp.go`, `log.go`, `status.go`, `misc.go`, `icons.go`: Helper functions for rendering specific UI components.
-- **`controller/`**: Handles user input, application logic, and model updates.
-    - `app.go`: `AppModel` (the main `tea.Model` for Bubble Tea).
-    - `update.go`: `mainControllerDispatch()` for central message routing.
-    - `commands.go`: Functions that generate `tea.Cmd` for asynchronous operations.
-    - `keyglobal.go`, `keyinput.go`: Handlers for global and input-mode key presses.
-    - `connection.go`, `cluster.go`, `portforward.go`, `mcpserver.go`: Handlers and logic for managing cluster connections, health checks, port forwards, and MCP servers.
-    - `logger.go`: TUI-specific logging helpers.
-    - `program.go`: `NewProgram()` to initialize and return the `tea.Program`.
-
-This structure aims to clearly separate the concerns of state management (Model), presentation (View), and application logic (Controller).
-
-## Design Decisions
-
-### Use of Bubble Tea & Lipgloss
-
-These libraries were chosen for:
-- Strong typing and Go-native approach
-- Excellent terminal compatibility
-- Component composition model
-- Elegant handling of async events
-
-### Separate UI and Logic Components
-
-The codebase separates:
-- UI rendering (view helpers)
-- State management (model)
-- Business logic (handlers)
-
-This separation enables easier testing and maintenance.
-
-### Asynchronous Communication
-
-The TUI uses channels for non-blocking operations to:
-- Keep the UI responsive while long-running operations execute
-- Allow real-time updates of port forward status
-- Support health checking in the background
+### MCP Servers
+```yaml
+mcpServers:
+  - name: kubectl-context
+    type: localCommand
+    command: mcp-kubectl-context
+    port: 3100
+    dependencies: ["k8s-mc-myinstallation"]
+```
 
 ## Troubleshooting
 
 ### Common Issues
 
-- **Layout Issues**: If panels appear misaligned, it may be due to terminal font settings or Unicode rendering
-- **Color Problems**: Some terminals may not support all colors; use 'D' to toggle between modes
-- **Performance**: Large log output can impact performance; consider increasing buffer size if needed
+1. **Services Not Starting**: Check dependencies and logs
+2. **Layout Issues**: Resize terminal or check font settings
+3. **Performance**: Reduce log verbosity or increase refresh interval
 
-### Debugging
+### Debug Mode
 
-1. Enable debug mode with 'z' key
-2. Check terminal dimensions and layout calculations
-3. Review logs for any error messages
+Enable debug mode with 'z' key to see:
+- Additional log messages
+- Service state details
+- Performance metrics
+
+## Development
+
+### Adding a New Service Type
+
+1. Implement the `services.Service` interface
+2. Add API interface in `internal/api/`
+3. Register with orchestrator
+4. Add rendering in `internal/tui/view/`
+
+### Modifying the UI
+
+1. Update model types for new state
+2. Add message types for interactions
+3. Handle messages in controller
+4. Update view rendering
+
+### Testing
+
+The TUI includes comprehensive tests:
+- Unit tests for model logic
+- Golden file tests for view rendering
+- Integration tests with mock services
 
 ## Future Enhancements
 
-- Clickable UI elements for easier navigation
-- Additional panel types for other service statuses
-- Draggable/resizable panels
-- Configuration options for colors and layout
-- Search functionality in logs 
+- Service grouping and filtering
+- Custom keyboard shortcuts
+- Export/import of service configurations
+- Performance metrics dashboard
+- WebSocket support for remote monitoring 

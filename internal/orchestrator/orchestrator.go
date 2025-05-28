@@ -14,7 +14,10 @@ import (
 	"sync"
 )
 
-// StopReason tracks why a service was stopped
+// StopReason tracks why a service was stopped.
+// This is crucial for the auto-recovery mechanism to distinguish between
+// user-initiated stops (which should not be auto-restarted) and
+// dependency-related stops (which should be auto-restarted when dependencies recover).
 type StopReason int
 
 const (
@@ -22,7 +25,10 @@ const (
 	StopReasonDependency                   // Service stopped due to dependency failure
 )
 
-// Orchestrator manages services using the new service registry architecture
+// Orchestrator manages services using the new service registry architecture.
+// It coordinates the lifecycle of all services, handles dependencies, and
+// provides automatic recovery capabilities. The orchestrator is the central
+// control point for all service operations in envctl.
 type Orchestrator struct {
 	registry services.ServiceRegistry
 	kubeMgr  kube.Manager
@@ -35,26 +41,30 @@ type Orchestrator struct {
 	mcpServers   []config.MCPServerDefinition
 
 	// Service tracking
-	stopReasons     map[string]StopReason
-	pendingRestarts map[string]bool
-	healthCheckers  map[string]bool // Track which services have health checkers running
+	stopReasons     map[string]StopReason // Tracks why each service was stopped for auto-recovery decisions
+	pendingRestarts map[string]bool       // Services waiting to be restarted after dependency recovery
+	healthCheckers  map[string]bool       // Track which services have health checkers running to avoid duplicates
 
 	// Context for cancellation
 	ctx        context.Context
 	cancelFunc context.CancelFunc
 
-	mu sync.RWMutex
+	mu sync.RWMutex // Protects concurrent access to service tracking maps
 }
 
-// Config holds configuration for the new orchestrator
+// Config holds configuration for the new orchestrator.
+// This structure is passed during orchestrator creation to define
+// which services should be managed and their configurations.
 type Config struct {
-	MCName       string
-	WCName       string
-	PortForwards []config.PortForwardDefinition
-	MCPServers   []config.MCPServerDefinition
+	MCName       string                         // Management cluster name
+	WCName       string                         // Workload cluster name (optional)
+	PortForwards []config.PortForwardDefinition // Port forward configurations
+	MCPServers   []config.MCPServerDefinition   // MCP server configurations
 }
 
-// New creates a new orchestrator using the service registry
+// New creates a new orchestrator using the service registry.
+// This initializes the orchestrator with the provided configuration but
+// does not start any services. Call Start() to begin service management.
 func New(cfg Config) *Orchestrator {
 	// Create service registry
 	registry := services.NewRegistry()
@@ -75,31 +85,42 @@ func New(cfg Config) *Orchestrator {
 	}
 }
 
-// Start initializes and starts all services
+// Start initializes and starts all services.
+// This method:
+// 1. Builds the dependency graph to understand service relationships
+// 2. Registers all configured services with the registry
+// 3. Starts services in dependency order (K8s connections → port forwards → MCP servers)
+// 4. Begins monitoring services for health and auto-recovery
+//
+// The method is idempotent and can be called multiple times safely.
 func (o *Orchestrator) Start(ctx context.Context) error {
-	// Create cancellable context
+	// Create cancellable context for graceful shutdown
 	o.ctx, o.cancelFunc = context.WithCancel(ctx)
 
-	// Build dependency graph
+	// Build dependency graph to understand service relationships
 	o.depGraph = o.buildDependencyGraph()
 
-	// Register all services
+	// Register all services with the registry
 	if err := o.registerServices(); err != nil {
 		return fmt.Errorf("failed to register services: %w", err)
 	}
 
-	// Start services in dependency order
+	// Start services in dependency order to ensure prerequisites are met
 	if err := o.startServicesInOrder(); err != nil {
 		return fmt.Errorf("failed to start services: %w", err)
 	}
 
 	// Start monitoring for service health and restarts
+	// This goroutine runs for the lifetime of the orchestrator
 	go o.monitorServices()
 
 	return nil
 }
 
-// Stop gracefully stops all services
+// Stop gracefully stops all services.
+// Services are stopped in reverse dependency order to ensure
+// dependent services are stopped before their dependencies.
+// This prevents errors and ensures clean shutdown.
 func (o *Orchestrator) Stop() error {
 	if o.cancelFunc != nil {
 		o.cancelFunc()
@@ -109,14 +130,17 @@ func (o *Orchestrator) Stop() error {
 	return o.stopAllServices()
 }
 
-// StartService starts a specific service by label
+// StartService starts a specific service by label.
+// This method ensures all dependencies are running before starting the service.
+// If dependencies are not running, they will be started automatically.
+// The service is removed from the stop reasons tracking to enable auto-recovery.
 func (o *Orchestrator) StartService(label string) error {
 	service, exists := o.registry.Get(label)
 	if !exists {
 		return fmt.Errorf("service %s not found", label)
 	}
 
-	// Check dependencies first
+	// Check and start dependencies first to ensure prerequisites are met
 	if err := o.checkDependencies(label); err != nil {
 		return fmt.Errorf("dependency check failed: %w", err)
 	}
@@ -126,7 +150,7 @@ func (o *Orchestrator) StartService(label string) error {
 		return fmt.Errorf("failed to start service %s: %w", label, err)
 	}
 
-	// Remove from stop reasons if it was there
+	// Remove from stop reasons to enable auto-recovery if it fails later
 	o.mu.Lock()
 	delete(o.stopReasons, label)
 	o.mu.Unlock()
@@ -135,14 +159,21 @@ func (o *Orchestrator) StartService(label string) error {
 	return nil
 }
 
-// StopService stops a specific service by label
+// StopService stops a specific service by label.
+// This method:
+// 1. Marks the service as manually stopped (prevents auto-restart)
+// 2. Stops the service itself
+// 3. Cascades the stop to all dependent services
+//
+// Manually stopped services will not be auto-restarted even if their
+// dependencies recover. This respects user intent.
 func (o *Orchestrator) StopService(label string) error {
 	service, exists := o.registry.Get(label)
 	if !exists {
 		return fmt.Errorf("service %s not found", label)
 	}
 
-	// Mark as manually stopped
+	// Mark as manually stopped to prevent auto-restart
 	o.mu.Lock()
 	o.stopReasons[label] = StopReasonManual
 	o.mu.Unlock()
@@ -152,7 +183,8 @@ func (o *Orchestrator) StopService(label string) error {
 		return fmt.Errorf("failed to stop service %s: %w", label, err)
 	}
 
-	// Stop dependent services
+	// Stop dependent services to maintain consistency
+	// We continue even if this fails to ensure the main service is stopped
 	if err := o.stopDependentServices(label); err != nil {
 		logging.Error("Orchestrator", err, "Failed to stop dependent services for %s", label)
 	}
@@ -161,14 +193,16 @@ func (o *Orchestrator) StopService(label string) error {
 	return nil
 }
 
-// RestartService restarts a specific service by label
+// RestartService restarts a specific service by label.
+// This is a convenience method that stops and starts the service.
+// Unlike stop/start separately, this maintains the service's auto-recovery status.
 func (o *Orchestrator) RestartService(label string) error {
 	service, exists := o.registry.Get(label)
 	if !exists {
 		return fmt.Errorf("service %s not found", label)
 	}
 
-	// Restart the service
+	// Restart the service (internally handles stop/start sequence)
 	if err := service.Restart(o.ctx); err != nil {
 		return fmt.Errorf("failed to restart service %s: %w", label, err)
 	}
@@ -177,24 +211,33 @@ func (o *Orchestrator) RestartService(label string) error {
 	return nil
 }
 
-// GetServiceRegistry returns the service registry for API access
+// GetServiceRegistry returns the service registry for API access.
+// This allows external components (like the API server) to query
+// service status without going through the orchestrator.
 func (o *Orchestrator) GetServiceRegistry() services.ServiceRegistry {
 	return o.registry
 }
 
-// registerServices creates and registers all configured services
+// registerServices creates and registers all configured services.
+// Services are registered in a specific order to ensure proper initialization:
+// 1. K8s connections (foundation services)
+// 2. Port forwards (depend on K8s connections)
+// 3. MCP servers (may depend on port forwards)
+//
+// Registration does not start services, it only makes them available
+// in the registry for later management.
 func (o *Orchestrator) registerServices() error {
-	// Register K8s connection services
+	// Register K8s connection services first as they are the foundation
 	if err := o.registerK8sServices(); err != nil {
 		return fmt.Errorf("failed to register K8s services: %w", err)
 	}
 
-	// Register port forward services
+	// Register port forward services which depend on K8s connections
 	if err := o.registerPortForwardServices(); err != nil {
 		return fmt.Errorf("failed to register port forward services: %w", err)
 	}
 
-	// Register MCP server services
+	// Register MCP server services which may depend on port forwards
 	if err := o.registerMCPServices(); err != nil {
 		return fmt.Errorf("failed to register MCP services: %w", err)
 	}
@@ -202,7 +245,9 @@ func (o *Orchestrator) registerServices() error {
 	return nil
 }
 
-// registerK8sServices registers Kubernetes connection services
+// registerK8sServices registers Kubernetes connection services.
+// These are the foundation services that establish connections to
+// Giant Swarm clusters via Teleport. All other services depend on these.
 func (o *Orchestrator) registerK8sServices() error {
 	// Register MC connection if configured
 	if o.mcName != "" {
@@ -216,6 +261,7 @@ func (o *Orchestrator) registerK8sServices() error {
 	}
 
 	// Register WC connection if configured
+	// WC connections require an MC name to build the full context name
 	if o.wcName != "" && o.mcName != "" {
 		wcContext := o.kubeMgr.BuildWcContextName(o.mcName, o.wcName)
 		wcLabel := fmt.Sprintf("k8s-wc-%s", o.wcName)
@@ -229,9 +275,12 @@ func (o *Orchestrator) registerK8sServices() error {
 	return nil
 }
 
-// registerPortForwardServices registers port forward services
+// registerPortForwardServices registers port forward services.
+// These services create kubectl port-forward tunnels to expose
+// cluster services locally. They depend on K8s connections.
 func (o *Orchestrator) registerPortForwardServices() error {
 	for _, pf := range o.portForwards {
+		// Skip disabled port forwards
 		if !pf.Enabled {
 			continue
 		}
@@ -245,9 +294,13 @@ func (o *Orchestrator) registerPortForwardServices() error {
 	return nil
 }
 
-// registerMCPServices registers MCP server services
+// registerMCPServices registers MCP server services.
+// These services run Model Context Protocol servers that provide
+// AI assistants with access to Kubernetes and monitoring data.
+// They may depend on port forwards for accessing cluster services.
 func (o *Orchestrator) registerMCPServices() error {
 	for _, mcp := range o.mcpServers {
+		// Skip disabled MCP servers
 		if !mcp.Enabled {
 			continue
 		}
