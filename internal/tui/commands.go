@@ -1,12 +1,13 @@
 package tui
 
 import (
-	"envctl/internal/utils"
 	"fmt"
 	"os/exec"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/giantswarm/envctl/internal/utils"
 )
 
 // fetchNodeStatusCmd creates a tea.Cmd to asynchronously fetch the node status.

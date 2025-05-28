@@ -1,6 +1,6 @@
 package main
 
-import "envctl/cmd"
+import "github.com/giantswarm/envctl/cmd"
 
 // Version can be set during build with -ldflags
 var version = "dev"

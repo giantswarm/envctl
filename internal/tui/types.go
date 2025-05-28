@@ -1,8 +1,9 @@
 package tui
 
 import (
-	"envctl/internal/utils"
 	"time"
+
+	"github.com/giantswarm/envctl/internal/utils"
 )
 
 // clusterHealthInfo holds basic health data for a Kubernetes cluster, specifically node readiness.
