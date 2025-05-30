@@ -82,17 +82,14 @@ func TestMKeyPressTriggersToolsFetch(t *testing.T) {
 			"server1": {
 				Name:  "server1",
 				State: "Running",
-				Port:  8080,
 			},
 			"server2": {
 				Name:  "server2",
 				State: "Stopped",
-				Port:  8081,
 			},
 			"server3": {
 				Name:  "server3",
 				State: "Running",
-				Port:  8082,
 			},
 		},
 		MCPServiceAPI: &mockMCPServiceAPI{},

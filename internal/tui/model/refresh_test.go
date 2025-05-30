@@ -89,8 +89,8 @@ func TestRefreshServiceData(t *testing.T) {
 				{Label: "pf2", State: "stopped"},
 			},
 			mcpServers: []*api.MCPServerInfo{
-				{Label: "mcp1", Name: "mcp1", Port: 8080},
-				{Label: "mcp2", Name: "mcp2", Port: 9090},
+				{Label: "mcp1", Name: "mcp1"},
+				{Label: "mcp2", Name: "mcp2"},
 			},
 			wantError: false,
 		},

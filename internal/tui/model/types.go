@@ -282,14 +282,6 @@ func (m *Model) RefreshServiceData() error {
 	return nil
 }
 
-// GetMCPServerPort returns the port for an MCP server
-func (m *Model) GetMCPServerPort(name string) int {
-	if mcp, exists := m.MCPServers[name]; exists {
-		return mcp.Port
-	}
-	return 0
-}
-
 // GetK8sConnectionHealth returns the health info for a K8s connection
 func (m *Model) GetK8sConnectionHealth(label string) (ready int, total int, healthy bool) {
 	if conn, exists := m.K8sConnections[label]; exists {
@@ -300,12 +292,12 @@ func (m *Model) GetK8sConnectionHealth(label string) (ready int, total int, heal
 }
 
 // GetMCPServerStatus returns the status of an mcp server
-func (m *Model) GetMCPServerStatus(label string) (running bool, localPort int, remotePort int) {
+func (m *Model) GetMCPServerStatus(label string) (running bool, pid int) {
 	if mcp, exists := m.MCPServers[label]; exists {
 		running = mcp.State == "running"
-		return running, mcp.PID, mcp.Port
+		return running, mcp.PID
 	}
-	return false, 0, 0
+	return false, 0
 }
 
 // GetPortForwardStatus returns the status of a port forward

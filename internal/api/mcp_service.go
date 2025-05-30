@@ -14,7 +14,6 @@ import (
 type MCPServerInfo struct {
 	Label   string `json:"label"`
 	Name    string `json:"name"`
-	Port    int    `json:"port"`
 	PID     int    `json:"pid"`
 	State   string `json:"state"`
 	Health  string `json:"health"`
@@ -78,9 +77,6 @@ func (api *mcpServiceAPI) GetServerInfo(ctx context.Context, label string) (*MCP
 
 		if name, ok := data["name"].(string); ok {
 			info.Name = name
-		}
-		if port, ok := data["port"].(int); ok {
-			info.Port = port
 		}
 		if pid, ok := data["pid"].(int); ok {
 			info.PID = pid

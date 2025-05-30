@@ -36,7 +36,6 @@ func TestGenerateMcpConfigJson(t *testing.T) {
 			mcpServers: map[string]*api.MCPServerInfo{
 				"test-server": {
 					Name:   "test-server",
-					Port:   8080,
 					State:  "Running",
 					Health: "Healthy",
 				},
@@ -77,8 +76,8 @@ func TestGenerateMcpConfigJson(t *testing.T) {
 				},
 			},
 			mcpServers: map[string]*api.MCPServerInfo{
-				"server1": {Name: "server1", Port: 8001, State: "Running", Health: "Healthy"},
-				"server2": {Name: "server2", Port: 8002, State: "Running", Health: "Healthy"},
+				"server1": {Name: "server1", State: "Running", Health: "Healthy"},
+				"server2": {Name: "server2", State: "Running", Health: "Healthy"},
 			},
 			aggregatorPort: 8080,
 			expectedKeys:   []string{"envctl-aggregator"},
@@ -170,13 +169,11 @@ func TestGenerateMcpConfigJson_SpecificValues(t *testing.T) {
 	mcpServers := map[string]*api.MCPServerInfo{
 		"test-server": {
 			Name:   "test-server",
-			Port:   9090,
 			State:  "Running",
 			Health: "Healthy",
 		},
 		"another-server": {
 			Name:   "another-server",
-			Port:   9091,
 			State:  "Running",
 			Health: "Warning",
 		},

@@ -90,21 +90,17 @@ func renderMcpProxiesRow(m *model.Model, width, maxHeight int) string {
 	return lipgloss.NewStyle().Width(width).Align(lipgloss.Left).MaxHeight(maxHeight).Render(row)
 }
 
-// renderMcpProxyPanel(renders one MCP proxy status panel to match v1 exactly
+// renderMcpProxyPanel renders one MCP proxy status panel to match v1 exactly
 func renderMcpProxyPanel(serverName string, predefinedData config.MCPServerDefinition, proc *api.MCPServerInfo, m *model.Model, targetOuterWidth int) string {
 	var baseStyle lipgloss.Style
 	var contentFg lipgloss.Style
 	statusMsg := "Not Started"
 	pidStr := "PID: N/A"
-	portStr := "Port: N/A"
 
 	if proc != nil {
 		statusMsg = proc.State
 		if proc.PID > 0 {
 			pidStr = fmt.Sprintf("PID: %d", proc.PID)
-		}
-		if proc.Port > 0 {
-			portStr = fmt.Sprintf("Port: %d", proc.Port)
 		}
 		st := strings.ToLower(proc.State)
 		switch {
@@ -139,8 +135,6 @@ func renderMcpProxyPanel(serverName string, predefinedData config.MCPServerDefin
 	b.WriteString(color.PortTitleStyle.Render(SafeIcon(icon) + strings.TrimSpace(predefinedData.Name) + " MCP"))
 	b.WriteString("\n")
 	b.WriteString(pidStr)
-	b.WriteString("\n")
-	b.WriteString(portStr)
 	b.WriteString("\n")
 
 	var iconStr string

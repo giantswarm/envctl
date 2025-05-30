@@ -146,7 +146,6 @@ func TestGetMCPServerInfo(t *testing.T) {
 		health:      services.HealthHealthy,
 		serviceData: map[string]interface{}{
 			"name":    "test-mcp",
-			"port":    8080,
 			"pid":     12345,
 			"icon":    "🔧",
 			"enabled": true,
@@ -175,10 +174,6 @@ func TestGetMCPServerInfo(t *testing.T) {
 
 	if info.Name != "test-mcp" {
 		t.Errorf("Expected name 'test-mcp', got %s", info.Name)
-	}
-
-	if info.Port != 8080 {
-		t.Errorf("Expected port 8080, got %d", info.Port)
 	}
 
 	if info.PID != 12345 {
@@ -260,7 +255,6 @@ func TestListMCPServers(t *testing.T) {
 		serviceData: map[string]interface{}{
 			"name":    "mcp-1",
 			"command": "npx mcp-server-1",
-			"port":    8080,
 		},
 	}
 
@@ -272,7 +266,6 @@ func TestListMCPServers(t *testing.T) {
 		serviceData: map[string]interface{}{
 			"name":    "mcp-2",
 			"command": "npx mcp-server-2",
-			"port":    8081,
 		},
 	}
 
@@ -340,10 +333,6 @@ func TestMCPServerInfo_Defaults(t *testing.T) {
 	}
 
 	// Check default values
-	if info.Port != 0 {
-		t.Errorf("Expected port 0, got %d", info.Port)
-	}
-
 	if info.PID != 0 {
 		t.Errorf("Expected PID 0, got %d", info.PID)
 	}
@@ -464,7 +453,6 @@ func TestGetServerInfo(t *testing.T) {
 				service.On("GetLastError").Return(nil)
 				service.On("GetServiceData").Return(map[string]interface{}{
 					"name":    "Test Server",
-					"port":    8080,
 					"pid":     12345,
 					"icon":    "🔧",
 					"enabled": true,
@@ -473,7 +461,6 @@ func TestGetServerInfo(t *testing.T) {
 			expectedInfo: &MCPServerInfo{
 				Label:   "test-server",
 				Name:    "Test Server",
-				Port:    8080,
 				PID:     12345,
 				State:   "Running",
 				Health:  "Healthy",
@@ -561,7 +548,6 @@ func TestListServers(t *testing.T) {
 	mockService1.On("GetLastError").Return(nil)
 	mockService1.On("GetServiceData").Return(map[string]interface{}{
 		"name": "Server 1",
-		"port": 8080,
 	})
 
 	// Setup service 2
@@ -572,7 +558,6 @@ func TestListServers(t *testing.T) {
 	mockService2.On("GetLastError").Return(nil)
 	mockService2.On("GetServiceData").Return(map[string]interface{}{
 		"name": "Server 2",
-		"port": 8081,
 	})
 
 	// Create API
@@ -587,11 +572,9 @@ func TestListServers(t *testing.T) {
 	assert.Len(t, servers, 2)
 	assert.Equal(t, "server1", servers[0].Label)
 	assert.Equal(t, "Server 1", servers[0].Name)
-	assert.Equal(t, 8080, servers[0].Port)
 	assert.Equal(t, "Running", servers[0].State)
 	assert.Equal(t, "server2", servers[1].Label)
 	assert.Equal(t, "Server 2", servers[1].Name)
-	assert.Equal(t, 8081, servers[1].Port)
 	assert.Equal(t, "Stopped", servers[1].State)
 
 	// Verify mocks

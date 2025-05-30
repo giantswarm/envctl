@@ -167,45 +167,6 @@ func TestAppMode_String(t *testing.T) {
 	}
 }
 
-func TestGetMCPServerPort(t *testing.T) {
-	m := &Model{
-		MCPServers: map[string]*api.MCPServerInfo{
-			"server1": {Name: "server1", Port: 8080},
-			"server2": {Name: "server2", Port: 9090},
-		},
-	}
-
-	tests := []struct {
-		name       string
-		serverName string
-		want       int
-	}{
-		{
-			name:       "existing server",
-			serverName: "server1",
-			want:       8080,
-		},
-		{
-			name:       "another existing server",
-			serverName: "server2",
-			want:       9090,
-		},
-		{
-			name:       "non-existing server",
-			serverName: "server3",
-			want:       0,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := m.GetMCPServerPort(tt.serverName); got != tt.want {
-				t.Errorf("GetMCPServerPort() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestGetK8sConnectionHealth(t *testing.T) {
 	m := &Model{
 		K8sConnections: map[string]*api.K8sConnectionInfo{
