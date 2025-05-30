@@ -10,6 +10,7 @@ type EnvctlConfig struct {
 	MCPServers     []MCPServerDefinition   `yaml:"mcpServers"`
 	PortForwards   []PortForwardDefinition `yaml:"portForwards"`
 	GlobalSettings GlobalSettings          `yaml:"globalSettings"`
+	Aggregator     AggregatorConfig        `yaml:"aggregator"`
 }
 
 // GlobalSettings might include things like default log levels, container runtime preferences, etc.
@@ -38,9 +39,6 @@ type MCPServerDefinition struct {
 	// Fields for Type = "localCommand"
 	Command []string          `yaml:"command,omitempty"` // Command and its arguments, e.g., ["npx", "mcp-server-kubernetes"]
 	Env     map[string]string `yaml:"env,omitempty"`     // Environment variables
-
-	// MCP Proxy Configuration
-	ProxyPort int `yaml:"proxyPort,omitempty"` // Port for mcp-proxy to listen on (0 for random)
 
 	// Fields for Type = "container"
 	Image            string            `yaml:"image,omitempty"`            // Container image, e.g., "giantswarm/mcp-server-prometheus:latest"
@@ -75,6 +73,13 @@ type PortForwardDefinition struct {
 	RemotePort          string        `yaml:"remotePort"`
 	BindAddress         string        `yaml:"bindAddress,omitempty"`         // Default "127.0.0.1"
 	HealthCheckInterval time.Duration `yaml:"healthCheckInterval,omitempty"` // Optional: custom health check interval
+}
+
+// AggregatorConfig defines the configuration for the MCP aggregator service.
+type AggregatorConfig struct {
+	Port    int    `yaml:"port,omitempty"`    // Port for the aggregator SSE endpoint (default: 8080)
+	Host    string `yaml:"host,omitempty"`    // Host to bind to (default: localhost)
+	Enabled bool   `yaml:"enabled,omitempty"` // Whether the aggregator is enabled (default: true if MCP servers exist)
 }
 
 // GetDefaultConfig returns the default configuration for envctl.
@@ -137,17 +142,15 @@ func GetDefaultConfig(mcName, wcName string) EnvctlConfig {
 				Icon:                 "☸",
 				Category:             "Core",
 				Command:              []string{"npx", "mcp-server-kubernetes"},
-				ProxyPort:            8001,
 				RequiresPortForwards: []string{},
 			},
 			{
-				Name:      "prometheus",
-				Type:      MCPServerTypeLocalCommand,
-				Enabled:   true,
-				Icon:      "🔥",
-				Category:  "Monitoring",
-				Command:   []string{"uv", "--directory", "/home/teemow/projects/prometheus-mcp-server", "run", "src/prometheus_mcp_server/main.py"},
-				ProxyPort: 8002,
+				Name:     "prometheus",
+				Type:     MCPServerTypeLocalCommand,
+				Enabled:  true,
+				Icon:     "🔥",
+				Category: "Monitoring",
+				Command:  []string{"uv", "--directory", "/home/teemow/projects/prometheus-mcp-server", "run", "src/prometheus_mcp_server/main.py"},
 				Env: map[string]string{
 					"PROMETHEUS_URL": "http://localhost:8080/prometheus",
 					"ORG_ID":         "giantswarm",
@@ -161,13 +164,17 @@ func GetDefaultConfig(mcName, wcName string) EnvctlConfig {
 				Icon:                 "📊",
 				Category:             "Monitoring",
 				Command:              []string{"mcp-grafana"},
-				ProxyPort:            8003,
 				Env:                  map[string]string{"GRAFANA_URL": "http://localhost:3000"},
 				RequiresPortForwards: []string{"mc-grafana"},
 			},
 		},
 		GlobalSettings: GlobalSettings{
 			DefaultContainerRuntime: "docker",
+		},
+		Aggregator: AggregatorConfig{
+			Port:    8080,
+			Host:    "localhost",
+			Enabled: true,
 		},
 	}
 }

@@ -172,6 +172,7 @@ type Model struct {
 	// Configuration
 	PortForwardingConfig []config.PortForwardDefinition
 	MCPServerConfig      []config.MCPServerDefinition
+	AggregatorConfig     config.AggregatorConfig
 
 	// UI State & Output
 	ActivityLog              []string
@@ -193,6 +194,7 @@ type Model struct {
 	StatusBarMessage         string
 	StatusBarMessageType     MessageType
 	StatusBarClearCancel     chan struct{}
+	PeriodicTickerStarted    bool
 
 	// Logging
 	LogChannel <-chan logging.LogEntry
@@ -217,10 +219,13 @@ func (m *Model) RefreshServiceData() error {
 		newK8sConnections[conn.Label] = conn
 	}
 
-	// Only update order if it's empty (first time)
-	if len(m.K8sConnectionOrder) == 0 {
-		m.K8sConnectionOrder = []string{}
-		for _, conn := range k8sConns {
+	// Update order - add any new connections that aren't in the order yet
+	existingInOrder := make(map[string]bool)
+	for _, label := range m.K8sConnectionOrder {
+		existingInOrder[label] = true
+	}
+	for _, conn := range k8sConns {
+		if !existingInOrder[conn.Label] {
 			m.K8sConnectionOrder = append(m.K8sConnectionOrder, conn.Label)
 		}
 	}
@@ -238,10 +243,13 @@ func (m *Model) RefreshServiceData() error {
 		newPortForwards[pf.Label] = pf
 	}
 
-	// Only update order if it's empty (first time)
-	if len(m.PortForwardOrder) == 0 {
-		m.PortForwardOrder = []string{}
-		for _, pf := range portForwards {
+	// Update order - add any new port forwards that aren't in the order yet
+	existingPFInOrder := make(map[string]bool)
+	for _, label := range m.PortForwardOrder {
+		existingPFInOrder[label] = true
+	}
+	for _, pf := range portForwards {
+		if !existingPFInOrder[pf.Label] {
 			m.PortForwardOrder = append(m.PortForwardOrder, pf.Label)
 		}
 	}
@@ -256,14 +264,17 @@ func (m *Model) RefreshServiceData() error {
 	// Update MCP servers while preserving order
 	newMCPServers := make(map[string]*api.MCPServerInfo)
 	for _, mcp := range mcpServers {
-		newMCPServers[mcp.Name] = mcp
+		newMCPServers[mcp.Label] = mcp
 	}
 
-	// Only update order if it's empty (first time)
-	if len(m.MCPServerOrder) == 0 {
-		m.MCPServerOrder = []string{}
-		for _, mcp := range mcpServers {
-			m.MCPServerOrder = append(m.MCPServerOrder, mcp.Name)
+	// Update order - add any new MCP servers that aren't in the order yet
+	existingMCPInOrder := make(map[string]bool)
+	for _, name := range m.MCPServerOrder {
+		existingMCPInOrder[name] = true
+	}
+	for _, mcp := range mcpServers {
+		if !existingMCPInOrder[mcp.Label] {
+			m.MCPServerOrder = append(m.MCPServerOrder, mcp.Label)
 		}
 	}
 	m.MCPServers = newMCPServers
@@ -286,6 +297,15 @@ func (m *Model) GetK8sConnectionHealth(label string) (ready int, total int, heal
 		return conn.ReadyNodes, conn.TotalNodes, healthy
 	}
 	return 0, 0, false
+}
+
+// GetMCPServerStatus returns the status of an mcp server
+func (m *Model) GetMCPServerStatus(label string) (running bool, localPort int, remotePort int) {
+	if mcp, exists := m.MCPServers[label]; exists {
+		running = mcp.State == "running"
+		return running, mcp.PID, mcp.Port
+	}
+	return false, 0, 0
 }
 
 // GetPortForwardStatus returns the status of a port forward

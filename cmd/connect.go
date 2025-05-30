@@ -12,7 +12,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	// For TUI program
 
@@ -158,8 +157,6 @@ Arguments:
 			// Graceful shutdown sequence
 			logging.Info("CLI", "\n--- Shutting down services ---")
 			orch.Stop()
-			// Allow time for services to clean up
-			time.Sleep(1 * time.Second)
 
 		} else {
 			// TUI Mode: Interactive terminal interface for monitoring and control

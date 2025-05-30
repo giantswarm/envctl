@@ -336,3 +336,95 @@ func TestOrchestrator_GetServiceRegistry(t *testing.T) {
 	assert.NotNil(t, registry)
 	assert.Equal(t, o.registry, registry)
 }
+
+// TestServicesRegisteredOnStart verifies that services are registered when the orchestrator starts
+func TestServicesRegisteredOnStart(t *testing.T) {
+	tests := []struct {
+		name             string
+		config           Config
+		expectedServices []string
+	}{
+		{
+			name: "registers k8s and port forward services",
+			config: Config{
+				MCName: "test-mc",
+				WCName: "test-wc",
+				PortForwards: []config.PortForwardDefinition{
+					{Name: "pf-prometheus", Enabled: true},
+					{Name: "pf-grafana", Enabled: true},
+					{Name: "pf-disabled", Enabled: false}, // Should not be registered
+				},
+			},
+			expectedServices: []string{
+				"k8s-mc-test-mc",
+				"k8s-wc-test-wc",
+				"pf-prometheus",
+				"pf-grafana",
+			},
+		},
+		{
+			name: "registers mcp and aggregator services",
+			config: Config{
+				MCName: "test-mc",
+				MCPServers: []config.MCPServerDefinition{
+					{Name: "mcp-kube", Enabled: true},
+					{Name: "mcp-grafana", Enabled: true},
+					{Name: "mcp-disabled", Enabled: false}, // Should not be registered
+				},
+				AggregatorPort: 8080,
+			},
+			expectedServices: []string{
+				"k8s-mc-test-mc",
+				"mcp-kube",
+				"mcp-grafana",
+				"mcp-aggregator",
+			},
+		},
+		{
+			name: "does not register aggregator without mcp servers",
+			config: Config{
+				MCName:         "test-mc",
+				AggregatorPort: 8080,
+				// No enabled MCP servers
+			},
+			expectedServices: []string{
+				"k8s-mc-test-mc",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create orchestrator
+			o := New(tt.config)
+
+			// Start the orchestrator to register services
+			ctx := context.Background()
+			err := o.Start(ctx)
+			require.NoError(t, err)
+			defer o.Stop()
+
+			// Verify expected services are registered
+			for _, label := range tt.expectedServices {
+				service, exists := o.registry.Get(label)
+				if !exists {
+					t.Errorf("Expected service %s to be registered, but it was not found", label)
+				}
+				if service == nil {
+					t.Errorf("Service %s is registered but is nil", label)
+				}
+			}
+
+			// Verify that the total number of registered services matches expected
+			allServices := o.registry.GetAll()
+			if len(allServices) != len(tt.expectedServices) {
+				t.Errorf("Expected %d services to be registered, but found %d", len(tt.expectedServices), len(allServices))
+				// List all registered services for debugging
+				t.Logf("Registered services:")
+				for _, service := range allServices {
+					t.Logf("  - %s", service.GetLabel())
+				}
+			}
+		})
+	}
+}

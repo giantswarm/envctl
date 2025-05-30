@@ -40,10 +40,10 @@ type ContextSwitchAndReinitializeResultMsg struct {
 	Err             error
 }
 
+// KubeContextSwitchedMsg indicates that the kube context switch operation completed
 type KubeContextSwitchedMsg struct {
 	TargetContext string
 	Err           error
-	DebugInfo     string
 }
 
 type ClusterListResultMsg struct {
@@ -153,6 +153,3 @@ type ServiceStoppedMsg struct {
 type ServiceRestartedMsg struct {
 	Label string
 }
-
-// InitializationCompleteMsg indicates that the orchestrator initialization is complete
-type InitializationCompleteMsg struct{}

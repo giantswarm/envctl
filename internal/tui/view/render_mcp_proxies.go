@@ -11,15 +11,16 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// renderMcpProxiesRow(renders the MCP proxies row
+// renderMcpProxiesRow renders the MCP proxies row
 func renderMcpProxiesRow(m *model.Model, width, maxHeight int) string {
 	// Match v1 exactly - no title above, just the panels
 	const cols = 3
 
 	// Get MCP server definitions from config
 	numServers := len(m.MCPServerConfig)
+
 	if numServers == 0 {
-		// V1 returns empty panels when no servers configured
+		// Return empty panels when no servers configured
 		var cells []string
 		for i := 0; i < cols; i++ {
 			cells = append(cells, color.PanelStyle.Copy().Width(width/cols).Render(""))
@@ -28,62 +29,58 @@ func renderMcpProxiesRow(m *model.Model, width, maxHeight int) string {
 		return lipgloss.NewStyle().Width(width).Align(lipgloss.Left).MaxHeight(maxHeight).Render(row)
 	}
 
-	// Calculate styles and borders like v1
-	totalBorder := 0
-	styles := make([]lipgloss.Style, numServers)
-	for i, def := range m.MCPServerConfig {
+	// Calculate how many items to display (max 3)
+	displayItems := numServers
+	if displayItems > cols {
+		displayItems = cols
+	}
+
+	// Calculate width for each panel
+	baseWidth := width / cols
+	remainder := width % cols
+
+	var cells []string
+
+	// Add MCP server panels
+	for i := 0; i < numServers && i < cols; i++ {
+		def := m.MCPServerConfig[i]
 		proc := m.MCPServers[def.Name]
+
+		w := baseWidth
+		if i < remainder {
+			w++
+		}
+
+		// Determine style based on state
+		var panelStyle lipgloss.Style
 		st := ""
 		if proc != nil {
 			st = strings.ToLower(proc.State)
 		}
-		var s lipgloss.Style
 		switch {
 		case proc != nil && (st == "failed" || strings.Contains(st, "error")):
-			s = color.PanelStatusErrorStyle
+			panelStyle = color.PanelStatusErrorStyle
 		case proc != nil && st == "running":
-			s = color.PanelStatusRunningStyle
+			panelStyle = color.PanelStatusRunningStyle
 		default:
-			s = color.PanelStatusInitializingStyle
+			panelStyle = color.PanelStatusInitializingStyle
 		}
-		styles[i] = s
-		if i < cols {
-			totalBorder += s.GetHorizontalFrameSize()
-		}
-	}
 
-	displayCols := numServers
-	if displayCols > cols {
-		displayCols = cols
-	}
-	innerWidth := width - totalBorder
-	if innerWidth < 0 {
-		innerWidth = 0
-	}
-	baseInner := 0
-	if displayCols > 0 {
-		baseInner = innerWidth / displayCols
-	}
-	remainder := 0
-	if displayCols > 0 {
-		remainder = innerWidth % displayCols
-	}
-
-	var cells []string
-	for i := 0; i < displayCols; i++ {
-		def := m.MCPServerConfig[i]
-		proc := m.MCPServers[def.Name]
-		w := baseInner
-		if i < remainder {
-			w++
+		// Adjust width for panel border
+		adjustedWidth := w
+		if panelStyle.GetHorizontalFrameSize() > 0 {
+			// Panel has border, ensure we account for it
+			adjustedWidth = w
 		}
-		rendered := renderMcpProxyPanel(def.Name, def, proc, m, w+styles[i].GetHorizontalFrameSize())
+
+		rendered := renderMcpProxyPanel(def.Name, def, proc, m, adjustedWidth)
 		cells = append(cells, rendered)
 	}
+
 	// Fill remaining columns with empty panels
-	for i := numServers; i < cols; i++ {
-		w := baseInner
-		if i < remainder {
+	for len(cells) < cols {
+		w := baseWidth
+		if len(cells) < remainder {
 			w++
 		}
 		cells = append(cells, color.PanelStyle.Copy().Width(w).Render(""))
@@ -164,10 +161,10 @@ func renderMcpProxyPanel(serverName string, predefinedData config.MCPServerDefin
 	}
 	b.WriteString(contentFg.Render(fmt.Sprintf("Status: %s%s", iconStr, trimStatusMessage(statusMsg))))
 
-	// Add health indicator
+	// Add health indicator - always show it like port forwards do
+	b.WriteString("\n")
+	var healthIcon, healthText string
 	if proc != nil {
-		b.WriteString("\n")
-		var healthIcon, healthText string
 		stateLower := strings.ToLower(proc.State)
 		healthLower := strings.ToLower(proc.Health)
 		if stateLower == "running" && healthLower == "healthy" {
@@ -180,8 +177,11 @@ func renderMcpProxyPanel(serverName string, predefinedData config.MCPServerDefin
 			healthIcon = SafeIcon(IconHourglass)
 			healthText = "Checking..."
 		}
-		b.WriteString(contentFg.Render(fmt.Sprintf("Health: %s%s", healthIcon, healthText)))
+	} else {
+		healthIcon = SafeIcon(IconWarning)
+		healthText = "Not Started"
 	}
+	b.WriteString(contentFg.Render(fmt.Sprintf("Health: %s%s", healthIcon, healthText)))
 
 	frame := final.GetHorizontalFrameSize()
 	width := targetOuterWidth - frame

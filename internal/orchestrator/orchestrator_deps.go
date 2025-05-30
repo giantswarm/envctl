@@ -35,16 +35,13 @@ func (o *Orchestrator) buildDependencyGraph() *dependency.Graph {
 		})
 	}
 
-	// WC connections depend on MC connections because they need the MC
-	// to be available for proper cluster access through Teleport
 	if o.wcName != "" && o.mcName != "" {
 		wcLabel := fmt.Sprintf("k8s-wc-%s", o.wcName)
-		mcLabel := fmt.Sprintf("k8s-mc-%s", o.mcName)
 		graph.AddNode(dependency.Node{
 			ID:           dependency.NodeID(wcLabel),
 			FriendlyName: fmt.Sprintf("K8s WC: %s", o.wcName),
 			Kind:         dependency.KindK8sConnection,
-			DependsOn:    []dependency.NodeID{dependency.NodeID(mcLabel)},
+			DependsOn:    []dependency.NodeID{},
 		})
 	}
 
@@ -97,10 +94,13 @@ func (o *Orchestrator) buildDependencyGraph() *dependency.Graph {
 			for _, pf := range o.portForwards {
 				if pf.Name == pfName && pf.Enabled {
 					deps = append(deps, depNodeID)
+					logging.Debug("Orchestrator", "MCP server %s depends on port forward %s", mcp.Name, pfName)
 					break
 				}
 			}
 		}
+
+		logging.Debug("Orchestrator", "Adding MCP server node: %s with dependencies: %v", nodeID, deps)
 
 		graph.AddNode(dependency.Node{
 			ID:           nodeID,
@@ -109,6 +109,14 @@ func (o *Orchestrator) buildDependencyGraph() *dependency.Graph {
 			DependsOn:    deps,
 		})
 	}
+
+	// Only add aggregator if we have MCP servers
+	graph.AddNode(dependency.Node{
+		ID:           dependency.NodeID("agg:mcp-aggregator"),
+		FriendlyName: "MCP Aggregator",
+		Kind:         dependency.KindK8sConnection,
+		DependsOn:    []dependency.NodeID{},
+	})
 
 	return graph
 }
@@ -153,9 +161,6 @@ func (o *Orchestrator) startServicesInOrder() error {
 		}
 	}
 
-	// Wait for K8s connections to stabilize before starting dependent services
-	time.Sleep(500 * time.Millisecond)
-
 	// Start port forwards which depend on K8s connections
 	for _, label := range servicesToStart {
 		service, _ := o.registry.Get(label)
@@ -166,15 +171,29 @@ func (o *Orchestrator) startServicesInOrder() error {
 		}
 	}
 
-	// Wait for port forwards to be ready before starting MCP servers
-	time.Sleep(500 * time.Millisecond)
-
 	// Start MCP servers which may depend on port forwards
+	var mcpWg sync.WaitGroup
 	for _, label := range servicesToStart {
 		service, _ := o.registry.Get(label)
 		if service.GetType() == services.TypeMCPServer {
+			mcpWg.Add(1)
+			go func(svcLabel string) {
+				defer mcpWg.Done()
+				if err := o.StartService(svcLabel); err != nil {
+					logging.Error("Orchestrator", err, "Failed to start MCP server %s", svcLabel)
+				}
+			}(label)
+		}
+	}
+	// Wait for all MCP servers to finish starting (or fail)
+	mcpWg.Wait()
+
+	// Start the aggregator which depends on MCP servers
+	for _, label := range servicesToStart {
+		service, _ := o.registry.Get(label)
+		if string(service.GetType()) == "Aggregator" {
 			if err := o.StartService(label); err != nil {
-				logging.Error("Orchestrator", err, "Failed to start MCP server %s", label)
+				logging.Error("Orchestrator", err, "Failed to start aggregator %s", label)
 			}
 		}
 	}
@@ -251,17 +270,37 @@ func (o *Orchestrator) stopDependentServices(label string) error {
 // shutdown completes even if some services hang.
 //
 // Stop order with timeouts:
-// 1. MCP servers (3 seconds) - may need time to clean up
-// 2. Port forwards (2 seconds) - kubectl processes to terminate
-// 3. K8s connections (1 second) - should stop quickly
+// 1. Aggregator (2 seconds) - depends on MCP servers
+// 2. MCP servers (3 seconds) - may need time to clean up
+// 3. Port forwards (2 seconds) - kubectl processes to terminate
+// 4. K8s connections (1 second) - should stop quickly
 func (o *Orchestrator) stopAllServices() error {
 	allServices := o.registry.GetAll()
 
-	// Stop MCP servers first with 3-second timeout
+	// Stop aggregator first with 2-second timeout
+	aggCtx, aggCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer aggCancel()
+
+	var wg sync.WaitGroup
+	for _, service := range allServices {
+		if string(service.GetType()) == "Aggregator" {
+			wg.Add(1)
+			go func(svc services.Service) {
+				defer wg.Done()
+				if err := svc.Stop(aggCtx); err != nil && err != context.DeadlineExceeded {
+					logging.Error("Orchestrator", err, "Failed to stop aggregator %s", svc.GetLabel())
+				} else {
+					logging.Debug("Orchestrator", "Stopped aggregator %s", svc.GetLabel())
+				}
+			}(service)
+		}
+	}
+	wg.Wait()
+
+	// Stop MCP servers with 3-second timeout
 	mcpCtx, mcpCancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer mcpCancel()
 
-	var wg sync.WaitGroup
 	for _, service := range allServices {
 		if service.GetType() == services.TypeMCPServer {
 			wg.Add(1)
@@ -370,9 +409,6 @@ func (o *Orchestrator) monitorServices() {
 	// Track previous states to detect state changes
 	previousStates := make(map[string]services.ServiceState)
 
-	// Wait for initial service startup before beginning health checks
-	time.Sleep(500 * time.Millisecond)
-
 	// Start health check goroutines for services that support it
 	o.startHealthCheckers()
 
@@ -442,6 +478,7 @@ func (o *Orchestrator) checkForStateChanges(previousStates map[string]services.S
 // dependency invariant while respecting user intent for manual stops.
 func (o *Orchestrator) startDependentServices(label string) {
 	nodeID := o.getNodeIDForService(label)
+	logging.Debug("Orchestrator", "Checking for dependent services of %s (nodeID: %s)", label, nodeID)
 
 	// Find all services that depend on this one
 	allServices := o.registry.GetAll()
@@ -460,14 +497,22 @@ func (o *Orchestrator) startDependentServices(label string) {
 		reason, hasReason := o.stopReasons[depLabel]
 		o.mu.RUnlock()
 
+		logging.Debug("Orchestrator", "Service %s: state=%s, hasStopReason=%v, stopReason=%v",
+			depLabel, service.GetState(), hasReason, reason)
+
 		if hasReason && reason == StopReasonDependency {
 			// Check if this service depends on the recovered service
 			depNodeID := o.getNodeIDForService(depLabel)
 			node := o.depGraph.Get(dependency.NodeID(depNodeID))
 
 			if node != nil {
+				logging.Debug("Orchestrator", "Service %s (nodeID: %s) has dependencies: %v",
+					depLabel, depNodeID, node.DependsOn)
+
 				for _, dep := range node.DependsOn {
 					if string(dep) == nodeID {
+						logging.Debug("Orchestrator", "Service %s depends on %s, adding to restart list",
+							depLabel, label)
 						servicesToStart = append(servicesToStart, depLabel)
 						break
 					}
@@ -475,6 +520,9 @@ func (o *Orchestrator) startDependentServices(label string) {
 			}
 		}
 	}
+
+	logging.Debug("Orchestrator", "Found %d services to restart after %s became running: %v",
+		len(servicesToStart), label, servicesToStart)
 
 	// Start the dependent services
 	for _, depLabel := range servicesToStart {

@@ -146,7 +146,6 @@ Model Context Protocol servers that provide AI model access.
 - Process lifecycle management
 - Health checking via JSON-RPC
 - Environment variable support
-- Port proxy integration
 
 **Configuration:**
 ```go
@@ -154,7 +153,6 @@ type MCPServerDefinition struct {
     Name                 string
     Type                 MCPServerType
     Command              []string
-    ProxyPort            int
     RequiresPortForwards []string
     Env                  map[string]string
     Enabled              bool

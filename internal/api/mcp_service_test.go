@@ -371,7 +371,7 @@ func TestGetTools(t *testing.T) {
 			setupMocks: func(registry *MockServiceRegistry, service *MockServiceDataProvider) {
 				registry.On("Get", "test-server").Return(nil, false)
 			},
-			expectedError: "failed to get server info: MCP server test-server not found",
+			expectedError: "MCP server test-server not found",
 		},
 		{
 			name:       "server not running",
@@ -379,32 +379,19 @@ func TestGetTools(t *testing.T) {
 			setupMocks: func(registry *MockServiceRegistry, service *MockServiceDataProvider) {
 				registry.On("Get", "test-server").Return(service, true)
 				service.On("GetType").Return(services.TypeMCPServer)
-				service.On("GetLabel").Return("test-server")
 				service.On("GetState").Return(services.StateStopped)
-				service.On("GetHealth").Return(services.HealthUnknown)
-				service.On("GetLastError").Return(nil)
-				service.On("GetServiceData").Return(map[string]interface{}{
-					"name": "test-server",
-					"port": 8080,
-				})
 			},
 			expectedError: "MCP server test-server is not running (state: Stopped)",
 		},
 		{
-			name:       "server has no port",
+			name:       "server does not provide client access",
 			serverName: "test-server",
 			setupMocks: func(registry *MockServiceRegistry, service *MockServiceDataProvider) {
 				registry.On("Get", "test-server").Return(service, true)
 				service.On("GetType").Return(services.TypeMCPServer)
-				service.On("GetLabel").Return("test-server")
 				service.On("GetState").Return(services.StateRunning)
-				service.On("GetHealth").Return(services.HealthHealthy)
-				service.On("GetLastError").Return(nil)
-				service.On("GetServiceData").Return(map[string]interface{}{
-					"name": "test-server",
-				})
 			},
-			expectedError: "MCP server test-server has no port configured",
+			expectedError: "MCP server test-server does not provide client access",
 		},
 	}
 

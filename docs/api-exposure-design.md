@@ -106,7 +106,6 @@ type MCPToolDetails struct {
 type MCPServerStatus struct {
     Name       string
     State      reporting.ServiceState
-    ProxyPort  int
     ToolCount  int
     LastCheck  time.Time
     Error      error

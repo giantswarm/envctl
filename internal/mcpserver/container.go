@@ -25,7 +25,7 @@ func StartAndManageContainerizedMcpServer(
 
 	logging.Info(subsystem, "Initializing containerized MCP server %s (image: %s)", label, serverConfig.Image)
 	if updateFn != nil {
-		updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "ContainerInitializing", PID: 0, ProxyPort: 0})
+		updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "ContainerInitializing", PID: 0})
 	}
 
 	// Validate configuration
@@ -33,7 +33,7 @@ func StartAndManageContainerizedMcpServer(
 		errMsg := fmt.Errorf("container image not defined for MCP server %s", label)
 		logging.Error(subsystem, errMsg, "Cannot start containerized MCP server")
 		if updateFn != nil {
-			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "ContainerStartFailed", ProcessErr: errMsg, ProxyPort: 0})
+			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "ContainerStartFailed", ProcessErr: errMsg})
 		}
 		return "", nil, errMsg
 	}
@@ -47,7 +47,7 @@ func StartAndManageContainerizedMcpServer(
 		logging.Error(subsystem, err, "Failed to pull container image")
 		close(currentStopChan)
 		if updateFn != nil {
-			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "ContainerStartFailed", ProcessErr: errMsg, PID: 0, ProxyPort: 0})
+			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "ContainerStartFailed", ProcessErr: errMsg, PID: 0})
 		}
 		return "", nil, errMsg
 	}
@@ -64,15 +64,6 @@ func StartAndManageContainerizedMcpServer(
 		HealthCheck: serverConfig.HealthCheckCmd,
 	}
 
-	// If ProxyPort is specified, ensure it's in the port mappings
-	if serverConfig.ProxyPort > 0 {
-		proxyPortMapping := fmt.Sprintf("%d:%d", serverConfig.ProxyPort, serverConfig.ProxyPort)
-		if !containsPort(containerConfig.Ports, proxyPortMapping) {
-			containerConfig.Ports = append(containerConfig.Ports, proxyPortMapping)
-			logging.Info(subsystem, "Added proxy port mapping %s", proxyPortMapping)
-		}
-	}
-
 	// Start the container
 	cID, err := runtime.StartContainer(ctx, containerConfig)
 	if err != nil {
@@ -80,7 +71,7 @@ func StartAndManageContainerizedMcpServer(
 		logging.Error(subsystem, err, "Failed to start container")
 		close(currentStopChan)
 		if updateFn != nil {
-			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "ContainerStartFailed", ProcessErr: err, PID: 0, ProxyPort: 0})
+			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "ContainerStartFailed", ProcessErr: err, PID: 0})
 		}
 		return "", nil, errMsg
 	}
@@ -99,14 +90,13 @@ func StartAndManageContainerizedMcpServer(
 	}
 
 	// Initialize with configured port or 0
-	actualPort := serverConfig.ProxyPort
+	actualPort := 0
 
 	if updateFn != nil {
 		updateFn(McpDiscreteStatusUpdate{
 			Label:         label,
 			PID:           0, // Containers don't have PIDs in the same way
 			ProcessStatus: "ContainerRunning",
-			ProxyPort:     actualPort,
 		})
 	}
 
@@ -145,7 +135,6 @@ func StartAndManageContainerizedMcpServer(
 									Label:         label,
 									PID:           0,
 									ProcessStatus: "ContainerRunning",
-									ProxyPort:     actualPort,
 								})
 							}
 						}
@@ -156,30 +145,55 @@ func StartAndManageContainerizedMcpServer(
 
 		// If we still don't have a port and container has port mappings, try to get it from Docker
 		if actualPort == 0 && len(serverConfig.ContainerPorts) > 0 {
-			// Wait a bit for container to fully start
-			time.Sleep(2 * time.Second)
+			// Create a channel to wait for port detection
+			portDetected := make(chan int, 1)
 
-			// Try to get the first container port mapping
-			for _, portMapping := range serverConfig.ContainerPorts {
-				parts := strings.Split(portMapping, ":")
-				if len(parts) >= 2 {
-					containerPort := parts[len(parts)-1]
-					if hostPort, err := runtime.GetContainerPort(ctx, containerID, containerPort); err == nil {
-						if port, err := strconv.Atoi(hostPort); err == nil {
-							actualPort = port
-							logging.Info(subsystem, "Got container port mapping: %s -> %d", containerPort, actualPort)
-							if updateFn != nil {
-								updateFn(McpDiscreteStatusUpdate{
-									Label:         label,
-									PID:           0,
-									ProcessStatus: "ContainerRunning",
-									ProxyPort:     actualPort,
-								})
+			// Try to get port mapping in a goroutine
+			go func() {
+				// Give container a moment to fully initialize port bindings
+				retries := 10
+				for i := 0; i < retries && actualPort == 0; i++ {
+					// Try to get the first container port mapping
+					for _, portMapping := range serverConfig.ContainerPorts {
+						parts := strings.Split(portMapping, ":")
+						if len(parts) >= 2 {
+							containerPort := parts[len(parts)-1]
+							if hostPort, err := runtime.GetContainerPort(ctx, containerID, containerPort); err == nil {
+								if port, err := strconv.Atoi(hostPort); err == nil {
+									portDetected <- port
+									return
+								}
 							}
-							break
 						}
 					}
+					// Small delay between retries
+					select {
+					case <-time.After(200 * time.Millisecond):
+					case <-currentStopChan:
+						return
+					}
 				}
+				portDetected <- 0
+			}()
+
+			// Wait for port detection with timeout
+			select {
+			case detectedPort := <-portDetected:
+				if detectedPort > 0 {
+					actualPort = detectedPort
+					logging.Info(subsystem, "Got container port mapping: %d", actualPort)
+					if updateFn != nil {
+						updateFn(McpDiscreteStatusUpdate{
+							Label:         label,
+							PID:           0,
+							ProcessStatus: "ContainerRunning",
+						})
+					}
+				}
+			case <-time.After(3 * time.Second):
+				logging.Warn(subsystem, "Timeout waiting for container port detection")
+			case <-currentStopChan:
+				logging.Debug(subsystem, "Stopped while waiting for port detection")
 			}
 		}
 
@@ -200,7 +214,6 @@ func StartAndManageContainerizedMcpServer(
 							PID:           0,
 							ProcessStatus: "ContainerStatusCheckFailed",
 							ProcessErr:    err,
-							ProxyPort:     actualPort,
 						})
 					}
 				} else if !running {
@@ -210,7 +223,6 @@ func StartAndManageContainerizedMcpServer(
 							Label:         label,
 							PID:           0,
 							ProcessStatus: "ContainerExited",
-							ProxyPort:     actualPort,
 						})
 					}
 					return
@@ -243,7 +255,6 @@ func StartAndManageContainerizedMcpServer(
 						PID:           0,
 						ProcessStatus: finalProcessStatus,
 						ProcessErr:    stopErr,
-						ProxyPort:     actualPort,
 					})
 				}
 				return

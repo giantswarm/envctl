@@ -21,6 +21,7 @@ import (
 func Update(msg tea.Msg, m *model.Model) (*model.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
+	// Handle different message types
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.Width = msg.Width
@@ -30,24 +31,23 @@ func Update(msg tea.Msg, m *model.Model) (*model.Model, tea.Cmd) {
 		m.LogViewport.Height = msg.Height - 10 // Leave room for header/footer
 		m.MainLogViewport.Width = msg.Width
 		m.MainLogViewport.Height = msg.Height / 3
-		return m, nil
+
+		// If we're in main dashboard and haven't started the ticker yet, start it
+		if m.CurrentAppMode == model.ModeMainDashboard && !m.PeriodicTickerStarted {
+			m.PeriodicTickerStarted = true
+			// Immediate data refresh
+			cmds = append(cmds, refreshServiceData(m))
+			// Start periodic refresh ticker
+			cmds = append(cmds, tickCmd())
+		}
+
+		return m, tea.Batch(cmds...)
 
 	case spinner.TickMsg:
 		// Update spinner
 		var cmd tea.Cmd
 		m.Spinner, cmd = m.Spinner.Update(msg)
 		return m, cmd
-
-	case model.InitializationCompleteMsg:
-		// Orchestrator initialization is complete, switch to main dashboard
-		m.CurrentAppMode = model.ModeMainDashboard
-		// Start periodic refresh ticker
-		cmds = append(cmds, tickCmd())
-		// Add a small delay to ensure services have started
-		cmds = append(cmds, tea.Tick(1*time.Second, func(t time.Time) tea.Msg {
-			return refreshServiceDataMsg{}
-		}))
-		return m, tea.Batch(cmds...)
 
 	case tickMsg:
 		// Periodic refresh
@@ -58,14 +58,17 @@ func Update(msg tea.Msg, m *model.Model) (*model.Model, tea.Cmd) {
 
 	case refreshServiceDataMsg:
 		// Refresh service data after delay
+		logging.Debug("TUI", "Refreshing service data")
 		cmds = append(cmds, refreshServiceData(m))
 		return m, tea.Batch(cmds...)
 
 	case api.ServiceStateChangedEvent:
 		// Handle service state changes
+		logging.Debug("TUI", "Service state changed: %s", msg.Label)
 		cmds = append(cmds, handleServiceStateChange(m, msg))
 
 	case model.ServiceStartedMsg:
+		logging.Debug("TUI", "Service started: %s", msg.Label)
 		cmds = append(cmds, m.SetStatusMessage(
 			fmt.Sprintf("Service %s started", msg.Label),
 			model.StatusBarSuccess,
@@ -75,6 +78,7 @@ func Update(msg tea.Msg, m *model.Model) (*model.Model, tea.Cmd) {
 		cmds = append(cmds, refreshServiceData(m))
 
 	case model.ServiceStoppedMsg:
+		logging.Debug("TUI", "Service stopped: %s", msg.Label)
 		cmds = append(cmds, m.SetStatusMessage(
 			fmt.Sprintf("Service %s stopped", msg.Label),
 			model.StatusBarInfo,
@@ -84,6 +88,7 @@ func Update(msg tea.Msg, m *model.Model) (*model.Model, tea.Cmd) {
 		cmds = append(cmds, refreshServiceData(m))
 
 	case model.ServiceRestartedMsg:
+		logging.Debug("TUI", "Service restarted: %s", msg.Label)
 		cmds = append(cmds, m.SetStatusMessage(
 			fmt.Sprintf("Service %s restarted", msg.Label),
 			model.StatusBarSuccess,
@@ -93,6 +98,7 @@ func Update(msg tea.Msg, m *model.Model) (*model.Model, tea.Cmd) {
 		cmds = append(cmds, refreshServiceData(m))
 
 	case model.ServiceErrorMsg:
+		logging.Debug("TUI", "Service error: %s", msg.Label)
 		cmds = append(cmds, m.SetStatusMessage(
 			fmt.Sprintf("Error with service %s: %v", msg.Label, msg.Err),
 			model.StatusBarError,
@@ -129,6 +135,7 @@ func Update(msg tea.Msg, m *model.Model) (*model.Model, tea.Cmd) {
 		return m, m.ListenForLogs()
 
 	case model.MCPToolsLoadedMsg:
+		logging.Debug("TUI", "MCP tools loaded: %s", msg.ServerName)
 		// Store the loaded tools
 		m.MCPTools[msg.ServerName] = msg.Tools
 
@@ -144,6 +151,7 @@ func Update(msg tea.Msg, m *model.Model) (*model.Model, tea.Cmd) {
 		return m, nil
 
 	case model.MCPToolsErrorMsg:
+		logging.Debug("TUI", "MCP tools error: %s", msg.ServerName)
 		// Log the error
 		logLine := fmt.Sprintf("[%s] [ERROR] Failed to fetch tools for %s: %v",
 			time.Now().Format("15:04:05"),
@@ -171,6 +179,7 @@ func Update(msg tea.Msg, m *model.Model) (*model.Model, tea.Cmd) {
 		cmds = append(cmds, handleKeyPress(m, msg))
 
 	case model.KubeContextSwitchedMsg:
+		logging.Debug("TUI", "Kube context switched: %s", msg.TargetContext)
 		// Handle context switch result
 		if msg.Err != nil {
 			cmds = append(cmds, m.SetStatusMessage(
@@ -203,7 +212,7 @@ func Update(msg tea.Msg, m *model.Model) (*model.Model, tea.Cmd) {
 
 // handleServiceStateChange processes service state change events
 func handleServiceStateChange(m *model.Model, event api.ServiceStateChangedEvent) tea.Cmd {
-	// Log the state change
+	// Log the state change to activity log
 	logMsg := fmt.Sprintf("[%s] %s: %s → %s",
 		time.Now().Format("15:04:05"),
 		event.Label,
@@ -222,6 +231,8 @@ func handleServiceStateChange(m *model.Model, event api.ServiceStateChangedEvent
 	if len(m.ActivityLog) > model.MaxActivityLogLines {
 		m.ActivityLog = m.ActivityLog[len(m.ActivityLog)-model.MaxActivityLogLines:]
 	}
+
+	logging.Debug("TUI", "Service state changed: %v", event)
 
 	// Refresh service data to get latest state
 	return refreshServiceData(m)
@@ -275,7 +286,7 @@ func handleKeyPress(m *model.Model, key tea.KeyMsg) tea.Cmd {
 			m.CurrentAppMode = m.LastAppMode
 		case "y":
 			// Copy MCP config to clipboard
-			configStr := GenerateMcpConfigJson(m.MCPServerConfig, m.MCPServers)
+			configStr := GenerateMcpConfigJson(m.MCPServerConfig, m.MCPServers, m.AggregatorConfig.Port)
 			if err := clipboard.WriteAll(configStr); err != nil {
 				return m.SetStatusMessage("Copy MCP config failed", model.StatusBarError, 3*time.Second)
 			}
@@ -345,7 +356,7 @@ func handleMainDashboardKeys(m *model.Model, key tea.KeyMsg) tea.Cmd {
 		m.LastAppMode = m.CurrentAppMode
 		m.CurrentAppMode = model.ModeMcpConfigOverlay
 		// Populate the viewport content when entering the mode
-		configJSON := GenerateMcpConfigJson(m.MCPServerConfig, m.MCPServers)
+		configJSON := GenerateMcpConfigJson(m.MCPServerConfig, m.MCPServers, m.AggregatorConfig.Port)
 		m.McpConfigViewport.SetContent(configJSON)
 		m.McpConfigViewport.GotoTop()
 
@@ -453,11 +464,20 @@ func cycleFocus(m *model.Model, direction int) {
 		focusableItems = append(focusableItems, model.WcPaneFocusKey)
 	}
 
-	// Add port forwards
-	focusableItems = append(focusableItems, m.PortForwardOrder...)
+	// Add port forwards from config
+	for _, pf := range m.PortForwardingConfig {
+		focusableItems = append(focusableItems, pf.Name)
+	}
 
-	// Add MCP servers
-	focusableItems = append(focusableItems, m.MCPServerOrder...)
+	// Add aggregator if configured
+	if m.AggregatorConfig.Port > 0 {
+		focusableItems = append(focusableItems, "mcp-aggregator")
+	}
+
+	// Add MCP servers from config
+	for _, mcp := range m.MCPServerConfig {
+		focusableItems = append(focusableItems, mcp.Name)
+	}
 
 	if len(focusableItems) == 0 {
 		return

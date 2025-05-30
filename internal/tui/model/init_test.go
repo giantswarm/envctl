@@ -60,9 +60,7 @@ func TestInitializeModel(t *testing.T) {
 				if m.CurrentKubeContext != "test-context" {
 					t.Errorf("CurrentKubeContext = %v, want test-context", m.CurrentKubeContext)
 				}
-				if m.CurrentAppMode != ModeInitializing {
-					t.Errorf("CurrentAppMode = %v, want ModeInitializing", m.CurrentAppMode)
-				}
+				// Note: CurrentAppMode is set to MainDashboard in Init(), not here
 
 				// Verify APIs are initialized
 				if m.OrchestratorAPI == nil {
@@ -331,9 +329,16 @@ func TestInitializeModel_WithConfig(t *testing.T) {
 		},
 		MCPServers: []config.MCPServerDefinition{
 			{
-				Name:      "test-mcp",
-				Type:      config.MCPServerTypeLocalCommand,
-				ProxyPort: 9090,
+				Name:    "mcp1",
+				Type:    config.MCPServerTypeLocalCommand,
+				Command: []string{"mcp-server"},
+				Enabled: true,
+			},
+			{
+				Name:    "mcp2",
+				Type:    config.MCPServerTypeContainer,
+				Image:   "mcp-server:latest",
+				Enabled: false,
 			},
 		},
 	}
@@ -347,8 +352,8 @@ func TestInitializeModel_WithConfig(t *testing.T) {
 	if len(m.PortForwardingConfig) != 1 {
 		t.Errorf("PortForwardingConfig length = %v, want 1", len(m.PortForwardingConfig))
 	}
-	if len(m.MCPServerConfig) != 1 {
-		t.Errorf("MCPServerConfig length = %v, want 1", len(m.MCPServerConfig))
+	if len(m.MCPServerConfig) != 2 {
+		t.Errorf("MCPServerConfig length = %v, want 2", len(m.MCPServerConfig))
 	}
 
 	// Verify debug mode

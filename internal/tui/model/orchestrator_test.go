@@ -72,18 +72,12 @@ func TestStartOrchestrator(t *testing.T) {
 			msg := cmd()
 
 			// The real orchestrator might fail due to missing kube config, etc.
-			// We just check that we get a message back
+			// We check if it's nil (success) or error message
 			if msg == nil {
-				t.Error("startOrchestrator() command returned nil message")
-			}
-
-			// Check if it's an initialization complete or error message
-			switch msg.(type) {
-			case InitializationCompleteMsg:
-				// Success case
-			case ServiceErrorMsg:
+				// Success case - startOrchestrator returns nil when successful
+			} else if _, ok := msg.(ServiceErrorMsg); ok {
 				// Error case - this is expected if kube config is missing
-			default:
+			} else {
 				t.Errorf("Unexpected message type: %T", msg)
 			}
 		})
@@ -113,21 +107,17 @@ func TestStartOrchestratorIntegration(t *testing.T) {
 
 	// Execute the command
 	msg := cmd()
-	if msg == nil {
-		t.Error("startOrchestrator() command returned nil message")
-	}
 
 	// Verify the orchestrator was started
 	// Note: The actual start might fail due to missing kube config,
-	// but we should still get a message
-	switch msg.(type) {
-	case InitializationCompleteMsg:
+	// but we should get either nil (success) or error message
+	if msg == nil {
 		// Success case
 		t.Log("Orchestrator started successfully")
-	case ServiceErrorMsg:
+	} else if _, ok := msg.(ServiceErrorMsg); ok {
 		// Error case - this is expected in test environment
 		t.Log("Orchestrator start failed (expected in test environment)")
-	default:
+	} else {
 		t.Errorf("Unexpected message type: %T", msg)
 	}
 }

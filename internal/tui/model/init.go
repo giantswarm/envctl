@@ -21,10 +21,11 @@ import (
 func InitializeModel(mcName, wcName, currentContext string, debugMode bool, cfg config.EnvctlConfig, logChannel <-chan logging.LogEntry) (*Model, error) {
 	// Create the orchestrator
 	orchConfig := orchestrator.Config{
-		MCName:       mcName,
-		WCName:       wcName,
-		PortForwards: cfg.PortForwards,
-		MCPServers:   cfg.MCPServers,
+		MCName:         mcName,
+		WCName:         wcName,
+		PortForwards:   cfg.PortForwards,
+		MCPServers:     cfg.MCPServers,
+		AggregatorPort: cfg.Aggregator.Port,
 	}
 	orch := orchestrator.New(orchConfig)
 
@@ -60,6 +61,7 @@ func InitializeModel(mcName, wcName, currentContext string, debugMode bool, cfg 
 		// Configuration
 		PortForwardingConfig: cfg.PortForwards,
 		MCPServerConfig:      cfg.MCPServers,
+		AggregatorConfig:     cfg.Aggregator,
 
 		// UI State
 		CurrentAppMode: ModeInitializing,
@@ -185,6 +187,9 @@ func DefaultKeyMap() KeyMap {
 
 // Init implements the tea.Model interface
 func (m *Model) Init() tea.Cmd {
+	// Immediately transition to main dashboard
+	m.CurrentAppMode = ModeMainDashboard
+
 	return tea.Batch(
 		m.Spinner.Tick,
 		m.startOrchestrator(),
@@ -231,8 +236,8 @@ func (m *Model) startOrchestrator() tea.Cmd {
 			}
 		}
 
-		// Return a message to indicate initialization is complete
-		return InitializationCompleteMsg{}
+		// Return nil - data refresh is complete
+		return nil
 	}
 }
 

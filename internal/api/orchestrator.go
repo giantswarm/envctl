@@ -2,7 +2,9 @@ package api
 
 import (
 	"context"
+	"envctl/internal/orchestrator"
 	"envctl/internal/services"
+	"envctl/pkg/logging"
 	"fmt"
 	"time"
 )
@@ -64,7 +66,13 @@ func NewOrchestratorAPI(orch ServiceOrchestrator, registry services.ServiceRegis
 		eventChan:    make(chan ServiceStateChangedEvent, 100),
 	}
 
-	// TODO: Set up event forwarding from orchestrator to API event channel
+	// Set up a global state change callback on the orchestrator
+	// This will be applied to all services as they are registered
+	if orchestratorWithCallback, ok := orch.(*orchestrator.Orchestrator); ok {
+		orchestratorWithCallback.SetGlobalStateChangeCallback(func(label string, oldState, newState services.ServiceState, health services.HealthStatus, err error) {
+			api.forwardStateChange(label, oldState, newState, health, err)
+		})
+	}
 
 	return api
 }
@@ -169,8 +177,10 @@ func (api *orchestratorAPI) forwardStateChange(label string, oldState, newState 
 
 	select {
 	case api.eventChan <- event:
+		// Event sent successfully
 	default:
 		// Channel full, drop event
-		// TODO: Add logging
+		// Log this so we can debug if events are being dropped
+		logging.Warn("OrchestratorAPI", "Dropped state change event for %s (channel full)", label)
 	}
 }

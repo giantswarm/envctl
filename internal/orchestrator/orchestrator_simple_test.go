@@ -96,7 +96,13 @@ func TestOrchestrator_DependencyGraph(t *testing.T) {
 		},
 	})
 
-	graph := o.buildDependencyGraph()
+	// Start the orchestrator to register services and build the dependency graph
+	ctx := context.Background()
+	err := o.Start(ctx)
+	require.NoError(t, err)
+	defer o.Stop()
+
+	graph := o.depGraph
 	assert.NotNil(t, graph)
 
 	// Check MC node
@@ -104,10 +110,10 @@ func TestOrchestrator_DependencyGraph(t *testing.T) {
 	assert.NotNil(t, mcNode)
 	assert.Empty(t, mcNode.DependsOn)
 
-	// Check WC node depends on MC
+	// Check WC node - no longer depends on MC
 	wcNode := graph.Get(dependency.NodeID("k8s-wc-test-wc"))
 	assert.NotNil(t, wcNode)
-	assert.Contains(t, wcNode.DependsOn, dependency.NodeID("k8s-mc-test-mc"))
+	assert.Empty(t, wcNode.DependsOn) // WC is now independent
 
 	// Check PF node depends on MC
 	pfNode := graph.Get(dependency.NodeID("pf:pf1"))

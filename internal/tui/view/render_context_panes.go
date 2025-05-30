@@ -6,7 +6,6 @@ import (
 	"envctl/internal/kube"
 	"envctl/internal/tui/model"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
@@ -63,8 +62,9 @@ func renderMcPane(m *model.Model, conn *api.K8sConnectionInfo, paneWidth int) st
 
 	// Get connection info if not passed
 	if conn == nil {
+		expectedLabel := fmt.Sprintf("k8s-mc-%s", m.ManagementClusterName)
 		for label, c := range m.K8sConnections {
-			if strings.Contains(label, "mc-") && strings.Contains(label, m.ManagementClusterName) {
+			if label == expectedLabel {
 				conn = c
 				break
 			}
@@ -133,8 +133,9 @@ func renderWcPane(m *model.Model, conn *api.K8sConnectionInfo, paneWidth int) st
 
 	// Get connection info if not passed
 	if conn == nil {
+		expectedLabel := fmt.Sprintf("k8s-wc-%s", m.WorkloadClusterName)
 		for label, c := range m.K8sConnections {
-			if strings.Contains(label, "wc-") && strings.Contains(label, m.WorkloadClusterName) {
+			if label == expectedLabel {
 				conn = c
 				break
 			}

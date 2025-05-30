@@ -2,10 +2,12 @@ package orchestrator
 
 import (
 	"context"
+	"envctl/internal/aggregator"
 	"envctl/internal/config"
 	"envctl/internal/dependency"
 	"envctl/internal/kube"
 	"envctl/internal/services"
+	agg "envctl/internal/services/aggregator"
 	"envctl/internal/services/k8s"
 	"envctl/internal/services/mcpserver"
 	"envctl/internal/services/portforward"
@@ -35,15 +37,19 @@ type Orchestrator struct {
 	depGraph *dependency.Graph
 
 	// Configuration
-	mcName       string
-	wcName       string
-	portForwards []config.PortForwardDefinition
-	mcpServers   []config.MCPServerDefinition
+	mcName         string
+	wcName         string
+	portForwards   []config.PortForwardDefinition
+	mcpServers     []config.MCPServerDefinition
+	aggregatorPort int // Port for the MCP aggregator
 
 	// Service tracking
 	stopReasons     map[string]StopReason // Tracks why each service was stopped for auto-recovery decisions
 	pendingRestarts map[string]bool       // Services waiting to be restarted after dependency recovery
 	healthCheckers  map[string]bool       // Track which services have health checkers running to avoid duplicates
+
+	// Global state change callback
+	globalStateChangeCallback services.StateChangeCallback
 
 	// Context for cancellation
 	ctx        context.Context
@@ -56,10 +62,11 @@ type Orchestrator struct {
 // This structure is passed during orchestrator creation to define
 // which services should be managed and their configurations.
 type Config struct {
-	MCName       string                         // Management cluster name
-	WCName       string                         // Workload cluster name (optional)
-	PortForwards []config.PortForwardDefinition // Port forward configurations
-	MCPServers   []config.MCPServerDefinition   // MCP server configurations
+	MCName         string                         // Management cluster name
+	WCName         string                         // Workload cluster name (optional)
+	PortForwards   []config.PortForwardDefinition // Port forward configurations
+	MCPServers     []config.MCPServerDefinition   // MCP server configurations
+	AggregatorPort int                            // Port for the MCP aggregator (default: 8080)
 }
 
 // New creates a new orchestrator using the service registry.
@@ -79,6 +86,7 @@ func New(cfg Config) *Orchestrator {
 		wcName:          cfg.WCName,
 		portForwards:    cfg.PortForwards,
 		mcpServers:      cfg.MCPServers,
+		aggregatorPort:  cfg.AggregatorPort,
 		stopReasons:     make(map[string]StopReason),
 		pendingRestarts: make(map[string]bool),
 		healthCheckers:  make(map[string]bool),
@@ -140,13 +148,24 @@ func (o *Orchestrator) StartService(label string) error {
 		return fmt.Errorf("service %s not found", label)
 	}
 
+	logging.Debug("Orchestrator", "Starting service %s (type: %s)", label, service.GetType())
+
 	// Check and start dependencies first to ensure prerequisites are met
 	if err := o.checkDependencies(label); err != nil {
+		logging.Debug("Orchestrator", "Service %s failed dependency check: %v", label, err)
+
+		// Mark the service as stopped due to dependency failure
+		// This ensures it will be auto-started when dependencies become available
+		o.mu.Lock()
+		o.stopReasons[label] = StopReasonDependency
+		o.mu.Unlock()
+
 		return fmt.Errorf("dependency check failed: %w", err)
 	}
 
 	// Start the service
 	if err := service.Start(o.ctx); err != nil {
+		logging.Debug("Orchestrator", "Service %s failed to start: %v", label, err)
 		return fmt.Errorf("failed to start service %s: %w", label, err)
 	}
 
@@ -218,11 +237,64 @@ func (o *Orchestrator) GetServiceRegistry() services.ServiceRegistry {
 	return o.registry
 }
 
+// SetGlobalStateChangeCallback sets a callback that will be called for all service state changes.
+// This is used by the API layer to forward state changes to subscribers.
+func (o *Orchestrator) SetGlobalStateChangeCallback(callback services.StateChangeCallback) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	// Wrap the provided callback to also handle orchestrator logic
+	wrappedCallback := func(label string, oldState, newState services.ServiceState, health services.HealthStatus, err error) {
+		// Call the original callback first
+		if callback != nil {
+			callback(label, oldState, newState, health, err)
+		}
+
+		// Handle orchestrator-specific logic for state changes
+		o.handleServiceStateChange(label, oldState, newState)
+	}
+
+	o.globalStateChangeCallback = wrappedCallback
+}
+
+// handleServiceStateChange handles immediate processing of service state changes
+func (o *Orchestrator) handleServiceStateChange(label string, oldState, newState services.ServiceState) {
+	// If a service just became running, immediately check for dependent services
+	if oldState != services.StateRunning && newState == services.StateRunning {
+		logging.Debug("Orchestrator", "Service %s became running, immediately checking dependent services", label)
+
+		// Get the service to check if it needs health monitoring
+		if service, exists := o.registry.Get(label); exists {
+			// Start health checker if needed
+			o.mu.RLock()
+			hasHealthChecker := o.healthCheckers[label]
+			o.mu.RUnlock()
+
+			if !hasHealthChecker {
+				if healthChecker, ok := service.(services.HealthChecker); ok {
+					logging.Debug("Orchestrator", "Starting health checker for newly running service: %s", label)
+
+					// Mark health checker as running
+					o.mu.Lock()
+					o.healthCheckers[label] = true
+					o.mu.Unlock()
+
+					go o.runHealthChecksForService(service, healthChecker)
+				}
+			}
+		}
+
+		// Start dependent services in a goroutine to avoid blocking
+		go o.startDependentServices(label)
+	}
+}
+
 // registerServices creates and registers all configured services.
 // Services are registered in a specific order to ensure proper initialization:
 // 1. K8s connections (foundation services)
 // 2. Port forwards (depend on K8s connections)
 // 3. MCP servers (may depend on port forwards)
+// 4. MCP aggregator (depends on MCP servers)
 //
 // Registration does not start services, it only makes them available
 // in the registry for later management.
@@ -242,6 +314,11 @@ func (o *Orchestrator) registerServices() error {
 		return fmt.Errorf("failed to register MCP services: %w", err)
 	}
 
+	// Register the aggregator service which depends on MCP servers
+	if err := o.registerAggregatorService(); err != nil {
+		return fmt.Errorf("failed to register aggregator service: %w", err)
+	}
+
 	return nil
 }
 
@@ -255,6 +332,14 @@ func (o *Orchestrator) registerK8sServices() error {
 		mcLabel := fmt.Sprintf("k8s-mc-%s", o.mcName)
 
 		mcService := k8s.NewK8sConnectionService(mcLabel, mcContext, true, o.kubeMgr)
+
+		// Set the global state change callback if configured
+		o.mu.RLock()
+		if o.globalStateChangeCallback != nil {
+			mcService.SetStateChangeCallback(o.globalStateChangeCallback)
+		}
+		o.mu.RUnlock()
+
 		o.registry.Register(mcService)
 
 		logging.Debug("Orchestrator", "Registered K8s MC service: %s", mcLabel)
@@ -267,6 +352,14 @@ func (o *Orchestrator) registerK8sServices() error {
 		wcLabel := fmt.Sprintf("k8s-wc-%s", o.wcName)
 
 		wcService := k8s.NewK8sConnectionService(wcLabel, wcContext, false, o.kubeMgr)
+
+		// Set the global state change callback if configured
+		o.mu.RLock()
+		if o.globalStateChangeCallback != nil {
+			wcService.SetStateChangeCallback(o.globalStateChangeCallback)
+		}
+		o.mu.RUnlock()
+
 		o.registry.Register(wcService)
 
 		logging.Debug("Orchestrator", "Registered K8s WC service: %s", wcLabel)
@@ -286,6 +379,14 @@ func (o *Orchestrator) registerPortForwardServices() error {
 		}
 
 		pfService := portforward.NewPortForwardService(pf, o.kubeMgr)
+
+		// Set the global state change callback if configured
+		o.mu.RLock()
+		if o.globalStateChangeCallback != nil {
+			pfService.SetStateChangeCallback(o.globalStateChangeCallback)
+		}
+		o.mu.RUnlock()
+
 		o.registry.Register(pfService)
 
 		logging.Debug("Orchestrator", "Registered port forward service: %s", pf.Name)
@@ -306,10 +407,63 @@ func (o *Orchestrator) registerMCPServices() error {
 		}
 
 		mcpService := mcpserver.NewMCPServerService(mcp)
+
+		// Set the global state change callback if configured
+		o.mu.RLock()
+		if o.globalStateChangeCallback != nil {
+			mcpService.SetStateChangeCallback(o.globalStateChangeCallback)
+		}
+		o.mu.RUnlock()
+
 		o.registry.Register(mcpService)
 
 		logging.Debug("Orchestrator", "Registered MCP server service: %s", mcp.Name)
 	}
 
+	return nil
+}
+
+// registerAggregatorService registers the MCP aggregator service.
+// The aggregator provides a single SSE endpoint that aggregates all
+// MCP servers, making it easier for AI assistants to discover and use tools.
+func (o *Orchestrator) registerAggregatorService() error {
+	// Only register if we have MCP servers
+	enabledMCPServers := 0
+	for _, mcp := range o.mcpServers {
+		if mcp.Enabled {
+			enabledMCPServers++
+		}
+	}
+
+	if enabledMCPServers == 0 {
+		logging.Debug("Orchestrator", "No enabled MCP servers, skipping aggregator registration")
+		return nil
+	}
+
+	// Set default port if not configured
+	port := o.aggregatorPort
+	if port == 0 {
+		port = 8080
+	}
+
+	// Create aggregator configuration
+	aggConfig := aggregator.AggregatorConfig{
+		Host: "localhost",
+		Port: port,
+	}
+
+	// Create and register the aggregator service
+	aggService := agg.NewAggregatorService(aggConfig, o.registry)
+
+	// Set the global state change callback if configured
+	o.mu.RLock()
+	if o.globalStateChangeCallback != nil {
+		aggService.SetStateChangeCallback(o.globalStateChangeCallback)
+	}
+	o.mu.RUnlock()
+
+	o.registry.Register(aggService)
+
+	logging.Debug("Orchestrator", "Registered MCP aggregator service on port %d", port)
 	return nil
 }

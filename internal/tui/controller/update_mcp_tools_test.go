@@ -119,7 +119,10 @@ func TestMKeyPressTriggersToolsFetch(t *testing.T) {
 }
 
 // mockMCPServiceAPI is a simple mock for testing
-type mockMCPServiceAPI struct{}
+type mockMCPServiceAPI struct {
+	tools       []api.MCPTool
+	getToolsErr error
+}
 
 func (m *mockMCPServiceAPI) GetServerInfo(ctx context.Context, label string) (*api.MCPServerInfo, error) {
 	return nil, nil
@@ -130,8 +133,16 @@ func (m *mockMCPServiceAPI) ListServers(ctx context.Context) ([]*api.MCPServerIn
 }
 
 func (m *mockMCPServiceAPI) GetTools(ctx context.Context, serverName string) ([]api.MCPTool, error) {
-	// Return some test tools
-	return []api.MCPTool{
-		{Name: "test-tool", Description: "Test tool for " + serverName},
-	}, nil
+	if m.getToolsErr != nil {
+		return nil, m.getToolsErr
+	}
+	return m.tools, nil
+}
+
+func (m *mockMCPServiceAPI) GetAllTools(ctx context.Context) ([]api.MCPTool, error) {
+	// For tests, just return the same tools
+	if m.getToolsErr != nil {
+		return nil, m.getToolsErr
+	}
+	return m.tools, nil
 }

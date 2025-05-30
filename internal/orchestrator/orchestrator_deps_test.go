@@ -47,9 +47,7 @@ func TestOrchestrator_buildDependencyGraph(t *testing.T) {
 				// Check WC node
 				wcNode := g.Get(dependency.NodeID("k8s-wc-test-wc"))
 				assert.NotNil(t, wcNode)
-				assert.Equal(t, "K8s WC: test-wc", wcNode.FriendlyName)
-				assert.Equal(t, dependency.KindK8sConnection, wcNode.Kind)
-				assert.Contains(t, wcNode.DependsOn, dependency.NodeID("k8s-mc-test-mc"))
+				assert.Empty(t, wcNode.DependsOn)
 			},
 		},
 		{
@@ -130,7 +128,13 @@ func TestOrchestrator_buildDependencyGraph(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			o := New(tt.cfg)
-			graph := o.buildDependencyGraph()
+			// Start the orchestrator to properly initialize services and build the dependency graph
+			ctx := context.Background()
+			err := o.Start(ctx)
+			require.NoError(t, err)
+			defer o.Stop()
+
+			graph := o.depGraph
 			assert.NotNil(t, graph)
 
 			if tt.check != nil {

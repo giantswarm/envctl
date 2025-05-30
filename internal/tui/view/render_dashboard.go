@@ -24,7 +24,7 @@ func renderMainDashboard(m *model.Model) string {
 	} else if maxRow1Height > 7 {
 		maxRow1Height = 7
 	}
-	row1View := renderContextPanesRow(m, contentWidth, maxRow1Height)
+	row1View := renderTopRow(m, contentWidth, maxRow1Height)
 	row1Height := lipgloss.Height(row1View)
 
 	maxRow2Height := int(float64(totalAvailableHeight-headerHeight) * 0.30)
@@ -262,4 +262,29 @@ func renderStatusBar(m *model.Model, width int) string {
 
 	final := lipgloss.JoinHorizontal(lipgloss.Bottom, leftStr, centerStr, rightStr)
 	return color.StatusBarBaseStyle.Copy().Width(width).Render(final)
+}
+
+// renderTopRow renders the top row containing K8s panes and aggregator
+func renderTopRow(m *model.Model, width, maxHeight int) string {
+	// Check if aggregator is configured
+	hasAggregator := m.AggregatorConfig.Port > 0
+
+	if hasAggregator {
+		// Split width between K8s panes and aggregator
+		k8sWidth := int(float64(width) * 0.65) // 65% for K8s panes
+		aggWidth := width - k8sWidth           // 35% for aggregator
+
+		// Render aggregator panel
+		isFocused := m.FocusedPanelKey == "mcp-aggregator"
+		aggPanel := RenderAggregatorPanel(m, aggWidth, isFocused)
+
+		// Render K8s panes
+		k8sPanes := renderContextPanesRow(m, k8sWidth, maxHeight)
+
+		// Join horizontally
+		return lipgloss.JoinHorizontal(lipgloss.Top, aggPanel, k8sPanes)
+	}
+
+	// No aggregator, just render K8s panes at full width
+	return renderContextPanesRow(m, width, maxHeight)
 }

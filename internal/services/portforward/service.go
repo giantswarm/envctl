@@ -6,7 +6,6 @@ import (
 	"envctl/internal/kube"
 	"envctl/internal/portforwarding"
 	"envctl/internal/services"
-	"envctl/pkg/logging"
 	"fmt"
 	"sync"
 	"time"
@@ -23,9 +22,6 @@ type PortForwardService struct {
 	localPort  int
 	remotePort int
 	targetPod  string
-
-	// Internal state from port forwarding
-	statusChan chan string
 }
 
 // NewPortForwardService creates a new port forward service
@@ -42,7 +38,6 @@ func NewPortForwardService(cfg config.PortForwardDefinition, kubeMgr kube.Manage
 		kubeMgr:     kubeMgr,
 		localPort:   localPort,
 		remotePort:  remotePort,
-		statusChan:  make(chan string, 10),
 	}
 }
 
@@ -50,28 +45,38 @@ func NewPortForwardService(cfg config.PortForwardDefinition, kubeMgr kube.Manage
 func (s *PortForwardService) Start(ctx context.Context) error {
 	s.UpdateState(services.StateStarting, services.HealthUnknown, nil)
 
-	// Create update function
+	// Create update function that directly updates service state
 	updateFn := func(label string, detail portforwarding.PortForwardStatusDetail, isReady bool, err error) {
-		// Convert status detail to string for handling
+		// Convert portforwarding status to common status
 		var status string
 		switch detail {
 		case portforwarding.StatusDetailInitializing:
-			status = "Initializing"
+			status = services.StatusInitializing
 		case portforwarding.StatusDetailForwardingActive:
-			status = "Running"
+			status = services.StatusActive
 		case portforwarding.StatusDetailStopped:
-			status = "Stopped"
+			status = services.StatusStopped
 		case portforwarding.StatusDetailFailed:
-			status = "Failed"
+			status = services.StatusFailed
 		default:
-			status = "Unknown"
+			status = string(detail)
 		}
 
-		select {
-		case s.statusChan <- status:
-		default:
-			// Channel full, drop update
+		// Create status update
+		update := services.StatusUpdate{
+			Label:   label,
+			Status:  status,
+			IsError: err != nil,
+			IsReady: isReady,
+			Error:   err,
 		}
+
+		// Map to service state and health
+		newState := services.MapStatusToState(update.Status)
+		newHealth := services.MapStatusToHealth(update.Status, update.IsError)
+
+		// Update service state
+		s.UpdateState(newState, newHealth, update.Error)
 	}
 
 	// Use the existing port forwarding package
@@ -89,9 +94,6 @@ func (s *PortForwardService) Start(ctx context.Context) error {
 	s.stopChan = stopChan
 	s.mu.Unlock()
 
-	// Monitor status updates
-	go s.monitorStatus(ctx)
-
 	return nil
 }
 
@@ -105,22 +107,6 @@ func (s *PortForwardService) Stop(ctx context.Context) error {
 
 	if stopChan != nil {
 		close(stopChan)
-
-		// Wait for port forward to stop with context timeout
-		done := make(chan struct{})
-		go func() {
-			// Give the port forward some time to stop gracefully
-			time.Sleep(500 * time.Millisecond)
-			close(done)
-		}()
-
-		select {
-		case <-done:
-			// Port forward stopped gracefully
-		case <-ctx.Done():
-			logging.Warn("PortForwardService", "Context cancelled while stopping port forward %s", s.config.Name)
-			return ctx.Err()
-		}
 	}
 
 	s.mu.Lock()
@@ -136,13 +122,6 @@ func (s *PortForwardService) Stop(ctx context.Context) error {
 func (s *PortForwardService) Restart(ctx context.Context) error {
 	if err := s.Stop(ctx); err != nil {
 		return fmt.Errorf("failed to stop port forward %s: %w", s.config.Name, err)
-	}
-
-	// Small delay before restarting
-	select {
-	case <-time.After(1 * time.Second):
-	case <-ctx.Done():
-		return ctx.Err()
 	}
 
 	return s.Start(ctx)
@@ -215,33 +194,6 @@ func (s *PortForwardService) GetHealthCheckInterval() time.Duration {
 	}
 	// Default to 10 seconds for port forwards for more responsive health updates
 	return 10 * time.Second
-}
-
-// monitorStatus monitors the port forward status channel
-func (s *PortForwardService) monitorStatus(ctx context.Context) {
-	for {
-		select {
-		case status := <-s.statusChan:
-			s.handleStatusUpdate(status)
-		case <-ctx.Done():
-			return
-		}
-	}
-}
-
-// handleStatusUpdate handles status updates from the port forward
-func (s *PortForwardService) handleStatusUpdate(status string) {
-	// Map status to service state
-	switch status {
-	case "Initializing", "Starting":
-		s.UpdateState(services.StateStarting, services.HealthUnknown, nil)
-	case "Running", "ForwardingActive":
-		s.UpdateState(services.StateRunning, services.HealthHealthy, nil)
-	case "Failed", "Error":
-		s.UpdateState(services.StateFailed, services.HealthUnhealthy, fmt.Errorf("port forward failed"))
-	case "Stopped":
-		s.UpdateState(services.StateStopped, services.HealthUnknown, nil)
-	}
 }
 
 // parsePortSpec parses port specifications

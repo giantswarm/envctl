@@ -91,13 +91,6 @@ func (s *K8sConnectionService) Restart(ctx context.Context) error {
 		return fmt.Errorf("failed to stop K8s connection %s: %w", s.label, err)
 	}
 
-	// Small delay before restarting
-	select {
-	case <-time.After(1 * time.Second):
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-
 	return s.Start(ctx)
 }
 

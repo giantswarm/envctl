@@ -33,6 +33,9 @@ type MCPServiceAPI interface {
 
 	// GetTools returns the list of tools exposed by an MCP server
 	GetTools(ctx context.Context, serverName string) ([]MCPTool, error)
+
+	// GetAllTools returns tools from all running MCP servers via the aggregator
+	GetAllTools(ctx context.Context) ([]MCPTool, error)
 }
 
 // mcpServiceAPI implements MCPServiceAPI
@@ -116,22 +119,90 @@ func (api *mcpServiceAPI) GetTools(ctx context.Context, serverName string) ([]MC
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	// Get server info to find the port
-	serverInfo, err := api.GetServerInfo(ctx, serverName)
+	// Get the MCP server service
+	service, exists := api.registry.Get(serverName)
+	if !exists {
+		return nil, fmt.Errorf("MCP server %s not found", serverName)
+	}
+
+	if service.GetType() != services.TypeMCPServer {
+		return nil, fmt.Errorf("service %s is not an MCP server", serverName)
+	}
+
+	if service.GetState() != services.StateRunning {
+		return nil, fmt.Errorf("MCP server %s is not running (state: %s)", serverName, service.GetState())
+	}
+
+	// Try to get the MCP client from the service
+	type mcpClientProvider interface {
+		GetMCPClient() interface{}
+	}
+
+	provider, ok := service.(mcpClientProvider)
+	if !ok {
+		return nil, fmt.Errorf("MCP server %s does not provide client access", serverName)
+	}
+
+	mcpClient := provider.GetMCPClient()
+	if mcpClient == nil {
+		return nil, fmt.Errorf("MCP server %s has no client available", serverName)
+	}
+
+	// Use the client to list tools
+	type toolLister interface {
+		ListTools(ctx context.Context) ([]mcp.Tool, error)
+	}
+
+	lister, ok := mcpClient.(toolLister)
+	if !ok {
+		return nil, fmt.Errorf("MCP client does not support listing tools")
+	}
+
+	// List available tools
+	tools, err := lister.ListTools(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get server info: %w", err)
+		return nil, fmt.Errorf("failed to list tools: %w", err)
 	}
 
-	if serverInfo.State != "Running" {
-		return nil, fmt.Errorf("MCP server %s is not running (state: %s)", serverName, serverInfo.State)
+	// Convert to our MCPTool type
+	result := make([]MCPTool, 0, len(tools))
+	for _, tool := range tools {
+		result = append(result, MCPTool{
+			Name:        tool.Name,
+			Description: tool.Description,
+		})
 	}
 
-	if serverInfo.Port == 0 {
-		return nil, fmt.Errorf("MCP server %s has no port configured", serverName)
+	return result, nil
+}
+
+// GetAllTools returns tools from all running MCP servers via the aggregator
+func (api *mcpServiceAPI) GetAllTools(ctx context.Context) ([]MCPTool, error) {
+	// Look for the aggregator service
+	aggregatorServices := api.registry.GetByType(services.ServiceType("Aggregator"))
+	if len(aggregatorServices) == 0 {
+		return nil, fmt.Errorf("no MCP aggregator found")
 	}
 
-	// Create MCP client using the library
-	port := serverInfo.Port
+	aggregator := aggregatorServices[0]
+	if aggregator.GetState() != services.StateRunning {
+		return nil, fmt.Errorf("MCP aggregator is not running")
+	}
+
+	// Get the aggregator port from service data
+	var port int
+	if provider, ok := aggregator.(services.ServiceDataProvider); ok {
+		data := provider.GetServiceData()
+		if p, ok := data["port"].(int); ok {
+			port = p
+		}
+	}
+
+	if port == 0 {
+		return nil, fmt.Errorf("MCP aggregator has no port configured")
+	}
+
+	// Connect to the aggregator
 	mcpClient, err := client.NewSSEMCPClient(fmt.Sprintf("http://localhost:%d/sse", port))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create MCP client: %w", err)
@@ -144,7 +215,7 @@ func (api *mcpServiceAPI) GetTools(ctx context.Context, serverName string) ([]MC
 	}
 
 	// Initialize the MCP protocol
-	initResult, err := mcpClient.Initialize(ctx, mcp.InitializeRequest{
+	_, err = mcpClient.Initialize(ctx, mcp.InitializeRequest{
 		Params: struct {
 			ProtocolVersion string                 `json:"protocolVersion"`
 			Capabilities    mcp.ClientCapabilities `json:"capabilities"`
@@ -152,7 +223,7 @@ func (api *mcpServiceAPI) GetTools(ctx context.Context, serverName string) ([]MC
 		}{
 			ProtocolVersion: "2024-11-05",
 			ClientInfo: mcp.Implementation{
-				Name:    "envctl",
+				Name:    "envctl-api",
 				Version: "1.0.0",
 			},
 			Capabilities: mcp.ClientCapabilities{},
@@ -160,11 +231,6 @@ func (api *mcpServiceAPI) GetTools(ctx context.Context, serverName string) ([]MC
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize MCP protocol: %w", err)
-	}
-
-	// Check if the server supports tools
-	if initResult.Capabilities.Tools == nil {
-		return []MCPTool{}, nil // No tools available
 	}
 
 	// List available tools

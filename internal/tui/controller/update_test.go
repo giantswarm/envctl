@@ -92,19 +92,6 @@ func TestUpdate_SpinnerTickMsg(t *testing.T) {
 	assert.NotNil(t, cmd) // Spinner returns a tick command
 }
 
-func TestUpdate_InitializationCompleteMsg(t *testing.T) {
-	m, cleanup := createTestModel()
-	defer cleanup.cleanup()
-	m.CurrentAppMode = model.ModeInitializing
-
-	msg := model.InitializationCompleteMsg{}
-
-	updatedModel, cmd := Update(msg, m)
-
-	assert.Equal(t, model.ModeMainDashboard, updatedModel.CurrentAppMode)
-	assert.NotNil(t, cmd) // Should return batch command with ticker
-}
-
 func TestUpdate_ServiceMessages(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -476,8 +463,16 @@ func TestCycleFocus(t *testing.T) {
 	defer cleanup.cleanup()
 	m.ManagementClusterName = "test-mc"
 	m.WorkloadClusterName = "test-wc"
-	m.PortForwardOrder = []string{"pf1", "pf2"}
-	m.MCPServerOrder = []string{"mcp1", "mcp2"}
+
+	// Set up config instead of order arrays
+	m.PortForwardingConfig = []config.PortForwardDefinition{
+		{Name: "pf1", Enabled: true},
+		{Name: "pf2", Enabled: true},
+	}
+	m.MCPServerConfig = []config.MCPServerDefinition{
+		{Name: "mcp1", Enabled: true},
+		{Name: "mcp2", Enabled: true},
+	}
 
 	// Test forward cycling
 	m.FocusedPanelKey = model.McPaneFocusKey

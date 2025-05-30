@@ -2,50 +2,38 @@ package mcpserver
 
 import (
 	"context"
+	"envctl/internal/aggregator"
 	"envctl/internal/config"
+	"envctl/internal/containerizer"
 	"envctl/internal/mcpserver"
 	"envctl/internal/services"
 	"envctl/pkg/logging"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 )
-
-// mcpServerStarter is an interface for starting MCP servers (used for testing)
-type mcpServerStarter interface {
-	StartAndManageIndividualMcpServer(
-		serverConfig config.MCPServerDefinition,
-		updateFn mcpserver.McpUpdateFunc,
-		wg *sync.WaitGroup,
-	) (pid int, stopChan chan struct{}, initialError error)
-}
-
-// defaultMCPServerStarter implements mcpServerStarter using the real mcpserver package
-type defaultMCPServerStarter struct{}
-
-func (d *defaultMCPServerStarter) StartAndManageIndividualMcpServer(
-	serverConfig config.MCPServerDefinition,
-	updateFn mcpserver.McpUpdateFunc,
-	wg *sync.WaitGroup,
-) (pid int, stopChan chan struct{}, initialError error) {
-	return mcpserver.StartAndManageIndividualMcpServer(serverConfig, updateFn, wg)
-}
 
 // MCPServerService implements the Service interface for MCP servers
 type MCPServerService struct {
 	*services.BaseService
 
-	mu       sync.RWMutex
-	config   config.MCPServerDefinition
-	pid      int
-	port     int
-	stopChan chan struct{}
+	// Immutable configuration (no mutex needed)
+	config config.MCPServerDefinition
 
-	// Internal state from the mcpserver package
-	updateChan chan mcpserver.McpDiscreteStatusUpdate
+	// Runtime state (minimal mutex protection needed)
+	mu            sync.RWMutex
+	managedServer *mcpserver.ManagedMcpServer
+	containerID   string
+	stopChan      chan struct{}
 
-	// For testing
-	starter mcpServerStarter
+	// Lifecycle management
+	wg         sync.WaitGroup
+	ctx        context.Context
+	cancelFunc context.CancelFunc
+
+	// Container runtime (initialized once, then read-only)
+	containerRuntime atomic.Pointer[containerizer.ContainerRuntime]
 }
 
 // NewMCPServerService creates a new MCP server service
@@ -59,43 +47,139 @@ func NewMCPServerService(cfg config.MCPServerDefinition) *MCPServerService {
 	return &MCPServerService{
 		BaseService: services.NewBaseService(cfg.Name, services.TypeMCPServer, deps),
 		config:      cfg,
-		updateChan:  make(chan mcpserver.McpDiscreteStatusUpdate, 10),
-		starter:     &defaultMCPServerStarter{},
 	}
 }
 
 // Start starts the MCP server
 func (s *MCPServerService) Start(ctx context.Context) error {
-	s.UpdateState(services.StateStarting, services.HealthUnknown, nil)
+	// Quick state check - BaseService handles its own locking
+	if s.GetState() == services.StateRunning {
+		return nil
+	}
 
-	// Create update function that converts internal updates to service updates
+	// Create cancellable context
+	s.ctx, s.cancelFunc = context.WithCancel(ctx)
+
+	s.UpdateState(services.StateStarting, services.HealthUnknown, nil)
+	logging.Debug("MCPServer", "Starting MCP server %s (type: %s)", s.config.Name, s.config.Type)
+
+	// Update function to receive status updates
 	updateFn := func(update mcpserver.McpDiscreteStatusUpdate) {
-		select {
-		case s.updateChan <- update:
-		case <-ctx.Done():
+		logging.Debug("MCPServer", "Status update for %s: %s", update.Label, update.ProcessStatus)
+
+		// Convert MCP status to common status
+		var status string
+		switch update.ProcessStatus {
+		case "ProcessInitializing", "ContainerInitializing":
+			status = services.StatusInitializing
+		case "ProcessRunning", "ContainerRunning":
+			status = services.StatusRunning
+		case "ProcessUnhealthy", "ContainerUnhealthy":
+			status = services.StatusUnhealthy
+		case "ProcessStartFailed", "ContainerStartFailed":
+			status = services.StatusFailed
+		case "ProcessExitedWithError", "ContainerExited":
+			status = services.StatusFailed
+		case "ProcessStoppedByUser", "ContainerStoppedByUser":
+			status = services.StatusStopped
+		default:
+			status = update.ProcessStatus
+		}
+
+		// Create common status update
+		statusUpdate := services.StatusUpdate{
+			Label:   update.Label,
+			Status:  status,
+			IsError: update.ProcessErr != nil,
+			IsReady: status == services.StatusRunning,
+			Error:   update.ProcessErr,
+		}
+
+		// Map to service state and health
+		newState := services.MapStatusToState(statusUpdate.Status)
+		newHealth := services.MapStatusToHealth(statusUpdate.Status, statusUpdate.IsError)
+
+		// Special case: if status is "unhealthy", only update health, not state
+		if status == services.StatusUnhealthy {
+			s.UpdateHealth(newHealth)
+		} else {
+			s.UpdateState(newState, newHealth, statusUpdate.Error)
 		}
 	}
 
-	// Start the process monitor goroutine
-	go s.monitorProcess(ctx)
-
-	// Start the MCP server process
-	wg := &sync.WaitGroup{}
-	wg.Add(1)
-
-	pid, stopChan, err := s.starter.StartAndManageIndividualMcpServer(
-		s.config,
-		updateFn,
-		wg,
-	)
-
-	if err != nil {
+	var err error
+	switch s.config.Type {
+	case config.MCPServerTypeLocalCommand:
+		err = s.startLocalCommand(updateFn)
+	case config.MCPServerTypeContainer:
+		err = s.startContainer(updateFn)
+	default:
+		err = fmt.Errorf("unsupported server type: %s", s.config.Type)
 		s.UpdateState(services.StateFailed, services.HealthUnhealthy, err)
-		return fmt.Errorf("failed to start MCP server %s: %w", s.config.Name, err)
 	}
 
+	if err != nil {
+		return err
+	}
+
+	logging.Info("MCPServer", "Started MCP server process: %s", s.config.Name)
+	return nil
+}
+
+// startLocalCommand starts a local command MCP server
+func (s *MCPServerService) startLocalCommand(updateFn mcpserver.McpUpdateFunc) error {
+	s.wg.Add(1)
+	managedServer, err := mcpserver.StartAndManageIndividualMcpServer(s.config, updateFn, &s.wg)
+	if err != nil {
+		s.wg.Done()
+		s.UpdateState(services.StateFailed, services.HealthUnhealthy, err)
+		return fmt.Errorf("failed to start local MCP server: %w", err)
+	}
+
+	// Only lock when setting the runtime state
 	s.mu.Lock()
-	s.pid = pid
+	s.managedServer = managedServer
+	s.stopChan = managedServer.StopChan
+	s.mu.Unlock()
+
+	return nil
+}
+
+// startContainer starts a containerized MCP server
+func (s *MCPServerService) startContainer(updateFn mcpserver.McpUpdateFunc) error {
+	// Get or create container runtime
+	runtime := s.containerRuntime.Load()
+	if runtime == nil {
+		newRuntime, err := containerizer.NewContainerRuntime("docker") // TODO: Get from global config
+		if err != nil {
+			s.UpdateState(services.StateFailed, services.HealthUnhealthy, err)
+			return fmt.Errorf("failed to initialize container runtime: %w", err)
+		}
+		// Try to set it atomically
+		if !s.containerRuntime.CompareAndSwap(nil, &newRuntime) {
+			// Another goroutine set it first, use theirs
+			runtime = s.containerRuntime.Load()
+		} else {
+			runtime = &newRuntime
+		}
+	}
+
+	s.wg.Add(1)
+	containerID, stopChan, err := mcpserver.StartAndManageContainerizedMcpServer(
+		s.config,
+		*runtime,
+		updateFn,
+		&s.wg,
+	)
+	if err != nil {
+		s.wg.Done()
+		s.UpdateState(services.StateFailed, services.HealthUnhealthy, err)
+		return fmt.Errorf("failed to start containerized MCP server: %w", err)
+	}
+
+	// Only lock when setting the runtime state
+	s.mu.Lock()
+	s.containerID = containerID
 	s.stopChan = stopChan
 	s.mu.Unlock()
 
@@ -104,41 +188,48 @@ func (s *MCPServerService) Start(ctx context.Context) error {
 
 // Stop stops the MCP server
 func (s *MCPServerService) Stop(ctx context.Context) error {
+	// Always transition to stopping state first
 	s.UpdateState(services.StateStopping, s.GetHealth(), nil)
 
+	// Get the stop channel and cancel func
 	s.mu.RLock()
 	stopChan := s.stopChan
 	s.mu.RUnlock()
 
-	if stopChan != nil {
-		// Send stop signal
-		close(stopChan)
-
-		// Wait for process to stop with timeout from context
-		done := make(chan struct{})
-		go func() {
-			// Give the process some time to stop gracefully
-			time.Sleep(500 * time.Millisecond)
-			close(done)
-		}()
-
-		select {
-		case <-done:
-			// Process stopped gracefully
-		case <-ctx.Done():
-			// Context cancelled, force stop
-			logging.Warn("MCPServerService", "Context cancelled while stopping MCP server %s", s.config.Name)
-			return ctx.Err()
-		}
+	// Cancel context
+	if s.cancelFunc != nil {
+		s.cancelFunc()
 	}
 
+	// Signal stop through the stop channel
+	if stopChan != nil {
+		close(stopChan)
+	}
+
+	// Wait for the management goroutine to finish
+	done := make(chan struct{})
+	go func() {
+		s.wg.Wait()
+		close(done)
+	}()
+
+	// Wait with timeout
+	select {
+	case <-done:
+		// Clean shutdown
+	case <-time.After(10 * time.Second):
+		logging.Warn("MCPServer", "Timeout waiting for MCP server %s to stop", s.config.Name)
+	}
+
+	// Clean up references
 	s.mu.Lock()
-	s.pid = 0
-	s.port = 0
+	s.managedServer = nil
 	s.stopChan = nil
+	s.containerID = ""
 	s.mu.Unlock()
 
 	s.UpdateState(services.StateStopped, services.HealthUnknown, nil)
+	logging.Info("MCPServer", "Stopped MCP server: %s", s.config.Name)
 	return nil
 }
 
@@ -161,111 +252,102 @@ func (s *MCPServerService) Restart(ctx context.Context) error {
 // GetServiceData implements ServiceDataProvider
 func (s *MCPServerService) GetServiceData() map[string]interface{} {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
+	managedServer := s.managedServer
+	containerID := s.containerID
+	s.mu.RUnlock()
 
 	data := map[string]interface{}{
 		"name":    s.config.Name,
 		"command": s.config.Command,
 		"icon":    s.config.Icon,
 		"enabled": s.config.Enabled,
+		"type":    s.config.Type,
 	}
 
-	if s.pid > 0 {
-		data["pid"] = s.pid
+	if managedServer != nil && managedServer.PID > 0 {
+		data["pid"] = managedServer.PID
 	}
 
-	if s.port > 0 {
-		data["port"] = s.port
-	} else if s.config.ProxyPort > 0 {
-		// Use configured port if actual port not yet detected
-		data["port"] = s.config.ProxyPort
+	if containerID != "" {
+		data["containerID"] = containerID[:12] // Short ID
 	}
 
 	return data
 }
 
-// CheckHealth implements HealthChecker
+// CheckHealth implements HealthChecker using MCP client ping
 func (s *MCPServerService) CheckHealth(ctx context.Context) (services.HealthStatus, error) {
-	s.mu.RLock()
-	port := s.port
-	if port == 0 && s.config.ProxyPort > 0 {
-		port = s.config.ProxyPort
-	}
-	s.mu.RUnlock()
-
-	var health services.HealthStatus
-	var err error
-
-	if port == 0 {
-		health = services.HealthUnknown
-		err = fmt.Errorf("MCP server port not available yet")
-	} else if s.GetState() == services.StateRunning {
-		// TODO: Implement actual health check against the MCP server endpoint
-		// For now, just check if the process is running
-		health = services.HealthHealthy
-		err = nil
-	} else {
-		health = services.HealthUnhealthy
-		err = nil
+	if s.GetState() != services.StateRunning {
+		return services.HealthUnknown, nil
 	}
 
-	// Update the service's health status
-	s.UpdateHealth(health)
+	// Create appropriate MCP client based on server type
+	var client aggregator.MCPClient
 
-	return health, err
+	switch s.config.Type {
+	case config.MCPServerTypeLocalCommand:
+		// For local commands, use stdio client
+		if len(s.config.Command) > 0 {
+			client = mcpserver.NewStdioClientWithEnv(s.config.Command[0], s.config.Command[1:], s.config.Env)
+		}
+
+	case config.MCPServerTypeContainer:
+		// For containers, we would need to determine the SSE endpoint
+		// This would require getting the exposed port from the container
+		// TODO: Implement SSE client for containers
+		return services.HealthHealthy, nil
+	}
+
+	if client == nil {
+		return services.HealthUnknown, fmt.Errorf("no client available for health check")
+	}
+
+	// Initialize the client
+	initCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	if err := client.Initialize(initCtx); err != nil {
+		return services.HealthUnhealthy, fmt.Errorf("failed to initialize MCP client: %w", err)
+	}
+	defer client.Close()
+
+	// Ping the server
+	pingCtx, pingCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer pingCancel()
+
+	if err := client.Ping(pingCtx); err != nil {
+		s.UpdateHealth(services.HealthUnhealthy)
+		return services.HealthUnhealthy, fmt.Errorf("MCP server not responding: %w", err)
+	}
+
+	s.UpdateHealth(services.HealthHealthy)
+	return services.HealthHealthy, nil
 }
 
 // GetHealthCheckInterval implements HealthChecker
 func (s *MCPServerService) GetHealthCheckInterval() time.Duration {
-	// MCP servers should be checked every 10 seconds for more responsive health updates
-	return 10 * time.Second
+	if s.config.HealthCheckInterval > 0 {
+		return s.config.HealthCheckInterval
+	}
+	// Default: MCP servers should be checked every 30 seconds
+	return 30 * time.Second
 }
 
-// monitorProcess monitors the MCP server process for updates
-func (s *MCPServerService) monitorProcess(ctx context.Context) {
-	for {
-		select {
-		case update := <-s.updateChan:
-			s.handleProcessUpdate(update)
-		case <-ctx.Done():
-			return
+// GetMCPClient returns a new MCP client for this server (used by aggregator)
+func (s *MCPServerService) GetMCPClient() aggregator.MCPClient {
+	if s.GetState() != services.StateRunning {
+		return nil
+	}
+
+	switch s.config.Type {
+	case config.MCPServerTypeLocalCommand:
+		if len(s.config.Command) > 0 {
+			return mcpserver.NewStdioClientWithEnv(s.config.Command[0], s.config.Command[1:], s.config.Env)
 		}
-	}
-}
-
-// handleProcessUpdate handles updates from the MCP server process
-func (s *MCPServerService) handleProcessUpdate(update mcpserver.McpDiscreteStatusUpdate) {
-	// Update internal state
-	s.mu.Lock()
-	if update.PID > 0 {
-		s.pid = update.PID
-	}
-	if update.ProxyPort > 0 {
-		s.port = update.ProxyPort
-	}
-	s.mu.Unlock()
-
-	// Map process status to service state
-	var state services.ServiceState
-	var health services.HealthStatus
-
-	switch update.ProcessStatus {
-	case "ProcessInitializing", "ProcessStarting":
-		state = services.StateStarting
-		health = services.HealthUnknown
-	case "ProcessRunning":
-		state = services.StateRunning
-		health = services.HealthHealthy
-	case "ProcessStoppedByUser", "ProcessExitedGracefully":
-		state = services.StateStopped
-		health = services.HealthUnknown
-	case "ProcessStartFailed", "ProcessExitedWithError", "ProcessKillFailed":
-		state = services.StateFailed
-		health = services.HealthUnhealthy
-	default:
-		state = services.StateUnknown
-		health = services.HealthUnknown
+	case config.MCPServerTypeContainer:
+		// TODO: Implement SSE client for containers
+		// Would need to determine the container's exposed port
 	}
 
-	s.UpdateState(state, health, update.ProcessErr)
+	return nil
 }
