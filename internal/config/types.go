@@ -111,7 +111,7 @@ func GetDefaultConfig(mcName, wcName string) EnvctlConfig {
 				TargetType:        "service",
 				TargetName:        "mimir-query-frontend",
 				LocalPort:         "8080",
-				RemotePort:        "80",
+				RemotePort:        "8080",
 			},
 			{
 				Name:              "mc-grafana",
@@ -172,7 +172,7 @@ func GetDefaultConfig(mcName, wcName string) EnvctlConfig {
 			DefaultContainerRuntime: "docker",
 		},
 		Aggregator: AggregatorConfig{
-			Port:    8080,
+			Port:    8090,
 			Host:    "localhost",
 			Enabled: true,
 		},

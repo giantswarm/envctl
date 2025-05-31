@@ -4,6 +4,7 @@ import (
 	"context"
 	"envctl/pkg/logging"
 	"fmt"
+	"io"
 	"sync"
 	"time"
 
@@ -279,6 +280,162 @@ func (c *StdioClient) Ping(ctx context.Context) error {
 
 	// Use the Ping method from the mcp-go client
 	return c.client.Ping(ctx)
+}
+
+// ProcessClient implements the aggregator.MCPClient interface for a process we manage
+type ProcessClient struct {
+	stdin     io.WriteCloser
+	stdout    io.ReadCloser
+	stderr    io.ReadCloser
+	mu        sync.RWMutex
+	connected bool
+}
+
+// NewProcessClient creates a new client connected to an already-running process
+func NewProcessClient(stdin io.WriteCloser, stdout io.ReadCloser, stderr io.ReadCloser) *ProcessClient {
+	return &ProcessClient{
+		stdin:  stdin,
+		stdout: stdout,
+		stderr: stderr,
+	}
+}
+
+// Initialize performs the MCP protocol handshake with the process
+func (c *ProcessClient) Initialize(ctx context.Context) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.connected {
+		return nil
+	}
+
+	// For now, we'll use the existing StdioClient but in a hacky way
+	// The proper solution would be to implement JSON-RPC communication ourselves
+	// or wait for the mcp-go library to support this use case
+
+	// Mark as connected for now
+	c.connected = true
+
+	// TODO: Implement proper JSON-RPC initialization handshake
+	logging.Warn("ProcessClient", "Using stub implementation - proper JSON-RPC communication not yet implemented")
+
+	return nil
+}
+
+// Close cleanly shuts down the client connection
+func (c *ProcessClient) Close() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if !c.connected {
+		return nil
+	}
+
+	c.connected = false
+
+	// Close the pipes
+	if c.stdin != nil {
+		c.stdin.Close()
+	}
+	if c.stdout != nil {
+		c.stdout.Close()
+	}
+	if c.stderr != nil {
+		c.stderr.Close()
+	}
+
+	return nil
+}
+
+// ListTools returns all available tools from the server
+func (c *ProcessClient) ListTools(ctx context.Context) ([]mcp.Tool, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if !c.connected {
+		return nil, fmt.Errorf("client not connected")
+	}
+
+	// TODO: Implement JSON-RPC call
+	return nil, fmt.Errorf("not implemented")
+}
+
+// CallTool executes a specific tool and returns the result
+func (c *ProcessClient) CallTool(ctx context.Context, name string, args map[string]interface{}) (*mcp.CallToolResult, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if !c.connected {
+		return nil, fmt.Errorf("client not connected")
+	}
+
+	// TODO: Implement JSON-RPC call
+	return nil, fmt.Errorf("not implemented")
+}
+
+// ListResources returns all available resources from the server
+func (c *ProcessClient) ListResources(ctx context.Context) ([]mcp.Resource, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if !c.connected {
+		return nil, fmt.Errorf("client not connected")
+	}
+
+	// TODO: Implement JSON-RPC call
+	return nil, fmt.Errorf("not implemented")
+}
+
+// ReadResource retrieves a specific resource
+func (c *ProcessClient) ReadResource(ctx context.Context, uri string) (*mcp.ReadResourceResult, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if !c.connected {
+		return nil, fmt.Errorf("client not connected")
+	}
+
+	// TODO: Implement JSON-RPC call
+	return nil, fmt.Errorf("not implemented")
+}
+
+// ListPrompts returns all available prompts from the server
+func (c *ProcessClient) ListPrompts(ctx context.Context) ([]mcp.Prompt, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if !c.connected {
+		return nil, fmt.Errorf("client not connected")
+	}
+
+	// TODO: Implement JSON-RPC call
+	return nil, fmt.Errorf("not implemented")
+}
+
+// GetPrompt retrieves a specific prompt
+func (c *ProcessClient) GetPrompt(ctx context.Context, name string, args map[string]interface{}) (*mcp.GetPromptResult, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if !c.connected {
+		return nil, fmt.Errorf("client not connected")
+	}
+
+	// TODO: Implement JSON-RPC call
+	return nil, fmt.Errorf("not implemented")
+}
+
+// Ping checks if the server is responsive
+func (c *ProcessClient) Ping(ctx context.Context) error {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if !c.connected {
+		return fmt.Errorf("client not connected")
+	}
+
+	// TODO: Implement JSON-RPC ping
+	return nil
 }
 
 // SSEClient implements the aggregator.MCPClient interface using SSE transport
