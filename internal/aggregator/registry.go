@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"time"
 
 	"envctl/pkg/logging"
 
@@ -79,7 +78,6 @@ func (r *ServerRegistry) Register(ctx context.Context, name string, client MCPCl
 		Name:      name,
 		Client:    client,
 		Connected: true,
-		LastPing:  time.Now().Unix(),
 	}
 
 	// Get initial capabilities
@@ -231,70 +229,6 @@ func (r *ServerRegistry) ResolvePromptName(exposedName string) (serverName, orig
 		return "", "", fmt.Errorf("name %s is a tool, not a prompt", exposedName)
 	}
 	return serverName, originalName, nil
-}
-
-// RefreshAll refreshes capabilities for all connected servers
-func (r *ServerRegistry) RefreshAll(ctx context.Context) error {
-	r.mu.RLock()
-	servers := make([]*ServerInfo, 0, len(r.servers))
-	for _, info := range r.servers {
-		servers = append(servers, info)
-	}
-	r.mu.RUnlock()
-
-	var lastErr error
-	for _, info := range servers {
-		if err := r.refreshServerCapabilities(ctx, info); err != nil {
-			logging.Error("Aggregator", err, "Failed to refresh capabilities for %s", info.Name)
-			lastErr = err
-			info.SetConnected(false)
-		} else {
-			info.SetConnected(true)
-			info.mu.Lock()
-			info.LastPing = time.Now().Unix()
-			info.mu.Unlock()
-		}
-	}
-
-	if lastErr == nil {
-		r.notifyUpdate()
-		// Rebuild name mappings after refreshing capabilities
-		r.nameTracker.RebuildMappings(r.servers)
-	}
-
-	return lastErr
-}
-
-// refreshServerCapabilities updates the tools, resources, and prompts for a server
-func (r *ServerRegistry) refreshServerCapabilities(ctx context.Context, info *ServerInfo) error {
-	// Get tools
-	tools, err := info.Client.ListTools(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to list tools: %w", err)
-	}
-	info.UpdateTools(tools)
-
-	// Get resources
-	resources, err := info.Client.ListResources(ctx)
-	if err != nil {
-		// Resources might not be supported
-		logging.Debug("Aggregator", "Failed to list resources for %s: %v", info.Name, err)
-		info.UpdateResources([]mcp.Resource{})
-	} else {
-		info.UpdateResources(resources)
-	}
-
-	// Get prompts
-	prompts, err := info.Client.ListPrompts(ctx)
-	if err != nil {
-		// Prompts might not be supported
-		logging.Debug("Aggregator", "Failed to list prompts for %s: %v", info.Name, err)
-		info.UpdatePrompts([]mcp.Prompt{})
-	} else {
-		info.UpdatePrompts(prompts)
-	}
-
-	return nil
 }
 
 // notifyUpdate signals that the registry has been updated
@@ -460,4 +394,36 @@ func (nt *NameTracker) ResolveName(exposedName string) (serverName, originalName
 	}
 
 	return mapping.serverName, mapping.originalName, mapping.isPrompt, nil
+}
+
+// refreshServerCapabilities updates the tools, resources, and prompts for a server
+func (r *ServerRegistry) refreshServerCapabilities(ctx context.Context, info *ServerInfo) error {
+	// Get tools
+	tools, err := info.Client.ListTools(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list tools: %w", err)
+	}
+	info.UpdateTools(tools)
+
+	// Get resources
+	resources, err := info.Client.ListResources(ctx)
+	if err != nil {
+		// Resources might not be supported
+		logging.Debug("Aggregator", "Failed to list resources for %s: %v", info.Name, err)
+		info.UpdateResources([]mcp.Resource{})
+	} else {
+		info.UpdateResources(resources)
+	}
+
+	// Get prompts
+	prompts, err := info.Client.ListPrompts(ctx)
+	if err != nil {
+		// Prompts might not be supported
+		logging.Debug("Aggregator", "Failed to list prompts for %s: %v", info.Name, err)
+		info.UpdatePrompts([]mcp.Prompt{})
+	} else {
+		info.UpdatePrompts(prompts)
+	}
+
+	return nil
 }

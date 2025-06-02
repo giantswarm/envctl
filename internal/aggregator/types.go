@@ -46,7 +46,6 @@ type ServerInfo struct {
 	Resources []mcp.Resource
 	Prompts   []mcp.Prompt
 	Connected bool
-	LastPing  int64 // Unix timestamp
 	mu        sync.RWMutex
 }
 

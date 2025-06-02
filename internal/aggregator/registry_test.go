@@ -61,10 +61,10 @@ func TestNameTracker_SmartPrefixing(t *testing.T) {
 				},
 			},
 			expected: map[string]string{
-				"serverA.read_file": "read_file",              // no conflict
-				"serverA.search":    "serverA.search",         // conflict
-				"serverB.search":    "serverB.search",         // conflict
-				"serverB.analyze":   "analyze",                // no conflict
+				"serverA.read_file": "read_file",      // no conflict
+				"serverA.search":    "serverA.search", // conflict
+				"serverB.search":    "serverB.search", // conflict
+				"serverB.analyze":   "analyze",        // no conflict
 			},
 		},
 		{
@@ -201,4 +201,4 @@ func splitKey(key string) []string {
 		}
 	}
 	return []string{key}
-} 
+}

@@ -30,6 +30,11 @@ type AggregatorServer struct {
 	cancelFunc context.CancelFunc
 	wg         sync.WaitGroup
 	mu         sync.RWMutex
+
+	// Handler tracking - tracks which handlers are currently active
+	activeTools     map[string]bool // exposed tool name -> active
+	activePrompts   map[string]bool // exposed prompt name -> active
+	activeResources map[string]bool // resource URI -> active
 }
 
 // NewAggregatorServer creates a new aggregator server
@@ -42,17 +47,19 @@ func NewAggregatorServer(config AggregatorConfig) *AggregatorServer {
 	}
 
 	return &AggregatorServer{
-		config:   config,
-		registry: NewServerRegistry(),
+		config:          config,
+		registry:        NewServerRegistry(),
+		activeTools:     make(map[string]bool),
+		activePrompts:   make(map[string]bool),
+		activeResources: make(map[string]bool),
 	}
 }
 
 // Start starts the aggregator server
 func (a *AggregatorServer) Start(ctx context.Context) error {
 	a.mu.Lock()
-	defer a.mu.Unlock()
-
 	if a.server != nil {
+		a.mu.Unlock()
 		return fmt.Errorf("aggregator server already started")
 	}
 
@@ -85,9 +92,8 @@ func (a *AggregatorServer) Start(ctx context.Context) error {
 	a.wg.Add(1)
 	go a.monitorRegistryUpdates()
 
-	// Start health check routine
-	a.wg.Add(1)
-	go a.healthCheckRoutine()
+	// Release the lock before calling updateCapabilities to avoid deadlock
+	a.mu.Unlock()
 
 	// Update initial capabilities
 	a.updateCapabilities()
@@ -96,11 +102,15 @@ func (a *AggregatorServer) Start(ctx context.Context) error {
 	addr := fmt.Sprintf("%s:%d", a.config.Host, a.config.Port)
 	logging.Info("Aggregator", "Starting MCP aggregator server on %s", addr)
 
-	go func() {
-		if err := a.sseServer.Start(addr); err != nil && err != http.ErrServerClosed {
-			logging.Error("Aggregator", err, "SSE server error")
-		}
-	}()
+	// Capture sseServer to avoid race condition
+	sseServer := a.sseServer
+	if sseServer != nil {
+		go func() {
+			if err := sseServer.Start(addr); err != nil && err != http.ErrServerClosed {
+				logging.Error("Aggregator", err, "SSE server error")
+			}
+		}()
+	}
 
 	return nil
 }
@@ -108,25 +118,28 @@ func (a *AggregatorServer) Start(ctx context.Context) error {
 // Stop stops the aggregator server
 func (a *AggregatorServer) Stop(ctx context.Context) error {
 	a.mu.Lock()
-	defer a.mu.Unlock()
-
 	if a.server == nil {
+		a.mu.Unlock()
 		return fmt.Errorf("aggregator server not started")
 	}
 
 	logging.Info("Aggregator", "Stopping MCP aggregator server")
 
 	// Cancel context to stop background routines
-	if a.cancelFunc != nil {
-		a.cancelFunc()
+	cancelFunc := a.cancelFunc
+	sseServer := a.sseServer
+	a.mu.Unlock()
+
+	if cancelFunc != nil {
+		cancelFunc()
 	}
 
 	// Shutdown SSE server
-	if a.sseServer != nil {
+	if sseServer != nil {
 		shutdownCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
 
-		if err := a.sseServer.Shutdown(shutdownCtx); err != nil {
+		if err := sseServer.Shutdown(shutdownCtx); err != nil {
 			logging.Error("Aggregator", err, "Error shutting down SSE server")
 		}
 	}
@@ -141,9 +154,11 @@ func (a *AggregatorServer) Stop(ctx context.Context) error {
 		}
 	}
 
+	a.mu.Lock()
 	a.server = nil
 	a.sseServer = nil
 	a.httpServer = nil
+	a.mu.Unlock()
 
 	return nil
 }
@@ -192,6 +207,13 @@ func (a *AggregatorServer) updateCapabilities() {
 	// Get all servers
 	servers := a.registry.GetAllServers()
 
+	// Rebuild active handler sets
+	a.mu.Lock()
+	a.activeTools = make(map[string]bool)
+	a.activePrompts = make(map[string]bool)
+	a.activeResources = make(map[string]bool)
+	a.mu.Unlock()
+
 	// Add tool handlers for each backend server
 	for serverName, info := range servers {
 		if !info.IsConnected() {
@@ -204,10 +226,24 @@ func (a *AggregatorServer) updateCapabilities() {
 			exposedTool := tool
 			exposedTool.Name = a.registry.nameTracker.GetExposedToolName(serverName, tool.Name)
 
+			// Mark this tool as active
+			a.mu.Lock()
+			a.activeTools[exposedTool.Name] = true
+			a.mu.Unlock()
+
 			// Capture the exposed name in the closure
 			exposedName := exposedTool.Name
 
 			a.server.AddTool(exposedTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+				// Check if this tool is still active
+				a.mu.RLock()
+				isActive := a.activeTools[exposedName]
+				a.mu.RUnlock()
+
+				if !isActive {
+					return nil, fmt.Errorf("tool %s is no longer available", exposedName)
+				}
+
 				// Resolve the exposed name back to server and original tool name
 				sName, originalName, err := a.registry.ResolveToolName(exposedName)
 				if err != nil {
@@ -242,10 +278,24 @@ func (a *AggregatorServer) updateCapabilities() {
 		// Add resource handlers
 		info.mu.RLock()
 		for _, resource := range info.Resources {
+			// Mark this resource as active
+			a.mu.Lock()
+			a.activeResources[resource.URI] = true
+			a.mu.Unlock()
+
 			// Capture resource URI in the closure
 			resURI := resource.URI
 
 			a.server.AddResource(resource, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+				// Check if this resource is still active
+				a.mu.RLock()
+				isActive := a.activeResources[resURI]
+				a.mu.RUnlock()
+
+				if !isActive {
+					return nil, fmt.Errorf("resource %s is no longer available", resURI)
+				}
+
 				// Find which server can handle this resource
 				for _, srvInfo := range a.registry.GetAllServers() {
 					if !srvInfo.IsConnected() {
@@ -288,10 +338,24 @@ func (a *AggregatorServer) updateCapabilities() {
 			exposedPrompt := prompt
 			exposedPrompt.Name = a.registry.nameTracker.GetExposedPromptName(serverName, prompt.Name)
 
+			// Mark this prompt as active
+			a.mu.Lock()
+			a.activePrompts[exposedPrompt.Name] = true
+			a.mu.Unlock()
+
 			// Capture the exposed name in the closure
 			exposedName := exposedPrompt.Name
 
 			a.server.AddPrompt(exposedPrompt, func(ctx context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
+				// Check if this prompt is still active
+				a.mu.RLock()
+				isActive := a.activePrompts[exposedName]
+				a.mu.RUnlock()
+
+				if !isActive {
+					return nil, fmt.Errorf("prompt %s is no longer available", exposedName)
+				}
+
 				// Resolve the exposed name back to server and original prompt name
 				sName, originalName, err := a.registry.ResolvePromptName(exposedName)
 				if err != nil {
@@ -348,27 +412,6 @@ func (a *AggregatorServer) updateCapabilities() {
 func (a *AggregatorServer) clearHandlers() {
 	// The mcp-go library doesn't provide a clear method, so we'll need to track and manage this
 	// For now, we'll rely on the fact that adding a handler with the same name overwrites the previous one
-}
-
-// healthCheckRoutine periodically checks the health of registered servers
-func (a *AggregatorServer) healthCheckRoutine() {
-	defer a.wg.Done()
-
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-a.ctx.Done():
-			return
-		case <-ticker.C:
-			ctx, cancel := context.WithTimeout(a.ctx, 5*time.Second)
-			if err := a.registry.RefreshAll(ctx); err != nil {
-				logging.Warn("Aggregator", "Health check failed: %v", err)
-			}
-			cancel()
-		}
-	}
 }
 
 // GetEndpoint returns the aggregator's SSE endpoint URL

@@ -62,9 +62,6 @@ func (s *AggregatorService) Start(ctx context.Context) error {
 
 	s.UpdateState(services.StateRunning, services.HealthHealthy, nil)
 
-	// Start monitoring for MCP server changes
-	go s.monitorMCPServers(ctx)
-
 	logging.Info("Aggregator", "Started MCP aggregator service on %s", s.server.GetEndpoint())
 	return nil
 }
@@ -168,6 +165,8 @@ func (s *AggregatorService) registerMCPServers(ctx context.Context) error {
 	// Get all MCP clients from the provider
 	clients := s.clientProvider.GetAllMCPClients()
 
+	logging.Debug("Aggregator", "Registering MCP servers: found %d running MCP clients", len(clients))
+
 	for label, client := range clients {
 		// Register with the aggregator
 		if err := s.server.RegisterServer(ctx, label, client); err != nil {
@@ -178,56 +177,55 @@ func (s *AggregatorService) registerMCPServers(ctx context.Context) error {
 		}
 	}
 
+	if len(clients) == 0 {
+		logging.Info("Aggregator", "No MCP servers are currently running to register")
+	}
+
 	return nil
 }
 
-// monitorMCPServers monitors for MCP server state changes
-func (s *AggregatorService) monitorMCPServers(ctx context.Context) {
-	// This is a simplified version - in production, we'd want to
-	// subscribe to service state change events
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
+// RefreshMCPServers updates the aggregator's registered MCP servers based on current state
+func (s *AggregatorService) RefreshMCPServers(ctx context.Context) error {
+	logging.Info("Aggregator", "RefreshMCPServers called - updating registered servers")
 
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			s.mu.RLock()
-			server := s.server
-			s.mu.RUnlock()
+	s.mu.RLock()
+	server := s.server
+	s.mu.RUnlock()
 
-			if server == nil {
-				continue
-			}
+	if server == nil {
+		return fmt.Errorf("aggregator server not running")
+	}
 
-			// Get all current MCP clients
-			currentClients := s.clientProvider.GetAllMCPClients()
-			registry := server.GetRegistry()
+	// Get all current MCP clients
+	currentClients := s.clientProvider.GetAllMCPClients()
+	registry := server.GetRegistry()
 
-			// Register new clients
-			for label, client := range currentClients {
-				if _, exists := registry.GetServerInfo(label); !exists {
-					if err := server.RegisterServer(ctx, label, client); err != nil {
-						logging.Warn("Aggregator", "Failed to register new MCP server %s: %v", label, err)
-					} else {
-						logging.Info("Aggregator", "Registered new MCP server %s with aggregator", label)
-					}
-				}
-			}
+	logging.Info("Aggregator", "Current MCP clients: %d, Registered servers: %d",
+		len(currentClients), len(registry.GetAllServers()))
 
-			// Deregister removed clients
-			for name := range registry.GetAllServers() {
-				if _, exists := currentClients[name]; !exists {
-					if err := server.DeregisterServer(name); err != nil {
-						logging.Warn("Aggregator", "Failed to deregister MCP server %s: %v", name, err)
-					} else {
-						logging.Info("Aggregator", "Deregistered MCP server %s from aggregator", name)
-					}
-				}
+	// Register new clients
+	for label, client := range currentClients {
+		if _, exists := registry.GetServerInfo(label); !exists {
+			if err := server.RegisterServer(ctx, label, client); err != nil {
+				logging.Warn("Aggregator", "Failed to register new MCP server %s: %v", label, err)
+			} else {
+				logging.Info("Aggregator", "Registered new MCP server %s with aggregator", label)
 			}
 		}
 	}
+
+	// Deregister removed clients
+	for name := range registry.GetAllServers() {
+		if _, exists := currentClients[name]; !exists {
+			if err := server.DeregisterServer(name); err != nil {
+				logging.Warn("Aggregator", "Failed to deregister MCP server %s: %v", name, err)
+			} else {
+				logging.Info("Aggregator", "Deregistered MCP server %s from aggregator", name)
+			}
+		}
+	}
+
+	return nil
 }
 
 // GetEndpoint returns the aggregator's SSE endpoint URL
