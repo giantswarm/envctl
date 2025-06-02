@@ -4,7 +4,6 @@ import (
 	"context"
 	"envctl/internal/aggregator"
 	"envctl/internal/services"
-	"envctl/internal/services/mcpserver"
 	"envctl/pkg/logging"
 	"fmt"
 	"sync"
@@ -15,22 +14,22 @@ import (
 type AggregatorService struct {
 	*services.BaseService
 
-	mu       sync.RWMutex
-	config   aggregator.AggregatorConfig
-	server   *aggregator.AggregatorServer
-	registry services.ServiceRegistry
+	mu             sync.RWMutex
+	config         aggregator.AggregatorConfig
+	server         *aggregator.AggregatorServer
+	clientProvider aggregator.MCPClientProvider
 }
 
 // NewAggregatorService creates a new aggregator service
-func NewAggregatorService(config aggregator.AggregatorConfig, registry services.ServiceRegistry) *AggregatorService {
+func NewAggregatorService(config aggregator.AggregatorConfig, clientProvider aggregator.MCPClientProvider) *AggregatorService {
 	// The aggregator depends on all MCP servers being ready
 	// We'll dynamically add dependencies based on registered MCP servers
 	deps := []string{}
 
 	return &AggregatorService{
-		BaseService: services.NewBaseService("mcp-aggregator", services.ServiceType("Aggregator"), deps),
-		config:      config,
-		registry:    registry,
+		BaseService:    services.NewBaseService("mcp-aggregator", services.ServiceType("Aggregator"), deps),
+		config:         config,
+		clientProvider: clientProvider,
 	}
 }
 
@@ -166,27 +165,16 @@ func (s *AggregatorService) GetServiceData() map[string]interface{} {
 
 // registerMCPServers registers all running MCP servers with the aggregator
 func (s *AggregatorService) registerMCPServers(ctx context.Context) error {
-	// Get all MCP server services from the registry
-	mcpServers := s.registry.GetByType(services.TypeMCPServer)
+	// Get all MCP clients from the provider
+	clients := s.clientProvider.GetAllMCPClients()
 
-	for _, svc := range mcpServers {
-		// Only register running servers
-		if svc.GetState() != services.StateRunning {
-			continue
-		}
-
-		// Get the MCP client from the service
-		if mcpSvc, ok := svc.(*mcpserver.MCPServerService); ok {
-			client := mcpSvc.GetMCPClient()
-			if client != nil {
-				// Register with the aggregator
-				if err := s.server.RegisterServer(ctx, svc.GetLabel(), client); err != nil {
-					logging.Warn("Aggregator", "Failed to register MCP server %s: %v", svc.GetLabel(), err)
-					// Continue with other servers
-				} else {
-					logging.Info("Aggregator", "Registered MCP server %s with aggregator", svc.GetLabel())
-				}
-			}
+	for label, client := range clients {
+		// Register with the aggregator
+		if err := s.server.RegisterServer(ctx, label, client); err != nil {
+			logging.Warn("Aggregator", "Failed to register MCP server %s: %v", label, err)
+			// Continue with other servers
+		} else {
+			logging.Info("Aggregator", "Registered MCP server %s with aggregator", label)
 		}
 	}
 
@@ -213,44 +201,24 @@ func (s *AggregatorService) monitorMCPServers(ctx context.Context) {
 				continue
 			}
 
-			// Check for new MCP servers to register
-			mcpServers := s.registry.GetByType(services.TypeMCPServer)
+			// Get all current MCP clients
+			currentClients := s.clientProvider.GetAllMCPClients()
 			registry := server.GetRegistry()
 
-			for _, svc := range mcpServers {
-				label := svc.GetLabel()
-
-				// Check if already registered
-				if _, exists := registry.GetServerInfo(label); exists {
-					continue
-				}
-
-				// Register new running servers
-				if svc.GetState() == services.StateRunning {
-					if mcpSvc, ok := svc.(*mcpserver.MCPServerService); ok {
-						client := mcpSvc.GetMCPClient()
-						if client != nil {
-							if err := server.RegisterServer(ctx, label, client); err != nil {
-								logging.Warn("Aggregator", "Failed to register new MCP server %s: %v", label, err)
-							} else {
-								logging.Info("Aggregator", "Registered new MCP server %s with aggregator", label)
-							}
-						}
+			// Register new clients
+			for label, client := range currentClients {
+				if _, exists := registry.GetServerInfo(label); !exists {
+					if err := server.RegisterServer(ctx, label, client); err != nil {
+						logging.Warn("Aggregator", "Failed to register new MCP server %s: %v", label, err)
+					} else {
+						logging.Info("Aggregator", "Registered new MCP server %s with aggregator", label)
 					}
 				}
 			}
 
-			// Check for servers to deregister
+			// Deregister removed clients
 			for name := range registry.GetAllServers() {
-				found := false
-				for _, svc := range mcpServers {
-					if svc.GetLabel() == name && svc.GetState() == services.StateRunning {
-						found = true
-						break
-					}
-				}
-
-				if !found {
+				if _, exists := currentClients[name]; !exists {
 					if err := server.DeregisterServer(name); err != nil {
 						logging.Warn("Aggregator", "Failed to deregister MCP server %s: %v", name, err)
 					} else {

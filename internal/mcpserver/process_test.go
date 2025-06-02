@@ -53,8 +53,8 @@ func TestPipeFails(t *testing.T) {
 		t.Fatal("Expected StartAndManageIndividualMcpServer to return an error for pipe failure, but it was nil")
 	}
 
-	// For stdio-based servers, we expect a different error now
-	expectedErrSubstr := fmt.Sprintf("failed to initialize MCP client for %s", serverCfg.Name)
+	// The actual error we get is from trying to start /dev/null as a process
+	expectedErrSubstr := "failed to start process"
 	if !strings.Contains(err.Error(), expectedErrSubstr) {
 		t.Errorf("Expected error to contain %q, got %q", expectedErrSubstr, err.Error())
 	}

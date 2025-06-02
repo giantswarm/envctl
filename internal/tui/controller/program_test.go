@@ -2,6 +2,7 @@ package controller
 
 import (
 	"envctl/internal/config"
+	"envctl/internal/tui/model"
 	"envctl/pkg/logging"
 	"testing"
 
@@ -11,20 +12,18 @@ import (
 
 func TestNewProgram(t *testing.T) {
 	tests := []struct {
-		name               string
-		mcName             string
-		wcName             string
-		currentKubeContext string
-		debugMode          bool
-		cfg                config.EnvctlConfig
-		expectError        bool
+		name        string
+		mcName      string
+		wcName      string
+		debugMode   bool
+		cfg         config.EnvctlConfig
+		expectError bool
 	}{
 		{
-			name:               "valid configuration",
-			mcName:             "test-mc",
-			wcName:             "test-wc",
-			currentKubeContext: "test-context",
-			debugMode:          false,
+			name:      "valid configuration",
+			mcName:    "test-mc",
+			wcName:    "test-wc",
+			debugMode: false,
 			cfg: config.EnvctlConfig{
 				PortForwards: []config.PortForwardDefinition{
 					{
@@ -44,29 +43,26 @@ func TestNewProgram(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name:               "empty cluster names",
-			mcName:             "",
-			wcName:             "",
-			currentKubeContext: "test-context",
-			debugMode:          false,
-			cfg:                config.EnvctlConfig{},
-			expectError:        false,
+			name:        "empty cluster names",
+			mcName:      "",
+			wcName:      "",
+			debugMode:   false,
+			cfg:         config.EnvctlConfig{},
+			expectError: false,
 		},
 		{
-			name:               "debug mode enabled",
-			mcName:             "test-mc",
-			wcName:             "test-wc",
-			currentKubeContext: "test-context",
-			debugMode:          true,
-			cfg:                config.EnvctlConfig{},
-			expectError:        false,
+			name:        "debug mode enabled",
+			mcName:      "test-mc",
+			wcName:      "test-wc",
+			debugMode:   true,
+			cfg:         config.EnvctlConfig{},
+			expectError: false,
 		},
 		{
-			name:               "with MCP servers and port forwards",
-			mcName:             "test-mc",
-			wcName:             "test-wc",
-			currentKubeContext: "test-context",
-			debugMode:          false,
+			name:      "with MCP servers and port forwards",
+			mcName:    "test-mc",
+			wcName:    "test-wc",
+			debugMode: false,
 			cfg: config.EnvctlConfig{
 				PortForwards: []config.PortForwardDefinition{
 					{
@@ -103,17 +99,21 @@ func TestNewProgram(t *testing.T) {
 			logChannel := make(chan logging.LogEntry)
 			close(logChannel)
 
+			// Create TUIConfig
+			tuiConfig := model.TUIConfig{
+				ManagementClusterName: tt.mcName,
+				WorkloadClusterName:   tt.wcName,
+				DebugMode:             tt.debugMode,
+				ColorMode:             "auto",
+				PortForwardingConfig:  tt.cfg.PortForwards,
+				MCPServerConfig:       tt.cfg.MCPServers,
+				AggregatorConfig:      tt.cfg.Aggregator,
+			}
+
 			// Create the program
 			// Note: This creates the orchestrator but doesn't start it
 			// The actual starting happens when the program runs
-			program, err := NewProgram(
-				tt.mcName,
-				tt.wcName,
-				tt.currentKubeContext,
-				tt.debugMode,
-				tt.cfg,
-				logChannel,
-			)
+			program, err := NewProgram(tuiConfig, logChannel)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -130,7 +130,6 @@ func TestNewProgram_Parameters(t *testing.T) {
 	// Test that parameters are properly passed through
 	mcName := "test-mc"
 	wcName := "test-wc"
-	context := "test-context"
 	debugMode := true
 	cfg := config.EnvctlConfig{
 		PortForwards: []config.PortForwardDefinition{
@@ -145,8 +144,19 @@ func TestNewProgram_Parameters(t *testing.T) {
 	logChannel := make(chan logging.LogEntry)
 	close(logChannel)
 
+	// Create TUIConfig
+	tuiConfig := model.TUIConfig{
+		ManagementClusterName: mcName,
+		WorkloadClusterName:   wcName,
+		DebugMode:             debugMode,
+		ColorMode:             "auto",
+		PortForwardingConfig:  cfg.PortForwards,
+		MCPServerConfig:       cfg.MCPServers,
+		AggregatorConfig:      cfg.Aggregator,
+	}
+
 	// Create the program
-	program, err := NewProgram(mcName, wcName, context, debugMode, cfg, logChannel)
+	program, err := NewProgram(tuiConfig, logChannel)
 
 	require.NoError(t, err)
 	assert.NotNil(t, program)
@@ -197,14 +207,18 @@ func TestNewProgram_ConfigValidation(t *testing.T) {
 			logChannel := make(chan logging.LogEntry)
 			close(logChannel)
 
-			program, err := NewProgram(
-				"test-mc",
-				"test-wc",
-				"test-context",
-				false,
-				tt.cfg,
-				logChannel,
-			)
+			// Create TUIConfig
+			tuiConfig := model.TUIConfig{
+				ManagementClusterName: "test-mc",
+				WorkloadClusterName:   "test-wc",
+				DebugMode:             false,
+				ColorMode:             "auto",
+				PortForwardingConfig:  tt.cfg.PortForwards,
+				MCPServerConfig:       tt.cfg.MCPServers,
+				AggregatorConfig:      tt.cfg.Aggregator,
+			}
+
+			program, err := NewProgram(tuiConfig, logChannel)
 
 			// NewProgram should handle these cases gracefully
 			require.NoError(t, err)

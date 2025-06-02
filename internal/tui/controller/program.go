@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"envctl/internal/config"
 	"envctl/internal/tui/model"
 	"envctl/pkg/logging"
 
@@ -10,20 +9,11 @@ import (
 
 // NewProgram creates a new Bubble Tea program with the new service architecture
 func NewProgram(
-	mcName, wcName, currentKubeContext string,
-	debugMode bool,
-	cfg config.EnvctlConfig,
+	cfg model.TUIConfig,
 	logChannel <-chan logging.LogEntry,
 ) (*tea.Program, error) {
 	// Initialize the model with the new architecture
-	m, err := model.InitializeModel(
-		mcName,
-		wcName,
-		currentKubeContext,
-		debugMode,
-		cfg,
-		logChannel,
-	)
+	m, err := model.InitializeModel(cfg, logChannel)
 	if err != nil {
 		return nil, err
 	}

@@ -2,11 +2,13 @@ package cmd
 
 import (
 	"context"
+	"envctl/internal/api"
 	"envctl/internal/color"
 	"envctl/internal/config"
 	"envctl/internal/kube"
 	"envctl/internal/orchestrator"
 	"envctl/internal/tui/controller"
+	"envctl/internal/tui/model"
 	"envctl/pkg/logging"
 	"fmt"
 	"os"
@@ -100,6 +102,28 @@ Arguments:
 			return fmt.Errorf("failed to load envctl configuration: %w", err)
 		}
 
+		// Create the orchestrator
+		orchConfig := orchestrator.Config{
+			MCName:         managementClusterArg,
+			WCName:         workloadClusterArg,
+			PortForwards:   envctlCfg.PortForwards,
+			MCPServers:     envctlCfg.MCPServers,
+			AggregatorPort: envctlCfg.Aggregator.Port,
+		}
+		orch := orchestrator.New(orchConfig)
+
+		// Get the service registry
+		registry := orch.GetServiceRegistry()
+
+		// Set up the aggregator service factory to enable MCP client aggregation
+		api.SetupAggregatorFactory(orch, registry)
+
+		// Create APIs
+		orchestratorAPI := api.NewOrchestratorAPI(orch, registry)
+		mcpAPI := api.NewMCPServiceAPI(registry)
+		portForwardAPI := api.NewPortForwardServiceAPI(registry)
+		k8sAPI := api.NewK8sServiceAPI(registry)
+
 		if noTUI {
 			// CLI Mode: Non-interactive operation suitable for scripts and automation
 			logging.Info("CLI", "Running in no-TUI mode.")
@@ -131,16 +155,6 @@ Arguments:
 
 			ctx := context.Background()
 
-			// Create orchestrator to manage all services
-			// The orchestrator handles dependencies and ensures services start in the correct order
-			orchConfig := orchestrator.Config{
-				MCName:       managementClusterArg,
-				WCName:       workloadClusterArg,
-				PortForwards: envctlCfg.PortForwards,
-				MCPServers:   envctlCfg.MCPServers,
-			}
-			orch := orchestrator.New(orchConfig)
-
 			// Start all configured services
 			if err := orch.Start(ctx); err != nil {
 				logging.Error("CLI", err, "Failed to start orchestrator")
@@ -170,14 +184,20 @@ Arguments:
 			defer logging.CloseTUIChannel()
 
 			// Create and configure the TUI program
-			p, err := controller.NewProgram(
-				managementClusterArg,
-				workloadClusterArg,
-				initialKubeContext,
-				debug,
-				envctlCfg,
-				logChan,
-			)
+			p, err := controller.NewProgram(model.TUIConfig{
+				ManagementClusterName: managementClusterArg,
+				WorkloadClusterName:   workloadClusterArg,
+				DebugMode:             debug,
+				ColorMode:             "auto",
+				PortForwardingConfig:  envctlCfg.PortForwards,
+				MCPServerConfig:       envctlCfg.MCPServers,
+				AggregatorConfig:      envctlCfg.Aggregator,
+				Orchestrator:          orch,
+				OrchestratorAPI:       orchestratorAPI,
+				MCPServiceAPI:         mcpAPI,
+				PortForwardAPI:        portForwardAPI,
+				K8sServiceAPI:         k8sAPI,
+			}, logChan)
 			if err != nil {
 				logging.Error("TUI-Lifecycle", err, "Error creating TUI program")
 				return err

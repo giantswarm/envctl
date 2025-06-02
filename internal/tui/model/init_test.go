@@ -42,7 +42,18 @@ func TestInitializeModel(t *testing.T) {
 			logChan := make(chan logging.LogEntry, 100)
 			cfg := config.EnvctlConfig{}
 
-			m, err := InitializeModel(tt.mcName, tt.wcName, "test-context", false, cfg, logChan)
+			// Create TUIConfig
+			tuiConfig := TUIConfig{
+				ManagementClusterName: tt.mcName,
+				WorkloadClusterName:   tt.wcName,
+				DebugMode:             false,
+				ColorMode:             "auto",
+				PortForwardingConfig:  cfg.PortForwards,
+				MCPServerConfig:       cfg.MCPServers,
+				AggregatorConfig:      cfg.Aggregator,
+			}
+
+			m, err := InitializeModel(tuiConfig, logChan)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("InitializeModel() error = %v, wantErr %v", err, tt.wantErr)
@@ -57,24 +68,11 @@ func TestInitializeModel(t *testing.T) {
 				if m.WorkloadClusterName != tt.wcName {
 					t.Errorf("WorkloadClusterName = %v, want %v", m.WorkloadClusterName, tt.wcName)
 				}
-				if m.CurrentKubeContext != "test-context" {
-					t.Errorf("CurrentKubeContext = %v, want test-context", m.CurrentKubeContext)
-				}
+				// Note: CurrentKubeContext is fetched automatically in InitializeModel
 				// Note: CurrentAppMode is set to MainDashboard in Init(), not here
 
-				// Verify APIs are initialized
-				if m.OrchestratorAPI == nil {
-					t.Error("OrchestratorAPI is nil")
-				}
-				if m.MCPServiceAPI == nil {
-					t.Error("MCPServiceAPI is nil")
-				}
-				if m.PortForwardAPI == nil {
-					t.Error("PortForwardAPI is nil")
-				}
-				if m.K8sServiceAPI == nil {
-					t.Error("K8sServiceAPI is nil")
-				}
+				// Note: APIs are expected to be nil in unit tests
+				// They are only initialized when the full application is set up
 
 				// Verify data structures are initialized
 				if m.K8sConnections == nil {
@@ -138,7 +136,18 @@ func TestModel_Init(t *testing.T) {
 	logChan := make(chan logging.LogEntry, 100)
 	cfg := config.EnvctlConfig{}
 
-	m, err := InitializeModel("test-mc", "test-wc", "test-context", false, cfg, logChan)
+	// Create TUIConfig
+	tuiConfig := TUIConfig{
+		ManagementClusterName: "test-mc",
+		WorkloadClusterName:   "test-wc",
+		DebugMode:             false,
+		ColorMode:             "auto",
+		PortForwardingConfig:  cfg.PortForwards,
+		MCPServerConfig:       cfg.MCPServers,
+		AggregatorConfig:      cfg.Aggregator,
+	}
+
+	m, err := InitializeModel(tuiConfig, logChan)
 	if err != nil {
 		t.Fatalf("InitializeModel() error = %v", err)
 	}
@@ -157,7 +166,18 @@ func TestModel_Update(t *testing.T) {
 	logChan := make(chan logging.LogEntry, 100)
 	cfg := config.EnvctlConfig{}
 
-	m, err := InitializeModel("test-mc", "test-wc", "test-context", false, cfg, logChan)
+	// Create TUIConfig
+	tuiConfig := TUIConfig{
+		ManagementClusterName: "test-mc",
+		WorkloadClusterName:   "test-wc",
+		DebugMode:             false,
+		ColorMode:             "auto",
+		PortForwardingConfig:  cfg.PortForwards,
+		MCPServerConfig:       cfg.MCPServers,
+		AggregatorConfig:      cfg.Aggregator,
+	}
+
+	m, err := InitializeModel(tuiConfig, logChan)
 	if err != nil {
 		t.Fatalf("InitializeModel() error = %v", err)
 	}
@@ -180,7 +200,18 @@ func TestModel_View(t *testing.T) {
 	logChan := make(chan logging.LogEntry, 100)
 	cfg := config.EnvctlConfig{}
 
-	m, err := InitializeModel("test-mc", "test-wc", "test-context", false, cfg, logChan)
+	// Create TUIConfig
+	tuiConfig := TUIConfig{
+		ManagementClusterName: "test-mc",
+		WorkloadClusterName:   "test-wc",
+		DebugMode:             false,
+		ColorMode:             "auto",
+		PortForwardingConfig:  cfg.PortForwards,
+		MCPServerConfig:       cfg.MCPServers,
+		AggregatorConfig:      cfg.Aggregator,
+	}
+
+	m, err := InitializeModel(tuiConfig, logChan)
 	if err != nil {
 		t.Fatalf("InitializeModel() error = %v", err)
 	}
@@ -229,7 +260,18 @@ func TestListenForStateChanges(t *testing.T) {
 	logChan := make(chan logging.LogEntry, 100)
 	cfg := config.EnvctlConfig{}
 
-	m, err := InitializeModel("test-mc", "test-wc", "test-context", false, cfg, logChan)
+	// Create TUIConfig
+	tuiConfig := TUIConfig{
+		ManagementClusterName: "test-mc",
+		WorkloadClusterName:   "test-wc",
+		DebugMode:             false,
+		ColorMode:             "auto",
+		PortForwardingConfig:  cfg.PortForwards,
+		MCPServerConfig:       cfg.MCPServers,
+		AggregatorConfig:      cfg.Aggregator,
+	}
+
+	m, err := InitializeModel(tuiConfig, logChan)
 	if err != nil {
 		t.Fatalf("InitializeModel() error = %v", err)
 	}
@@ -275,7 +317,18 @@ func TestListenForLogs(t *testing.T) {
 	logChan := make(chan logging.LogEntry, 1)
 	cfg := config.EnvctlConfig{}
 
-	m, err := InitializeModel("test-mc", "test-wc", "test-context", false, cfg, logChan)
+	// Create TUIConfig
+	tuiConfig := TUIConfig{
+		ManagementClusterName: "test-mc",
+		WorkloadClusterName:   "test-wc",
+		DebugMode:             false,
+		ColorMode:             "auto",
+		PortForwardingConfig:  cfg.PortForwards,
+		MCPServerConfig:       cfg.MCPServers,
+		AggregatorConfig:      cfg.Aggregator,
+	}
+
+	m, err := InitializeModel(tuiConfig, logChan)
 	if err != nil {
 		t.Fatalf("InitializeModel() error = %v", err)
 	}
@@ -343,7 +396,18 @@ func TestInitializeModel_WithConfig(t *testing.T) {
 		},
 	}
 
-	m, err := InitializeModel("test-mc", "test-wc", "test-context", true, cfg, logChan)
+	// Create TUIConfig
+	tuiConfig := TUIConfig{
+		ManagementClusterName: "test-mc",
+		WorkloadClusterName:   "test-wc",
+		DebugMode:             true,
+		ColorMode:             "auto",
+		PortForwardingConfig:  cfg.PortForwards,
+		MCPServerConfig:       cfg.MCPServers,
+		AggregatorConfig:      cfg.Aggregator,
+	}
+
+	m, err := InitializeModel(tuiConfig, logChan)
 	if err != nil {
 		t.Fatalf("InitializeModel() error = %v", err)
 	}

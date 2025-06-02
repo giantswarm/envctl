@@ -94,7 +94,18 @@ func TestStartOrchestratorIntegration(t *testing.T) {
 		MCPServers:   []config.MCPServerDefinition{},
 	}
 
-	m, err := InitializeModel("", "", "", false, cfg, logChan)
+	// Create TUIConfig
+	tuiConfig := TUIConfig{
+		ManagementClusterName: "",
+		WorkloadClusterName:   "",
+		DebugMode:             false,
+		ColorMode:             "auto",
+		PortForwardingConfig:  cfg.PortForwards,
+		MCPServerConfig:       cfg.MCPServers,
+		AggregatorConfig:      cfg.Aggregator,
+	}
+
+	m, err := InitializeModel(tuiConfig, logChan)
 	if err != nil {
 		t.Fatalf("InitializeModel() error = %v", err)
 	}

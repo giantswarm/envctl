@@ -2,7 +2,9 @@ package orchestrator
 
 import (
 	"context"
+	"envctl/internal/aggregator"
 	"envctl/internal/config"
+	"envctl/internal/services"
 	"testing"
 	"time"
 
@@ -397,6 +399,35 @@ func TestServicesRegisteredOnStart(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create orchestrator
 			o := New(tt.config)
+
+			// Set up a mock aggregator factory for tests with MCP servers
+			// This prevents the nil pointer issue when the aggregator tries to use the client provider
+			if len(tt.config.MCPServers) > 0 {
+				hasEnabledMCPServers := false
+				for _, mcp := range tt.config.MCPServers {
+					if mcp.Enabled {
+						hasEnabledMCPServers = true
+						break
+					}
+				}
+				if hasEnabledMCPServers {
+					// Set a no-op aggregator factory that creates a mock service
+					o.SetAggregatorServiceFactory(func(config aggregator.AggregatorConfig) services.Service {
+						// Return a mock service that does nothing
+						return &mockService{
+							label:       "mcp-aggregator",
+							serviceType: services.ServiceType("Aggregator"),
+							state:       services.StateStopped,
+							startFunc: func(ctx context.Context) error {
+								return nil
+							},
+							stopFunc: func(ctx context.Context) error {
+								return nil
+							},
+						}
+					})
+				}
+			}
 
 			// Start the orchestrator to register services
 			ctx := context.Background()

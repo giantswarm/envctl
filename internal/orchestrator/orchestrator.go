@@ -51,6 +51,9 @@ type Orchestrator struct {
 	// Global state change callback
 	globalStateChangeCallback services.StateChangeCallback
 
+	// Aggregator service factory (optional)
+	aggregatorServiceFactory func(config aggregator.AggregatorConfig) services.Service
+
 	// Context for cancellation
 	ctx        context.Context
 	cancelFunc context.CancelFunc
@@ -423,6 +426,15 @@ func (o *Orchestrator) registerMCPServices() error {
 	return nil
 }
 
+// SetAggregatorServiceFactory sets the factory function for creating aggregator service
+// This allows external code to provide the aggregator service with proper dependencies
+// without creating import cycles
+func (o *Orchestrator) SetAggregatorServiceFactory(factory func(config aggregator.AggregatorConfig) services.Service) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.aggregatorServiceFactory = factory
+}
+
 // registerAggregatorService registers the MCP aggregator service.
 // The aggregator provides a single SSE endpoint that aggregates all
 // MCP servers, making it easier for AI assistants to discover and use tools.
@@ -452,8 +464,17 @@ func (o *Orchestrator) registerAggregatorService() error {
 		Port: port,
 	}
 
-	// Create and register the aggregator service
-	aggService := agg.NewAggregatorService(aggConfig, o.registry)
+	var aggService services.Service
+
+	// Use factory if provided, otherwise create default
+	if o.aggregatorServiceFactory != nil {
+		aggService = o.aggregatorServiceFactory(aggConfig)
+	} else {
+		// Create default aggregator without client provider
+		// It won't be able to aggregate MCP servers but at least it will run
+		aggService = agg.NewAggregatorService(aggConfig, nil)
+		logging.Warn("Orchestrator", "No aggregator service factory provided, aggregator will run without MCP client access")
+	}
 
 	// Set the global state change callback if configured
 	o.mu.RLock()

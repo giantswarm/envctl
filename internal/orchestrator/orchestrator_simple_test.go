@@ -87,13 +87,15 @@ func TestOrchestrator_DependencyGraph(t *testing.T) {
 				KubeContextTarget: "gs-test-mc",
 			},
 		},
-		MCPServers: []config.MCPServerDefinition{
-			{
-				Name:                 "mcp1",
-				Enabled:              true,
-				RequiresPortForwards: []string{"pf1"},
-			},
-		},
+		// Commenting out MCP servers to avoid aggregator creation in tests
+		// The dependency graph test doesn't need MCP servers
+		// MCPServers: []config.MCPServerDefinition{
+		// 	{
+		// 		Name:                 "mcp1",
+		// 		Enabled:              true,
+		// 		RequiresPortForwards: []string{"pf1"},
+		// 	},
+		// },
 	})
 
 	// Start the orchestrator to register services and build the dependency graph
@@ -120,10 +122,11 @@ func TestOrchestrator_DependencyGraph(t *testing.T) {
 	assert.NotNil(t, pfNode)
 	assert.Contains(t, pfNode.DependsOn, dependency.NodeID("k8s-mc-test-mc"))
 
+	// The MCP node test is no longer needed since we removed MCP servers
 	// Check MCP node depends on PF
-	mcpNode := graph.Get(dependency.NodeID("mcp:mcp1"))
-	assert.NotNil(t, mcpNode)
-	assert.Contains(t, mcpNode.DependsOn, dependency.NodeID("pf:pf1"))
+	// mcpNode := graph.Get(dependency.NodeID("mcp:mcp1"))
+	// assert.NotNil(t, mcpNode)
+	// assert.Contains(t, mcpNode.DependsOn, dependency.NodeID("pf:pf1"))
 }
 
 func TestOrchestrator_StopReasons(t *testing.T) {

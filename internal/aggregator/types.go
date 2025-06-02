@@ -105,3 +105,12 @@ const (
 	EventRegister EventType = iota
 	EventDeregister
 )
+
+// MCPClientProvider provides access to MCP clients from running servers
+type MCPClientProvider interface {
+	// GetMCPClient returns the MCP client for a specific service
+	GetMCPClient(label string) (MCPClient, error)
+
+	// GetAllMCPClients returns all available MCP clients
+	GetAllMCPClients() map[string]MCPClient
+}

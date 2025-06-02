@@ -3,9 +3,7 @@ package model
 import (
 	"context"
 	"envctl/internal/api"
-	"envctl/internal/config"
 	"envctl/internal/kube"
-	"envctl/internal/orchestrator"
 	"envctl/pkg/logging"
 	"fmt"
 
@@ -18,55 +16,34 @@ import (
 )
 
 // InitializeModel creates and initializes a new TUI model with the new architecture
-func InitializeModel(mcName, wcName, currentContext string, debugMode bool, cfg config.EnvctlConfig, logChannel <-chan logging.LogEntry) (*Model, error) {
-	// Create the orchestrator
-	orchConfig := orchestrator.Config{
-		MCName:         mcName,
-		WCName:         wcName,
-		PortForwards:   cfg.PortForwards,
-		MCPServers:     cfg.MCPServers,
-		AggregatorPort: cfg.Aggregator.Port,
-	}
-	orch := orchestrator.New(orchConfig)
-
-	// Get the service registry
-	registry := orch.GetServiceRegistry()
-
-	// Create APIs
-	orchestratorAPI := api.NewOrchestratorAPI(orch, registry)
-	mcpAPI := api.NewMCPServiceAPI(registry)
-	portForwardAPI := api.NewPortForwardServiceAPI(registry)
-	k8sAPI := api.NewK8sServiceAPI(registry)
+func InitializeModel(cfg TUIConfig, logChannel <-chan logging.LogEntry) (*Model, error) {
 
 	// Get current kube context if not provided
-	if currentContext == "" {
-		ctx, _ := kube.GetCurrentKubeContext()
-		currentContext = ctx
-	}
+	currentContext, _ := kube.GetCurrentKubeContext()
 
 	// Create the model
 	m := &Model{
 		// Service Architecture
-		Orchestrator:    orch,
-		OrchestratorAPI: orchestratorAPI,
-		MCPServiceAPI:   mcpAPI,
-		PortForwardAPI:  portForwardAPI,
-		K8sServiceAPI:   k8sAPI,
+		Orchestrator:    cfg.Orchestrator,
+		OrchestratorAPI: cfg.OrchestratorAPI,
+		MCPServiceAPI:   cfg.MCPServiceAPI,
+		PortForwardAPI:  cfg.PortForwardAPI,
+		K8sServiceAPI:   cfg.K8sServiceAPI,
 
 		// Cluster info
-		ManagementClusterName: mcName,
-		WorkloadClusterName:   wcName,
+		ManagementClusterName: cfg.ManagementClusterName,
+		WorkloadClusterName:   cfg.WorkloadClusterName,
 		CurrentKubeContext:    currentContext,
 
 		// Configuration
-		PortForwardingConfig: cfg.PortForwards,
-		MCPServerConfig:      cfg.MCPServers,
-		AggregatorConfig:     cfg.Aggregator,
+		PortForwardingConfig: cfg.PortForwardingConfig,
+		MCPServerConfig:      cfg.MCPServerConfig,
+		AggregatorConfig:     cfg.AggregatorConfig,
 
 		// UI State
 		CurrentAppMode: ModeInitializing,
-		ColorMode:      "auto",
-		DebugMode:      debugMode,
+		ColorMode:      cfg.ColorMode,
+		DebugMode:      cfg.DebugMode,
 
 		// Data structures
 		K8sConnections: make(map[string]*api.K8sConnectionInfo),
@@ -93,7 +70,9 @@ func InitializeModel(mcName, wcName, currentContext string, debugMode bool, cfg 
 	}
 
 	// Subscribe to state changes
-	m.StateChangeEvents = m.OrchestratorAPI.SubscribeToStateChanges()
+	if m.OrchestratorAPI != nil {
+		m.StateChangeEvents = m.OrchestratorAPI.SubscribeToStateChanges()
+	}
 
 	// Configure spinner
 	m.Spinner.Spinner = spinner.Dot
@@ -220,6 +199,11 @@ func (m *Model) View() string {
 // startOrchestrator starts the orchestrator
 func (m *Model) startOrchestrator() tea.Cmd {
 	return func() tea.Msg {
+		// Skip if orchestrator is nil (e.g., in tests)
+		if m.Orchestrator == nil {
+			return nil
+		}
+
 		ctx := context.Background()
 		if err := m.Orchestrator.Start(ctx); err != nil {
 			return ServiceErrorMsg{

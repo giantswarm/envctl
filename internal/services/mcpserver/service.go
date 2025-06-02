@@ -2,7 +2,6 @@ package mcpserver
 
 import (
 	"context"
-	"envctl/internal/aggregator"
 	"envctl/internal/config"
 	"envctl/internal/containerizer"
 	"envctl/internal/mcpserver"
@@ -281,45 +280,16 @@ func (s *MCPServerService) CheckHealth(ctx context.Context) (services.HealthStat
 		return services.HealthUnknown, nil
 	}
 
-	// Create appropriate MCP client based on server type
-	var client aggregator.MCPClient
-
-	switch s.config.Type {
-	case config.MCPServerTypeLocalCommand:
-		// For local commands, use stdio client
-		if len(s.config.Command) > 0 {
-			client = mcpserver.NewStdioClientWithEnv(s.config.Command[0], s.config.Command[1:], s.config.Env)
-		}
-
-	case config.MCPServerTypeContainer:
-		// For containers, we would need to determine the SSE endpoint
-		// This would require getting the exposed port from the container
-		// TODO: Implement SSE client for containers
-		return services.HealthHealthy, nil
-	}
-
+	// For local commands, check if we have a client
+	// The client is persistent and already connected, so if we have it, we're healthy
+	client := s.GetMCPClient()
 	if client == nil {
-		return services.HealthUnknown, fmt.Errorf("no client available for health check")
-	}
-
-	// Initialize the client
-	initCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
-	if err := client.Initialize(initCtx); err != nil {
-		return services.HealthUnhealthy, fmt.Errorf("failed to initialize MCP client: %w", err)
-	}
-	defer client.Close()
-
-	// Ping the server
-	pingCtx, pingCancel := context.WithTimeout(ctx, 5*time.Second)
-	defer pingCancel()
-
-	if err := client.Ping(pingCtx); err != nil {
 		s.UpdateHealth(services.HealthUnhealthy)
-		return services.HealthUnhealthy, fmt.Errorf("MCP server not responding: %w", err)
+		return services.HealthUnhealthy, fmt.Errorf("MCP client not available")
 	}
 
+	// TODO: In the future, we could add actual ping functionality
+	// For now, having a client means we're healthy
 	s.UpdateHealth(services.HealthHealthy)
 	return services.HealthHealthy, nil
 }
@@ -333,20 +303,23 @@ func (s *MCPServerService) GetHealthCheckInterval() time.Duration {
 	return 30 * time.Second
 }
 
-// GetMCPClient returns a new MCP client for this server (used by aggregator)
-func (s *MCPServerService) GetMCPClient() aggregator.MCPClient {
+// GetMCPClient returns the persistent MCP client for this server
+func (s *MCPServerService) GetMCPClient() interface{} {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	if s.GetState() != services.StateRunning {
 		return nil
 	}
 
 	switch s.config.Type {
 	case config.MCPServerTypeLocalCommand:
-		if len(s.config.Command) > 0 {
-			return mcpserver.NewStdioClientWithEnv(s.config.Command[0], s.config.Command[1:], s.config.Env)
+		if s.managedServer != nil {
+			return s.managedServer.Client
 		}
 	case config.MCPServerTypeContainer:
-		// TODO: Implement SSE client for containers
-		// Would need to determine the container's exposed port
+		// TODO: Implement container client support
+		return nil
 	}
 
 	return nil

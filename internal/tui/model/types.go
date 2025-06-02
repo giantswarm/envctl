@@ -32,6 +32,22 @@ const (
 	ModeQuitting
 )
 
+// TUI configuration struct
+type TUIConfig struct {
+	ManagementClusterName string
+	WorkloadClusterName   string
+	DebugMode             bool
+	ColorMode             string
+	PortForwardingConfig  []config.PortForwardDefinition
+	MCPServerConfig       []config.MCPServerDefinition
+	AggregatorConfig      config.AggregatorConfig
+	Orchestrator          *orchestrator.Orchestrator
+	OrchestratorAPI       api.OrchestratorAPI
+	MCPServiceAPI         api.MCPServiceAPI
+	PortForwardAPI        api.PortForwardServiceAPI
+	K8sServiceAPI         api.K8sServiceAPI
+}
+
 // InputStep represents the current step in the new connection input flow
 type InputStep int
 
@@ -205,6 +221,11 @@ type Model struct {
 
 // RefreshServiceData fetches the latest service data from APIs
 func (m *Model) RefreshServiceData() error {
+	// Skip if APIs are nil (e.g., in tests)
+	if m.K8sServiceAPI == nil || m.PortForwardAPI == nil || m.MCPServiceAPI == nil {
+		return nil
+	}
+
 	ctx := context.Background()
 
 	// Refresh K8s connections
@@ -312,6 +333,11 @@ func (m *Model) GetPortForwardStatus(label string) (running bool, localPort int,
 // StartService starts a service through the orchestrator API
 func (m *Model) StartService(label string) tea.Cmd {
 	return func() tea.Msg {
+		// Skip if API is nil (e.g., in tests)
+		if m.OrchestratorAPI == nil {
+			return nil
+		}
+
 		ctx := context.Background()
 		if err := m.OrchestratorAPI.StartService(ctx, label); err != nil {
 			return ServiceErrorMsg{
@@ -326,6 +352,11 @@ func (m *Model) StartService(label string) tea.Cmd {
 // StopService stops a service through the orchestrator API
 func (m *Model) StopService(label string) tea.Cmd {
 	return func() tea.Msg {
+		// Skip if API is nil (e.g., in tests)
+		if m.OrchestratorAPI == nil {
+			return nil
+		}
+
 		ctx := context.Background()
 		if err := m.OrchestratorAPI.StopService(ctx, label); err != nil {
 			return ServiceErrorMsg{
@@ -340,6 +371,11 @@ func (m *Model) StopService(label string) tea.Cmd {
 // RestartService restarts a service through the orchestrator API
 func (m *Model) RestartService(label string) tea.Cmd {
 	return func() tea.Msg {
+		// Skip if API is nil (e.g., in tests)
+		if m.OrchestratorAPI == nil {
+			return nil
+		}
+
 		ctx := context.Background()
 		if err := m.OrchestratorAPI.RestartService(ctx, label); err != nil {
 			return ServiceErrorMsg{
