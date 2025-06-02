@@ -19,6 +19,9 @@ type AggregatorServer struct {
 	registry *ServerRegistry
 	server   *server.MCPServer
 
+	// SSE server for HTTP transport
+	sseServer *server.SSEServer
+
 	// HTTP server for SSE endpoint
 	httpServer *http.Server
 
@@ -67,60 +70,16 @@ func (a *AggregatorServer) Start(ctx context.Context) error {
 
 	a.server = mcpServer
 
-	// Create HTTP server for SSE endpoint
-	mux := http.NewServeMux()
-
-	// Add SSE endpoint
-	mux.HandleFunc("/sse", func(w http.ResponseWriter, r *http.Request) {
-		// The mcp-go library handles SSE internally when using stdio transport
-		// For HTTP/SSE, we need to implement the transport ourselves
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.Header().Set("Cache-Control", "no-cache")
-		w.Header().Set("Connection", "keep-alive")
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-
-		// For now, we'll need to implement our own SSE handling
-		// This is a placeholder - the actual implementation would need to
-		// handle the JSON-RPC protocol over SSE
-		flusher, ok := w.(http.Flusher)
-		if !ok {
-			http.Error(w, "Streaming not supported", http.StatusInternalServerError)
-			return
-		}
-
-		// Keep connection alive
-		for {
-			select {
-			case <-r.Context().Done():
-				return
-			case <-time.After(30 * time.Second):
-				fmt.Fprintf(w, ": keep-alive\n\n")
-				flusher.Flush()
-			}
-		}
-	})
-
-	// Add health endpoint
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
-	})
-
-	addr := fmt.Sprintf("%s:%d", a.config.Host, a.config.Port)
-	a.httpServer = &http.Server{
-		Addr:    addr,
-		Handler: mux,
-	}
-
-	// Start HTTP server in background
-	a.wg.Add(1)
-	go func() {
-		defer a.wg.Done()
-		logging.Info("Aggregator", "Starting MCP aggregator server on %s", addr)
-		if err := a.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logging.Error("Aggregator", err, "HTTP server error")
-		}
-	}()
+	// Create SSE server
+	baseURL := fmt.Sprintf("http://%s:%d", a.config.Host, a.config.Port)
+	a.sseServer = server.NewSSEServer(
+		a.server,
+		server.WithBaseURL(baseURL),
+		server.WithSSEEndpoint("/sse"),
+		server.WithMessageEndpoint("/message"),
+		server.WithKeepAlive(true),
+		server.WithKeepAliveInterval(30*time.Second),
+	)
 
 	// Start registry update monitor
 	a.wg.Add(1)
@@ -132,6 +91,16 @@ func (a *AggregatorServer) Start(ctx context.Context) error {
 
 	// Update initial capabilities
 	a.updateCapabilities()
+
+	// Start SSE server
+	addr := fmt.Sprintf("%s:%d", a.config.Host, a.config.Port)
+	logging.Info("Aggregator", "Starting MCP aggregator server on %s", addr)
+
+	go func() {
+		if err := a.sseServer.Start(addr); err != nil && err != http.ErrServerClosed {
+			logging.Error("Aggregator", err, "SSE server error")
+		}
+	}()
 
 	return nil
 }
@@ -152,13 +121,13 @@ func (a *AggregatorServer) Stop(ctx context.Context) error {
 		a.cancelFunc()
 	}
 
-	// Shutdown HTTP server
-	if a.httpServer != nil {
+	// Shutdown SSE server
+	if a.sseServer != nil {
 		shutdownCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
 
-		if err := a.httpServer.Shutdown(shutdownCtx); err != nil {
-			logging.Error("Aggregator", err, "Error shutting down HTTP server")
+		if err := a.sseServer.Shutdown(shutdownCtx); err != nil {
+			logging.Error("Aggregator", err, "Error shutting down SSE server")
 		}
 	}
 
@@ -173,6 +142,7 @@ func (a *AggregatorServer) Stop(ctx context.Context) error {
 	}
 
 	a.server = nil
+	a.sseServer = nil
 	a.httpServer = nil
 
 	return nil
