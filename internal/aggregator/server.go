@@ -198,17 +198,22 @@ func (a *AggregatorServer) updateCapabilities() {
 			continue
 		}
 
-		// Add handlers for each tool with prefixed names
+		// Add handlers for each tool with smart prefixing
 		info.mu.RLock()
 		for _, tool := range info.Tools {
-			prefixedTool := tool
-			prefixedTool.Name = fmt.Sprintf("%s.%s", serverName, tool.Name)
+			exposedTool := tool
+			exposedTool.Name = a.registry.nameTracker.GetExposedToolName(serverName, tool.Name)
 
-			// Capture serverName and original tool name in the closure
-			sName := serverName
-			originalName := tool.Name
+			// Capture the exposed name in the closure
+			exposedName := exposedTool.Name
 
-			a.server.AddTool(prefixedTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			a.server.AddTool(exposedTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+				// Resolve the exposed name back to server and original tool name
+				sName, originalName, err := a.registry.ResolveToolName(exposedName)
+				if err != nil {
+					return nil, fmt.Errorf("failed to resolve tool name: %w", err)
+				}
+
 				// Get the backend client
 				client, err := a.registry.GetClient(sName)
 				if err != nil {
@@ -277,17 +282,22 @@ func (a *AggregatorServer) updateCapabilities() {
 		}
 		info.mu.RUnlock()
 
-		// Add prompt handlers with prefixed names
+		// Add prompt handlers with smart prefixing
 		info.mu.RLock()
 		for _, prompt := range info.Prompts {
-			prefixedPrompt := prompt
-			prefixedPrompt.Name = fmt.Sprintf("%s.%s", serverName, prompt.Name)
+			exposedPrompt := prompt
+			exposedPrompt.Name = a.registry.nameTracker.GetExposedPromptName(serverName, prompt.Name)
 
-			// Capture serverName and original prompt name in the closure
-			sName := serverName
-			originalName := prompt.Name
+			// Capture the exposed name in the closure
+			exposedName := exposedPrompt.Name
 
-			a.server.AddPrompt(prefixedPrompt, func(ctx context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
+			a.server.AddPrompt(exposedPrompt, func(ctx context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
+				// Resolve the exposed name back to server and original prompt name
+				sName, originalName, err := a.registry.ResolvePromptName(exposedName)
+				if err != nil {
+					return nil, fmt.Errorf("failed to resolve prompt name: %w", err)
+				}
+
 				// Get the backend client
 				client, err := a.registry.GetClient(sName)
 				if err != nil {
@@ -366,7 +376,7 @@ func (a *AggregatorServer) GetEndpoint() string {
 	return fmt.Sprintf("http://%s:%d/sse", a.config.Host, a.config.Port)
 }
 
-// GetTools returns all available tools with prefixed names
+// GetTools returns all available tools with smart prefixing (only prefixed when conflicts exist)
 func (a *AggregatorServer) GetTools() []mcp.Tool {
 	return a.registry.GetAllTools()
 }
@@ -376,7 +386,7 @@ func (a *AggregatorServer) GetResources() []mcp.Resource {
 	return a.registry.GetAllResources()
 }
 
-// GetPrompts returns all available prompts with prefixed names
+// GetPrompts returns all available prompts with smart prefixing (only prefixed when conflicts exist)
 func (a *AggregatorServer) GetPrompts() []mcp.Prompt {
 	return a.registry.GetAllPrompts()
 }
