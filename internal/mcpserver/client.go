@@ -51,24 +51,19 @@ func (c *StdioClient) Initialize(ctx context.Context) error {
 
 	logging.Debug("StdioClient", "Creating stdio client for command: %s %v with env: %v", c.command, c.args, c.env)
 
-	// Create stdio client - it expects the command and args
-	mcpClient, err := client.NewStdioMCPClient(c.command, c.args)
+	// Convert environment map to slice of strings
+	var envStrings []string
+	for k, v := range c.env {
+		envStrings = append(envStrings, fmt.Sprintf("%s=%s", k, v))
+	}
+
+	// Create stdio client - it will start the process
+	mcpClient, err := client.NewStdioMCPClient(c.command, envStrings, c.args...)
 	if err != nil {
 		return fmt.Errorf("failed to create stdio client: %w", err)
 	}
 
-	// TODO: The mcp-go library doesn't expose a way to set environment variables
-	// on the underlying process. We may need to fork the library or find another
-	// approach to pass environment variables to MCP servers.
-
-	logging.Debug("StdioClient", "Starting stdio transport for %s", c.command)
-
-	// Start the stdio transport
-	if err := mcpClient.Start(ctx); err != nil {
-		return fmt.Errorf("failed to start stdio transport: %w", err)
-	}
-
-	logging.Debug("StdioClient", "Stdio transport started, initializing MCP protocol for %s", c.command)
+	logging.Debug("StdioClient", "Stdio client created, initializing MCP protocol for %s", c.command)
 
 	// Initialize the MCP protocol with a longer timeout for first-time npx downloads
 	// Use a 2-minute timeout to allow for package downloads
@@ -282,160 +277,21 @@ func (c *StdioClient) Ping(ctx context.Context) error {
 	return c.client.Ping(ctx)
 }
 
-// ProcessClient implements the aggregator.MCPClient interface for a process we manage
-type ProcessClient struct {
-	stdin     io.WriteCloser
-	stdout    io.ReadCloser
-	stderr    io.ReadCloser
-	mu        sync.RWMutex
-	connected bool
-}
-
-// NewProcessClient creates a new client connected to an already-running process
-func NewProcessClient(stdin io.WriteCloser, stdout io.ReadCloser, stderr io.ReadCloser) *ProcessClient {
-	return &ProcessClient{
-		stdin:  stdin,
-		stdout: stdout,
-		stderr: stderr,
-	}
-}
-
-// Initialize performs the MCP protocol handshake with the process
-func (c *ProcessClient) Initialize(ctx context.Context) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if c.connected {
-		return nil
-	}
-
-	// For now, we'll use the existing StdioClient but in a hacky way
-	// The proper solution would be to implement JSON-RPC communication ourselves
-	// or wait for the mcp-go library to support this use case
-
-	// Mark as connected for now
-	c.connected = true
-
-	// TODO: Implement proper JSON-RPC initialization handshake
-	logging.Warn("ProcessClient", "Using stub implementation - proper JSON-RPC communication not yet implemented")
-
-	return nil
-}
-
-// Close cleanly shuts down the client connection
-func (c *ProcessClient) Close() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if !c.connected {
-		return nil
-	}
-
-	c.connected = false
-
-	// Close the pipes
-	if c.stdin != nil {
-		c.stdin.Close()
-	}
-	if c.stdout != nil {
-		c.stdout.Close()
-	}
-	if c.stderr != nil {
-		c.stderr.Close()
-	}
-
-	return nil
-}
-
-// ListTools returns all available tools from the server
-func (c *ProcessClient) ListTools(ctx context.Context) ([]mcp.Tool, error) {
+// GetStderr returns a reader for the stderr output of the subprocess
+func (c *StdioClient) GetStderr() (io.Reader, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	if !c.connected {
-		return nil, fmt.Errorf("client not connected")
+	if !c.connected || c.client == nil {
+		return nil, false
 	}
 
-	// TODO: Implement JSON-RPC call
-	return nil, fmt.Errorf("not implemented")
-}
-
-// CallTool executes a specific tool and returns the result
-func (c *ProcessClient) CallTool(ctx context.Context, name string, args map[string]interface{}) (*mcp.CallToolResult, error) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	if !c.connected {
-		return nil, fmt.Errorf("client not connected")
+	// Type assert to *client.Client as GetStderr expects the concrete type
+	if concreteClient, ok := c.client.(*client.Client); ok {
+		return client.GetStderr(concreteClient)
 	}
 
-	// TODO: Implement JSON-RPC call
-	return nil, fmt.Errorf("not implemented")
-}
-
-// ListResources returns all available resources from the server
-func (c *ProcessClient) ListResources(ctx context.Context) ([]mcp.Resource, error) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	if !c.connected {
-		return nil, fmt.Errorf("client not connected")
-	}
-
-	// TODO: Implement JSON-RPC call
-	return nil, fmt.Errorf("not implemented")
-}
-
-// ReadResource retrieves a specific resource
-func (c *ProcessClient) ReadResource(ctx context.Context, uri string) (*mcp.ReadResourceResult, error) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	if !c.connected {
-		return nil, fmt.Errorf("client not connected")
-	}
-
-	// TODO: Implement JSON-RPC call
-	return nil, fmt.Errorf("not implemented")
-}
-
-// ListPrompts returns all available prompts from the server
-func (c *ProcessClient) ListPrompts(ctx context.Context) ([]mcp.Prompt, error) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	if !c.connected {
-		return nil, fmt.Errorf("client not connected")
-	}
-
-	// TODO: Implement JSON-RPC call
-	return nil, fmt.Errorf("not implemented")
-}
-
-// GetPrompt retrieves a specific prompt
-func (c *ProcessClient) GetPrompt(ctx context.Context, name string, args map[string]interface{}) (*mcp.GetPromptResult, error) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	if !c.connected {
-		return nil, fmt.Errorf("client not connected")
-	}
-
-	// TODO: Implement JSON-RPC call
-	return nil, fmt.Errorf("not implemented")
-}
-
-// Ping checks if the server is responsive
-func (c *ProcessClient) Ping(ctx context.Context) error {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	if !c.connected {
-		return fmt.Errorf("client not connected")
-	}
-
-	// TODO: Implement JSON-RPC ping
-	return nil
+	return nil, false
 }
 
 // SSEClient implements the aggregator.MCPClient interface using SSE transport

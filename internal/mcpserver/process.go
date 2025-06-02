@@ -7,21 +7,16 @@ import (
 	"envctl/pkg/logging"
 	"fmt"
 	"io"
-	"os/exec"
 	"strings"
 	"sync"
 	"time"
 )
 
-var execCommand = exec.Command
-
 // ManagedMcpServer represents a running MCP server with its client
 type ManagedMcpServer struct {
 	Label    string
-	PID      int
 	Client   aggregator.MCPClient
 	StopChan chan struct{}
-	Cmd      *exec.Cmd
 }
 
 // StartAndManageIndividualMcpServer prepares, starts, and manages a single MCP server process.
@@ -52,65 +47,9 @@ func StartAndManageIndividualMcpServer(
 	// Create the command
 	cmdName := serverConfig.Command[0]
 	cmdArgs := serverConfig.Command[1:]
-	cmd := execCommand(cmdName, cmdArgs...)
 
-	// Set environment variables
-	if len(serverConfig.Env) > 0 {
-		env := cmd.Environ()
-		for k, v := range serverConfig.Env {
-			env = append(env, fmt.Sprintf("%s=%s", k, v))
-		}
-		cmd.Env = env
-	}
-
-	// Create pipes for stdin, stdout, stderr
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		errMsg := fmt.Errorf("failed to create stdin pipe: %w", err)
-		logging.Error(subsystem, errMsg, "Failed to create pipe")
-		if updateFn != nil {
-			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "ProcessStartFailed", ProcessErr: errMsg})
-		}
-		return nil, errMsg
-	}
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		errMsg := fmt.Errorf("failed to create stdout pipe: %w", err)
-		logging.Error(subsystem, errMsg, "Failed to create pipe")
-		if updateFn != nil {
-			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "ProcessStartFailed", ProcessErr: errMsg})
-		}
-		return nil, errMsg
-	}
-
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		errMsg := fmt.Errorf("failed to create stderr pipe: %w", err)
-		logging.Error(subsystem, errMsg, "Failed to create pipe")
-		if updateFn != nil {
-			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "ProcessStartFailed", ProcessErr: errMsg})
-		}
-		return nil, errMsg
-	}
-
-	// Start the process
-	logging.Debug(subsystem, "Starting process: %s %s", cmdName, strings.Join(cmdArgs, " "))
-	if err := cmd.Start(); err != nil {
-		errMsg := fmt.Errorf("failed to start process: %w", err)
-		logging.Error(subsystem, errMsg, "Failed to start MCP server process")
-		if updateFn != nil {
-			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "ProcessStartFailed", ProcessErr: errMsg})
-		}
-		return nil, errMsg
-	}
-
-	// Get the PID directly from our process
-	pid := cmd.Process.Pid
-	logging.Info(subsystem, "Started MCP server process with PID %d", pid)
-
-	// Create client connected to the running process
-	client := NewProcessClient(stdin, stdout, stderr)
+	// Create the stdio client with environment variables
+	client := NewStdioClientWithEnv(cmdName, cmdArgs, serverConfig.Env)
 
 	// Initialize the MCP protocol
 	ctx := context.Background()
@@ -118,10 +57,6 @@ func StartAndManageIndividualMcpServer(
 	defer cancel()
 
 	if err := client.Initialize(initCtx); err != nil {
-		// Kill the process if initialization fails
-		cmd.Process.Kill()
-		cmd.Wait()
-
 		errMsg := fmt.Errorf("failed to initialize MCP client for %s: %w", label, err)
 		logging.Error(subsystem, errMsg, "Failed to initialize MCP protocol")
 		if updateFn != nil {
@@ -130,14 +65,13 @@ func StartAndManageIndividualMcpServer(
 		return nil, errMsg
 	}
 
-	logging.Debug(subsystem, "MCP server started successfully: %s with PID %d", label, pid)
+	logging.Debug(subsystem, "MCP server started successfully: %s", label)
 
 	stopChan := make(chan struct{})
 
 	if updateFn != nil {
 		updateFn(McpDiscreteStatusUpdate{
 			Label:         label,
-			PID:           pid,
 			ProcessStatus: "ProcessRunning",
 		})
 	}
@@ -149,85 +83,46 @@ func StartAndManageIndividualMcpServer(
 		}
 
 		// Monitor stderr for logging
-		go func() {
-			buf := make([]byte, 1024)
-			for {
-				n, err := stderr.Read(buf)
-				if err != nil {
-					if err != io.EOF {
-						logging.Debug(subsystem, "Error reading stderr: %v", err)
+		if stderrReader, ok := client.GetStderr(); ok && stderrReader != nil {
+			go func() {
+				buf := make([]byte, 1024)
+				for {
+					n, err := stderrReader.Read(buf)
+					if err != nil {
+						if err != io.EOF {
+							logging.Debug(subsystem, "Error reading stderr: %v", err)
+						}
+						return
 					}
-					return
+					if n > 0 {
+						logging.Debug(subsystem, "MCP server %s stderr: %s", label, string(buf[:n]))
+					}
 				}
-				if n > 0 {
-					logging.Debug(subsystem, "MCP server %s stderr: %s", label, string(buf[:n]))
-				}
-			}
-		}()
+			}()
+		}
 
-		// Wait for either stop signal or process exit
-		done := make(chan error, 1)
-		go func() {
-			done <- cmd.Wait()
-		}()
+		// Wait for stop signal
+		<-stopChan
 
-		select {
-		case <-stopChan:
-			logging.Debug(subsystem, "Received stop signal for MCP server %s", label)
+		logging.Debug(subsystem, "Received stop signal for MCP server %s", label)
 
-			// Close the client (this should gracefully shut down the protocol)
-			if err := client.Close(); err != nil {
-				logging.Error(subsystem, err, "Error closing MCP client")
-			}
+		// Close the client (this should gracefully shut down the process)
+		if err := client.Close(); err != nil {
+			logging.Error(subsystem, err, "Error closing MCP client")
+		}
 
-			// Give the process a moment to exit gracefully
-			select {
-			case <-done:
-				// Process exited on its own
-			case <-time.After(5 * time.Second):
-				// Force kill if it doesn't exit
-				logging.Warn(subsystem, "Process didn't exit gracefully, forcing kill")
-				cmd.Process.Kill()
-				<-done
-			}
-
-			if updateFn != nil {
-				updateFn(McpDiscreteStatusUpdate{
-					Label:         label,
-					PID:           pid,
-					ProcessStatus: "ProcessStoppedByUser",
-				})
-			}
-
-		case err := <-done:
-			// Process exited on its own
-			logging.Info(subsystem, "MCP server process %s exited: %v", label, err)
-
-			// Close the client
-			client.Close()
-
-			status := "ProcessExited"
-			if err != nil {
-				status = "ProcessExitedWithError"
-			}
-
-			if updateFn != nil {
-				updateFn(McpDiscreteStatusUpdate{
-					Label:         label,
-					PID:           pid,
-					ProcessStatus: status,
-					ProcessErr:    err,
-				})
-			}
+		if updateFn != nil {
+			updateFn(McpDiscreteStatusUpdate{
+				Label:         label,
+				ProcessStatus: "ProcessStoppedByUser",
+			})
 		}
 	}()
 
 	return &ManagedMcpServer{
 		Label:    label,
-		PID:      pid,
 		Client:   client,
 		StopChan: stopChan,
-		Cmd:      cmd,
 	}, nil
 }
 

@@ -145,8 +145,8 @@ func TestGetMCPServerInfo(t *testing.T) {
 		state:       services.StateRunning,
 		health:      services.HealthHealthy,
 		serviceData: map[string]interface{}{
-			"name":    "test-mcp",
-			"pid":     12345,
+			"name": "test-mcp",
+			// PID is no longer available from the mark3labs/mcp-go library
 			"icon":    "🔧",
 			"enabled": true,
 		},
@@ -176,8 +176,9 @@ func TestGetMCPServerInfo(t *testing.T) {
 		t.Errorf("Expected name 'test-mcp', got %s", info.Name)
 	}
 
-	if info.PID != 12345 {
-		t.Errorf("Expected PID 12345, got %d", info.PID)
+	// PID is no longer available from the mark3labs/mcp-go library
+	if info.PID != 0 {
+		t.Errorf("Expected PID 0 (unavailable), got %d", info.PID)
 	}
 
 	if info.Icon != "🔧" {
@@ -452,8 +453,8 @@ func TestGetServerInfo(t *testing.T) {
 				service.On("GetHealth").Return(services.HealthHealthy)
 				service.On("GetLastError").Return(nil)
 				service.On("GetServiceData").Return(map[string]interface{}{
-					"name":    "Test Server",
-					"pid":     12345,
+					"name": "Test Server",
+					// PID is no longer available from the mark3labs/mcp-go library
 					"icon":    "🔧",
 					"enabled": true,
 				})
@@ -461,7 +462,7 @@ func TestGetServerInfo(t *testing.T) {
 			expectedInfo: &MCPServerInfo{
 				Label:   "test-server",
 				Name:    "Test Server",
-				PID:     12345,
+				PID:     0, // PID is no longer available
 				State:   "Running",
 				Health:  "Healthy",
 				Icon:    "🔧",
