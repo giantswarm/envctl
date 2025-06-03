@@ -8,6 +8,7 @@ import (
 	"envctl/internal/config"
 	"envctl/internal/kube"
 	"envctl/internal/orchestrator"
+	"envctl/internal/services"
 	agg "envctl/internal/services/aggregator"
 	"envctl/internal/tui/controller"
 	"envctl/internal/tui/model"
@@ -21,6 +22,96 @@ import (
 
 	"github.com/spf13/cobra"
 )
+
+// orchestratorEventAdapter adapts the OrchestratorAPI to the OrchestratorEventProvider interface
+type orchestratorEventAdapter struct {
+	api api.OrchestratorAPI
+}
+
+// SubscribeToStateChanges returns a channel for service state change events
+func (a *orchestratorEventAdapter) SubscribeToStateChanges() <-chan aggregator.ServiceStateChangedEvent {
+	// Create a channel to forward events
+	eventChan := make(chan aggregator.ServiceStateChangedEvent, 100)
+
+	// Subscribe to API events
+	apiEvents := a.api.SubscribeToStateChanges()
+
+	// Forward events in a goroutine
+	go func() {
+		for apiEvent := range apiEvents {
+			// Convert API event to aggregator event
+			aggEvent := aggregator.ServiceStateChangedEvent{
+				Label:    apiEvent.Label,
+				OldState: apiEvent.OldState,
+				NewState: apiEvent.NewState,
+				Health:   apiEvent.Health,
+				Error:    apiEvent.Error,
+			}
+
+			select {
+			case eventChan <- aggEvent:
+				// Event forwarded successfully
+			default:
+				// Channel full, drop event
+			}
+		}
+		close(eventChan)
+	}()
+
+	return eventChan
+}
+
+// mcpServiceAdapter adapts the MCPServiceAPI to the MCPServiceProvider interface
+type mcpServiceAdapter struct {
+	api      api.MCPServiceAPI
+	registry services.ServiceRegistry
+}
+
+// GetAllMCPServices returns all MCP services
+func (a *mcpServiceAdapter) GetAllMCPServices() []aggregator.MCPServiceInfo {
+	// Get all services from registry
+	allServices := a.registry.GetAll()
+
+	var mcpServices []aggregator.MCPServiceInfo
+	for _, service := range allServices {
+		// Filter for MCP server services
+		if service.GetType() == services.TypeMCPServer {
+			mcpServices = append(mcpServices, aggregator.MCPServiceInfo{
+				Name:   service.GetLabel(),
+				State:  string(service.GetState()),
+				Health: string(service.GetHealth()),
+			})
+		}
+	}
+
+	return mcpServices
+}
+
+// GetMCPClient returns the MCP client for a specific service
+func (a *mcpServiceAdapter) GetMCPClient(name string) interface{} {
+	// Get the service from registry
+	service, exists := a.registry.Get(name)
+	if !exists {
+		return nil
+	}
+
+	// Check if it's an MCP server service
+	if service.GetType() != services.TypeMCPServer {
+		return nil
+	}
+
+	// Try to get the MCP client from the service using the provider interface
+	type mcpClientProvider interface {
+		GetMCPClient() interface{}
+	}
+
+	provider, ok := service.(mcpClientProvider)
+	if !ok {
+		return nil
+	}
+
+	return provider.GetMCPClient()
+}
 
 // MCP server specific types, variables, and init functions are now in internal/mcpserver
 
@@ -142,12 +233,12 @@ Arguments:
 			Port: aggPort,
 		}
 
-		// Create adapters that bridge APIs to aggregator providers
-		orchestratorEventProvider := api.NewOrchestratorEventAdapter(orchestratorAPI)
-		mcpServiceProvider := api.NewMCPServiceAdapter(mcpAPI, registry)
+		// Create adapters inline for the aggregator
+		orchestratorEventAdapter := &orchestratorEventAdapter{api: orchestratorAPI}
+		mcpServiceAdapter := &mcpServiceAdapter{api: mcpAPI, registry: registry}
 
-		// Create aggregator service with providers
-		aggService := agg.NewAggregatorService(aggConfig, orchestratorEventProvider, mcpServiceProvider)
+		// Create aggregator service with adapters
+		aggService := agg.NewAggregatorService(aggConfig, orchestratorEventAdapter, mcpServiceAdapter)
 
 		// Register the aggregator service with the orchestrator's registry
 		if err := registry.Register(aggService); err != nil {
