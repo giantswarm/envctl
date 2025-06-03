@@ -142,6 +142,23 @@ func (eh *EventHandler) isMCPServiceEvent(event ServiceStateEvent) bool {
 	// MCP servers are registered with labels like "kubernetes", "prometheus", "grafana"
 	// We need to check if this is an MCP service type rather than by label prefix
 	// For now, we'll accept all events and let the aggregator manager filter them
+
+	// Exclude the aggregator itself - it should never trigger a refresh of itself
+	if event.Label == "mcp-aggregator" {
+		return false
+	}
+
+	// Exclude non-MCP services based on known patterns
+	// MCP services don't have prefixes like "k8s-", "pf:", etc.
+	knownNonMCPPrefixes := []string{"k8s-", "pf:", "alloy-"}
+	for _, prefix := range knownNonMCPPrefixes {
+		if len(event.Label) > len(prefix) && event.Label[:len(prefix)] == prefix {
+			return false
+		}
+	}
+
+	// At this point, we assume it's an MCP service
+	// The aggregator manager will further validate by checking if it has an MCP client
 	return true
 }
 
@@ -155,21 +172,29 @@ func (eh *EventHandler) shouldRefreshAggregator(event ServiceStateEvent) bool {
 	oldState := event.OldState
 	newState := event.NewState
 
+	// Debug logging to track state changes
+	logging.Debug("Aggregator-EventHandler", "Checking if refresh needed for %s: oldState='%s', newState='%s'",
+		event.Label, oldState, newState)
+
 	// Service became running - register it
 	if oldState != "Running" && newState == "Running" {
+		logging.Debug("Aggregator-EventHandler", "Service %s became running, will refresh", event.Label)
 		return true
 	}
 
 	// Service stopped being running - deregister it
 	if oldState == "Running" && newState != "Running" {
+		logging.Debug("Aggregator-EventHandler", "Service %s stopped being running, will refresh", event.Label)
 		return true
 	}
 
 	// Service failed - might need deregistration
 	if newState == "Failed" {
+		logging.Debug("Aggregator-EventHandler", "Service %s failed, will refresh", event.Label)
 		return true
 	}
 
+	logging.Debug("Aggregator-EventHandler", "No refresh needed for %s state change", event.Label)
 	return false
 }
 

@@ -165,11 +165,13 @@ func (a *AggregatorServer) Stop(ctx context.Context) error {
 
 // RegisterServer registers a new backend MCP server
 func (a *AggregatorServer) RegisterServer(ctx context.Context, name string, client MCPClient) error {
+	logging.Debug("Aggregator", "RegisterServer called for %s at %s", name, time.Now().Format("15:04:05.000"))
 	return a.registry.Register(ctx, name, client)
 }
 
 // DeregisterServer removes a backend MCP server
 func (a *AggregatorServer) DeregisterServer(name string) error {
+	logging.Debug("Aggregator", "DeregisterServer called for %s at %s", name, time.Now().Format("15:04:05.000"))
 	return a.registry.Deregister(name)
 }
 

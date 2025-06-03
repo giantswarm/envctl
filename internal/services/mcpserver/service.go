@@ -309,17 +309,26 @@ func (s *MCPServerService) GetMCPClient() interface{} {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	if s.GetState() != services.StateRunning {
+	state := s.GetState()
+	logging.Debug("MCPServer", "GetMCPClient called for %s: state=%s, managedServer=%v",
+		s.config.Name, state, s.managedServer != nil)
+
+	if state != services.StateRunning {
+		logging.Debug("MCPServer", "GetMCPClient returning nil for %s: not in Running state", s.config.Name)
 		return nil
 	}
 
 	switch s.config.Type {
 	case config.MCPServerTypeLocalCommand:
 		if s.managedServer != nil {
+			logging.Debug("MCPServer", "GetMCPClient returning client for %s", s.config.Name)
 			return s.managedServer.Client
+		} else {
+			logging.Warn("MCPServer", "GetMCPClient: managedServer is nil for running service %s", s.config.Name)
 		}
 	case config.MCPServerTypeContainer:
 		// TODO: Implement container client support
+		logging.Debug("MCPServer", "GetMCPClient: container type not yet supported for %s", s.config.Name)
 		return nil
 	}
 

@@ -220,9 +220,9 @@ func (am *AggregatorManager) GetServiceData() map[string]interface{} {
 		data["resources"] = len(resources)
 		data["prompts"] = len(prompts)
 
-		// Debug logging for tool counts
-		logging.Debug("Aggregator-Manager", "GetServiceData: %d tools, %d resources, %d prompts from aggregator",
-			len(tools), len(resources), len(prompts))
+		// Debug logging for tool counts with timestamp
+		logging.Debug("Aggregator-Manager", "GetServiceData called at %s: %d tools, %d resources, %d prompts from aggregator",
+			time.Now().Format("15:04:05.000"), len(tools), len(resources), len(prompts))
 
 		// Get total number of MCP servers from the provider
 		totalServers := 0
@@ -328,15 +328,49 @@ func (am *AggregatorManager) refreshMCPServers(ctx context.Context) error {
 	mcpServices := mcpProvider.GetAllMCPServices()
 	registry := server.GetRegistry()
 
+	// Debug log all MCP services and their states
+	logging.Debug("Aggregator-Manager", "MCP services from provider:")
+	for _, service := range mcpServices {
+		logging.Debug("Aggregator-Manager", "  - %s: state=%s", service.Name, service.State)
+	}
+
 	// Build map of running services
 	currentClients := make(map[string]MCPClient)
 	for _, service := range mcpServices {
 		if service.State == "Running" {
-			client := mcpProvider.GetMCPClient(service.Name)
-			if client != nil {
-				if mcpClient, ok := client.(MCPClient); ok {
-					currentClients[service.Name] = mcpClient
+			// Retry logic to handle timing issues where service is Running but client not yet available
+			var client interface{}
+			var mcpClient MCPClient
+			retryCount := 0
+			maxRetries := 3
+
+			for retryCount <= maxRetries {
+				client = mcpProvider.GetMCPClient(service.Name)
+				if client != nil {
+					var ok bool
+					if mcpClient, ok = client.(MCPClient); ok {
+						currentClients[service.Name] = mcpClient
+						logging.Debug("Aggregator-Manager", "Got client for running service %s on attempt %d", service.Name, retryCount+1)
+						break
+					} else {
+						logging.Warn("Aggregator-Manager", "Failed to type assert MCP client for %s", service.Name)
+						break // Don't retry type assertion failures
+					}
+				} else {
+					if retryCount < maxRetries {
+						logging.Debug("Aggregator-Manager", "GetMCPClient returned nil for %s, retrying... (attempt %d/%d)",
+							service.Name, retryCount+1, maxRetries+1)
+						// Small delay before retry
+						select {
+						case <-time.After(200 * time.Millisecond):
+						case <-ctx.Done():
+							return ctx.Err()
+						}
+					} else {
+						logging.Warn("Aggregator-Manager", "GetMCPClient returned nil for %s after %d attempts", service.Name, maxRetries+1)
+					}
 				}
+				retryCount++
 			}
 		}
 	}
@@ -344,9 +378,11 @@ func (am *AggregatorManager) refreshMCPServers(ctx context.Context) error {
 	logging.Info("Aggregator-Manager", "Current MCP clients: %d, Registered servers: %d",
 		len(currentClients), len(registry.GetAllServers()))
 
-	// First, deregister servers that are no longer running
+	// First, only deregister servers that are no longer running
+	// This minimizes the window where tools might appear as 0
 	for name := range registry.GetAllServers() {
 		if _, exists := currentClients[name]; !exists {
+			// This server is no longer running, deregister it
 			if err := server.DeregisterServer(name); err != nil {
 				logging.Warn("Aggregator-Manager", "Failed to deregister MCP server %s: %v", name, err)
 			} else {
@@ -355,60 +391,95 @@ func (am *AggregatorManager) refreshMCPServers(ctx context.Context) error {
 		}
 	}
 
-	// Then, register or re-register all running servers
+	// Then, register new servers or update existing ones
+	// For existing servers that need updates, we'll try to update in-place first
 	for label, client := range currentClients {
 		serverInfo, exists := registry.GetServerInfo(label)
 
-		// Check if we need to re-register (server was restarted or client changed)
-		needsReRegister := false
-		if exists && serverInfo != nil {
-			// For now, always re-register to ensure fresh client
-			// In the future, we could check if the client is still valid
-			needsReRegister = true
-			logging.Debug("Aggregator-Manager", "Server %s already registered, will re-register with fresh client", label)
-		}
+		if !exists {
+			// New server, register it
+			logging.Debug("Aggregator-Manager", "Registering new MCP server %s", label)
 
-		if needsReRegister {
-			// Deregister first to clear stale client
+			// Small delay to ensure the MCP server's client is fully ready
+			// This helps avoid race conditions where the service reports Running
+			// but the client isn't yet available
+			select {
+			case <-time.After(500 * time.Millisecond):
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+
+			retryCount := 0
+			maxRetries := 2
+			var lastErr error
+
+			for retryCount <= maxRetries {
+				if err := server.RegisterServer(ctx, label, client); err != nil {
+					lastErr = err
+					retryCount++
+					if retryCount <= maxRetries {
+						logging.Debug("Aggregator-Manager", "Failed to register MCP server %s (attempt %d/%d): %v",
+							label, retryCount, maxRetries+1, err)
+						// Small delay before retry
+						select {
+						case <-time.After(500 * time.Millisecond):
+						case <-ctx.Done():
+							return ctx.Err()
+						}
+					}
+				} else {
+					// Success
+					logging.Info("Aggregator-Manager", "Registered MCP server %s with aggregator", label)
+					break
+				}
+			}
+
+			if lastErr != nil {
+				logging.Error("Aggregator-Manager", lastErr, "Failed to register MCP server %s after %d attempts",
+					label, maxRetries+1)
+			}
+		} else if serverInfo != nil {
+			// Server already exists, but we want to ensure it has a fresh client
+			// For now, we still need to deregister and re-register to update the client
+			// In the future, we could add an UpdateServer method to do this atomically
+			logging.Debug("Aggregator-Manager", "Server %s already registered, will re-register with fresh client", label)
+
+			// Deregister the old instance
 			if err := server.DeregisterServer(label); err != nil {
 				logging.Warn("Aggregator-Manager", "Failed to deregister existing MCP server %s: %v", label, err)
 				// Continue anyway - try to register
 			}
-		}
 
-		// Register the server (new or re-registration)
-		retryCount := 0
-		maxRetries := 2
-		var lastErr error
+			// Register with fresh client
+			retryCount := 0
+			maxRetries := 2
+			var lastErr error
 
-		for retryCount <= maxRetries {
-			if err := server.RegisterServer(ctx, label, client); err != nil {
-				lastErr = err
-				retryCount++
-				if retryCount <= maxRetries {
-					logging.Debug("Aggregator-Manager", "Failed to register MCP server %s (attempt %d/%d): %v",
-						label, retryCount, maxRetries+1, err)
-					// Small delay before retry
-					select {
-					case <-time.After(500 * time.Millisecond):
-					case <-ctx.Done():
-						return ctx.Err()
+			for retryCount <= maxRetries {
+				if err := server.RegisterServer(ctx, label, client); err != nil {
+					lastErr = err
+					retryCount++
+					if retryCount <= maxRetries {
+						logging.Debug("Aggregator-Manager", "Failed to re-register MCP server %s (attempt %d/%d): %v",
+							label, retryCount, maxRetries+1, err)
+						// Small delay before retry
+						select {
+						case <-time.After(500 * time.Millisecond):
+						case <-ctx.Done():
+							return ctx.Err()
+						}
 					}
-				}
-			} else {
-				// Success
-				if needsReRegister {
-					logging.Info("Aggregator-Manager", "Re-registered MCP server %s with aggregator", label)
 				} else {
-					logging.Info("Aggregator-Manager", "Registered new MCP server %s with aggregator", label)
+					// Success
+					logging.Info("Aggregator-Manager", "Re-registered MCP server %s with aggregator", label)
+					break
 				}
-				break
 			}
-		}
 
-		if lastErr != nil {
-			logging.Error("Aggregator-Manager", lastErr, "Failed to register MCP server %s after %d attempts",
-				label, maxRetries+1)
+			if lastErr != nil {
+				logging.Error("Aggregator-Manager", lastErr, "Failed to re-register MCP server %s after %d attempts",
+					label, maxRetries+1)
+			}
 		}
 	}
 

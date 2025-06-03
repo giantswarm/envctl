@@ -149,7 +149,7 @@ func TestEventHandler_FiltersMCPEvents(t *testing.T) {
 	}
 	defer handler.Stop()
 
-	// Send non-MCP event (now also triggers refresh since we accept all events)
+	// Send non-MCP event (should NOT trigger refresh)
 	provider.sendEvent(ServiceStateEvent{
 		Label:    "k8s-mc-test",
 		OldState: "Stopped",
@@ -163,12 +163,26 @@ func TestEventHandler_FiltersMCPEvents(t *testing.T) {
 		NewState: "Running",
 	})
 
+	// Send aggregator event (should NOT trigger refresh)
+	provider.sendEvent(ServiceStateEvent{
+		Label:    "mcp-aggregator",
+		OldState: "Stopped",
+		NewState: "Running",
+	})
+
+	// Send port forward event (should NOT trigger refresh)
+	provider.sendEvent(ServiceStateEvent{
+		Label:    "pf:mc-prometheus",
+		OldState: "Stopped",
+		NewState: "Running",
+	})
+
 	// Give time for events to be processed
 	time.Sleep(100 * time.Millisecond)
 
-	// Should have two refresh calls (both events trigger refresh now)
-	if refreshFunc.getCallCount() != 2 {
-		t.Errorf("Expected 2 refresh calls, got %d", refreshFunc.getCallCount())
+	// Should have only 1 refresh call (only the kubernetes event)
+	if refreshFunc.getCallCount() != 1 {
+		t.Errorf("Expected 1 refresh call, got %d", refreshFunc.getCallCount())
 	}
 }
 

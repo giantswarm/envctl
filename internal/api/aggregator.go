@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"envctl/internal/services"
+	"envctl/pkg/logging"
 	"fmt"
 	"time"
 
@@ -90,6 +91,10 @@ func (api *aggregatorAPI) GetAggregatorInfo(ctx context.Context) (*AggregatorInf
 		if prompts, ok := data["prompts"].(int); ok {
 			info.PromptsCount = prompts
 		}
+
+		// Debug logging
+		logging.Debug("AggregatorAPI", "GetAggregatorInfo returning: %d tools, %d resources, %d prompts (servers: %d/%d)",
+			info.ToolsCount, info.ResourcesCount, info.PromptsCount, info.ServersConnected, info.ServersTotal)
 	}
 
 	return info, nil

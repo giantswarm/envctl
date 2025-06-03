@@ -85,12 +85,12 @@ func (r *ServerRegistry) Register(ctx context.Context, name string, client MCPCl
 		logging.Warn("Aggregator", "Failed to get initial capabilities for %s: %v", name, err)
 		// Log more details about what we did get
 		info.mu.RLock()
-		logging.Debug("Aggregator", "Server %s registered with %d tools, %d resources, %d prompts", 
+		logging.Debug("Aggregator", "Server %s registered with %d tools, %d resources, %d prompts",
 			name, len(info.Tools), len(info.Resources), len(info.Prompts))
 		info.mu.RUnlock()
 	} else {
 		info.mu.RLock()
-		logging.Info("Aggregator", "Server %s registered successfully with %d tools, %d resources, %d prompts", 
+		logging.Info("Aggregator", "Server %s registered successfully with %d tools, %d resources, %d prompts",
 			name, len(info.Tools), len(info.Resources), len(info.Prompts))
 		info.mu.RUnlock()
 	}
@@ -153,13 +153,19 @@ func (r *ServerRegistry) GetAllTools() []mcp.Tool {
 	defer r.mu.RUnlock()
 
 	var allTools []mcp.Tool
+	connectedCount := 0
+	totalServerCount := 0
 
 	for serverName, info := range r.servers {
+		totalServerCount++
 		if !info.IsConnected() {
+			logging.Debug("Aggregator", "Server %s is not connected, skipping tools", serverName)
 			continue
 		}
+		connectedCount++
 
 		info.mu.RLock()
+		serverToolCount := len(info.Tools)
 		for _, tool := range info.Tools {
 			// Use smart prefixing - only prefix if there are conflicts
 			exposedTool := tool
@@ -167,7 +173,12 @@ func (r *ServerRegistry) GetAllTools() []mcp.Tool {
 			allTools = append(allTools, exposedTool)
 		}
 		info.mu.RUnlock()
+
+		logging.Debug("Aggregator", "Server %s has %d tools", serverName, serverToolCount)
 	}
+
+	logging.Debug("Aggregator", "GetAllTools: returning %d tools from %d connected servers (out of %d total servers)",
+		len(allTools), connectedCount, totalServerCount)
 
 	return allTools
 }
