@@ -121,19 +121,48 @@ func (o *Orchestrator) buildDependencyGraph() *dependency.Graph {
 	return graph
 }
 
-// startServicesInOrder starts all services in dependency order.
-// This ensures that dependencies are running before dependent services start.
+// startServicesInOrder starts all services in dependency order with parallel execution.
+// This ensures that dependencies are running before dependent services start,
+// while allowing independent services to start simultaneously for better performance.
 // The method respects manual stop decisions - services that were manually
 // stopped by the user will not be started automatically.
 //
-// Current implementation uses a simple ordering approach:
-// 1. K8s connections first (foundation)
-// 2. Port forwards second (depend on K8s)
-// 3. MCP servers last (may depend on port forwards)
-//
-// TODO: Implement proper topological sorting for more complex dependency graphs
+// Parallel startup groups:
+// 1. K8s connections (parallel) - foundation services
+// 2. Port forwards (parallel after dependencies) - depend on specific K8s connections
+// 3. MCP servers (parallel after dependencies) - may depend on port forwards
+// 4. Aggregator (sequential) - depends on MCP servers
 func (o *Orchestrator) startServicesInOrder() error {
 	// Get all services that should be started
+	servicesToStart := o.getServicesToStart()
+
+	// Group 1: Start K8s connections in parallel
+	if err := o.startK8sConnectionsInParallel(servicesToStart); err != nil {
+		return fmt.Errorf("failed to start K8s connections: %w", err)
+	}
+
+	// Group 2: Start port forwards in parallel (wait for their dependencies)
+	if err := o.startPortForwardsInParallel(servicesToStart); err != nil {
+		return fmt.Errorf("failed to start port forwards: %w", err)
+	}
+
+	// Group 3: Start MCP servers in parallel (wait for their dependencies)
+	if err := o.startMCPServersInParallel(servicesToStart); err != nil {
+		return fmt.Errorf("failed to start MCP servers: %w", err)
+	}
+
+	// Group 4: Start aggregator (depends on MCP servers)
+	if err := o.startAggregator(servicesToStart); err != nil {
+		return fmt.Errorf("failed to start aggregator: %w", err)
+	}
+
+	return nil
+}
+
+// getServicesToStart extracts the service filtering logic.
+// Returns a list of service labels that should be started, filtering out
+// manually stopped services to respect user intent.
+func (o *Orchestrator) getServicesToStart() []string {
 	var servicesToStart []string
 	allServices := o.registry.GetAll()
 
@@ -151,49 +180,135 @@ func (o *Orchestrator) startServicesInOrder() error {
 		servicesToStart = append(servicesToStart, label)
 	}
 
-	// Start K8s connections first as they are the foundation
+	return servicesToStart
+}
+
+// startK8sConnectionsInParallel starts all K8s connections simultaneously.
+// K8s connections have no dependencies and form the foundation for other services,
+// so they can all start in parallel for better performance.
+func (o *Orchestrator) startK8sConnectionsInParallel(servicesToStart []string) error {
+	var k8sWg sync.WaitGroup
+	var k8sServices []string
+
+	// Identify K8s connection services
 	for _, label := range servicesToStart {
 		service, _ := o.registry.Get(label)
 		if service.GetType() == services.TypeKubeConnection {
-			if err := o.StartService(label); err != nil {
-				logging.Error("Orchestrator", err, "Failed to start K8s connection %s", label)
-			}
+			k8sServices = append(k8sServices, label)
 		}
 	}
 
-	// Start port forwards which depend on K8s connections
+	logging.Debug("Orchestrator", "Starting %d K8s connections in parallel: %v", len(k8sServices), k8sServices)
+
+	// Start all K8s connections in parallel
+	for _, label := range k8sServices {
+		k8sWg.Add(1)
+		go func(svcLabel string) {
+			defer k8sWg.Done()
+			if err := o.StartService(svcLabel); err != nil {
+				logging.Error("Orchestrator", err, "Failed to start K8s connection %s", svcLabel)
+			}
+		}(label)
+	}
+
+	// Wait for all K8s connections to complete starting (or fail)
+	k8sWg.Wait()
+
+	return nil
+}
+
+// startPortForwardsInParallel starts port forwards in parallel after their dependencies are ready.
+// Each port forward waits for its specific K8s connection dependency before starting,
+// allowing independent port forwards to start simultaneously.
+func (o *Orchestrator) startPortForwardsInParallel(servicesToStart []string) error {
+	var pfWg sync.WaitGroup
+	var pfServices []string
+
+	// Identify port forward services
 	for _, label := range servicesToStart {
 		service, _ := o.registry.Get(label)
 		if service.GetType() == services.TypePortForward {
-			if err := o.StartService(label); err != nil {
-				logging.Error("Orchestrator", err, "Failed to start port forward %s", label)
-			}
+			pfServices = append(pfServices, label)
 		}
 	}
 
-	// Start MCP servers which may depend on port forwards
+	logging.Debug("Orchestrator", "Starting %d port forwards in parallel: %v", len(pfServices), pfServices)
+
+	// Start all port forwards in parallel, each waiting for its dependencies
+	for _, label := range pfServices {
+		pfWg.Add(1)
+		go func(svcLabel string) {
+			defer pfWg.Done()
+
+			// Wait for dependencies before starting
+			if err := o.waitForDependencies(svcLabel, 30*time.Second); err != nil {
+				logging.Error("Orchestrator", err, "Port forward %s dependencies not ready", svcLabel)
+				return
+			}
+
+			if err := o.StartService(svcLabel); err != nil {
+				logging.Error("Orchestrator", err, "Failed to start port forward %s", svcLabel)
+			}
+		}(label)
+	}
+
+	// Wait for all port forwards to complete starting (or fail)
+	pfWg.Wait()
+
+	return nil
+}
+
+// startMCPServersInParallel starts MCP servers in parallel after their dependencies are ready.
+// This preserves the existing parallel MCP server startup logic while adding dependency waiting.
+func (o *Orchestrator) startMCPServersInParallel(servicesToStart []string) error {
 	var mcpWg sync.WaitGroup
+	var mcpServices []string
+
+	// Identify MCP server services
 	for _, label := range servicesToStart {
 		service, _ := o.registry.Get(label)
 		if service.GetType() == services.TypeMCPServer {
-			mcpWg.Add(1)
-			go func(svcLabel string) {
-				defer mcpWg.Done()
-				if err := o.StartService(svcLabel); err != nil {
-					logging.Error("Orchestrator", err, "Failed to start MCP server %s", svcLabel)
-				}
-			}(label)
+			mcpServices = append(mcpServices, label)
 		}
 	}
+
+	logging.Debug("Orchestrator", "Starting %d MCP servers in parallel: %v", len(mcpServices), mcpServices)
+
+	// Start all MCP servers in parallel, each waiting for its dependencies
+	for _, label := range mcpServices {
+		mcpWg.Add(1)
+		go func(svcLabel string) {
+			defer mcpWg.Done()
+
+			// Wait for dependencies before starting
+			if err := o.waitForDependencies(svcLabel, 30*time.Second); err != nil {
+				logging.Error("Orchestrator", err, "MCP server %s dependencies not ready", svcLabel)
+				return
+			}
+
+			if err := o.StartService(svcLabel); err != nil {
+				logging.Error("Orchestrator", err, "Failed to start MCP server %s", svcLabel)
+			}
+		}(label)
+	}
+
 	// Wait for all MCP servers to finish starting (or fail)
 	mcpWg.Wait()
 
+	return nil
+}
+
+// startAggregator starts the aggregator service after MCP servers are ready.
+// The aggregator depends on MCP servers being available, so it starts last.
+func (o *Orchestrator) startAggregator(servicesToStart []string) error {
 	// Start the aggregator which depends on MCP servers
 	for _, label := range servicesToStart {
 		service, _ := o.registry.Get(label)
 		if string(service.GetType()) == "Aggregator" {
+			logging.Debug("Orchestrator", "Starting aggregator: %s", label)
 			if err := o.StartService(label); err != nil {
 				logging.Error("Orchestrator", err, "Failed to start aggregator %s", label)
+				return fmt.Errorf("failed to start aggregator %s: %w", label, err)
 			}
 		}
 	}
@@ -201,15 +316,43 @@ func (o *Orchestrator) startServicesInOrder() error {
 	return nil
 }
 
-// checkDependencies checks if all dependencies of a service are running.
-// This is called before starting a service to ensure its prerequisites are met.
-// If any dependency is not running, an error is returned with details about
-// which dependency is missing.
-func (o *Orchestrator) checkDependencies(label string) error {
+// waitForDependencies waits for all dependencies of a service to be running.
+// This is used by parallel startup groups to ensure dependencies are satisfied
+// before starting a service, with a configurable timeout for robustness.
+func (o *Orchestrator) waitForDependencies(label string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	ticker := time.NewTicker(500 * time.Millisecond) // Check every 500ms
+	defer ticker.Stop()
+
+	for time.Now().Before(deadline) {
+		allReady, _, err := o.checkDependencyStatus(label)
+		if err != nil {
+			return err
+		}
+		if allReady {
+			logging.Debug("Orchestrator", "All dependencies ready for %s", label)
+			return nil
+		}
+
+		select {
+		case <-ticker.C:
+			// Continue checking
+		case <-o.ctx.Done():
+			return fmt.Errorf("context cancelled while waiting for dependencies")
+		}
+	}
+
+	return fmt.Errorf("timeout waiting for dependencies of %s", label)
+}
+
+// checkDependencyStatus checks the status of all dependencies for a service.
+// Returns (allReady, missingDependency, error).
+// This shared logic is used by both checkDependencies and waitForDependencies.
+func (o *Orchestrator) checkDependencyStatus(label string) (bool, string, error) {
 	nodeID := o.getNodeIDForService(label)
 	node := o.depGraph.Get(dependency.NodeID(nodeID))
 	if node == nil {
-		return nil // No node in graph means no dependencies
+		return true, "", nil // No dependencies
 	}
 
 	// Check each dependency
@@ -218,15 +361,33 @@ func (o *Orchestrator) checkDependencies(label string) error {
 		depService, exists := o.registry.Get(depLabel)
 
 		if !exists {
-			return fmt.Errorf("dependency %s not found", depLabel)
+			return false, depLabel, fmt.Errorf("dependency %s not found", depLabel)
 		}
 
-		// Dependency must be in running state
 		if depService.GetState() != services.StateRunning {
-			return fmt.Errorf("dependency %s is not running (state: %s)", depLabel, depService.GetState())
+			return false, depLabel, nil
 		}
 	}
 
+	return true, "", nil
+}
+
+// checkDependencies checks if all dependencies of a service are running.
+// This is called before starting a service to ensure its prerequisites are met.
+// If any dependency is not running, an error is returned with details about
+// which dependency is missing.
+func (o *Orchestrator) checkDependencies(label string) error {
+	allReady, missingDep, err := o.checkDependencyStatus(label)
+	if err != nil {
+		return err
+	}
+	if !allReady {
+		// Get the service state for a more detailed error message
+		if depService, exists := o.registry.Get(missingDep); exists {
+			return fmt.Errorf("dependency %s is not running (state: %s)", missingDep, depService.GetState())
+		}
+		return fmt.Errorf("dependency %s is not running", missingDep)
+	}
 	return nil
 }
 

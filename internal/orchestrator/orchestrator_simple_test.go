@@ -98,11 +98,15 @@ func TestOrchestrator_DependencyGraph(t *testing.T) {
 		// },
 	})
 
-	// Start the orchestrator to register services and build the dependency graph
+	// Only register services and build the dependency graph - don't start services
 	ctx := context.Background()
-	err := o.Start(ctx)
+	o.ctx = ctx
+	
+	err := o.registerServices()
 	require.NoError(t, err)
-	defer o.Stop()
+	
+	// Build the dependency graph
+	o.depGraph = o.buildDependencyGraph()
 
 	graph := o.depGraph
 	assert.NotNil(t, graph)

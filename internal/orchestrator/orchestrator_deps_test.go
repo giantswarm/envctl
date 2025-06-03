@@ -8,6 +8,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -482,44 +483,372 @@ func TestOrchestrator_stopAllServices(t *testing.T) {
 	mu.Unlock()
 }
 
-// TestOrchestrator_monitorServices is commented out because it's timing-dependent
-// and can be flaky in CI environments. The monitoring functionality is tested
-// indirectly through other tests.
-/*
-func TestOrchestrator_monitorServices(t *testing.T) {
-	o := New(Config{})
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
-	defer cancel()
+func TestOrchestrator_getServicesToStart(t *testing.T) {
+	tests := []struct {
+		name          string
+		setupOrch     func(*Orchestrator)
+		expectedCount int
+		excludes      []string
+	}{
+		{
+			name: "returns all services when none manually stopped",
+			setupOrch: func(o *Orchestrator) {
+				// Register services without manual stop reasons
+				o.registry.Register(&mockService{label: "svc1"})
+				o.registry.Register(&mockService{label: "svc2"})
+				o.registry.Register(&mockService{label: "svc3"})
+			},
+			expectedCount: 3,
+			excludes:      []string{},
+		},
+		{
+			name: "excludes manually stopped services",
+			setupOrch: func(o *Orchestrator) {
+				// Register services
+				o.registry.Register(&mockService{label: "svc1"})
+				o.registry.Register(&mockService{label: "svc2"})
+				o.registry.Register(&mockService{label: "svc3"})
 
-	// Register a service that implements HealthChecker before starting
-	var healthCheckCalled bool
-	var mu sync.Mutex
-	svc := &mockHealthChecker{
-		mockService: mockService{
-			label: "test-service",
-			state: services.StateRunning,
+				// Mark svc2 as manually stopped
+				o.mu.Lock()
+				o.stopReasons["svc2"] = StopReasonManual
+				o.mu.Unlock()
+			},
+			expectedCount: 2,
+			excludes:      []string{"svc2"},
 		},
-		checkHealthFunc: func(ctx context.Context) (services.HealthStatus, error) {
-			mu.Lock()
-			healthCheckCalled = true
-			mu.Unlock()
-			return services.HealthHealthy, nil
+		{
+			name: "includes dependency-stopped services",
+			setupOrch: func(o *Orchestrator) {
+				o.registry.Register(&mockService{label: "svc1"})
+				o.registry.Register(&mockService{label: "svc2"})
+
+				// Mark svc2 as stopped due to dependency
+				o.mu.Lock()
+				o.stopReasons["svc2"] = StopReasonDependency
+				o.mu.Unlock()
+			},
+			expectedCount: 2,
+			excludes:      []string{},
 		},
-		healthCheckInterval: 50 * time.Millisecond,
 	}
-	o.registry.Register(svc)
 
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			o := New(Config{})
+			ctx := context.Background()
+			err := o.Start(ctx)
+			require.NoError(t, err)
+			defer o.Stop()
+
+			if tt.setupOrch != nil {
+				tt.setupOrch(o)
+			}
+
+			result := o.getServicesToStart()
+			assert.Len(t, result, tt.expectedCount)
+
+			// Verify excluded services are not in result
+			for _, excluded := range tt.excludes {
+				assert.NotContains(t, result, excluded)
+			}
+		})
+	}
+}
+
+func TestOrchestrator_startK8sConnectionsInParallel(t *testing.T) {
+	o := New(Config{})
+	ctx := context.Background()
 	err := o.Start(ctx)
 	require.NoError(t, err)
+	defer o.Stop()
 
-	// Wait for monitor to start and run health checks
-	time.Sleep(200 * time.Millisecond)
+	var mu sync.Mutex
+	startOrder := []string{}
 
-	// Verify health check was called
+	// Register K8s services
+	for _, label := range []string{"k8s1", "k8s2"} {
+		svc := &mockService{
+			label:       label,
+			serviceType: services.TypeKubeConnection,
+			state:       services.StateStopped,
+			startFunc: func(ctx context.Context) error {
+				mu.Lock()
+				startOrder = append(startOrder, label)
+				mu.Unlock()
+				return nil
+			},
+		}
+		o.registry.Register(svc)
+	}
+
+	// Register non-K8s service (should be ignored)
+	pfSvc := &mockService{
+		label:       "pf1",
+		serviceType: services.TypePortForward,
+		state:       services.StateStopped,
+		startFunc: func(ctx context.Context) error {
+			t.Error("port forward should not be started by K8s parallel start")
+			return nil
+		},
+	}
+	o.registry.Register(pfSvc)
+
+	servicesToStart := []string{"k8s1", "k8s2", "pf1"}
+
+	// Start K8s connections in parallel
+	err = o.startK8sConnectionsInParallel(servicesToStart)
+	assert.NoError(t, err)
+
+	// Verify both K8s services were started
 	mu.Lock()
-	assert.True(t, healthCheckCalled)
+	assert.Len(t, startOrder, 2)
+	assert.Contains(t, startOrder, "k8s1")
+	assert.Contains(t, startOrder, "k8s2")
 	mu.Unlock()
-
-	o.Stop()
 }
-*/
+
+func TestOrchestrator_waitForDependencies(t *testing.T) {
+	tests := []struct {
+		name         string
+		setupOrch    func(*Orchestrator)
+		serviceLabel string
+		timeout      time.Duration
+		wantErr      bool
+		errContains  string
+	}{
+		{
+			name: "no dependencies returns immediately",
+			setupOrch: func(o *Orchestrator) {
+				o.depGraph = dependency.New()
+				// Service not in graph = no dependencies
+			},
+			serviceLabel: "no-deps",
+			timeout:      1 * time.Second,
+			wantErr:      false,
+		},
+		{
+			name: "all dependencies ready",
+			setupOrch: func(o *Orchestrator) {
+				o.depGraph = dependency.New()
+				o.depGraph.AddNode(dependency.Node{
+					ID:        "test-service",
+					DependsOn: []dependency.NodeID{"dep1", "dep2"},
+				})
+
+				// Register running dependencies
+				for _, label := range []string{"dep1", "dep2"} {
+					o.registry.Register(&mockService{
+						label: label,
+						state: services.StateRunning,
+					})
+				}
+			},
+			serviceLabel: "test-service",
+			timeout:      1 * time.Second,
+			wantErr:      false,
+		},
+		{
+			name: "dependency not found",
+			setupOrch: func(o *Orchestrator) {
+				o.depGraph = dependency.New()
+				o.depGraph.AddNode(dependency.Node{
+					ID:        "test-service",
+					DependsOn: []dependency.NodeID{"missing-dep"},
+				})
+			},
+			serviceLabel: "test-service",
+			timeout:      1 * time.Second,
+			wantErr:      true,
+			errContains:  "dependency missing-dep not found",
+		},
+		{
+			name: "timeout waiting for dependencies",
+			setupOrch: func(o *Orchestrator) {
+				o.depGraph = dependency.New()
+				o.depGraph.AddNode(dependency.Node{
+					ID:        "test-service",
+					DependsOn: []dependency.NodeID{"slow-dep"},
+				})
+
+				// Register dependency that's not running
+				o.registry.Register(&mockService{
+					label: "slow-dep",
+					state: services.StateStarting,
+				})
+			},
+			serviceLabel: "test-service",
+			timeout:      100 * time.Millisecond,
+			wantErr:      true,
+			errContains:  "timeout waiting for dependencies",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			o := New(Config{})
+			ctx := context.Background()
+			err := o.Start(ctx)
+			require.NoError(t, err)
+			defer o.Stop()
+
+			if tt.setupOrch != nil {
+				tt.setupOrch(o)
+			}
+
+			err = o.waitForDependencies(tt.serviceLabel, tt.timeout)
+			if tt.wantErr {
+				assert.Error(t, err)
+				if tt.errContains != "" {
+					assert.Contains(t, err.Error(), tt.errContains)
+				}
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestOrchestrator_startPortForwardsInParallel(t *testing.T) {
+	o := New(Config{})
+	ctx := context.Background()
+	err := o.Start(ctx)
+	require.NoError(t, err)
+	defer o.Stop()
+
+	// Setup dependency graph
+	o.depGraph = dependency.New()
+	o.depGraph.AddNode(dependency.Node{ID: "k8s1"}) // No dependencies
+	o.depGraph.AddNode(dependency.Node{
+		ID:        "pf:pf1",
+		DependsOn: []dependency.NodeID{"k8s1"},
+	})
+	o.depGraph.AddNode(dependency.Node{
+		ID:        "pf:pf2",
+		DependsOn: []dependency.NodeID{"k8s1"},
+	})
+
+	// Register K8s dependency (running)
+	o.registry.Register(&mockService{
+		label: "k8s1",
+		state: services.StateRunning,
+	})
+
+	var mu sync.Mutex
+	startOrder := []string{}
+
+	// Register port forward services
+	for _, label := range []string{"pf1", "pf2"} {
+		svc := &mockService{
+			label:       label,
+			serviceType: services.TypePortForward,
+			state:       services.StateStopped,
+			startFunc: func(ctx context.Context) error {
+				mu.Lock()
+				startOrder = append(startOrder, label)
+				mu.Unlock()
+				return nil
+			},
+		}
+		o.registry.Register(svc)
+	}
+
+	servicesToStart := []string{"pf1", "pf2"}
+
+	// Start port forwards in parallel
+	err = o.startPortForwardsInParallel(servicesToStart)
+	assert.NoError(t, err)
+
+	// Verify both port forwards were started
+	mu.Lock()
+	assert.Len(t, startOrder, 2)
+	assert.Contains(t, startOrder, "pf1")
+	assert.Contains(t, startOrder, "pf2")
+	mu.Unlock()
+}
+
+func TestOrchestrator_startMCPServersInParallel(t *testing.T) {
+	o := New(Config{})
+	ctx := context.Background()
+	err := o.Start(ctx)
+	require.NoError(t, err)
+	defer o.Stop()
+
+	// Setup dependency graph - MCP servers with no dependencies for this test
+	o.depGraph = dependency.New()
+	o.depGraph.AddNode(dependency.Node{ID: "mcp:mcp1"})
+	o.depGraph.AddNode(dependency.Node{ID: "mcp:mcp2"})
+
+	var mu sync.Mutex
+	startOrder := []string{}
+
+	// Register MCP server services
+	for _, label := range []string{"mcp1", "mcp2"} {
+		svc := &mockService{
+			label:       label,
+			serviceType: services.TypeMCPServer,
+			state:       services.StateStopped,
+			startFunc: func(ctx context.Context) error {
+				mu.Lock()
+				startOrder = append(startOrder, label)
+				mu.Unlock()
+				return nil
+			},
+		}
+		o.registry.Register(svc)
+	}
+
+	servicesToStart := []string{"mcp1", "mcp2"}
+
+	// Start MCP servers in parallel
+	err = o.startMCPServersInParallel(servicesToStart)
+	assert.NoError(t, err)
+
+	// Verify both MCP servers were started
+	mu.Lock()
+	assert.Len(t, startOrder, 2)
+	assert.Contains(t, startOrder, "mcp1")
+	assert.Contains(t, startOrder, "mcp2")
+	mu.Unlock()
+}
+
+func TestOrchestrator_startAggregator(t *testing.T) {
+	o := New(Config{})
+	ctx := context.Background()
+	err := o.Start(ctx)
+	require.NoError(t, err)
+	defer o.Stop()
+
+	aggregatorStarted := false
+
+	// Register aggregator service
+	aggSvc := &mockService{
+		label:       "mcp-aggregator",
+		serviceType: services.ServiceType("Aggregator"),
+		state:       services.StateStopped,
+		startFunc: func(ctx context.Context) error {
+			aggregatorStarted = true
+			return nil
+		},
+	}
+	o.registry.Register(aggSvc)
+
+	// Register non-aggregator service (should be ignored)
+	nonAggSvc := &mockService{
+		label:       "other-service",
+		serviceType: services.TypeMCPServer,
+		state:       services.StateStopped,
+		startFunc: func(ctx context.Context) error {
+			t.Error("non-aggregator service should not be started")
+			return nil
+		},
+	}
+	o.registry.Register(nonAggSvc)
+
+	servicesToStart := []string{"mcp-aggregator", "other-service"}
+
+	// Start aggregator
+	err = o.startAggregator(servicesToStart)
+	assert.NoError(t, err)
+	assert.True(t, aggregatorStarted)
+}
