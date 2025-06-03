@@ -101,10 +101,10 @@ func TestOrchestrator_DependencyGraph(t *testing.T) {
 	// Only register services and build the dependency graph - don't start services
 	ctx := context.Background()
 	o.ctx = ctx
-	
+
 	err := o.registerServices()
 	require.NoError(t, err)
-	
+
 	// Build the dependency graph
 	o.depGraph = o.buildDependencyGraph()
 

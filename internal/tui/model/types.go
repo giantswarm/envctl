@@ -338,8 +338,7 @@ func (m *Model) StartService(label string) tea.Cmd {
 			return nil
 		}
 
-		ctx := context.Background()
-		if err := m.OrchestratorAPI.StartService(ctx, label); err != nil {
+		if err := m.OrchestratorAPI.StartService(label); err != nil {
 			return ServiceErrorMsg{
 				Label: label,
 				Err:   err,
@@ -357,8 +356,7 @@ func (m *Model) StopService(label string) tea.Cmd {
 			return nil
 		}
 
-		ctx := context.Background()
-		if err := m.OrchestratorAPI.StopService(ctx, label); err != nil {
+		if err := m.OrchestratorAPI.StopService(label); err != nil {
 			return ServiceErrorMsg{
 				Label: label,
 				Err:   err,
@@ -376,8 +374,7 @@ func (m *Model) RestartService(label string) tea.Cmd {
 			return nil
 		}
 
-		ctx := context.Background()
-		if err := m.OrchestratorAPI.RestartService(ctx, label); err != nil {
+		if err := m.OrchestratorAPI.RestartService(label); err != nil {
 			return ServiceErrorMsg{
 				Label: label,
 				Err:   err,
@@ -408,4 +405,17 @@ func (m *Model) SetStatusMessage(message string, msgType MessageType, clearAfter
 			return ClearStatusBarMsg{}
 		}
 	})
+}
+
+// Utility Functions
+// -----------------
+
+// stringInSlice checks if a string is in a slice
+func stringInSlice(str string, slice []string) bool {
+	for _, s := range slice {
+		if s == str {
+			return true
+		}
+	}
+	return false
 }

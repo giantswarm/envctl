@@ -2,9 +2,7 @@ package orchestrator
 
 import (
 	"context"
-	"envctl/internal/aggregator"
 	"envctl/internal/config"
-	"envctl/internal/services"
 	"testing"
 	"time"
 
@@ -365,7 +363,7 @@ func TestServicesRegisteredOnStart(t *testing.T) {
 			},
 		},
 		{
-			name: "registers mcp and aggregator services",
+			name: "registers mcp services only (aggregator registered externally)",
 			config: Config{
 				MCName: "test-mc",
 				MCPServers: []config.MCPServerDefinition{
@@ -379,11 +377,11 @@ func TestServicesRegisteredOnStart(t *testing.T) {
 				"k8s-mc-test-mc",
 				"mcp-kube",
 				"mcp-grafana",
-				"mcp-aggregator",
+				// "mcp-aggregator" is now registered externally in connect.go
 			},
 		},
 		{
-			name: "does not register aggregator without mcp servers",
+			name: "registers only k8s service when no mcp servers",
 			config: Config{
 				MCName:         "test-mc",
 				AggregatorPort: 8080,
@@ -400,40 +398,11 @@ func TestServicesRegisteredOnStart(t *testing.T) {
 			// Create orchestrator
 			o := New(tt.config)
 
-			// Set up a mock aggregator factory for tests with MCP servers
-			// This prevents the nil pointer issue when the aggregator tries to use the client provider
-			if len(tt.config.MCPServers) > 0 {
-				hasEnabledMCPServers := false
-				for _, mcp := range tt.config.MCPServers {
-					if mcp.Enabled {
-						hasEnabledMCPServers = true
-						break
-					}
-				}
-				if hasEnabledMCPServers {
-					// Set a no-op aggregator factory that creates a mock service
-					o.SetAggregatorServiceFactory(func(config aggregator.AggregatorConfig) services.Service {
-						// Return a mock service that does nothing
-						return &mockService{
-							label:       "mcp-aggregator",
-							serviceType: services.ServiceType("Aggregator"),
-							state:       services.StateStopped,
-							startFunc: func(ctx context.Context) error {
-								return nil
-							},
-							stopFunc: func(ctx context.Context) error {
-								return nil
-							},
-						}
-					})
-				}
+			// Just register services without starting them
+			// This tests the registration logic without dealing with service startup
+			if err := o.registerServices(); err != nil {
+				t.Fatalf("Failed to register services: %v", err)
 			}
-
-			// Start the orchestrator to register services
-			ctx := context.Background()
-			err := o.Start(ctx)
-			require.NoError(t, err)
-			defer o.Stop()
 
 			// Verify expected services are registered
 			for _, label := range tt.expectedServices {

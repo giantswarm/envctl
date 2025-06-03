@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"envctl/internal/orchestrator"
 	"envctl/internal/services"
 	"errors"
 	"testing"
@@ -13,6 +14,8 @@ type mockServiceOrchestrator struct {
 	startServiceFunc   func(label string) error
 	stopServiceFunc    func(label string) error
 	restartServiceFunc func(label string) error
+	eventChan          chan orchestrator.ServiceStateChangedEvent
+	stateChanges       chan orchestrator.ServiceStateChangedEvent
 }
 
 func (m *mockServiceOrchestrator) StartService(label string) error {
@@ -34,6 +37,25 @@ func (m *mockServiceOrchestrator) RestartService(label string) error {
 		return m.restartServiceFunc(label)
 	}
 	return nil
+}
+
+func (m *mockServiceOrchestrator) SubscribeToStateChanges() <-chan orchestrator.ServiceStateChangedEvent {
+	if m.stateChanges == nil {
+		m.stateChanges = make(chan orchestrator.ServiceStateChangedEvent, 100)
+	}
+	return m.stateChanges
+}
+
+// sendEvent is a helper method for tests to send events
+func (m *mockServiceOrchestrator) sendEvent(event orchestrator.ServiceStateChangedEvent) {
+	if m.stateChanges == nil {
+		m.stateChanges = make(chan orchestrator.ServiceStateChangedEvent, 100)
+	}
+	select {
+	case m.stateChanges <- event:
+	default:
+		// Channel full, ignore
+	}
 }
 
 // mockOrchestratorRegistry implements services.ServiceRegistry for testing
@@ -159,7 +181,7 @@ func TestOrchestratorAPI_StartService(t *testing.T) {
 
 			api := NewOrchestratorAPI(orch, registry)
 
-			err := api.StartService(context.Background(), tt.label)
+			err := api.StartService(tt.label)
 
 			if (err != nil) != tt.expectError {
 				t.Errorf("StartService() error = %v, expectError %v", err, tt.expectError)
@@ -211,7 +233,7 @@ func TestOrchestratorAPI_StopService(t *testing.T) {
 
 			api := NewOrchestratorAPI(orch, registry)
 
-			err := api.StopService(context.Background(), tt.label)
+			err := api.StopService(tt.label)
 
 			if (err != nil) != tt.expectError {
 				t.Errorf("StopService() error = %v, expectError %v", err, tt.expectError)
@@ -263,7 +285,7 @@ func TestOrchestratorAPI_RestartService(t *testing.T) {
 
 			api := NewOrchestratorAPI(orch, registry)
 
-			err := api.RestartService(context.Background(), tt.label)
+			err := api.RestartService(tt.label)
 
 			if (err != nil) != tt.expectError {
 				t.Errorf("RestartService() error = %v, expectError %v", err, tt.expectError)
@@ -273,112 +295,57 @@ func TestOrchestratorAPI_RestartService(t *testing.T) {
 }
 
 func TestOrchestratorAPI_GetServiceStatus(t *testing.T) {
+	// Create mocks
 	orch := &mockServiceOrchestrator{}
-	registry := newMockOrchestratorRegistry()
+	registry := services.NewRegistry()
 
-	// Add a test service using the existing mockService type
-	testService := &mockService{
+	// Create API
+	api := NewOrchestratorAPI(orch, registry)
+
+	// Register a test service
+	svc := &mockService{
 		label:        "test-service",
 		serviceType:  services.TypePortForward,
 		state:        services.StateRunning,
 		health:       services.HealthHealthy,
-		lastError:    nil,
 		dependencies: []string{"dep1", "dep2"},
 	}
-	registry.Register(testService)
-
-	api := NewOrchestratorAPI(orch, registry)
+	registry.Register(svc)
 
 	// Test existing service
-	status, err := api.GetServiceStatus(context.Background(), "test-service")
+	status, err := api.GetServiceStatus("test-service")
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
 
-	if status == nil {
-		t.Fatal("Expected non-nil status")
-	}
-
+	// Check status fields
 	if status.Label != "test-service" {
-		t.Errorf("Expected label 'test-service', got %s", status.Label)
+		t.Errorf("Expected label %s, got %s", "test-service", status.Label)
 	}
-
-	if status.Type != string(services.TypePortForward) {
-		t.Errorf("Expected type %s, got %s", services.TypePortForward, status.Type)
+	if status.Type != "PortForward" {
+		t.Errorf("Expected type %s, got %s", "PortForward", status.Type)
 	}
-
-	if status.State != string(services.StateRunning) {
-		t.Errorf("Expected state %s, got %s", services.StateRunning, status.State)
+	if status.State != "Running" {
+		t.Errorf("Expected state %s, got %s", "Running", status.State)
 	}
-
-	if status.Health != string(services.HealthHealthy) {
-		t.Errorf("Expected health %s, got %s", services.HealthHealthy, status.Health)
-	}
-
-	if len(status.Dependencies) != 2 {
-		t.Errorf("Expected 2 dependencies, got %d", len(status.Dependencies))
+	if status.Health != "Healthy" {
+		t.Errorf("Expected health %s, got %s", "Healthy", status.Health)
 	}
 
 	// Test non-existing service
-	_, err = api.GetServiceStatus(context.Background(), "non-existent")
+	_, err = api.GetServiceStatus("non-existent")
 	if err == nil {
 		t.Error("Expected error for non-existent service")
 	}
 }
 
-func TestOrchestratorAPI_ListServices(t *testing.T) {
-	orch := &mockServiceOrchestrator{}
-	registry := newMockOrchestratorRegistry()
-
-	// Add test services
-	services := []*mockService{
-		{
-			label:       "service1",
-			serviceType: services.TypePortForward,
-			state:       services.StateRunning,
-			health:      services.HealthHealthy,
-		},
-		{
-			label:       "service2",
-			serviceType: services.TypeMCPServer,
-			state:       services.StateStopped,
-			health:      services.HealthUnknown,
-		},
-	}
-
-	for _, svc := range services {
-		registry.Register(svc)
-	}
-
-	api := NewOrchestratorAPI(orch, registry)
-
-	list, err := api.ListServices(context.Background())
-	if err != nil {
-		t.Errorf("Unexpected error: %v", err)
-	}
-
-	if len(list) != 2 {
-		t.Errorf("Expected 2 services, got %d", len(list))
-	}
-
-	// Check that all services are in the list
-	foundServices := make(map[string]bool)
-	for _, status := range list {
-		foundServices[status.Label] = true
-	}
-
-	if !foundServices["service1"] {
-		t.Error("Expected to find service1 in list")
-	}
-
-	if !foundServices["service2"] {
-		t.Error("Expected to find service2 in list")
-	}
-}
-
 func TestOrchestratorAPI_SubscribeToStateChanges(t *testing.T) {
-	orch := &mockServiceOrchestrator{}
-	registry := newMockOrchestratorRegistry()
+	// Create mocks
+	orch := &mockServiceOrchestrator{
+		stateChanges: make(chan orchestrator.ServiceStateChangedEvent, 10),
+	}
+	registry := services.NewRegistry()
+
 	api := NewOrchestratorAPI(orch, registry).(*orchestratorAPI)
 
 	// Subscribe to state changes
@@ -388,8 +355,8 @@ func TestOrchestratorAPI_SubscribeToStateChanges(t *testing.T) {
 		t.Error("Expected non-nil channel")
 	}
 
-	// Test forwarding a state change
-	testEvent := ServiceStateChangedEvent{
+	// Test forwarding a state change by sending an event through the orchestrator
+	testEvent := orchestrator.ServiceStateChangedEvent{
 		Label:    "test-service",
 		OldState: string(services.StateStopped),
 		NewState: string(services.StateRunning),
@@ -397,14 +364,11 @@ func TestOrchestratorAPI_SubscribeToStateChanges(t *testing.T) {
 		Error:    nil,
 	}
 
-	// Forward the event
-	api.forwardStateChange(
-		testEvent.Label,
-		services.ServiceState(testEvent.OldState),
-		services.ServiceState(testEvent.NewState),
-		services.HealthStatus(testEvent.Health),
-		testEvent.Error,
-	)
+	// Send the event through the mock orchestrator
+	orch.sendEvent(testEvent)
+
+	// Give the goroutine time to process the event
+	time.Sleep(10 * time.Millisecond)
 
 	// Check if event was received
 	select {
@@ -451,5 +415,60 @@ func TestServiceStateChangedEvent_Structure(t *testing.T) {
 
 	if event.Error == nil || event.Error.Error() != "test error" {
 		t.Errorf("Expected Error 'test error', got %v", event.Error)
+	}
+}
+
+func TestOrchestratorAPI_GetAllServices(t *testing.T) {
+	// Create mocks
+	orch := &mockServiceOrchestrator{}
+	registry := services.NewRegistry()
+
+	// Create API
+	api := NewOrchestratorAPI(orch, registry)
+
+	// Register test services
+	svc1 := &mockService{
+		label:       "service1",
+		serviceType: services.TypePortForward,
+		state:       services.StateRunning,
+		health:      services.HealthHealthy,
+	}
+	svc2 := &mockService{
+		label:       "service2",
+		serviceType: services.TypeMCPServer,
+		state:       services.StateStopped,
+		health:      services.HealthUnknown,
+	}
+	registry.Register(svc1)
+	registry.Register(svc2)
+
+	// Test listing services
+	statuses := api.GetAllServices()
+	if len(statuses) != 2 {
+		t.Errorf("Expected 2 services, got %d", len(statuses))
+	}
+
+	// Verify both services are in the list
+	labels := []string{}
+	for _, s := range statuses {
+		labels = append(labels, s.Label)
+	}
+
+	found1 := false
+	found2 := false
+	for _, label := range labels {
+		if label == "service1" {
+			found1 = true
+		}
+		if label == "service2" {
+			found2 = true
+		}
+	}
+
+	if !found1 {
+		t.Error("service1 not found in list")
+	}
+	if !found2 {
+		t.Error("service2 not found in list")
 	}
 }

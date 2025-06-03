@@ -105,11 +105,32 @@ const (
 	EventDeregister
 )
 
-// MCPClientProvider provides access to MCP clients from running servers
-type MCPClientProvider interface {
-	// GetMCPClient returns the MCP client for a specific service
-	GetMCPClient(label string) (MCPClient, error)
+// ServiceStateChangedEvent represents a service state change event from the orchestrator
+type ServiceStateChangedEvent struct {
+	Label    string
+	OldState string
+	NewState string
+	Health   string
+	Error    error
+}
 
-	// GetAllMCPClients returns all available MCP clients
-	GetAllMCPClients() map[string]MCPClient
+// OrchestratorEventProvider provides access to orchestrator state change events
+type OrchestratorEventProvider interface {
+	SubscribeToStateChanges() <-chan ServiceStateChangedEvent
+}
+
+// MCPServiceInfo contains information about an MCP service
+type MCPServiceInfo struct {
+	Name   string
+	State  string
+	Health string
+}
+
+// MCPServiceProvider provides access to MCP services and clients
+type MCPServiceProvider interface {
+	// GetAllMCPServices returns all MCP services
+	GetAllMCPServices() []MCPServiceInfo
+
+	// GetMCPClient returns the MCP client for a specific service
+	GetMCPClient(name string) interface{}
 }

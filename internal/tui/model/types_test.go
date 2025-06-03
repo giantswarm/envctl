@@ -1,7 +1,6 @@
 package model
 
 import (
-	"context"
 	"envctl/internal/api"
 	"errors"
 	"testing"
@@ -297,41 +296,41 @@ func TestGetPortForwardStatus(t *testing.T) {
 
 // Mock OrchestratorAPI for testing
 type mockOrchestratorAPI struct {
-	startServiceFunc   func(ctx context.Context, label string) error
-	stopServiceFunc    func(ctx context.Context, label string) error
-	restartServiceFunc func(ctx context.Context, label string) error
+	startServiceFunc   func(label string) error
+	stopServiceFunc    func(label string) error
+	restartServiceFunc func(label string) error
 }
 
-func (m *mockOrchestratorAPI) StartService(ctx context.Context, label string) error {
+func (m *mockOrchestratorAPI) StartService(label string) error {
 	if m.startServiceFunc != nil {
-		return m.startServiceFunc(ctx, label)
+		return m.startServiceFunc(label)
 	}
 	return nil
 }
 
-func (m *mockOrchestratorAPI) StopService(ctx context.Context, label string) error {
+func (m *mockOrchestratorAPI) StopService(label string) error {
 	if m.stopServiceFunc != nil {
-		return m.stopServiceFunc(ctx, label)
+		return m.stopServiceFunc(label)
 	}
 	return nil
 }
 
-func (m *mockOrchestratorAPI) RestartService(ctx context.Context, label string) error {
+func (m *mockOrchestratorAPI) RestartService(label string) error {
 	if m.restartServiceFunc != nil {
-		return m.restartServiceFunc(ctx, label)
+		return m.restartServiceFunc(label)
 	}
 	return nil
 }
 
-func (m *mockOrchestratorAPI) GetServiceStatus(ctx context.Context, label string) (*api.ServiceStatus, error) {
-	return &api.ServiceStatus{
+func (m *mockOrchestratorAPI) GetServiceStatus(label string) (api.ServiceStatus, error) {
+	return api.ServiceStatus{
 		Label: label,
 		State: "running",
 	}, nil
 }
 
-func (m *mockOrchestratorAPI) ListServices(ctx context.Context) ([]*api.ServiceStatus, error) {
-	return []*api.ServiceStatus{}, nil
+func (m *mockOrchestratorAPI) GetAllServices() []api.ServiceStatus {
+	return []api.ServiceStatus{}
 }
 
 func (m *mockOrchestratorAPI) SubscribeToStateChanges() <-chan api.ServiceStateChangedEvent {
@@ -364,7 +363,7 @@ func TestStartService(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockAPI := &mockOrchestratorAPI{
-				startServiceFunc: func(ctx context.Context, label string) error {
+				startServiceFunc: func(label string) error {
 					if label != tt.label {
 						t.Errorf("StartService called with label = %v, want %v", label, tt.label)
 					}
@@ -432,7 +431,7 @@ func TestStopService(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockAPI := &mockOrchestratorAPI{
-				stopServiceFunc: func(ctx context.Context, label string) error {
+				stopServiceFunc: func(label string) error {
 					if label != tt.label {
 						t.Errorf("StopService called with label = %v, want %v", label, tt.label)
 					}
@@ -500,7 +499,7 @@ func TestRestartService(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockAPI := &mockOrchestratorAPI{
-				restartServiceFunc: func(ctx context.Context, label string) error {
+				restartServiceFunc: func(label string) error {
 					if label != tt.label {
 						t.Errorf("RestartService called with label = %v, want %v", label, tt.label)
 					}

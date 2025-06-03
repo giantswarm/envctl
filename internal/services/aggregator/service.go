@@ -11,25 +11,28 @@ import (
 )
 
 // AggregatorService implements the Service interface for the MCP aggregator
+// This is a thin wrapper around AggregatorManager that handles only lifecycle management
 type AggregatorService struct {
 	*services.BaseService
 
-	mu             sync.RWMutex
-	config         aggregator.AggregatorConfig
-	server         *aggregator.AggregatorServer
-	clientProvider aggregator.MCPClientProvider
+	mu                   sync.RWMutex
+	config               aggregator.AggregatorConfig
+	orchestratorProvider aggregator.OrchestratorEventProvider
+	mcpServiceProvider   aggregator.MCPServiceProvider
+	manager              *aggregator.AggregatorManager
 }
 
 // NewAggregatorService creates a new aggregator service
-func NewAggregatorService(config aggregator.AggregatorConfig, clientProvider aggregator.MCPClientProvider) *AggregatorService {
-	// The aggregator depends on all MCP servers being ready
-	// We'll dynamically add dependencies based on registered MCP servers
-	deps := []string{}
-
+func NewAggregatorService(
+	config aggregator.AggregatorConfig,
+	orchestratorProvider aggregator.OrchestratorEventProvider,
+	mcpServiceProvider aggregator.MCPServiceProvider,
+) *AggregatorService {
 	return &AggregatorService{
-		BaseService:    services.NewBaseService("mcp-aggregator", services.ServiceType("Aggregator"), deps),
-		config:         config,
-		clientProvider: clientProvider,
+		BaseService:          services.NewBaseService("mcp-aggregator", services.ServiceType("Aggregator"), []string{}),
+		config:               config,
+		orchestratorProvider: orchestratorProvider,
+		mcpServiceProvider:   mcpServiceProvider,
 	}
 }
 
@@ -44,25 +47,24 @@ func (s *AggregatorService) Start(ctx context.Context) error {
 
 	s.UpdateState(services.StateStarting, services.HealthUnknown, nil)
 
-	// Create the aggregator server
-	s.server = aggregator.NewAggregatorServer(s.config)
-
-	// Start the aggregator server
-	if err := s.server.Start(ctx); err != nil {
-		s.UpdateState(services.StateFailed, services.HealthUnhealthy, err)
-		return fmt.Errorf("failed to start aggregator server: %w", err)
+	// Check if providers are set
+	if s.orchestratorProvider == nil || s.mcpServiceProvider == nil {
+		s.UpdateState(services.StateFailed, services.HealthUnhealthy, fmt.Errorf("providers not set"))
+		return fmt.Errorf("aggregator providers not set")
 	}
 
-	// Register all MCP servers with the aggregator
-	if err := s.registerMCPServers(ctx); err != nil {
-		s.server.Stop(ctx)
+	// Create the manager with providers
+	s.manager = aggregator.NewAggregatorManager(s.config, s.orchestratorProvider, s.mcpServiceProvider)
+
+	// Start the manager
+	if err := s.manager.Start(ctx); err != nil {
 		s.UpdateState(services.StateFailed, services.HealthUnhealthy, err)
-		return fmt.Errorf("failed to register MCP servers: %w", err)
+		return fmt.Errorf("failed to start aggregator manager: %w", err)
 	}
 
 	s.UpdateState(services.StateRunning, services.HealthHealthy, nil)
 
-	logging.Info("Aggregator", "Started MCP aggregator service on %s", s.server.GetEndpoint())
+	logging.Info("Aggregator-Service", "Started MCP aggregator service")
 	return nil
 }
 
@@ -77,16 +79,16 @@ func (s *AggregatorService) Stop(ctx context.Context) error {
 
 	s.UpdateState(services.StateStopping, s.GetHealth(), nil)
 
-	if s.server != nil {
-		if err := s.server.Stop(ctx); err != nil {
-			logging.Error("Aggregator", err, "Error stopping aggregator server")
+	// Stop the manager
+	if s.manager != nil {
+		if err := s.manager.Stop(ctx); err != nil {
+			logging.Error("Aggregator-Service", err, "Error stopping aggregator manager")
 		}
-		s.server = nil
 	}
 
 	s.UpdateState(services.StateStopped, services.HealthUnknown, nil)
 
-	logging.Info("Aggregator", "Stopped MCP aggregator service")
+	logging.Info("Aggregator-Service", "Stopped MCP aggregator service")
 	return nil
 }
 
@@ -115,8 +117,25 @@ func (s *AggregatorService) CheckHealth(ctx context.Context) (services.HealthSta
 		return services.HealthUnknown, nil
 	}
 
-	// The aggregator is healthy if it's running
-	// We could add more sophisticated health checks here
+	// Delegate to manager
+	if s.manager != nil {
+		managerHealth, err := s.manager.CheckHealth(ctx)
+
+		// Convert aggregator.HealthStatus to services.HealthStatus
+		var serviceHealth services.HealthStatus
+		switch managerHealth {
+		case aggregator.HealthHealthy:
+			serviceHealth = services.HealthHealthy
+		case aggregator.HealthUnhealthy:
+			serviceHealth = services.HealthUnhealthy
+		default:
+			serviceHealth = services.HealthUnknown
+		}
+
+		s.UpdateHealth(serviceHealth)
+		return serviceHealth, err
+	}
+
 	s.UpdateHealth(services.HealthHealthy)
 	return services.HealthHealthy, nil
 }
@@ -132,100 +151,18 @@ func (s *AggregatorService) GetServiceData() map[string]interface{} {
 	defer s.mu.RUnlock()
 
 	data := map[string]interface{}{
-		"port": s.config.Port,
-		"host": s.config.Host,
+		"service_type": "aggregator",
 	}
 
-	if s.server != nil {
-		data["endpoint"] = s.server.GetEndpoint()
-		data["tools"] = len(s.server.GetTools())
-		data["resources"] = len(s.server.GetResources())
-		data["prompts"] = len(s.server.GetPrompts())
-
-		// Get connected servers count
-		registry := s.server.GetRegistry()
-		if registry != nil {
-			servers := registry.GetAllServers()
-			connected := 0
-			for _, info := range servers {
-				if info.IsConnected() {
-					connected++
-				}
-			}
-			data["servers_total"] = len(servers)
-			data["servers_connected"] = connected
+	// Delegate to manager
+	if s.manager != nil {
+		managerData := s.manager.GetServiceData()
+		for k, v := range managerData {
+			data[k] = v
 		}
 	}
 
 	return data
-}
-
-// registerMCPServers registers all running MCP servers with the aggregator
-func (s *AggregatorService) registerMCPServers(ctx context.Context) error {
-	// Get all MCP clients from the provider
-	clients := s.clientProvider.GetAllMCPClients()
-
-	logging.Debug("Aggregator", "Registering MCP servers: found %d running MCP clients", len(clients))
-
-	for label, client := range clients {
-		// Register with the aggregator
-		if err := s.server.RegisterServer(ctx, label, client); err != nil {
-			logging.Warn("Aggregator", "Failed to register MCP server %s: %v", label, err)
-			// Continue with other servers
-		} else {
-			logging.Info("Aggregator", "Registered MCP server %s with aggregator", label)
-		}
-	}
-
-	if len(clients) == 0 {
-		logging.Info("Aggregator", "No MCP servers are currently running to register")
-	}
-
-	return nil
-}
-
-// RefreshMCPServers updates the aggregator's registered MCP servers based on current state
-func (s *AggregatorService) RefreshMCPServers(ctx context.Context) error {
-	logging.Info("Aggregator", "RefreshMCPServers called - updating registered servers")
-
-	s.mu.RLock()
-	server := s.server
-	s.mu.RUnlock()
-
-	if server == nil {
-		return fmt.Errorf("aggregator server not running")
-	}
-
-	// Get all current MCP clients
-	currentClients := s.clientProvider.GetAllMCPClients()
-	registry := server.GetRegistry()
-
-	logging.Info("Aggregator", "Current MCP clients: %d, Registered servers: %d",
-		len(currentClients), len(registry.GetAllServers()))
-
-	// Register new clients
-	for label, client := range currentClients {
-		if _, exists := registry.GetServerInfo(label); !exists {
-			if err := server.RegisterServer(ctx, label, client); err != nil {
-				logging.Warn("Aggregator", "Failed to register new MCP server %s: %v", label, err)
-			} else {
-				logging.Info("Aggregator", "Registered new MCP server %s with aggregator", label)
-			}
-		}
-	}
-
-	// Deregister removed clients
-	for name := range registry.GetAllServers() {
-		if _, exists := currentClients[name]; !exists {
-			if err := server.DeregisterServer(name); err != nil {
-				logging.Warn("Aggregator", "Failed to deregister MCP server %s: %v", name, err)
-			} else {
-				logging.Info("Aggregator", "Deregistered MCP server %s from aggregator", name)
-			}
-		}
-	}
-
-	return nil
 }
 
 // GetEndpoint returns the aggregator's SSE endpoint URL
@@ -233,9 +170,30 @@ func (s *AggregatorService) GetEndpoint() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	if s.server != nil {
-		return s.server.GetEndpoint()
+	if s.manager != nil {
+		return s.manager.GetEndpoint()
 	}
 
 	return ""
+}
+
+// GetManager returns the underlying aggregator manager for advanced operations
+func (s *AggregatorService) GetManager() *aggregator.AggregatorManager {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.manager
+}
+
+// ManualRefresh manually triggers a refresh of MCP server registrations
+// This can be useful for debugging or forced updates
+func (s *AggregatorService) ManualRefresh(ctx context.Context) error {
+	s.mu.RLock()
+	manager := s.manager
+	s.mu.RUnlock()
+
+	if manager != nil {
+		return manager.ManualRefresh(ctx)
+	}
+
+	return fmt.Errorf("aggregator manager not initialized")
 }

@@ -2,11 +2,13 @@ package cmd
 
 import (
 	"context"
+	"envctl/internal/aggregator"
 	"envctl/internal/api"
 	"envctl/internal/color"
 	"envctl/internal/config"
 	"envctl/internal/kube"
 	"envctl/internal/orchestrator"
+	agg "envctl/internal/services/aggregator"
 	"envctl/internal/tui/controller"
 	"envctl/internal/tui/model"
 	"envctl/pkg/logging"
@@ -119,14 +121,41 @@ Arguments:
 		// Get the service registry
 		registry := orch.GetServiceRegistry()
 
-		// Set up the aggregator service factory to enable MCP client aggregation
-		api.SetupAggregatorFactory(orch, registry)
-
 		// Create APIs
 		orchestratorAPI := api.NewOrchestratorAPI(orch, registry)
 		mcpAPI := api.NewMCPServiceAPI(registry)
 		portForwardAPI := api.NewPortForwardServiceAPI(registry)
 		k8sAPI := api.NewK8sServiceAPI(registry)
+
+		// Register all APIs in the global registry
+		api.SetAll(orchestratorAPI, mcpAPI, portForwardAPI, k8sAPI)
+
+		// Set default port if not configured
+		aggPort := envctlCfg.Aggregator.Port
+		if aggPort == 0 {
+			aggPort = 8080
+		}
+
+		// Create aggregator configuration
+		aggConfig := aggregator.AggregatorConfig{
+			Host: "localhost",
+			Port: aggPort,
+		}
+
+		// Create adapters that bridge APIs to aggregator providers
+		orchestratorEventProvider := api.NewOrchestratorEventAdapter(orchestratorAPI)
+		mcpServiceProvider := api.NewMCPServiceAdapter(mcpAPI, registry)
+
+		// Create aggregator service with providers
+		aggService := agg.NewAggregatorService(aggConfig, orchestratorEventProvider, mcpServiceProvider)
+
+		// Register the aggregator service with the orchestrator's registry
+		if err := registry.Register(aggService); err != nil {
+			logging.Error("CLI", err, "Failed to register aggregator service")
+			return fmt.Errorf("failed to register aggregator service: %w", err)
+		}
+
+		logging.Info("CLI", "Registered MCP aggregator service on port %d", aggPort)
 
 		if noTUI {
 			// CLI Mode: Non-interactive operation suitable for scripts and automation

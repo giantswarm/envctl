@@ -14,6 +14,7 @@ type ServiceOrchestrator interface {
 	StartService(label string) error
 	StopService(label string) error
 	RestartService(label string) error
+	SubscribeToStateChanges() <-chan orchestrator.ServiceStateChangedEvent
 }
 
 // ServiceStatus contains the status information for a service
@@ -27,58 +28,66 @@ type ServiceStatus struct {
 	LastUpdated  time.Time `json:"lastUpdated"`
 }
 
-// ServiceStateChangedEvent is emitted when a service state changes
-type ServiceStateChangedEvent struct {
-	Label    string
-	OldState string
-	NewState string
-	Health   string
-	Error    error
-}
-
-// OrchestratorAPI provides access to service lifecycle management
+// OrchestratorAPI provides access to orchestrator functionality
 type OrchestratorAPI interface {
 	// Service lifecycle management
-	StartService(ctx context.Context, label string) error
-	StopService(ctx context.Context, label string) error
-	RestartService(ctx context.Context, label string) error
+	StartService(label string) error
+	StopService(label string) error
+	RestartService(label string) error
 
-	// Service status queries
-	GetServiceStatus(ctx context.Context, label string) (*ServiceStatus, error)
-	ListServices(ctx context.Context) ([]*ServiceStatus, error)
+	// Service status
+	GetServiceStatus(label string) (ServiceStatus, error)
+	GetAllServices() []ServiceStatus
 
-	// Service state monitoring
+	// State change events
 	SubscribeToStateChanges() <-chan ServiceStateChangedEvent
 }
 
 // orchestratorAPI implements OrchestratorAPI
 type orchestratorAPI struct {
-	orchestrator ServiceOrchestrator
-	registry     services.ServiceRegistry
-	eventChan    chan ServiceStateChangedEvent
+	orch      ServiceOrchestrator
+	registry  services.ServiceRegistry
+	eventChan chan ServiceStateChangedEvent
 }
 
 // NewOrchestratorAPI creates a new orchestrator API
 func NewOrchestratorAPI(orch ServiceOrchestrator, registry services.ServiceRegistry) OrchestratorAPI {
 	api := &orchestratorAPI{
-		orchestrator: orch,
-		registry:     registry,
-		eventChan:    make(chan ServiceStateChangedEvent, 100),
+		orch:      orch,
+		registry:  registry,
+		eventChan: make(chan ServiceStateChangedEvent, 100),
 	}
 
-	// Set up a global state change callback on the orchestrator
-	// This will be applied to all services as they are registered
-	if orchestratorWithCallback, ok := orch.(*orchestrator.Orchestrator); ok {
-		orchestratorWithCallback.SetGlobalStateChangeCallback(func(label string, oldState, newState services.ServiceState, health services.HealthStatus, err error) {
-			api.forwardStateChange(label, oldState, newState, health, err)
-		})
-	}
+	// Subscribe to orchestrator events instead of setting callbacks directly
+	// This uses the proper event-driven architecture
+	go api.forwardOrchestratorEvents(orch.SubscribeToStateChanges())
 
 	return api
 }
 
+// forwardOrchestratorEvents forwards events from the orchestrator to the API event channel
+func (api *orchestratorAPI) forwardOrchestratorEvents(orchestratorEvents <-chan orchestrator.ServiceStateChangedEvent) {
+	for event := range orchestratorEvents {
+		apiEvent := ServiceStateChangedEvent{
+			Label:    event.Label,
+			OldState: event.OldState,
+			NewState: event.NewState,
+			Health:   event.Health,
+			Error:    event.Error,
+		}
+
+		select {
+		case api.eventChan <- apiEvent:
+			// Event forwarded successfully
+		default:
+			// Channel full, drop event
+			logging.Warn("OrchestratorAPI", "Dropped state change event for %s (channel full)", event.Label)
+		}
+	}
+}
+
 // StartService starts a service by label
-func (api *orchestratorAPI) StartService(ctx context.Context, label string) error {
+func (api *orchestratorAPI) StartService(label string) error {
 	service, exists := api.registry.Get(label)
 	if !exists {
 		return fmt.Errorf("service %s not found", label)
@@ -90,11 +99,11 @@ func (api *orchestratorAPI) StartService(ctx context.Context, label string) erro
 	}
 
 	// Use orchestrator to start service (handles dependencies)
-	return api.orchestrator.StartService(label)
+	return api.orch.StartService(label)
 }
 
 // StopService stops a service by label
-func (api *orchestratorAPI) StopService(ctx context.Context, label string) error {
+func (api *orchestratorAPI) StopService(label string) error {
 	service, exists := api.registry.Get(label)
 	if !exists {
 		return fmt.Errorf("service %s not found", label)
@@ -106,28 +115,28 @@ func (api *orchestratorAPI) StopService(ctx context.Context, label string) error
 	}
 
 	// Use orchestrator to stop service
-	return api.orchestrator.StopService(label)
+	return api.orch.StopService(label)
 }
 
 // RestartService restarts a service by label
-func (api *orchestratorAPI) RestartService(ctx context.Context, label string) error {
+func (api *orchestratorAPI) RestartService(label string) error {
 	_, exists := api.registry.Get(label)
 	if !exists {
 		return fmt.Errorf("service %s not found", label)
 	}
 
 	// Use orchestrator to restart service
-	return api.orchestrator.RestartService(label)
+	return api.orch.RestartService(label)
 }
 
 // GetServiceStatus returns the status of a specific service
-func (api *orchestratorAPI) GetServiceStatus(ctx context.Context, label string) (*ServiceStatus, error) {
+func (api *orchestratorAPI) GetServiceStatus(label string) (ServiceStatus, error) {
 	service, exists := api.registry.Get(label)
 	if !exists {
-		return nil, fmt.Errorf("service %s not found", label)
+		return ServiceStatus{}, fmt.Errorf("service %s not found", label)
 	}
 
-	status := &ServiceStatus{
+	status := ServiceStatus{
 		Label:        service.GetLabel(),
 		Type:         string(service.GetType()),
 		State:        string(service.GetState()),
@@ -149,38 +158,43 @@ func (api *orchestratorAPI) ListServices(ctx context.Context) ([]*ServiceStatus,
 
 	statuses := make([]*ServiceStatus, 0, len(allServices))
 	for _, service := range allServices {
-		status, err := api.GetServiceStatus(ctx, service.GetLabel())
+		status, err := api.GetServiceStatus(service.GetLabel())
 		if err != nil {
 			// Skip services that error
 			continue
 		}
-		statuses = append(statuses, status)
+		statuses = append(statuses, &status)
 	}
 
 	return statuses, nil
 }
 
+// GetAllServices returns the status of all services
+func (api *orchestratorAPI) GetAllServices() []ServiceStatus {
+	allServices := api.registry.GetAll()
+
+	statuses := make([]ServiceStatus, 0, len(allServices))
+	for _, service := range allServices {
+		status := ServiceStatus{
+			Label:        service.GetLabel(),
+			Type:         string(service.GetType()),
+			State:        string(service.GetState()),
+			Health:       string(service.GetHealth()),
+			Dependencies: service.GetDependencies(),
+			LastUpdated:  time.Now(),
+		}
+
+		if err := service.GetLastError(); err != nil {
+			status.Error = err.Error()
+		}
+
+		statuses = append(statuses, status)
+	}
+
+	return statuses
+}
+
 // SubscribeToStateChanges returns a channel for service state change events
 func (api *orchestratorAPI) SubscribeToStateChanges() <-chan ServiceStateChangedEvent {
 	return api.eventChan
-}
-
-// forwardStateChange is called by the orchestrator when a service state changes
-func (api *orchestratorAPI) forwardStateChange(label string, oldState, newState services.ServiceState, health services.HealthStatus, err error) {
-	event := ServiceStateChangedEvent{
-		Label:    label,
-		OldState: string(oldState),
-		NewState: string(newState),
-		Health:   string(health),
-		Error:    err,
-	}
-
-	select {
-	case api.eventChan <- event:
-		// Event sent successfully
-	default:
-		// Channel full, drop event
-		// Log this so we can debug if events are being dropped
-		logging.Warn("OrchestratorAPI", "Dropped state change event for %s (channel full)", label)
-	}
 }

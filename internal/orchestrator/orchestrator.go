@@ -2,12 +2,10 @@ package orchestrator
 
 import (
 	"context"
-	"envctl/internal/aggregator"
 	"envctl/internal/config"
 	"envctl/internal/dependency"
 	"envctl/internal/kube"
 	"envctl/internal/services"
-	agg "envctl/internal/services/aggregator"
 	"envctl/internal/services/k8s"
 	"envctl/internal/services/mcpserver"
 	"envctl/internal/services/portforward"
@@ -51,8 +49,8 @@ type Orchestrator struct {
 	// Global state change callback
 	globalStateChangeCallback services.StateChangeCallback
 
-	// Aggregator service factory (optional)
-	aggregatorServiceFactory func(config aggregator.AggregatorConfig) services.Service
+	// State change event subscribers
+	stateChangeSubscribers []chan<- ServiceStateChangedEvent
 
 	// Context for cancellation
 	ctx        context.Context
@@ -83,16 +81,17 @@ func New(cfg Config) *Orchestrator {
 	kubeMgr := kube.NewManager(nil)
 
 	return &Orchestrator{
-		registry:        registry,
-		kubeMgr:         kubeMgr,
-		mcName:          cfg.MCName,
-		wcName:          cfg.WCName,
-		portForwards:    cfg.PortForwards,
-		mcpServers:      cfg.MCPServers,
-		aggregatorPort:  cfg.AggregatorPort,
-		stopReasons:     make(map[string]StopReason),
-		pendingRestarts: make(map[string]bool),
-		healthCheckers:  make(map[string]bool),
+		registry:               registry,
+		kubeMgr:                kubeMgr,
+		mcName:                 cfg.MCName,
+		wcName:                 cfg.WCName,
+		portForwards:           cfg.PortForwards,
+		mcpServers:             cfg.MCPServers,
+		aggregatorPort:         cfg.AggregatorPort,
+		stopReasons:            make(map[string]StopReason),
+		pendingRestarts:        make(map[string]bool),
+		healthCheckers:         make(map[string]bool),
+		stateChangeSubscribers: make([]chan<- ServiceStateChangedEvent, 0),
 	}
 }
 
@@ -107,6 +106,10 @@ func New(cfg Config) *Orchestrator {
 func (o *Orchestrator) Start(ctx context.Context) error {
 	// Create cancellable context for graceful shutdown
 	o.ctx, o.cancelFunc = context.WithCancel(ctx)
+
+	// Initialize the internal state change callback system
+	// This ensures all services get proper state change monitoring
+	o.setGlobalStateChangeCallback(nil)
 
 	// Build dependency graph to understand service relationships
 	o.depGraph = o.buildDependencyGraph()
@@ -238,41 +241,6 @@ func (o *Orchestrator) RestartService(label string) error {
 // service status without going through the orchestrator.
 func (o *Orchestrator) GetServiceRegistry() services.ServiceRegistry {
 	return o.registry
-}
-
-// SetGlobalStateChangeCallback sets a callback that will be called for all service state changes.
-// This is used by the API layer to forward state changes to subscribers.
-func (o *Orchestrator) SetGlobalStateChangeCallback(callback services.StateChangeCallback) {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-
-	// Wrap the provided callback to also handle orchestrator logic
-	wrappedCallback := func(label string, oldState, newState services.ServiceState, health services.HealthStatus, err error) {
-		// Call the original callback first
-		if callback != nil {
-			callback(label, oldState, newState, health, err)
-		}
-
-		// Handle orchestrator-specific logic for state changes
-		o.handleServiceStateChange(label, oldState, newState)
-	}
-
-	o.globalStateChangeCallback = wrappedCallback
-
-	// Apply the callback to all already-registered services
-	// This is crucial because services might be registered before the callback is set
-	allServices := o.registry.GetAll()
-	for _, service := range allServices {
-		service.SetStateChangeCallback(wrappedCallback)
-	}
-}
-
-// GetGlobalStateChangeCallback returns the current global state change callback.
-// This is used by the API layer to check if a callback is already set.
-func (o *Orchestrator) GetGlobalStateChangeCallback() services.StateChangeCallback {
-	o.mu.RLock()
-	defer o.mu.RUnlock()
-	return o.globalStateChangeCallback
 }
 
 // handleServiceStateChange handles immediate processing of service state changes
@@ -441,65 +409,80 @@ func (o *Orchestrator) registerMCPServices() error {
 	return nil
 }
 
-// SetAggregatorServiceFactory sets the factory function for creating aggregator service
-// This allows external code to provide the aggregator service with proper dependencies
-// without creating import cycles
-func (o *Orchestrator) SetAggregatorServiceFactory(factory func(config aggregator.AggregatorConfig) services.Service) {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	o.aggregatorServiceFactory = factory
-}
-
 // registerAggregatorService registers the MCP aggregator service.
 // The aggregator provides a single SSE endpoint that aggregates all
 // MCP servers, making it easier for AI assistants to discover and use tools.
 func (o *Orchestrator) registerAggregatorService() error {
-	// Only register if we have MCP servers
-	enabledMCPServers := 0
-	for _, mcp := range o.mcpServers {
-		if mcp.Enabled {
-			enabledMCPServers++
+	// The aggregator is now registered externally in connect.go
+	// after the APIs are created, to avoid circular dependencies
+	return nil
+}
+
+// setGlobalStateChangeCallback sets a callback that will be called for all service state changes.
+// This is now private and should only be used internally by the orchestrator.
+func (o *Orchestrator) setGlobalStateChangeCallback(callback services.StateChangeCallback) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	// Create a callback that handles both internal logic and broadcasts to subscribers
+	wrappedCallback := func(label string, oldState, newState services.ServiceState, health services.HealthStatus, err error) {
+		// Handle orchestrator-specific logic for state changes
+		o.handleServiceStateChange(label, oldState, newState)
+
+		// Broadcast to all subscribers
+		event := ServiceStateChangedEvent{
+			Label:    label,
+			OldState: string(oldState),
+			NewState: string(newState),
+			Health:   string(health),
+			Error:    err,
+		}
+
+		// Send to all subscribers (don't hold the lock while sending)
+		o.mu.RLock()
+		subscribers := make([]chan<- ServiceStateChangedEvent, len(o.stateChangeSubscribers))
+		copy(subscribers, o.stateChangeSubscribers)
+		o.mu.RUnlock()
+
+		for _, ch := range subscribers {
+			select {
+			case ch <- event:
+				// Event sent successfully
+			default:
+				// Channel full, drop event
+				logging.Warn("Orchestrator", "Dropped state change event for %s (subscriber channel full)", label)
+			}
 		}
 	}
 
-	if enabledMCPServers == 0 {
-		logging.Debug("Orchestrator", "No enabled MCP servers, skipping aggregator registration")
-		return nil
+	o.globalStateChangeCallback = wrappedCallback
+
+	// Apply the callback to all already-registered services
+	// This is crucial because services might be registered before the callback is set
+	allServices := o.registry.GetAll()
+	for _, service := range allServices {
+		service.SetStateChangeCallback(wrappedCallback)
 	}
+}
 
-	// Set default port if not configured
-	port := o.aggregatorPort
-	if port == 0 {
-		port = 8080
-	}
+// SubscribeToStateChanges returns a channel for receiving service state change events.
+// This is the public interface for external components to monitor state changes.
+func (o *Orchestrator) SubscribeToStateChanges() <-chan ServiceStateChangedEvent {
+	eventChan := make(chan ServiceStateChangedEvent, 100)
 
-	// Create aggregator configuration
-	aggConfig := aggregator.AggregatorConfig{
-		Host: "localhost",
-		Port: port,
-	}
+	// Add this channel to the list of subscribers
+	o.mu.Lock()
+	o.stateChangeSubscribers = append(o.stateChangeSubscribers, eventChan)
+	o.mu.Unlock()
 
-	var aggService services.Service
+	return eventChan
+}
 
-	// Use factory if provided, otherwise create default
-	if o.aggregatorServiceFactory != nil {
-		aggService = o.aggregatorServiceFactory(aggConfig)
-	} else {
-		// Create default aggregator without client provider
-		// It won't be able to aggregate MCP servers but at least it will run
-		aggService = agg.NewAggregatorService(aggConfig, nil)
-		logging.Warn("Orchestrator", "No aggregator service factory provided, aggregator will run without MCP client access")
-	}
-
-	// Set the global state change callback if configured
-	o.mu.RLock()
-	if o.globalStateChangeCallback != nil {
-		aggService.SetStateChangeCallback(o.globalStateChangeCallback)
-	}
-	o.mu.RUnlock()
-
-	o.registry.Register(aggService)
-
-	logging.Debug("Orchestrator", "Registered MCP aggregator service on port %d", port)
-	return nil
+// ServiceStateChangedEvent represents a service state change event
+type ServiceStateChangedEvent struct {
+	Label    string
+	OldState string
+	NewState string
+	Health   string
+	Error    error
 }
