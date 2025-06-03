@@ -544,11 +544,12 @@ func (a *eventProviderAdapter) SubscribeToStateChanges() <-chan ServiceStateEven
 		for orchEvent := range orchEvents {
 			// Convert to event handler format
 			event := ServiceStateEvent{
-				Label:    orchEvent.Label,
-				OldState: orchEvent.OldState,
-				NewState: orchEvent.NewState,
-				Health:   orchEvent.Health,
-				Error:    orchEvent.Error,
+				Label:       orchEvent.Label,
+				ServiceType: orchEvent.ServiceType,
+				OldState:    orchEvent.OldState,
+				NewState:    orchEvent.NewState,
+				Health:      orchEvent.Health,
+				Error:       orchEvent.Error,
 			}
 
 			select {

@@ -213,12 +213,24 @@ func Update(msg tea.Msg, m *model.Model) (*model.Model, tea.Cmd) {
 // handleServiceStateChange processes service state change events
 func handleServiceStateChange(m *model.Model, event api.ServiceStateChangedEvent) tea.Cmd {
 	// Log the state change to activity log
-	logMsg := fmt.Sprintf("[%s] %s: %s → %s",
-		time.Now().Format("15:04:05"),
-		event.Label,
-		event.OldState,
-		event.NewState,
-	)
+	var logMsg string
+	if event.ServiceType != "" {
+		logMsg = fmt.Sprintf("[%s] %s (%s): %s → %s",
+			time.Now().Format("15:04:05"),
+			event.Label,
+			event.ServiceType,
+			event.OldState,
+			event.NewState,
+		)
+	} else {
+		// Fallback for backward compatibility
+		logMsg = fmt.Sprintf("[%s] %s: %s → %s",
+			time.Now().Format("15:04:05"),
+			event.Label,
+			event.OldState,
+			event.NewState,
+		)
+	}
 
 	if event.Error != nil {
 		logMsg += fmt.Sprintf(" (error: %v)", event.Error)

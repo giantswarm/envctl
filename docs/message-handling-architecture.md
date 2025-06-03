@@ -78,11 +78,12 @@ The API layer defines a simple event structure:
 
 ```go
 type ServiceStateChangedEvent struct {
-    Label    string
-    OldState string
-    NewState string
-    Health   string
-    Error    error
+    Label       string
+    ServiceType string
+    OldState    string
+    NewState    string
+    Health      string
+    Error       error
 }
 ```
 

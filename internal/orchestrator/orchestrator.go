@@ -411,13 +411,20 @@ func (o *Orchestrator) setGlobalStateChangeCallback(callback services.StateChang
 		// Handle orchestrator-specific logic for state changes
 		o.handleServiceStateChange(label, oldState, newState)
 
+		// Get the service to retrieve its type
+		var serviceType string
+		if service, exists := o.registry.Get(label); exists {
+			serviceType = string(service.GetType())
+		}
+
 		// Broadcast to all subscribers
 		event := ServiceStateChangedEvent{
-			Label:    label,
-			OldState: string(oldState),
-			NewState: string(newState),
-			Health:   string(health),
-			Error:    err,
+			Label:       label,
+			ServiceType: serviceType,
+			OldState:    string(oldState),
+			NewState:    string(newState),
+			Health:      string(health),
+			Error:       err,
 		}
 
 		// Send to all subscribers (don't hold the lock while sending)
@@ -462,9 +469,10 @@ func (o *Orchestrator) SubscribeToStateChanges() <-chan ServiceStateChangedEvent
 
 // ServiceStateChangedEvent represents a service state change event
 type ServiceStateChangedEvent struct {
-	Label    string
-	OldState string
-	NewState string
-	Health   string
-	Error    error
+	Label       string
+	ServiceType string
+	OldState    string
+	NewState    string
+	Health      string
+	Error       error
 }

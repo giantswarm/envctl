@@ -85,35 +85,39 @@ func TestOrchestratorEventAdapter_SubscribeToStateChanges(t *testing.T) {
 		{
 			name: "basic event conversion",
 			apiEvent: api.ServiceStateChangedEvent{
-				Label:    "test-service",
-				OldState: "stopped",
-				NewState: "running",
-				Health:   "healthy",
-				Error:    nil,
+				Label:       "test-service",
+				ServiceType: "PortForward",
+				OldState:    "stopped",
+				NewState:    "running",
+				Health:      "healthy",
+				Error:       nil,
 			},
 			expected: aggregator.ServiceStateChangedEvent{
-				Label:    "test-service",
-				OldState: "stopped",
-				NewState: "running",
-				Health:   "healthy",
-				Error:    nil,
+				Label:       "test-service",
+				ServiceType: "PortForward",
+				OldState:    "stopped",
+				NewState:    "running",
+				Health:      "healthy",
+				Error:       nil,
 			},
 		},
 		{
 			name: "event with error",
 			apiEvent: api.ServiceStateChangedEvent{
-				Label:    "error-service",
-				OldState: "running",
-				NewState: "error",
-				Health:   "unhealthy",
-				Error:    errors.New("connection failed"),
+				Label:       "error-service",
+				ServiceType: "MCPServer",
+				OldState:    "running",
+				NewState:    "error",
+				Health:      "unhealthy",
+				Error:       errors.New("connection failed"),
 			},
 			expected: aggregator.ServiceStateChangedEvent{
-				Label:    "error-service",
-				OldState: "running",
-				NewState: "error",
-				Health:   "unhealthy",
-				Error:    errors.New("connection failed"),
+				Label:       "error-service",
+				ServiceType: "MCPServer",
+				OldState:    "running",
+				NewState:    "error",
+				Health:      "unhealthy",
+				Error:       errors.New("connection failed"),
 			},
 		},
 	}
@@ -128,6 +132,9 @@ func TestOrchestratorEventAdapter_SubscribeToStateChanges(t *testing.T) {
 			case event := <-eventChan:
 				if event.Label != tc.expected.Label {
 					t.Errorf("Label mismatch: got %s, want %s", event.Label, tc.expected.Label)
+				}
+				if event.ServiceType != tc.expected.ServiceType {
+					t.Errorf("ServiceType mismatch: got %s, want %s", event.ServiceType, tc.expected.ServiceType)
 				}
 				if event.OldState != tc.expected.OldState {
 					t.Errorf("OldState mismatch: got %s, want %s", event.OldState, tc.expected.OldState)
@@ -180,8 +187,9 @@ func TestOrchestratorEventAdapter_ChannelFull(t *testing.T) {
 	// Send many events to fill the channel
 	for i := 0; i < 150; i++ {
 		mockAPI.sendEvent(api.ServiceStateChangedEvent{
-			Label:    "test-service",
-			NewState: "running",
+			Label:       "test-service",
+			ServiceType: "PortForward",
+			NewState:    "running",
 		})
 	}
 

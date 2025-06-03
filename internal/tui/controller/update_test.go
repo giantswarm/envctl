@@ -309,10 +309,11 @@ func TestUpdate_ServiceStateChangedEvent(t *testing.T) {
 	m.StateChangeEvents = make(<-chan api.ServiceStateChangedEvent)
 
 	event := api.ServiceStateChangedEvent{
-		Label:    "test-service",
-		OldState: "stopped",
-		NewState: "running",
-		Error:    nil,
+		Label:       "test-service",
+		ServiceType: "PortForward",
+		OldState:    "stopped",
+		NewState:    "running",
+		Error:       nil,
 	}
 
 	initialLogCount := len(m.ActivityLog)
@@ -539,19 +540,21 @@ func TestHandleServiceStateChange(t *testing.T) {
 		{
 			name: "state change without error",
 			event: api.ServiceStateChangedEvent{
-				Label:    "test-service",
-				OldState: "running",
-				NewState: "stopped",
+				Label:       "test-service",
+				ServiceType: "PortForward",
+				OldState:    "running",
+				NewState:    "stopped",
 			},
 			checkLog: "running → stopped",
 		},
 		{
 			name: "state change with error",
 			event: api.ServiceStateChangedEvent{
-				Label:    "test-service",
-				OldState: "running",
-				NewState: "error",
-				Error:    errors.New("connection failed"),
+				Label:       "test-service",
+				ServiceType: "PortForward",
+				OldState:    "running",
+				NewState:    "error",
+				Error:       errors.New("connection failed"),
 			},
 			checkLog: "error: connection failed",
 		},

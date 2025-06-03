@@ -151,30 +151,34 @@ func TestEventHandler_FiltersMCPEvents(t *testing.T) {
 
 	// Send non-MCP event (should NOT trigger refresh)
 	provider.sendEvent(ServiceStateEvent{
-		Label:    "k8s-mc-test",
-		OldState: "Stopped",
-		NewState: "Running",
+		Label:       "k8s-mc-test",
+		ServiceType: "KubeConnection",
+		OldState:    "Stopped",
+		NewState:    "Running",
 	})
 
 	// Send MCP event (should trigger refresh)
 	provider.sendEvent(ServiceStateEvent{
-		Label:    "kubernetes",
-		OldState: "Stopped",
-		NewState: "Running",
+		Label:       "kubernetes",
+		ServiceType: "MCPServer",
+		OldState:    "Stopped",
+		NewState:    "Running",
 	})
 
 	// Send aggregator event (should NOT trigger refresh)
 	provider.sendEvent(ServiceStateEvent{
-		Label:    "mcp-aggregator",
-		OldState: "Stopped",
-		NewState: "Running",
+		Label:       "mcp-aggregator",
+		ServiceType: "Aggregator",
+		OldState:    "Stopped",
+		NewState:    "Running",
 	})
 
 	// Send port forward event (should NOT trigger refresh)
 	provider.sendEvent(ServiceStateEvent{
-		Label:    "pf:mc-prometheus",
-		OldState: "Stopped",
-		NewState: "Running",
+		Label:       "pf:mc-prometheus",
+		ServiceType: "PortForward",
+		OldState:    "Stopped",
+		NewState:    "Running",
 	})
 
 	// Give time for events to be processed
@@ -248,9 +252,10 @@ func TestEventHandler_RefreshTriggerConditions(t *testing.T) {
 
 			// Send event (we now accept all events, not just MCP)
 			provider.sendEvent(ServiceStateEvent{
-				Label:    "kubernetes",
-				OldState: tc.oldState,
-				NewState: tc.newState,
+				Label:       "kubernetes",
+				ServiceType: "MCPServer",
+				OldState:    tc.oldState,
+				NewState:    tc.newState,
 			})
 
 			// Give time for event to be processed

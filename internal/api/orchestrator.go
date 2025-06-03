@@ -69,11 +69,12 @@ func NewOrchestratorAPI(orch ServiceOrchestrator, registry services.ServiceRegis
 func (api *orchestratorAPI) forwardOrchestratorEvents(orchestratorEvents <-chan orchestrator.ServiceStateChangedEvent) {
 	for event := range orchestratorEvents {
 		apiEvent := ServiceStateChangedEvent{
-			Label:    event.Label,
-			OldState: event.OldState,
-			NewState: event.NewState,
-			Health:   event.Health,
-			Error:    event.Error,
+			Label:       event.Label,
+			ServiceType: event.ServiceType,
+			OldState:    event.OldState,
+			NewState:    event.NewState,
+			Health:      event.Health,
+			Error:       event.Error,
 		}
 
 		select {

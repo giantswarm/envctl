@@ -282,9 +282,10 @@ func TestListenForStateChanges(t *testing.T) {
 
 	// Send a test event
 	testEvent := api.ServiceStateChangedEvent{
-		Label:    "test-service",
-		OldState: "stopped",
-		NewState: "running",
+		Label:       "test-service",
+		ServiceType: "PortForward",
+		OldState:    "stopped",
+		NewState:    "running",
 	}
 	eventChan <- testEvent
 

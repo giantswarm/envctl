@@ -107,11 +107,12 @@ const (
 
 // ServiceStateChangedEvent represents a service state change event from the orchestrator
 type ServiceStateChangedEvent struct {
-	Label    string
-	OldState string
-	NewState string
-	Health   string
-	Error    error
+	Label       string
+	ServiceType string
+	OldState    string
+	NewState    string
+	Health      string
+	Error       error
 }
 
 // OrchestratorEventProvider provides access to orchestrator state change events

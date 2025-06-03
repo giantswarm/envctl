@@ -10,11 +10,12 @@ import (
 // ServiceStateEvent represents a service state change event
 // This is a minimal interface to avoid import cycles while maintaining compatibility
 type ServiceStateEvent struct {
-	Label    string
-	OldState string
-	NewState string
-	Health   string
-	Error    error
+	Label       string
+	ServiceType string
+	OldState    string
+	NewState    string
+	Health      string
+	Error       error
 }
 
 // StateEventProvider defines the interface for subscribing to service state changes
@@ -138,28 +139,7 @@ func (eh *EventHandler) processEvent(event ServiceStateEvent) {
 
 // isMCPServiceEvent checks if the event is related to an MCP service
 func (eh *EventHandler) isMCPServiceEvent(event ServiceStateEvent) bool {
-	// Check if this is an MCP service by examining the service type
-	// MCP servers are registered with labels like "kubernetes", "prometheus", "grafana"
-	// We need to check if this is an MCP service type rather than by label prefix
-	// For now, we'll accept all events and let the aggregator manager filter them
-
-	// Exclude the aggregator itself - it should never trigger a refresh of itself
-	if event.Label == "mcp-aggregator" {
-		return false
-	}
-
-	// Exclude non-MCP services based on known patterns
-	// MCP services don't have prefixes like "k8s-", "pf:", etc.
-	knownNonMCPPrefixes := []string{"k8s-", "pf:", "alloy-"}
-	for _, prefix := range knownNonMCPPrefixes {
-		if len(event.Label) > len(prefix) && event.Label[:len(prefix)] == prefix {
-			return false
-		}
-	}
-
-	// At this point, we assume it's an MCP service
-	// The aggregator manager will further validate by checking if it has an MCP client
-	return true
+	return event.ServiceType == "MCPServer"
 }
 
 // shouldRefreshAggregator determines if the event requires aggregator refresh

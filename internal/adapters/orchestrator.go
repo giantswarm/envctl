@@ -28,11 +28,12 @@ func (a *OrchestratorEventAdapter) SubscribeToStateChanges() <-chan aggregator.S
 		for apiEvent := range apiEvents {
 			// Convert API event to aggregator event
 			aggEvent := aggregator.ServiceStateChangedEvent{
-				Label:    apiEvent.Label,
-				OldState: apiEvent.OldState,
-				NewState: apiEvent.NewState,
-				Health:   apiEvent.Health,
-				Error:    apiEvent.Error,
+				Label:       apiEvent.Label,
+				ServiceType: apiEvent.ServiceType,
+				OldState:    apiEvent.OldState,
+				NewState:    apiEvent.NewState,
+				Health:      apiEvent.Health,
+				Error:       apiEvent.Error,
 			}
 
 			select {

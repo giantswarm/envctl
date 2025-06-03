@@ -357,11 +357,12 @@ func TestOrchestratorAPI_SubscribeToStateChanges(t *testing.T) {
 
 	// Test forwarding a state change by sending an event through the orchestrator
 	testEvent := orchestrator.ServiceStateChangedEvent{
-		Label:    "test-service",
-		OldState: string(services.StateStopped),
-		NewState: string(services.StateRunning),
-		Health:   string(services.HealthHealthy),
-		Error:    nil,
+		Label:       "test-service",
+		ServiceType: string(services.TypePortForward),
+		OldState:    string(services.StateStopped),
+		NewState:    string(services.StateRunning),
+		Health:      string(services.HealthHealthy),
+		Error:       nil,
 	}
 
 	// Send the event through the mock orchestrator
@@ -390,15 +391,20 @@ func TestOrchestratorAPI_SubscribeToStateChanges(t *testing.T) {
 func TestServiceStateChangedEvent_Structure(t *testing.T) {
 	// Test that the event structure has all expected fields
 	event := ServiceStateChangedEvent{
-		Label:    "test",
-		OldState: "stopped",
-		NewState: "running",
-		Health:   "healthy",
-		Error:    errors.New("test error"),
+		Label:       "test",
+		ServiceType: "PortForward",
+		OldState:    "stopped",
+		NewState:    "running",
+		Health:      "healthy",
+		Error:       errors.New("test error"),
 	}
 
 	if event.Label != "test" {
 		t.Errorf("Expected Label 'test', got %s", event.Label)
+	}
+
+	if event.ServiceType != "PortForward" {
+		t.Errorf("Expected ServiceType 'PortForward', got %s", event.ServiceType)
 	}
 
 	if event.OldState != "stopped" {
