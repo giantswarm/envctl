@@ -92,8 +92,3 @@ func TestGithubRepoSlug(t *testing.T) {
 		t.Errorf("Expected githubRepoSlug to be %s, got %s", expected, githubRepoSlug)
 	}
 }
-
-// Note: We don't test the actual update functionality as it requires network access
-// and would attempt to download and replace the binary. In a real-world scenario,
-// you might want to create integration tests that run in a controlled environment
-// or mock the selfupdate library for more comprehensive testing.

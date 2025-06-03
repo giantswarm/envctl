@@ -30,6 +30,10 @@ var noTUI bool
 // This helps troubleshoot connection issues and understand service behavior.
 var debug bool
 
+// kubeManagerFactory allows injection of custom kube.Manager for testing
+// In production, this uses the real kube.NewManager, but tests can override it
+var kubeManagerFactory func(interface{}) kube.Manager = kube.NewManager
+
 // connectCmdDef defines the connect command structure.
 // This is the main command of envctl that establishes connections to Giant Swarm clusters
 // and sets up the necessary port forwards and MCP servers for development.
@@ -82,7 +86,7 @@ Arguments:
 		logging.InitForCLI(appLogLevel, os.Stdout)
 
 		// Create kube manager to handle Kubernetes operations
-		kubeMgr := kube.NewManager(nil)
+		kubeMgr := kubeManagerFactory(nil)
 
 		// Capture the initial Kubernetes context before any modifications
 		// This helps users understand what context they started with
@@ -216,29 +220,13 @@ Arguments:
 	// This enhances user experience by suggesting valid cluster names during tab completion
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		// Create a temporary kube manager for completion
-		tempKubeMgr := kube.NewManager(nil)
-		clusterInfo, err := tempKubeMgr.ListClusters()
+		kubeMgr := kubeManagerFactory(nil)
+		candidates, directive, err := getCompletionCandidates(kubeMgr, args)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Completion error: %v\n", err)
 			return nil, cobra.ShellCompDirectiveError
 		}
-
-		var candidates []string
-		if len(args) == 0 {
-			// First argument: suggest management cluster names
-			for _, cluster := range clusterInfo.ManagementClusters {
-				candidates = append(candidates, cluster)
-			}
-		} else if len(args) == 1 {
-			// Second argument: suggest workload cluster short names for the selected MC
-			managementClusterName := args[0]
-			if wcShortNames, ok := clusterInfo.WorkloadClusters[managementClusterName]; ok {
-				for _, shortName := range wcShortNames {
-					candidates = append(candidates, shortName)
-				}
-			}
-		}
-		return candidates, cobra.ShellCompDirectiveNoFileComp
+		return candidates, directive
 	},
 }
 
@@ -250,4 +238,26 @@ func init() {
 	// Register command flags
 	connectCmdDef.Flags().BoolVar(&noTUI, "no-tui", false, "Disable TUI and run port forwarding in the background")
 	connectCmdDef.Flags().BoolVar(&debug, "debug", false, "Enable general debug logging")
+}
+
+// getCompletionCandidates extracts the shell completion logic for testing.
+// It accepts a kube.Manager interface which can be mocked in tests.
+func getCompletionCandidates(kubeMgr kube.Manager, args []string) ([]string, cobra.ShellCompDirective, error) {
+	clusterInfo, err := kubeMgr.ListClusters()
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveError, err
+	}
+
+	var candidates []string
+	if len(args) == 0 {
+		// First argument: suggest management cluster names
+		candidates = append(candidates, clusterInfo.ManagementClusters...)
+	} else if len(args) == 1 {
+		// Second argument: suggest workload cluster short names for the selected MC
+		managementClusterName := args[0]
+		if wcShortNames, ok := clusterInfo.WorkloadClusters[managementClusterName]; ok {
+			candidates = append(candidates, wcShortNames...)
+		}
+	}
+	return candidates, cobra.ShellCompDirectiveNoFileComp, nil
 }
