@@ -258,6 +258,21 @@ func (o *Orchestrator) SetGlobalStateChangeCallback(callback services.StateChang
 	}
 
 	o.globalStateChangeCallback = wrappedCallback
+
+	// Apply the callback to all already-registered services
+	// This is crucial because services might be registered before the callback is set
+	allServices := o.registry.GetAll()
+	for _, service := range allServices {
+		service.SetStateChangeCallback(wrappedCallback)
+	}
+}
+
+// GetGlobalStateChangeCallback returns the current global state change callback.
+// This is used by the API layer to check if a callback is already set.
+func (o *Orchestrator) GetGlobalStateChangeCallback() services.StateChangeCallback {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	return o.globalStateChangeCallback
 }
 
 // handleServiceStateChange handles immediate processing of service state changes

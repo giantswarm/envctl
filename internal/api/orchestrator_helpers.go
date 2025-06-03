@@ -28,8 +28,6 @@ type OrchestratorWithGetter interface {
 }
 
 func SetupAggregatorFactory(orch OrchestratorWithFactory, registry services.ServiceRegistry) {
-	var aggregatorService *agg.AggregatorService
-
 	// Try to get the existing callback if the orchestrator supports it
 	var existingCallback services.StateChangeCallback
 	if orchWithGetter, ok := orch.(OrchestratorWithGetter); ok {
@@ -59,10 +57,20 @@ func SetupAggregatorFactory(orch OrchestratorWithFactory, registry services.Serv
 			existingCallback(label, oldState, newState, health, err)
 		}
 
+		// Helper function to get aggregator service from registry
+		getAggregatorService := func() *agg.AggregatorService {
+			if svc, exists := registry.Get("mcp-aggregator"); exists {
+				if aggSvc, ok := svc.(*agg.AggregatorService); ok && aggSvc.GetState() == services.StateRunning {
+					return aggSvc
+				}
+			}
+			return nil
+		}
+
 		// Check if this is an MCP server state change
 		if service, exists := registry.Get(label); exists && service.GetType() == services.TypeMCPServer {
-			// Only refresh if the aggregator is running
-			if aggregatorService != nil && aggregatorService.GetState() == services.StateRunning {
+			// Get the aggregator service from registry
+			if aggregatorService := getAggregatorService(); aggregatorService != nil {
 				logging.Info("Aggregator", "MCP server %s changed state from %s to %s, refreshing aggregator",
 					label, oldState, newState)
 
@@ -74,12 +82,7 @@ func SetupAggregatorFactory(orch OrchestratorWithFactory, registry services.Serv
 					}
 				}()
 			} else {
-				if aggregatorService != nil {
-					logging.Debug("Aggregator", "MCP server %s changed state but aggregator is not running (state: %v)",
-						label, aggregatorService.GetState())
-				} else {
-					logging.Debug("Aggregator", "MCP server %s changed state but aggregator service is nil", label)
-				}
+				logging.Debug("Aggregator", "MCP server %s changed state but aggregator is not running", label)
 			}
 		}
 
@@ -87,9 +90,11 @@ func SetupAggregatorFactory(orch OrchestratorWithFactory, registry services.Serv
 		if label == "mcp-aggregator" && newState == services.StateRunning {
 			// Initial refresh when aggregator starts
 			go func() {
-				ctx := context.Background()
-				if err := aggregatorService.RefreshMCPServers(ctx); err != nil {
-					logging.Error("Aggregator", err, "Failed to refresh MCP servers after aggregator startup")
+				if aggregatorService := getAggregatorService(); aggregatorService != nil {
+					ctx := context.Background()
+					if err := aggregatorService.RefreshMCPServers(ctx); err != nil {
+						logging.Error("Aggregator", err, "Failed to refresh MCP servers after aggregator startup")
+					}
 				}
 			}()
 		}
