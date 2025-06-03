@@ -19,6 +19,7 @@ type Services struct {
 	MCPAPI          api.MCPServiceAPI
 	PortForwardAPI  api.PortForwardServiceAPI
 	K8sAPI          api.K8sServiceAPI
+	AggregatorAPI   api.AggregatorAPI
 	AggregatorPort  int
 }
 
@@ -41,6 +42,7 @@ func InitializeServices(cfg *Config) (*Services, error) {
 	mcpAPI := api.NewMCPServiceAPI(registry)
 	portForwardAPI := api.NewPortForwardServiceAPI(registry)
 	k8sAPI := api.NewK8sServiceAPI(registry)
+	aggregatorAPI := api.NewAggregatorAPI(registry)
 
 	// Register all APIs in the global registry
 	api.SetAll(orchestratorAPI, mcpAPI, portForwardAPI, k8sAPI)
@@ -56,6 +58,7 @@ func InitializeServices(cfg *Config) (*Services, error) {
 		MCPAPI:          mcpAPI,
 		PortForwardAPI:  portForwardAPI,
 		K8sAPI:          k8sAPI,
+		AggregatorAPI:   aggregatorAPI,
 		AggregatorPort:  cfg.EnvctlConfig.Aggregator.Port,
 	}, nil
 }

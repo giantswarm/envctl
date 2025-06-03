@@ -65,6 +65,7 @@ func runTUIMode(ctx context.Context, config *Config, services *Services) error {
 		MCPServiceAPI:         services.MCPAPI,
 		PortForwardAPI:        services.PortForwardAPI,
 		K8sServiceAPI:         services.K8sAPI,
+		AggregatorAPI:         services.AggregatorAPI,
 	}, logChan)
 	if err != nil {
 		logging.Error("TUI-Lifecycle", err, "Error creating TUI program")

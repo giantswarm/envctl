@@ -83,6 +83,16 @@ func (r *ServerRegistry) Register(ctx context.Context, name string, client MCPCl
 	// Get initial capabilities
 	if err := r.refreshServerCapabilities(ctx, info); err != nil {
 		logging.Warn("Aggregator", "Failed to get initial capabilities for %s: %v", name, err)
+		// Log more details about what we did get
+		info.mu.RLock()
+		logging.Debug("Aggregator", "Server %s registered with %d tools, %d resources, %d prompts", 
+			name, len(info.Tools), len(info.Resources), len(info.Prompts))
+		info.mu.RUnlock()
+	} else {
+		info.mu.RLock()
+		logging.Info("Aggregator", "Server %s registered successfully with %d tools, %d resources, %d prompts", 
+			name, len(info.Tools), len(info.Resources), len(info.Prompts))
+		info.mu.RUnlock()
 	}
 
 	r.servers[name] = info

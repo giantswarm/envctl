@@ -29,6 +29,7 @@ func InitializeModel(cfg TUIConfig, logChannel <-chan logging.LogEntry) (*Model,
 		MCPServiceAPI:   cfg.MCPServiceAPI,
 		PortForwardAPI:  cfg.PortForwardAPI,
 		K8sServiceAPI:   cfg.K8sServiceAPI,
+		AggregatorAPI:   cfg.AggregatorAPI,
 
 		// Cluster info
 		ManagementClusterName: cfg.ManagementClusterName,

@@ -87,36 +87,27 @@ type serverInfo struct {
 
 // getAggregatorInfo extracts aggregator information from the model
 func getAggregatorInfo(m *model.Model) *aggregatorInfo {
-	// Look for the aggregator service by its label "mcp-aggregator"
-	// Since we need access to the ServiceDataProvider, we'll need to check if such a service exists
-	// For now, we'll create info based on available data in the model
-
-	// If aggregator is configured, create basic info
-	if m.AggregatorConfig.Port > 0 {
-		info := &aggregatorInfo{
-			endpoint: fmt.Sprintf("http://localhost:%d/sse", m.AggregatorConfig.Port),
-		}
-
-		// Count MCP servers
-		for name, mcpInfo := range m.MCPServers {
-			info.totalServers++
-			if mcpInfo.State == "Running" {
-				info.connectedServers++
-				server := serverInfo{
-					name:      name,
-					connected: mcpInfo.Health == "Healthy",
-				}
-				// Count tools if we have them
-				if tools, ok := m.MCPTools[name]; ok {
-					server.toolCount = len(tools)
-					info.toolCount += len(tools)
-				}
-				info.servers = append(info.servers, server)
+	// Check if aggregator info is available
+	if m.AggregatorInfo == nil {
+		// Fallback to checking if aggregator is configured
+		if m.AggregatorConfig.Port > 0 {
+			return &aggregatorInfo{
+				endpoint:         fmt.Sprintf("http://localhost:%d/sse", m.AggregatorConfig.Port),
+				totalServers:     0,
+				connectedServers: 0,
+				toolCount:        0,
 			}
 		}
-
-		return info
+		return nil
 	}
 
-	return nil
+	// Use the aggregator info from the API
+	return &aggregatorInfo{
+		endpoint:         m.AggregatorInfo.Endpoint,
+		totalServers:     m.AggregatorInfo.ServersTotal,
+		connectedServers: m.AggregatorInfo.ServersConnected,
+		toolCount:        m.AggregatorInfo.ToolsCount,
+		resourceCount:    m.AggregatorInfo.ResourcesCount,
+		promptCount:      m.AggregatorInfo.PromptsCount,
+	}
 }

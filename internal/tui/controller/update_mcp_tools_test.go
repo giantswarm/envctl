@@ -135,11 +135,3 @@ func (m *mockMCPServiceAPI) GetTools(ctx context.Context, serverName string) ([]
 	}
 	return m.tools, nil
 }
-
-func (m *mockMCPServiceAPI) GetAllTools(ctx context.Context) ([]api.MCPTool, error) {
-	// For tests, just return the same tools
-	if m.getToolsErr != nil {
-		return nil, m.getToolsErr
-	}
-	return m.tools, nil
-}

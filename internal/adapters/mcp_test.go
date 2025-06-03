@@ -23,10 +23,6 @@ func (m *mockMCPServiceAPI) GetTools(ctx context.Context, serverName string) ([]
 	return []api.MCPTool{}, nil
 }
 
-func (m *mockMCPServiceAPI) GetAllTools(ctx context.Context) ([]api.MCPTool, error) {
-	return []api.MCPTool{}, nil
-}
-
 // mockService implements a basic service for testing
 type mockService struct {
 	label       string

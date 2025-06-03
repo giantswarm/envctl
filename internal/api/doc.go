@@ -30,6 +30,11 @@
 //   - GetServerInfo: Get details for a specific server
 //   - GetTools: Get available tools for an MCP server
 //
+// AggregatorAPI: Provides MCP aggregator statistics and aggregated data
+//   - GetAggregatorInfo: Get comprehensive aggregator statistics
+//   - GetAllTools: Get tools from all connected MCP servers
+//   - GetAllResources: Get resources from all connected MCP servers
+//
 // # Data Types
 //
 // The package provides data transfer objects for service information:
@@ -62,6 +67,17 @@
 //   - ProxyPort: Local proxy port
 //   - Command: Command or image used
 //   - Dependencies: Required services
+//
+// AggregatorInfo: MCP aggregator statistics
+//   - Endpoint: SSE endpoint URL
+//   - Port: Aggregator port number
+//   - Host: Aggregator host
+//   - Health: Current health status
+//   - ServersTotal: Total number of registered servers
+//   - ServersConnected: Number of connected servers
+//   - ToolsCount: Total number of available tools
+//   - ResourcesCount: Total number of available resources
+//   - PromptsCount: Total number of available prompts
 //
 // # Event System
 //

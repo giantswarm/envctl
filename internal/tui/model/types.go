@@ -46,6 +46,7 @@ type TUIConfig struct {
 	MCPServiceAPI         api.MCPServiceAPI
 	PortForwardAPI        api.PortForwardServiceAPI
 	K8sServiceAPI         api.K8sServiceAPI
+	AggregatorAPI         api.AggregatorAPI
 }
 
 // InputStep represents the current step in the new connection input flow
@@ -173,12 +174,14 @@ type Model struct {
 	MCPServiceAPI   api.MCPServiceAPI
 	PortForwardAPI  api.PortForwardServiceAPI
 	K8sServiceAPI   api.K8sServiceAPI
+	AggregatorAPI   api.AggregatorAPI
 
 	// Cached service data for display
 	K8sConnections map[string]*api.K8sConnectionInfo
 	PortForwards   map[string]*api.PortForwardServiceInfo
 	MCPServers     map[string]*api.MCPServerInfo
 	MCPTools       map[string][]api.MCPTool
+	AggregatorInfo *api.AggregatorInfo
 
 	// Service ordering for display
 	K8sConnectionOrder []string
@@ -299,6 +302,17 @@ func (m *Model) RefreshServiceData() error {
 		}
 	}
 	m.MCPServers = newMCPServers
+
+	// Refresh aggregator info
+	if m.AggregatorAPI != nil {
+		aggInfo, err := m.AggregatorAPI.GetAggregatorInfo(ctx)
+		if err != nil {
+			// Log error but don't fail the entire refresh
+			logging.Debug("Model", "Failed to get aggregator info: %v", err)
+		} else {
+			m.AggregatorInfo = aggInfo
+		}
+	}
 
 	return nil
 }

@@ -210,23 +210,39 @@ func (am *AggregatorManager) GetServiceData() map[string]interface{} {
 	// Add aggregator server data
 	if am.aggregatorServer != nil {
 		data["endpoint"] = am.aggregatorServer.GetEndpoint()
-		data["tools"] = len(am.aggregatorServer.GetTools())
-		data["resources"] = len(am.aggregatorServer.GetResources())
-		data["prompts"] = len(am.aggregatorServer.GetPrompts())
 
-		// Get connected servers count
-		registry := am.aggregatorServer.GetRegistry()
-		if registry != nil {
-			servers := registry.GetAllServers()
-			connected := 0
-			for _, info := range servers {
-				if info.IsConnected() {
-					connected++
+		// Get tool/resource/prompt counts with logging
+		tools := am.aggregatorServer.GetTools()
+		resources := am.aggregatorServer.GetResources()
+		prompts := am.aggregatorServer.GetPrompts()
+
+		data["tools"] = len(tools)
+		data["resources"] = len(resources)
+		data["prompts"] = len(prompts)
+
+		// Debug logging for tool counts
+		logging.Debug("Aggregator-Manager", "GetServiceData: %d tools, %d resources, %d prompts from aggregator",
+			len(tools), len(resources), len(prompts))
+
+		// Get total number of MCP servers from the provider
+		totalServers := 0
+		connectedServers := 0
+
+		if am.mcpServiceProvider != nil {
+			// Get all MCP services (running and stopped)
+			allMCPServices := am.mcpServiceProvider.GetAllMCPServices()
+			totalServers = len(allMCPServices)
+
+			// Count how many are actually running/connected
+			for _, service := range allMCPServices {
+				if service.State == "Running" {
+					connectedServers++
 				}
 			}
-			data["servers_total"] = len(servers)
-			data["servers_connected"] = connected
 		}
+
+		data["servers_total"] = totalServers
+		data["servers_connected"] = connectedServers
 	}
 
 	// Add event handler status
@@ -288,6 +304,10 @@ func (am *AggregatorManager) registerMCPServersFromProvider(ctx context.Context)
 }
 
 // refreshMCPServers is called by the event handler to refresh the aggregator's MCP server registrations
+// This function ensures that:
+// 1. Stopped servers are deregistered
+// 2. Running servers are registered (or re-registered if they were restarted)
+// 3. The aggregator always has fresh MCP clients for all running servers
 func (am *AggregatorManager) refreshMCPServers(ctx context.Context) error {
 	logging.Info("Aggregator-Manager", "RefreshMCPServers called - updating registered servers")
 
@@ -324,18 +344,7 @@ func (am *AggregatorManager) refreshMCPServers(ctx context.Context) error {
 	logging.Info("Aggregator-Manager", "Current MCP clients: %d, Registered servers: %d",
 		len(currentClients), len(registry.GetAllServers()))
 
-	// Register new clients
-	for label, client := range currentClients {
-		if _, exists := registry.GetServerInfo(label); !exists {
-			if err := server.RegisterServer(ctx, label, client); err != nil {
-				logging.Warn("Aggregator-Manager", "Failed to register new MCP server %s: %v", label, err)
-			} else {
-				logging.Info("Aggregator-Manager", "Registered new MCP server %s with aggregator", label)
-			}
-		}
-	}
-
-	// Deregister removed clients
+	// First, deregister servers that are no longer running
 	for name := range registry.GetAllServers() {
 		if _, exists := currentClients[name]; !exists {
 			if err := server.DeregisterServer(name); err != nil {
@@ -343,6 +352,63 @@ func (am *AggregatorManager) refreshMCPServers(ctx context.Context) error {
 			} else {
 				logging.Info("Aggregator-Manager", "Deregistered MCP server %s from aggregator", name)
 			}
+		}
+	}
+
+	// Then, register or re-register all running servers
+	for label, client := range currentClients {
+		serverInfo, exists := registry.GetServerInfo(label)
+
+		// Check if we need to re-register (server was restarted or client changed)
+		needsReRegister := false
+		if exists && serverInfo != nil {
+			// For now, always re-register to ensure fresh client
+			// In the future, we could check if the client is still valid
+			needsReRegister = true
+			logging.Debug("Aggregator-Manager", "Server %s already registered, will re-register with fresh client", label)
+		}
+
+		if needsReRegister {
+			// Deregister first to clear stale client
+			if err := server.DeregisterServer(label); err != nil {
+				logging.Warn("Aggregator-Manager", "Failed to deregister existing MCP server %s: %v", label, err)
+				// Continue anyway - try to register
+			}
+		}
+
+		// Register the server (new or re-registration)
+		retryCount := 0
+		maxRetries := 2
+		var lastErr error
+
+		for retryCount <= maxRetries {
+			if err := server.RegisterServer(ctx, label, client); err != nil {
+				lastErr = err
+				retryCount++
+				if retryCount <= maxRetries {
+					logging.Debug("Aggregator-Manager", "Failed to register MCP server %s (attempt %d/%d): %v",
+						label, retryCount, maxRetries+1, err)
+					// Small delay before retry
+					select {
+					case <-time.After(500 * time.Millisecond):
+					case <-ctx.Done():
+						return ctx.Err()
+					}
+				}
+			} else {
+				// Success
+				if needsReRegister {
+					logging.Info("Aggregator-Manager", "Re-registered MCP server %s with aggregator", label)
+				} else {
+					logging.Info("Aggregator-Manager", "Registered new MCP server %s with aggregator", label)
+				}
+				break
+			}
+		}
+
+		if lastErr != nil {
+			logging.Error("Aggregator-Manager", lastErr, "Failed to register MCP server %s after %d attempts",
+				label, maxRetries+1)
 		}
 	}
 
