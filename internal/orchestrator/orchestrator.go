@@ -35,10 +35,10 @@ type Orchestrator struct {
 	depGraph *dependency.Graph
 
 	// Configuration
-	mcName         string
-	wcName         string
-	portForwards   []config.PortForwardDefinition
-	mcpServers     []config.MCPServerDefinition
+	mcName       string
+	wcName       string
+	portForwards []config.PortForwardDefinition
+	mcpServers   []config.MCPServerDefinition
 
 	// Service tracking
 	stopReasons     map[string]StopReason // Tracks why each service was stopped for auto-recovery decisions
@@ -62,10 +62,10 @@ type Orchestrator struct {
 // This structure is passed during orchestrator creation to define
 // which services should be managed and their configurations.
 type Config struct {
-	MCName         string                         // Management cluster name
-	WCName         string                         // Workload cluster name (optional)
-	PortForwards   []config.PortForwardDefinition // Port forward configurations
-	MCPServers     []config.MCPServerDefinition   // MCP server configurations
+	MCName       string                         // Management cluster name
+	WCName       string                         // Workload cluster name (optional)
+	PortForwards []config.PortForwardDefinition // Port forward configurations
+	MCPServers   []config.MCPServerDefinition   // MCP server configurations
 }
 
 // New creates a new orchestrator using the service registry.
