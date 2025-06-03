@@ -154,8 +154,8 @@ func TestTrimStatusMessage(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "running with PID",
-			status:   "Running (PID: 12345)",
+			name:     "running status",
+			status:   "Running",
 			expected: "Running",
 		},
 		{

@@ -371,7 +371,6 @@ func TestServicesRegisteredOnStart(t *testing.T) {
 					{Name: "mcp-grafana", Enabled: true},
 					{Name: "mcp-disabled", Enabled: false}, // Should not be registered
 				},
-				AggregatorPort: 8080,
 			},
 			expectedServices: []string{
 				"k8s-mc-test-mc",
@@ -383,8 +382,7 @@ func TestServicesRegisteredOnStart(t *testing.T) {
 		{
 			name: "registers only k8s service when no mcp servers",
 			config: Config{
-				MCName:         "test-mc",
-				AggregatorPort: 8080,
+				MCName: "test-mc",
 				// No enabled MCP servers
 			},
 			expectedServices: []string{

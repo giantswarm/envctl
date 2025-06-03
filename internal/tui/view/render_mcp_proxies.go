@@ -95,13 +95,9 @@ func renderMcpProxyPanel(serverName string, predefinedData config.MCPServerDefin
 	var baseStyle lipgloss.Style
 	var contentFg lipgloss.Style
 	statusMsg := "Not Started"
-	pidStr := "PID: N/A"
 
 	if proc != nil {
 		statusMsg = proc.State
-		if proc.PID > 0 {
-			pidStr = fmt.Sprintf("PID: %d", proc.PID)
-		}
 		st := strings.ToLower(proc.State)
 		switch {
 		case st == "failed" || strings.Contains(st, "error"):
@@ -133,8 +129,6 @@ func renderMcpProxyPanel(serverName string, predefinedData config.MCPServerDefin
 		icon = IconGear
 	}
 	b.WriteString(color.PortTitleStyle.Render(SafeIcon(icon) + strings.TrimSpace(predefinedData.Name) + " MCP"))
-	b.WriteString("\n")
-	b.WriteString(pidStr)
 	b.WriteString("\n")
 
 	var iconStr string

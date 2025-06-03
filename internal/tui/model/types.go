@@ -313,12 +313,12 @@ func (m *Model) GetK8sConnectionHealth(label string) (ready int, total int, heal
 }
 
 // GetMCPServerStatus returns the status of an mcp server
-func (m *Model) GetMCPServerStatus(label string) (running bool, pid int) {
+func (m *Model) GetMCPServerStatus(label string) (running bool) {
 	if mcp, exists := m.MCPServers[label]; exists {
 		running = mcp.State == "running"
-		return running, mcp.PID
+		return running
 	}
-	return false, 0
+	return false
 }
 
 // GetPortForwardStatus returns the status of a port forward

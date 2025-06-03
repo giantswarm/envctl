@@ -263,7 +263,6 @@ func (s *MCPServerService) GetServiceData() map[string]interface{} {
 		"type":    s.config.Type,
 	}
 
-	// Note: PID is no longer available from the mark3labs/mcp-go library
 	// We could potentially add a "running" status instead
 	if managedServer != nil {
 		data["running"] = true

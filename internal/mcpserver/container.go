@@ -25,7 +25,7 @@ func StartAndManageContainerizedMcpServer(
 
 	logging.Info(subsystem, "Initializing containerized MCP server %s (image: %s)", label, serverConfig.Image)
 	if updateFn != nil {
-		updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "ContainerInitializing", PID: 0})
+		updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "ContainerInitializing"})
 	}
 
 	// Validate configuration
@@ -47,7 +47,7 @@ func StartAndManageContainerizedMcpServer(
 		logging.Error(subsystem, err, "Failed to pull container image")
 		close(currentStopChan)
 		if updateFn != nil {
-			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "ContainerStartFailed", ProcessErr: errMsg, PID: 0})
+			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "ContainerStartFailed", ProcessErr: errMsg})
 		}
 		return "", nil, errMsg
 	}
@@ -71,7 +71,7 @@ func StartAndManageContainerizedMcpServer(
 		logging.Error(subsystem, err, "Failed to start container")
 		close(currentStopChan)
 		if updateFn != nil {
-			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "ContainerStartFailed", ProcessErr: err, PID: 0})
+			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "ContainerStartFailed", ProcessErr: err})
 		}
 		return "", nil, errMsg
 	}
@@ -95,7 +95,6 @@ func StartAndManageContainerizedMcpServer(
 	if updateFn != nil {
 		updateFn(McpDiscreteStatusUpdate{
 			Label:         label,
-			PID:           0, // Containers don't have PIDs in the same way
 			ProcessStatus: "ContainerRunning",
 		})
 	}
@@ -133,7 +132,6 @@ func StartAndManageContainerizedMcpServer(
 							if updateFn != nil {
 								updateFn(McpDiscreteStatusUpdate{
 									Label:         label,
-									PID:           0,
 									ProcessStatus: "ContainerRunning",
 								})
 							}
@@ -185,7 +183,6 @@ func StartAndManageContainerizedMcpServer(
 					if updateFn != nil {
 						updateFn(McpDiscreteStatusUpdate{
 							Label:         label,
-							PID:           0,
 							ProcessStatus: "ContainerRunning",
 						})
 					}
@@ -211,7 +208,6 @@ func StartAndManageContainerizedMcpServer(
 					if updateFn != nil {
 						updateFn(McpDiscreteStatusUpdate{
 							Label:         label,
-							PID:           0,
 							ProcessStatus: "ContainerStatusCheckFailed",
 							ProcessErr:    err,
 						})
@@ -221,7 +217,6 @@ func StartAndManageContainerizedMcpServer(
 					if updateFn != nil {
 						updateFn(McpDiscreteStatusUpdate{
 							Label:         label,
-							PID:           0,
 							ProcessStatus: "ContainerExited",
 						})
 					}
@@ -252,7 +247,6 @@ func StartAndManageContainerizedMcpServer(
 				if updateFn != nil {
 					updateFn(McpDiscreteStatusUpdate{
 						Label:         label,
-						PID:           0,
 						ProcessStatus: finalProcessStatus,
 						ProcessErr:    stopErr,
 					})

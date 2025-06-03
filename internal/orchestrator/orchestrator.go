@@ -39,7 +39,6 @@ type Orchestrator struct {
 	wcName         string
 	portForwards   []config.PortForwardDefinition
 	mcpServers     []config.MCPServerDefinition
-	aggregatorPort int // Port for the MCP aggregator
 
 	// Service tracking
 	stopReasons     map[string]StopReason // Tracks why each service was stopped for auto-recovery decisions
@@ -67,7 +66,6 @@ type Config struct {
 	WCName         string                         // Workload cluster name (optional)
 	PortForwards   []config.PortForwardDefinition // Port forward configurations
 	MCPServers     []config.MCPServerDefinition   // MCP server configurations
-	AggregatorPort int                            // Port for the MCP aggregator (default: 8080)
 }
 
 // New creates a new orchestrator using the service registry.
@@ -87,7 +85,6 @@ func New(cfg Config) *Orchestrator {
 		wcName:                 cfg.WCName,
 		portForwards:           cfg.PortForwards,
 		mcpServers:             cfg.MCPServers,
-		aggregatorPort:         cfg.AggregatorPort,
 		stopReasons:            make(map[string]StopReason),
 		pendingRestarts:        make(map[string]bool),
 		healthCheckers:         make(map[string]bool),
@@ -280,7 +277,6 @@ func (o *Orchestrator) handleServiceStateChange(label string, oldState, newState
 // 1. K8s connections (foundation services)
 // 2. Port forwards (depend on K8s connections)
 // 3. MCP servers (may depend on port forwards)
-// 4. MCP aggregator (depends on MCP servers)
 //
 // Registration does not start services, it only makes them available
 // in the registry for later management.
@@ -298,11 +294,6 @@ func (o *Orchestrator) registerServices() error {
 	// Register MCP server services which may depend on port forwards
 	if err := o.registerMCPServices(); err != nil {
 		return fmt.Errorf("failed to register MCP services: %w", err)
-	}
-
-	// Register the aggregator service which depends on MCP servers
-	if err := o.registerAggregatorService(); err != nil {
-		return fmt.Errorf("failed to register aggregator service: %w", err)
 	}
 
 	return nil
@@ -406,15 +397,6 @@ func (o *Orchestrator) registerMCPServices() error {
 		logging.Debug("Orchestrator", "Registered MCP server service: %s", mcp.Name)
 	}
 
-	return nil
-}
-
-// registerAggregatorService registers the MCP aggregator service.
-// The aggregator provides a single SSE endpoint that aggregates all
-// MCP servers, making it easier for AI assistants to discover and use tools.
-func (o *Orchestrator) registerAggregatorService() error {
-	// The aggregator is now registered externally in connect.go
-	// after the APIs are created, to avoid circular dependencies
 	return nil
 }
 

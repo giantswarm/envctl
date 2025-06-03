@@ -32,7 +32,6 @@ func StartAndManageIndividualMcpServer(
 
 	logging.Info(subsystem, "Starting MCP server %s: %s", label, strings.Join(serverConfig.Command, " "))
 	if updateFn != nil {
-		updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "ProcessInitializing", PID: 0})
 	}
 
 	if len(serverConfig.Command) == 0 {

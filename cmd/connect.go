@@ -2,118 +2,13 @@ package cmd
 
 import (
 	"context"
-	"envctl/internal/aggregator"
-	"envctl/internal/api"
-	"envctl/internal/color"
-	"envctl/internal/config"
+	"envctl/internal/app"
 	"envctl/internal/kube"
-	"envctl/internal/orchestrator"
-	"envctl/internal/services"
-	agg "envctl/internal/services/aggregator"
-	"envctl/internal/tui/controller"
-	"envctl/internal/tui/model"
-	"envctl/pkg/logging"
 	"fmt"
 	"os"
-	"os/signal"
-	"syscall"
-
-	// For TUI program
 
 	"github.com/spf13/cobra"
 )
-
-// orchestratorEventAdapter adapts the OrchestratorAPI to the OrchestratorEventProvider interface
-type orchestratorEventAdapter struct {
-	api api.OrchestratorAPI
-}
-
-// SubscribeToStateChanges returns a channel for service state change events
-func (a *orchestratorEventAdapter) SubscribeToStateChanges() <-chan aggregator.ServiceStateChangedEvent {
-	// Create a channel to forward events
-	eventChan := make(chan aggregator.ServiceStateChangedEvent, 100)
-
-	// Subscribe to API events
-	apiEvents := a.api.SubscribeToStateChanges()
-
-	// Forward events in a goroutine
-	go func() {
-		for apiEvent := range apiEvents {
-			// Convert API event to aggregator event
-			aggEvent := aggregator.ServiceStateChangedEvent{
-				Label:    apiEvent.Label,
-				OldState: apiEvent.OldState,
-				NewState: apiEvent.NewState,
-				Health:   apiEvent.Health,
-				Error:    apiEvent.Error,
-			}
-
-			select {
-			case eventChan <- aggEvent:
-				// Event forwarded successfully
-			default:
-				// Channel full, drop event
-			}
-		}
-		close(eventChan)
-	}()
-
-	return eventChan
-}
-
-// mcpServiceAdapter adapts the MCPServiceAPI to the MCPServiceProvider interface
-type mcpServiceAdapter struct {
-	api      api.MCPServiceAPI
-	registry services.ServiceRegistry
-}
-
-// GetAllMCPServices returns all MCP services
-func (a *mcpServiceAdapter) GetAllMCPServices() []aggregator.MCPServiceInfo {
-	// Get all services from registry
-	allServices := a.registry.GetAll()
-
-	var mcpServices []aggregator.MCPServiceInfo
-	for _, service := range allServices {
-		// Filter for MCP server services
-		if service.GetType() == services.TypeMCPServer {
-			mcpServices = append(mcpServices, aggregator.MCPServiceInfo{
-				Name:   service.GetLabel(),
-				State:  string(service.GetState()),
-				Health: string(service.GetHealth()),
-			})
-		}
-	}
-
-	return mcpServices
-}
-
-// GetMCPClient returns the MCP client for a specific service
-func (a *mcpServiceAdapter) GetMCPClient(name string) interface{} {
-	// Get the service from registry
-	service, exists := a.registry.Get(name)
-	if !exists {
-		return nil
-	}
-
-	// Check if it's an MCP server service
-	if service.GetType() != services.TypeMCPServer {
-		return nil
-	}
-
-	// Try to get the MCP client from the service using the provider interface
-	type mcpClientProvider interface {
-		GetMCPClient() interface{}
-	}
-
-	provider, ok := service.(mcpClientProvider)
-	if !ok {
-		return nil
-	}
-
-	return provider.GetMCPClient()
-}
-
-// MCP server specific types, variables, and init functions are now in internal/mcpserver
 
 // noTUI controls whether to run in CLI mode (true) or TUI mode (false).
 // CLI mode is useful for scripting and CI/CD environments where interactive UI is not desired.
@@ -160,182 +55,7 @@ Arguments:
   <management-cluster>: (Required) The name of the Giant Swarm management cluster (e.g., "myinstallation", "mycluster").
   [workload-cluster-shortname]: (Optional) The *short* name of the workload cluster (e.g., "myworkloadcluster" for "myinstallation-myworkloadcluster", "customerprod" for "mycluster-customerprod").`,
 	Args: cobra.RangeArgs(1, 2), // Accepts 1 or 2 arguments
-	RunE: func(cmd *cobra.Command, args []string) error {
-		// Extract cluster names from command arguments
-		managementClusterArg := args[0]
-		workloadClusterArg := ""
-		if len(args) == 2 {
-			workloadClusterArg = args[1]
-		}
-
-		// Configure logging based on debug flag
-		// Debug mode provides detailed information about service operations
-		appLogLevel := logging.LevelInfo
-		if debug {
-			appLogLevel = logging.LevelDebug
-		}
-
-		// Initialize logging for CLI output (will be replaced for TUI mode)
-		logging.InitForCLI(appLogLevel, os.Stdout)
-
-		// Create kube manager to handle Kubernetes operations
-		kubeMgr := kubeManagerFactory(nil)
-
-		// Capture the initial Kubernetes context before any modifications
-		// This helps users understand what context they started with
-		initialKubeContext, err := kubeMgr.GetCurrentContext()
-		if err != nil {
-			logging.Warn("ConnectCmd", "Failed to get initial kube context: %v", err)
-			initialKubeContext = "unknown"
-		}
-		logging.Info("CLI", "Initial Kubernetes context: %s", initialKubeContext)
-
-		// Load configuration from multiple sources (default, user, project)
-		// This provides flexibility in how users configure envctl
-		envctlCfg, err := config.LoadConfig(managementClusterArg, workloadClusterArg)
-		if err != nil {
-			logging.Error("CLI", err, "Failed to load envctl configuration")
-			// Configuration is essential for proper operation
-			return fmt.Errorf("failed to load envctl configuration: %w", err)
-		}
-
-		// Create the orchestrator
-		orchConfig := orchestrator.Config{
-			MCName:         managementClusterArg,
-			WCName:         workloadClusterArg,
-			PortForwards:   envctlCfg.PortForwards,
-			MCPServers:     envctlCfg.MCPServers,
-			AggregatorPort: envctlCfg.Aggregator.Port,
-		}
-		orch := orchestrator.New(orchConfig)
-
-		// Get the service registry
-		registry := orch.GetServiceRegistry()
-
-		// Create APIs
-		orchestratorAPI := api.NewOrchestratorAPI(orch, registry)
-		mcpAPI := api.NewMCPServiceAPI(registry)
-		portForwardAPI := api.NewPortForwardServiceAPI(registry)
-		k8sAPI := api.NewK8sServiceAPI(registry)
-
-		// Register all APIs in the global registry
-		api.SetAll(orchestratorAPI, mcpAPI, portForwardAPI, k8sAPI)
-
-		// Set default port if not configured
-		aggPort := envctlCfg.Aggregator.Port
-		if aggPort == 0 {
-			aggPort = 8080
-		}
-
-		// Create aggregator configuration
-		aggConfig := aggregator.AggregatorConfig{
-			Host: "localhost",
-			Port: aggPort,
-		}
-
-		// Create adapters inline for the aggregator
-		orchestratorEventAdapter := &orchestratorEventAdapter{api: orchestratorAPI}
-		mcpServiceAdapter := &mcpServiceAdapter{api: mcpAPI, registry: registry}
-
-		// Create aggregator service with adapters
-		aggService := agg.NewAggregatorService(aggConfig, orchestratorEventAdapter, mcpServiceAdapter)
-
-		// Register the aggregator service with the orchestrator's registry
-		if err := registry.Register(aggService); err != nil {
-			logging.Error("CLI", err, "Failed to register aggregator service")
-			return fmt.Errorf("failed to register aggregator service: %w", err)
-		}
-
-		logging.Info("CLI", "Registered MCP aggregator service on port %d", aggPort)
-
-		if noTUI {
-			// CLI Mode: Non-interactive operation suitable for scripts and automation
-			logging.Info("CLI", "Running in no-TUI mode.")
-
-			// Attempt to log into the management cluster first
-			// This establishes the foundation for all other operations
-			if managementClusterArg != "" {
-				logging.Info("CLI", "Attempting login to Management Cluster: %s", managementClusterArg)
-				stdout, stderr, loginErr := kube.LoginToKubeCluster(managementClusterArg)
-				if loginErr != nil {
-					// Continue setup even if login fails - user might already be logged in
-					logging.Error("CLI", loginErr, "Login to %s failed. Continuing with setup if possible...", managementClusterArg)
-				} else {
-					// Update context after successful login
-					currentKubeContextAfterLogin, _ := kubeMgr.GetCurrentContext()
-					logging.Info("ConnectCmd", "Current kube context after login: %s", currentKubeContextAfterLogin)
-					initialKubeContext = currentKubeContextAfterLogin
-				}
-				// Log command output for debugging
-				if stdout != "" {
-					logging.Debug("CLI", "Login stdout: %s", stdout)
-				}
-				if stderr != "" {
-					logging.Debug("CLI", "Login stderr: %s", stderr)
-				}
-			}
-
-			logging.Info("CLI", "--- Setting up orchestrator for service management ---")
-
-			ctx := context.Background()
-
-			// Start all configured services
-			if err := orch.Start(ctx); err != nil {
-				logging.Error("CLI", err, "Failed to start orchestrator")
-				return err
-			}
-
-			logging.Info("CLI", "Services started. Press Ctrl+C to stop all services and exit.")
-
-			// Wait for interrupt signal to gracefully shutdown
-			sigChan := make(chan os.Signal, 1)
-			signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-			<-sigChan
-
-			// Graceful shutdown sequence
-			logging.Info("CLI", "\n--- Shutting down services ---")
-			orch.Stop()
-
-		} else {
-			// TUI Mode: Interactive terminal interface for monitoring and control
-			logging.Info("CLI", "Starting TUI mode...")
-
-			// Initialize color scheme for TUI (dark mode by default)
-			color.Initialize(true)
-
-			// Switch logging to channel-based system for TUI integration
-			logChan := logging.InitForTUI(appLogLevel)
-			defer logging.CloseTUIChannel()
-
-			// Create and configure the TUI program
-			p, err := controller.NewProgram(model.TUIConfig{
-				ManagementClusterName: managementClusterArg,
-				WorkloadClusterName:   workloadClusterArg,
-				DebugMode:             debug,
-				ColorMode:             "auto",
-				PortForwardingConfig:  envctlCfg.PortForwards,
-				MCPServerConfig:       envctlCfg.MCPServers,
-				AggregatorConfig:      envctlCfg.Aggregator,
-				Orchestrator:          orch,
-				OrchestratorAPI:       orchestratorAPI,
-				MCPServiceAPI:         mcpAPI,
-				PortForwardAPI:        portForwardAPI,
-				K8sServiceAPI:         k8sAPI,
-			}, logChan)
-			if err != nil {
-				logging.Error("TUI-Lifecycle", err, "Error creating TUI program")
-				return err
-			}
-
-			// Run the TUI until user exits
-			if _, err := p.Run(); err != nil {
-				logging.Error("TUI-Lifecycle", err, "Error running TUI program")
-				return err
-			}
-			logging.Info("TUI-Lifecycle", "TUI exited.")
-		}
-		return nil
-	},
+	RunE: runConnect,
 	// ValidArgsFunction provides shell completion for cluster names
 	// This enhances user experience by suggesting valid cluster names during tab completion
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
@@ -348,6 +68,32 @@ Arguments:
 		}
 		return candidates, directive
 	},
+}
+
+// runConnect is the main entry point for the connect command
+func runConnect(cmd *cobra.Command, args []string) error {
+	// Extract cluster names from command arguments
+	managementClusterArg := args[0]
+	workloadClusterArg := ""
+	if len(args) == 2 {
+		workloadClusterArg = args[1]
+	}
+
+	// Create application configuration
+	cfg := app.NewConfig(managementClusterArg, workloadClusterArg, noTUI, debug)
+
+	// Create and initialize the application
+	application, err := app.NewApplication(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to initialize application: %w", err)
+	}
+
+	// Run the application
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return application.Run(ctx)
 }
 
 // init registers the connect command and its flags with the root command.

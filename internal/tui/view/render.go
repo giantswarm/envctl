@@ -71,9 +71,6 @@ func PrepareLogContent(lines []string, maxWidth int) string {
 
 // trimStatusMessage shortens long status strings for panel display.
 func trimStatusMessage(status string) string {
-	if strings.HasPrefix(status, "Running (PID:") {
-		return "Running"
-	}
 	if strings.HasPrefix(status, "Forwarding from") {
 		return "Forwarding"
 	}
