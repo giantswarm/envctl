@@ -28,7 +28,7 @@ type SendUpdateFunc func(status, outputLog string, isError, isReady bool)
 // directLogger is an io.Writer that logs lines directly using pkg/logging.Debug.
 // It's used to capture raw stdout/stderr from the port-forwarding process for debugging.
 type directLogger struct {
-	subsystem string // e.g., "PortForward-MyPF-kube-ops"
+	subsystem string // e.g., "PortForward-MyPF"
 	isError   bool   // True if this logger is for stderr, false for stdout
 }
 
@@ -68,7 +68,7 @@ func StartPortForward(
 	pfLabel string,
 	sendUpdate SendUpdateFunc, // For state transitions
 ) (chan struct{}, string, error) {
-	opsSubsystem := fmt.Sprintf("PortForward-%s-kube-ops", pfLabel)
+	opsSubsystem := fmt.Sprintf("PortForward-%s", pfLabel)
 
 	logging.Debug(opsSubsystem, "Enter StartPortForward. Context: %s, Service: %s/%s, Ports: %s", kubeContext, namespace, serviceArg, portString)
 
