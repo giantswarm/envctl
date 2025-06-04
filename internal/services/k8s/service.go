@@ -50,6 +50,23 @@ func NewK8sConnectionService(label, contextName string, isMC bool, kubeMgr kube.
 func (s *K8sConnectionService) Start(ctx context.Context) error {
 	s.UpdateState(services.StateStarting, services.HealthUnknown, nil)
 
+	// First, ensure we're logged in to the cluster
+	// Extract cluster name from context (remove teleport prefix)
+	clusterName := s.kubeMgr.StripTeleportPrefix(s.contextName)
+	if clusterName != "" && clusterName != s.contextName {
+		// Only login if we have a teleport context
+		logging.Info("K8sConnection-"+s.label, "Logging in to cluster: %s", clusterName)
+		stdout, stderr, err := s.kubeMgr.Login(clusterName)
+		if err != nil {
+			logging.Error("K8sConnection-"+s.label, err, "Failed to login to cluster %s. Stderr: %s", clusterName, stderr)
+			s.UpdateState(services.StateFailed, services.HealthUnhealthy, err)
+			return fmt.Errorf("failed to login to cluster %s: %w", clusterName, err)
+		}
+		if stdout != "" {
+			logging.Debug("K8sConnection-"+s.label, "Login stdout: %s", stdout)
+		}
+	}
+
 	// Create a cancellable context
 	monitorCtx, cancel := context.WithCancel(ctx)
 	s.mu.Lock()
@@ -117,38 +134,54 @@ func (s *K8sConnectionService) GetServiceData() map[string]interface{} {
 
 // CheckHealth implements HealthChecker
 func (s *K8sConnectionService) CheckHealth(ctx context.Context) (services.HealthStatus, error) {
-	// Use kube manager to check cluster health
-	health, err := s.kubeMgr.GetClusterNodeHealth(ctx, s.contextName)
+	// First check if API is responsive - this is the primary health indicator
+	apiErr := s.kubeMgr.CheckAPIHealth(ctx, s.contextName)
+
+	// Also get node health for informational purposes
+	nodeHealth, nodeErr := s.kubeMgr.GetClusterNodeHealth(ctx, s.contextName)
 
 	s.mu.Lock()
 	s.lastHealthCheck = time.Now()
-	s.healthError = err
 
-	if err != nil {
+	if apiErr != nil {
+		// API is not responsive - this means the cluster is unhealthy
+		s.healthError = apiErr
 		s.readyNodes = -1
 		s.totalNodes = -1
 		s.mu.Unlock()
 
-		logging.Error("K8sConnection-"+s.label, err, "Health check failed")
-		return services.HealthUnhealthy, err
+		logging.Error("K8sConnection-"+s.label, apiErr, "API health check failed")
+		return services.HealthUnhealthy, apiErr
 	}
 
-	// Update node counts
-	s.readyNodes = health.ReadyNodes
-	s.totalNodes = health.TotalNodes
+	// API is responsive, so the cluster is healthy
+	// Update node counts if available
+	if nodeErr != nil {
+		// Can't get node info, but API is still healthy
+		logging.Warn("K8sConnection-"+s.label, "Could not retrieve node information: %v", nodeErr)
+		s.readyNodes = -1
+		s.totalNodes = -1
+		s.healthError = nodeErr
+	} else {
+		s.readyNodes = nodeHealth.ReadyNodes
+		s.totalNodes = nodeHealth.TotalNodes
+		s.healthError = nil
+
+		// Log warnings for degraded nodes, but don't affect health status
+		if nodeHealth.ReadyNodes < nodeHealth.TotalNodes && nodeHealth.TotalNodes > 0 {
+			logging.Warn("K8sConnection-"+s.label, "Cluster has degraded nodes: %d/%d ready",
+				nodeHealth.ReadyNodes, nodeHealth.TotalNodes)
+		} else if nodeHealth.ReadyNodes == 0 && nodeHealth.TotalNodes > 0 {
+			logging.Warn("K8sConnection-"+s.label, "No nodes are ready: %d/%d",
+				nodeHealth.ReadyNodes, nodeHealth.TotalNodes)
+		}
+	}
 	s.mu.Unlock()
 
-	// Determine health status
-	if health.ReadyNodes == health.TotalNodes && health.TotalNodes > 0 {
-		logging.Debug("K8sConnection-"+s.label, "Health check passed: %d/%d nodes ready", health.ReadyNodes, health.TotalNodes)
-		return services.HealthHealthy, nil
-	} else if health.ReadyNodes > 0 {
-		logging.Warn("K8sConnection-"+s.label, "Cluster degraded: %d/%d nodes ready", health.ReadyNodes, health.TotalNodes)
-		return services.HealthUnhealthy, fmt.Errorf("cluster degraded: %d/%d nodes ready", health.ReadyNodes, health.TotalNodes)
-	} else {
-		logging.Error("K8sConnection-"+s.label, nil, "No nodes ready: %d/%d", health.ReadyNodes, health.TotalNodes)
-		return services.HealthUnhealthy, fmt.Errorf("no nodes ready")
-	}
+	// As long as the API is responsive, the cluster is considered healthy
+	logging.Debug("K8sConnection-"+s.label, "API is healthy, nodes: %d/%d ready",
+		s.readyNodes, s.totalNodes)
+	return services.HealthHealthy, nil
 }
 
 // GetHealthCheckInterval implements HealthChecker

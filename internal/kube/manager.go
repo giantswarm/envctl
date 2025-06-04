@@ -30,6 +30,7 @@ type Manager interface {
 	// Cluster Operations
 	GetClusterNodeHealth(ctx context.Context, kubeContextName string) (NodeHealth, error)
 	DetermineClusterProvider(ctx context.Context, kubeContextName string) (string, error)
+	CheckAPIHealth(ctx context.Context, kubeContextName string) error
 }
 
 // manager implements the Manager interface
@@ -144,4 +145,22 @@ func (m *manager) DetermineClusterProvider(ctx context.Context, kubeContextName 
 	provider, err := DetermineClusterProvider(ctx, kubeContextName)
 
 	return provider, err
+}
+
+// CheckAPIHealth checks the API health of a cluster
+func (m *manager) CheckAPIHealth(ctx context.Context, kubeContextName string) error {
+	subsystem := fmt.Sprintf("CheckAPIHealth-%s", kubeContextName)
+	logging.Debug(subsystem, "Checking API health for context: %s", kubeContextName)
+
+	// Get clientset for the context
+	clientset, err := GetClientsetForContext(ctx, kubeContextName)
+	if err != nil {
+		logging.Error(subsystem, err, "Failed to create clientset")
+		return err
+	}
+
+	// Check API health
+	err = CheckAPIHealth(clientset)
+
+	return err
 }

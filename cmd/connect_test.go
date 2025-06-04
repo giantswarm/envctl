@@ -61,6 +61,10 @@ func (m *mockKubeManager) DetermineClusterProvider(ctx context.Context, kubeCont
 	return "", nil
 }
 
+func (m *mockKubeManager) CheckAPIHealth(ctx context.Context, kubeContextName string) error {
+	return nil
+}
+
 func TestConnectCmd(t *testing.T) {
 	tests := []struct {
 		name          string

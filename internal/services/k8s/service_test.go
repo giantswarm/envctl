@@ -12,12 +12,17 @@ import (
 
 // mockKubeManager implements the kube.Manager interface for testing
 type mockKubeManager struct {
-	nodeHealth kube.NodeHealth
-	healthErr  error
+	nodeHealth    kube.NodeHealth
+	nodeHealthErr error
+	apiHealthErr  error
+	loginErr      error
 }
 
 func (m *mockKubeManager) Login(clusterName string) (string, string, error) {
-	return "", "", nil
+	if m.loginErr != nil {
+		return "", "login error", m.loginErr
+	}
+	return "Logged in successfully", "", nil
 }
 
 func (m *mockKubeManager) ListClusters() (*kube.ClusterInfo, error) {
@@ -45,19 +50,27 @@ func (m *mockKubeManager) BuildWcContextName(mcName, wcName string) string {
 }
 
 func (m *mockKubeManager) StripTeleportPrefix(contextName string) string {
+	prefix := "teleport.giantswarm.io-"
+	if strings.HasPrefix(contextName, prefix) {
+		return strings.TrimPrefix(contextName, prefix)
+	}
 	return contextName
 }
 
 func (m *mockKubeManager) HasTeleportPrefix(contextName string) bool {
-	return false
+	return strings.HasPrefix(contextName, "teleport.giantswarm.io-")
 }
 
 func (m *mockKubeManager) GetClusterNodeHealth(ctx context.Context, kubeContextName string) (kube.NodeHealth, error) {
-	return m.nodeHealth, m.healthErr
+	return m.nodeHealth, m.nodeHealthErr
 }
 
 func (m *mockKubeManager) DetermineClusterProvider(ctx context.Context, kubeContextName string) (string, error) {
 	return "", nil
+}
+
+func (m *mockKubeManager) CheckAPIHealth(ctx context.Context, kubeContextName string) error {
+	return m.apiHealthErr
 }
 
 func TestNewK8sConnectionService(t *testing.T) {
@@ -133,14 +146,15 @@ func TestK8sConnectionService_GetServiceData(t *testing.T) {
 	}
 }
 
-func TestK8sConnectionService_CheckHealth_Healthy(t *testing.T) {
+func TestK8sConnectionService_CheckHealth_APIHealthy_AllNodesReady(t *testing.T) {
 	kubeMgr := &mockKubeManager{
 		nodeHealth: kube.NodeHealth{
 			ReadyNodes: 3,
 			TotalNodes: 3,
 			Error:      nil,
 		},
-		healthErr: nil,
+		nodeHealthErr: nil,
+		apiHealthErr:  nil, // API is healthy
 	}
 
 	service := NewK8sConnectionService("test-k8s", "test-context", true, kubeMgr)
@@ -169,65 +183,86 @@ func TestK8sConnectionService_CheckHealth_Healthy(t *testing.T) {
 	service.mu.RUnlock()
 }
 
-func TestK8sConnectionService_CheckHealth_Degraded(t *testing.T) {
+func TestK8sConnectionService_CheckHealth_APIHealthy_DegradedNodes(t *testing.T) {
 	kubeMgr := &mockKubeManager{
 		nodeHealth: kube.NodeHealth{
 			ReadyNodes: 2,
 			TotalNodes: 3,
 			Error:      nil,
 		},
-		healthErr: nil,
+		nodeHealthErr: nil,
+		apiHealthErr:  nil, // API is healthy
 	}
 
 	service := NewK8sConnectionService("test-k8s", "test-context", true, kubeMgr)
 
 	health, err := service.CheckHealth(context.Background())
 
-	if err == nil {
-		t.Error("Expected error for degraded cluster")
+	// With the new behavior, API healthy means service is healthy
+	if err != nil {
+		t.Error("Expected no error for degraded nodes when API is healthy")
 	}
 
-	if health != services.HealthUnhealthy {
-		t.Errorf("Expected health %s, got %s", services.HealthUnhealthy, health)
+	if health != services.HealthHealthy {
+		t.Errorf("Expected health %s, got %s", services.HealthHealthy, health)
 	}
 
-	if !strings.Contains(err.Error(), "cluster degraded") {
-		t.Errorf("Expected 'cluster degraded' in error, got: %s", err.Error())
+	// Check that node counts are still tracked
+	service.mu.RLock()
+	if service.readyNodes != 2 {
+		t.Errorf("Expected readyNodes 2, got %d", service.readyNodes)
 	}
+	if service.totalNodes != 3 {
+		t.Errorf("Expected totalNodes 3, got %d", service.totalNodes)
+	}
+	service.mu.RUnlock()
 }
 
-func TestK8sConnectionService_CheckHealth_NoNodes(t *testing.T) {
+func TestK8sConnectionService_CheckHealth_APIHealthy_NoNodesReady(t *testing.T) {
 	kubeMgr := &mockKubeManager{
 		nodeHealth: kube.NodeHealth{
 			ReadyNodes: 0,
 			TotalNodes: 3,
 			Error:      nil,
 		},
-		healthErr: nil,
+		nodeHealthErr: nil,
+		apiHealthErr:  nil, // API is healthy
 	}
 
 	service := NewK8sConnectionService("test-k8s", "test-context", true, kubeMgr)
 
 	health, err := service.CheckHealth(context.Background())
 
-	if err == nil {
-		t.Error("Expected error for no ready nodes")
+	// With the new behavior, API healthy means service is healthy
+	if err != nil {
+		t.Error("Expected no error when API is healthy even with no ready nodes")
 	}
 
-	if health != services.HealthUnhealthy {
-		t.Errorf("Expected health %s, got %s", services.HealthUnhealthy, health)
+	if health != services.HealthHealthy {
+		t.Errorf("Expected health %s, got %s", services.HealthHealthy, health)
 	}
 
-	if !strings.Contains(err.Error(), "no nodes ready") {
-		t.Errorf("Expected 'no nodes ready' in error, got: %s", err.Error())
+	// Check that node counts are still tracked
+	service.mu.RLock()
+	if service.readyNodes != 0 {
+		t.Errorf("Expected readyNodes 0, got %d", service.readyNodes)
 	}
+	if service.totalNodes != 3 {
+		t.Errorf("Expected totalNodes 3, got %d", service.totalNodes)
+	}
+	service.mu.RUnlock()
 }
 
-func TestK8sConnectionService_CheckHealth_Error(t *testing.T) {
-	testErr := errors.New("cluster unreachable")
+func TestK8sConnectionService_CheckHealth_APIUnhealthy(t *testing.T) {
+	testErr := errors.New("API server not responding")
 	kubeMgr := &mockKubeManager{
-		nodeHealth: kube.NodeHealth{},
-		healthErr:  testErr,
+		nodeHealth: kube.NodeHealth{
+			ReadyNodes: 3,
+			TotalNodes: 3,
+			Error:      nil,
+		},
+		nodeHealthErr: nil,
+		apiHealthErr:  testErr, // API is unhealthy
 	}
 
 	service := NewK8sConnectionService("test-k8s", "test-context", true, kubeMgr)
@@ -252,6 +287,41 @@ func TestK8sConnectionService_CheckHealth_Error(t *testing.T) {
 	}
 	if service.healthError != testErr {
 		t.Errorf("Expected health error %v, got %v", testErr, service.healthError)
+	}
+	service.mu.RUnlock()
+}
+
+func TestK8sConnectionService_CheckHealth_NodeInfoError(t *testing.T) {
+	nodeErr := errors.New("failed to get nodes")
+	kubeMgr := &mockKubeManager{
+		nodeHealth:    kube.NodeHealth{},
+		nodeHealthErr: nodeErr,
+		apiHealthErr:  nil, // API is healthy
+	}
+
+	service := NewK8sConnectionService("test-k8s", "test-context", true, kubeMgr)
+
+	health, err := service.CheckHealth(context.Background())
+
+	// API is healthy, so service should be healthy despite node info error
+	if err != nil {
+		t.Errorf("Expected no error when API is healthy, got %v", err)
+	}
+
+	if health != services.HealthHealthy {
+		t.Errorf("Expected health %s, got %s", services.HealthHealthy, health)
+	}
+
+	// Check that internal state reflects the node error
+	service.mu.RLock()
+	if service.readyNodes != -1 {
+		t.Errorf("Expected readyNodes -1, got %d", service.readyNodes)
+	}
+	if service.totalNodes != -1 {
+		t.Errorf("Expected totalNodes -1, got %d", service.totalNodes)
+	}
+	if service.healthError != nodeErr {
+		t.Errorf("Expected health error %v, got %v", nodeErr, service.healthError)
 	}
 	service.mu.RUnlock()
 }
@@ -312,7 +382,8 @@ func TestK8sConnectionService_Restart(t *testing.T) {
 			TotalNodes: 3,
 			Error:      nil,
 		},
-		healthErr: nil,
+		nodeHealthErr: nil,
+		apiHealthErr:  nil, // API is healthy
 	}
 
 	service := NewK8sConnectionService("test-k8s", "test-context", true, kubeMgr)
@@ -343,4 +414,79 @@ func TestK8sConnectionService_Interfaces(t *testing.T) {
 	// Test that service implements required interfaces
 	var _ services.Service = service
 	var _ services.ServiceDataProvider = service
+}
+
+func TestK8sConnectionService_Start_WithLogin(t *testing.T) {
+	kubeMgr := &mockKubeManager{
+		nodeHealth: kube.NodeHealth{
+			ReadyNodes: 3,
+			TotalNodes: 3,
+			Error:      nil,
+		},
+		nodeHealthErr: nil,
+		apiHealthErr:  nil,
+	}
+
+	// Use a teleport context that requires login
+	service := NewK8sConnectionService("mc-test", "teleport.giantswarm.io-test", true, kubeMgr)
+
+	ctx := context.Background()
+	err := service.Start(ctx)
+	if err != nil {
+		t.Errorf("Unexpected error starting service: %v", err)
+	}
+
+	if service.GetState() != services.StateRunning {
+		t.Errorf("Expected state %s, got %s", services.StateRunning, service.GetState())
+	}
+}
+
+func TestK8sConnectionService_Start_LoginFailure(t *testing.T) {
+	loginErr := errors.New("authentication failed")
+	kubeMgr := &mockKubeManager{
+		loginErr: loginErr,
+	}
+
+	// Use a teleport context that requires login
+	service := NewK8sConnectionService("mc-test", "teleport.giantswarm.io-test", true, kubeMgr)
+
+	ctx := context.Background()
+	err := service.Start(ctx)
+	if err == nil {
+		t.Error("Expected error when login fails")
+	}
+
+	if !strings.Contains(err.Error(), "failed to login to cluster") {
+		t.Errorf("Expected login error, got: %v", err)
+	}
+
+	if service.GetState() != services.StateFailed {
+		t.Errorf("Expected state %s, got %s", services.StateFailed, service.GetState())
+	}
+}
+
+func TestK8sConnectionService_Start_NoLoginForNonTeleportContext(t *testing.T) {
+	kubeMgr := &mockKubeManager{
+		nodeHealth: kube.NodeHealth{
+			ReadyNodes: 3,
+			TotalNodes: 3,
+			Error:      nil,
+		},
+		nodeHealthErr: nil,
+		apiHealthErr:  nil,
+		loginErr:      errors.New("should not be called"),
+	}
+
+	// Use a non-teleport context that should not trigger login
+	service := NewK8sConnectionService("test-k8s", "test-context", true, kubeMgr)
+
+	ctx := context.Background()
+	err := service.Start(ctx)
+	if err != nil {
+		t.Errorf("Unexpected error starting service: %v", err)
+	}
+
+	if service.GetState() != services.StateRunning {
+		t.Errorf("Expected state %s, got %s", services.StateRunning, service.GetState())
+	}
 }
