@@ -17,21 +17,42 @@ func RenderAggregatorPanel(m *model.Model, width int, isFocused bool) string {
 		return ""
 	}
 
-	// Determine panel style based on state
-	var panelStyle lipgloss.Style
-	if aggregatorInfo.connectedServers > 0 {
-		panelStyle = color.PanelStatusRunningStyle
-	} else {
-		panelStyle = color.PanelStatusInitializingStyle
+	// Determine panel style based on state (like port forwards and MCP servers)
+	var baseStyleForPanel, focusedBaseStyleForPanel lipgloss.Style
+	var contentFg lipgloss.Style
+
+	// Use actual service state from state transitions
+	stateLower := strings.ToLower(aggregatorInfo.state)
+	switch {
+	case stateLower == "failed":
+		baseStyleForPanel = color.PanelStatusErrorStyle
+		focusedBaseStyleForPanel = color.FocusedPanelStatusErrorStyle
+		contentFg = color.StatusMsgErrorStyle
+	case stateLower == "running":
+		baseStyleForPanel = color.PanelStatusRunningStyle
+		focusedBaseStyleForPanel = color.FocusedPanelStatusRunningStyle
+		contentFg = color.StatusMsgRunningStyle
+	case stateLower == "starting":
+		baseStyleForPanel = color.PanelStatusInitializingStyle
+		focusedBaseStyleForPanel = color.FocusedPanelStatusInitializingStyle
+		contentFg = color.StatusMsgInitializingStyle
+	case stateLower == "stopped" || stateLower == "stopping":
+		baseStyleForPanel = color.PanelStatusExitedStyle
+		focusedBaseStyleForPanel = color.FocusedPanelStatusExitedStyle
+		contentFg = color.StatusMsgExitedStyle
+	default:
+		baseStyleForPanel = color.PanelStatusInitializingStyle
+		focusedBaseStyleForPanel = color.FocusedPanelStatusInitializingStyle
+		contentFg = color.StatusMsgInitializingStyle
 	}
 
+	finalPanelStyle := baseStyleForPanel
 	if isFocused {
-		if aggregatorInfo.connectedServers > 0 {
-			panelStyle = color.FocusedPanelStatusRunningStyle
-		} else {
-			panelStyle = color.FocusedPanelStatusInitializingStyle
-		}
+		finalPanelStyle = focusedBaseStyleForPanel
 	}
+
+	// Override foreground color for content
+	finalPanelStyle = finalPanelStyle.Copy().Foreground(contentFg.GetForeground())
 
 	// Build content
 	var b strings.Builder
@@ -44,32 +65,71 @@ func RenderAggregatorPanel(m *model.Model, width int, isFocused bool) string {
 	b.WriteString(fmt.Sprintf("Endpoint: %s", aggregatorInfo.endpoint))
 	b.WriteString("\n")
 
-	// Status
-	statusIcon := SafeIcon(IconHourglass)
-	statusText := "Initializing"
-	if aggregatorInfo.connectedServers > 0 {
-		statusIcon = SafeIcon(IconCheck)
-		statusText = fmt.Sprintf("Connected: %d/%d", aggregatorInfo.connectedServers, aggregatorInfo.totalServers)
+	// Status line (like port forwards)
+	var statusIcon string
+	statusText := strings.TrimSpace(aggregatorInfo.state)
+	switch {
+	case stateLower == "running":
+		statusIcon = SafeIcon(IconPlay)
+	case stateLower == "failed":
+		statusIcon = SafeIcon(IconCross)
+	case stateLower == "starting":
+		statusIcon = SafeIcon(IconHourglass)
+	case stateLower == "stopped" || stateLower == "stopping":
+		statusIcon = SafeIcon(IconStop)
+	default:
+		statusIcon = SafeIcon(IconHourglass)
+		if statusText == "" {
+			statusText = "Initializing"
+		}
 	}
-	b.WriteString(fmt.Sprintf("Status: %s%s", statusIcon, statusText))
+	b.WriteString(contentFg.Render(fmt.Sprintf("Status: %s%s", statusIcon, statusText)))
 	b.WriteString("\n")
 
+	// Health line (like port forwards)
+	var healthIcon, healthText string
+	healthLower := strings.ToLower(aggregatorInfo.health)
+	if stateLower == "running" && healthLower == "healthy" {
+		healthIcon = SafeIcon(IconCheck)
+		healthText = "Healthy"
+	} else if stateLower == "failed" || healthLower == "unhealthy" {
+		healthIcon = SafeIcon(IconCross)
+		healthText = "Unhealthy"
+	} else {
+		healthIcon = SafeIcon(IconHourglass)
+		healthText = "Checking..."
+	}
+	b.WriteString(contentFg.Render(fmt.Sprintf("Health: %s%s", healthIcon, healthText)))
+	b.WriteString("\n")
+
+	// Connected servers (if running)
+	if stateLower == "running" {
+		serversIcon := SafeIcon(IconCheck)
+		if aggregatorInfo.connectedServers < aggregatorInfo.totalServers {
+			serversIcon = SafeIcon(IconWarning)
+		}
+		b.WriteString(contentFg.Render(fmt.Sprintf("Servers: %s%d/%d", serversIcon, aggregatorInfo.connectedServers, aggregatorInfo.totalServers)))
+		b.WriteString("\n")
+	}
+
 	// Tools count
-	b.WriteString(fmt.Sprintf("Tools: %d", aggregatorInfo.toolCount))
+	b.WriteString(contentFg.Render(fmt.Sprintf("Tools: %d", aggregatorInfo.toolCount)))
 
 	// Calculate content width
-	frame := panelStyle.GetHorizontalFrameSize()
+	frame := finalPanelStyle.GetHorizontalFrameSize()
 	contentWidth := width - frame
 	if contentWidth < 0 {
 		contentWidth = 0
 	}
 
-	return panelStyle.Copy().Width(contentWidth).Render(b.String())
+	return finalPanelStyle.Copy().Width(contentWidth).Render(b.String())
 }
 
 // aggregatorInfo holds information about the aggregator service
 type aggregatorInfo struct {
 	endpoint         string
+	state            string
+	health           string
 	totalServers     int
 	connectedServers int
 	toolCount        int
@@ -93,6 +153,8 @@ func getAggregatorInfo(m *model.Model) *aggregatorInfo {
 		if m.AggregatorConfig.Port > 0 {
 			return &aggregatorInfo{
 				endpoint:         fmt.Sprintf("http://localhost:%d/sse", m.AggregatorConfig.Port),
+				state:            "Stopped",
+				health:           "Unknown",
 				totalServers:     0,
 				connectedServers: 0,
 				toolCount:        0,
@@ -104,6 +166,8 @@ func getAggregatorInfo(m *model.Model) *aggregatorInfo {
 	// Use the aggregator info from the API
 	return &aggregatorInfo{
 		endpoint:         m.AggregatorInfo.Endpoint,
+		state:            m.AggregatorInfo.State,
+		health:           m.AggregatorInfo.Health,
 		totalServers:     m.AggregatorInfo.ServersTotal,
 		connectedServers: m.AggregatorInfo.ServersConnected,
 		toolCount:        m.AggregatorInfo.ToolsCount,

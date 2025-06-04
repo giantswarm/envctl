@@ -6,7 +6,7 @@ import (
 	"envctl/internal/kube"
 	"envctl/internal/tui/model"
 	"fmt"
-	"time"
+	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -37,7 +37,6 @@ func renderContextPanesRow(m *model.Model, width, maxHeight int) string {
 
 // renderMcPane(renders the management cluster pane
 func renderMcPane(m *model.Model, conn *api.K8sConnectionInfo, paneWidth int) string {
-	// Match v1 exactly
 	mcName := m.ManagementClusterName
 	if mcName == "" {
 		mcName = "N/A"
@@ -50,16 +49,6 @@ func renderMcPane(m *model.Model, conn *api.K8sConnectionInfo, paneWidth int) st
 		isMcActive = true
 	}
 
-	mcActiveString := ""
-	if isMcActive {
-		mcActiveString = " (Active)"
-	}
-
-	mcPaneContent := fmt.Sprintf("%sMC: %s%s", SafeIcon(IconKubernetes), mcName, mcActiveString)
-
-	var healthStatusText string
-	var healthStyle lipgloss.Style
-
 	// Get connection info if not passed
 	if conn == nil {
 		expectedLabel := fmt.Sprintf("mc-%s", m.ManagementClusterName)
@@ -71,44 +60,132 @@ func renderMcPane(m *model.Model, conn *api.K8sConnectionInfo, paneWidth int) st
 		}
 	}
 
-	if conn == nil || conn.State == "starting" {
-		healthStatusText = RenderIconWithMessage(IconHourglass, "Nodes: Loading...")
-		healthStyle = color.HealthLoadingStyle
-	} else if conn.State == "failed" || conn.Error != "" {
-		healthStatusText = RenderIconWithMessage(IconCross, fmt.Sprintf("Nodes: Error (%s)", time.Now().Format("15:04:05")))
-		healthStyle = color.HealthErrorStyle
+	// Determine panel style based on state (like port forwards and MCP servers)
+	var baseStyleForPanel, focusedBaseStyleForPanel lipgloss.Style
+	var contentFg lipgloss.Style
+
+	if conn != nil {
+		stateLower := strings.ToLower(conn.State)
+		switch {
+		case stateLower == "failed":
+			baseStyleForPanel = color.PanelStatusErrorStyle
+			focusedBaseStyleForPanel = color.FocusedPanelStatusErrorStyle
+			contentFg = color.StatusMsgErrorStyle
+		case stateLower == "running":
+			baseStyleForPanel = color.PanelStatusRunningStyle
+			focusedBaseStyleForPanel = color.FocusedPanelStatusRunningStyle
+			contentFg = color.StatusMsgRunningStyle
+		case stateLower == "starting":
+			baseStyleForPanel = color.PanelStatusInitializingStyle
+			focusedBaseStyleForPanel = color.FocusedPanelStatusInitializingStyle
+			contentFg = color.StatusMsgInitializingStyle
+		case stateLower == "stopped" || stateLower == "stopping":
+			baseStyleForPanel = color.PanelStatusExitedStyle
+			focusedBaseStyleForPanel = color.FocusedPanelStatusExitedStyle
+			contentFg = color.StatusMsgExitedStyle
+		default:
+			baseStyleForPanel = color.PanelStatusInitializingStyle
+			focusedBaseStyleForPanel = color.FocusedPanelStatusInitializingStyle
+			contentFg = color.StatusMsgInitializingStyle
+		}
 	} else {
-		healthIcon := IconCheck
-		if conn.ReadyNodes < conn.TotalNodes {
-			healthIcon = IconWarning
-			healthStatusText = RenderIconWithNodes(healthIcon, conn.ReadyNodes, conn.TotalNodes, "[WARN]")
-			healthStyle = color.HealthWarnStyle
-		} else {
-			healthStatusText = RenderIconWithNodes(healthIcon, conn.ReadyNodes, conn.TotalNodes, "")
-			healthStyle = color.HealthGoodStyle
-		}
+		// No connection info yet
+		baseStyleForPanel = color.PanelStatusInitializingStyle
+		focusedBaseStyleForPanel = color.FocusedPanelStatusInitializingStyle
+		contentFg = color.StatusMsgInitializingStyle
 	}
 
-	renderedHealthText := healthStyle.Render(healthStatusText)
-	mcPaneContent += "\n" + renderedHealthText
-
-	mcPaneStyleToUse := color.ContextPaneStyle
-	if isMcActive {
-		mcPaneStyleToUse = color.ActiveContextPaneStyle
-	}
+	finalPanelStyle := baseStyleForPanel
 	if m.FocusedPanelKey == model.McPaneFocusKey {
-		if isMcActive {
-			mcPaneStyleToUse = color.FocusedAndActiveContextPaneStyle
-		} else {
-			mcPaneStyleToUse = color.FocusedContextPaneStyle
-		}
+		finalPanelStyle = focusedBaseStyleForPanel
 	}
-	return mcPaneStyleToUse.Copy().Width(paneWidth - mcPaneStyleToUse.GetHorizontalFrameSize()).Render(mcPaneContent)
+
+	// Override foreground color for content
+	finalPanelStyle = finalPanelStyle.Copy().Foreground(contentFg.GetForeground())
+
+	// Build content
+	var b strings.Builder
+
+	// Title
+	activeStr := ""
+	if isMcActive {
+		activeStr = " (Active)"
+	}
+	b.WriteString(color.PortTitleStyle.Render(fmt.Sprintf("%sMC: %s%s", SafeIcon(IconKubernetes), mcName, activeStr)))
+	b.WriteString("\n")
+
+	// Status line (like port forwards)
+	var statusIcon string
+	var statusText string
+	if conn != nil {
+		stateLower := strings.ToLower(conn.State)
+		statusText = strings.TrimSpace(conn.State)
+		switch {
+		case stateLower == "running":
+			statusIcon = SafeIcon(IconPlay)
+		case stateLower == "failed":
+			statusIcon = SafeIcon(IconCross)
+		case stateLower == "starting":
+			statusIcon = SafeIcon(IconHourglass)
+		case stateLower == "stopped" || stateLower == "stopping":
+			statusIcon = SafeIcon(IconStop)
+		default:
+			statusIcon = SafeIcon(IconHourglass)
+		}
+	} else {
+		statusIcon = SafeIcon(IconHourglass)
+		statusText = "Initializing"
+	}
+	b.WriteString(contentFg.Render(fmt.Sprintf("Status: %s%s", statusIcon, statusText)))
+	b.WriteString("\n")
+
+	// Health line (like port forwards)
+	var healthIcon, healthText string
+	if conn != nil {
+		stateLower := strings.ToLower(conn.State)
+		healthLower := strings.ToLower(conn.Health)
+		if stateLower == "running" && healthLower == "healthy" {
+			healthIcon = SafeIcon(IconCheck)
+			healthText = "Healthy"
+		} else if stateLower == "failed" || healthLower == "unhealthy" {
+			healthIcon = SafeIcon(IconCross)
+			healthText = "Unhealthy"
+		} else {
+			healthIcon = SafeIcon(IconHourglass)
+			healthText = "Checking..."
+		}
+	} else {
+		healthIcon = SafeIcon(IconHourglass)
+		healthText = "Checking..."
+	}
+	b.WriteString(contentFg.Render(fmt.Sprintf("Health: %s%s", healthIcon, healthText)))
+
+	// Add version if available
+	if conn != nil && conn.Version != "" {
+		b.WriteString("\n")
+		b.WriteString(contentFg.Render(fmt.Sprintf("Version: %s", conn.Version)))
+	}
+
+	// Add node status if available
+	if conn != nil && conn.State == "Running" {
+		b.WriteString("\n")
+		nodeIcon := IconCheck
+		if conn.ReadyNodes < conn.TotalNodes {
+			nodeIcon = IconWarning
+		}
+		b.WriteString(contentFg.Render(fmt.Sprintf("Nodes: %s%d/%d", SafeIcon(nodeIcon), conn.ReadyNodes, conn.TotalNodes)))
+	}
+
+	frame := finalPanelStyle.GetHorizontalFrameSize()
+	contentWidth := paneWidth - frame
+	if contentWidth < 0 {
+		contentWidth = 0
+	}
+	return finalPanelStyle.Copy().Width(contentWidth).Render(b.String())
 }
 
 // renderWcPane(renders the workload cluster pane
 func renderWcPane(m *model.Model, conn *api.K8sConnectionInfo, paneWidth int) string {
-	// Match v1 exactly
 	if m.WorkloadClusterName == "" {
 		return ""
 	}
@@ -121,16 +198,6 @@ func renderWcPane(m *model.Model, conn *api.K8sConnectionInfo, paneWidth int) st
 		isWcActive = true
 	}
 
-	wcActiveString := ""
-	if isWcActive {
-		wcActiveString = " (Active)"
-	}
-
-	wcPaneContent := fmt.Sprintf("%sWC: %s%s", SafeIcon(IconKubernetes), wcName, wcActiveString)
-
-	var healthStatusText string
-	var healthStyle lipgloss.Style
-
 	// Get connection info if not passed
 	if conn == nil {
 		expectedLabel := fmt.Sprintf("wc-%s", m.WorkloadClusterName)
@@ -142,37 +209,126 @@ func renderWcPane(m *model.Model, conn *api.K8sConnectionInfo, paneWidth int) st
 		}
 	}
 
-	if conn == nil || conn.State == "starting" {
-		healthStatusText = RenderIconWithMessage(IconHourglass, "Nodes: Loading...")
-		healthStyle = color.HealthLoadingStyle
-	} else if conn.State == "failed" || conn.Error != "" {
-		healthStatusText = RenderIconWithMessage(IconCross, "Nodes: Error")
-		healthStyle = color.HealthErrorStyle
+	// Determine panel style based on state (like port forwards and MCP servers)
+	var baseStyleForPanel, focusedBaseStyleForPanel lipgloss.Style
+	var contentFg lipgloss.Style
+
+	if conn != nil {
+		stateLower := strings.ToLower(conn.State)
+		switch {
+		case stateLower == "failed":
+			baseStyleForPanel = color.PanelStatusErrorStyle
+			focusedBaseStyleForPanel = color.FocusedPanelStatusErrorStyle
+			contentFg = color.StatusMsgErrorStyle
+		case stateLower == "running":
+			baseStyleForPanel = color.PanelStatusRunningStyle
+			focusedBaseStyleForPanel = color.FocusedPanelStatusRunningStyle
+			contentFg = color.StatusMsgRunningStyle
+		case stateLower == "starting":
+			baseStyleForPanel = color.PanelStatusInitializingStyle
+			focusedBaseStyleForPanel = color.FocusedPanelStatusInitializingStyle
+			contentFg = color.StatusMsgInitializingStyle
+		case stateLower == "stopped" || stateLower == "stopping":
+			baseStyleForPanel = color.PanelStatusExitedStyle
+			focusedBaseStyleForPanel = color.FocusedPanelStatusExitedStyle
+			contentFg = color.StatusMsgExitedStyle
+		default:
+			baseStyleForPanel = color.PanelStatusInitializingStyle
+			focusedBaseStyleForPanel = color.FocusedPanelStatusInitializingStyle
+			contentFg = color.StatusMsgInitializingStyle
+		}
 	} else {
-		healthIcon := IconCheck
-		if conn.ReadyNodes < conn.TotalNodes {
-			healthIcon = IconWarning
-			healthStatusText = RenderIconWithNodes(healthIcon, conn.ReadyNodes, conn.TotalNodes, "[WARN]")
-			healthStyle = color.HealthWarnStyle
-		} else {
-			healthStatusText = RenderIconWithNodes(healthIcon, conn.ReadyNodes, conn.TotalNodes, "")
-			healthStyle = color.HealthGoodStyle
-		}
+		// No connection info yet
+		baseStyleForPanel = color.PanelStatusInitializingStyle
+		focusedBaseStyleForPanel = color.FocusedPanelStatusInitializingStyle
+		contentFg = color.StatusMsgInitializingStyle
 	}
 
-	renderedHealthText := healthStyle.Render(healthStatusText)
-	wcPaneContent += "\n" + renderedHealthText
-
-	wcPaneStyleToRender := color.ContextPaneStyle
-	if isWcActive {
-		wcPaneStyleToRender = color.ActiveContextPaneStyle
-	}
+	finalPanelStyle := baseStyleForPanel
 	if m.FocusedPanelKey == model.WcPaneFocusKey {
-		if isWcActive {
-			wcPaneStyleToRender = color.FocusedAndActiveContextPaneStyle
-		} else {
-			wcPaneStyleToRender = color.FocusedContextPaneStyle
-		}
+		finalPanelStyle = focusedBaseStyleForPanel
 	}
-	return wcPaneStyleToRender.Copy().Width(paneWidth - wcPaneStyleToRender.GetHorizontalFrameSize()).Render(wcPaneContent)
+
+	// Override foreground color for content
+	finalPanelStyle = finalPanelStyle.Copy().Foreground(contentFg.GetForeground())
+
+	// Build content
+	var b strings.Builder
+
+	// Title
+	activeStr := ""
+	if isWcActive {
+		activeStr = " (Active)"
+	}
+	b.WriteString(color.PortTitleStyle.Render(fmt.Sprintf("%sWC: %s%s", SafeIcon(IconKubernetes), wcName, activeStr)))
+	b.WriteString("\n")
+
+	// Status line (like port forwards)
+	var statusIcon string
+	var statusText string
+	if conn != nil {
+		stateLower := strings.ToLower(conn.State)
+		statusText = strings.TrimSpace(conn.State)
+		switch {
+		case stateLower == "running":
+			statusIcon = SafeIcon(IconPlay)
+		case stateLower == "failed":
+			statusIcon = SafeIcon(IconCross)
+		case stateLower == "starting":
+			statusIcon = SafeIcon(IconHourglass)
+		case stateLower == "stopped" || stateLower == "stopping":
+			statusIcon = SafeIcon(IconStop)
+		default:
+			statusIcon = SafeIcon(IconHourglass)
+		}
+	} else {
+		statusIcon = SafeIcon(IconHourglass)
+		statusText = "Initializing"
+	}
+	b.WriteString(contentFg.Render(fmt.Sprintf("Status: %s%s", statusIcon, statusText)))
+	b.WriteString("\n")
+
+	// Health line (like port forwards)
+	var healthIcon, healthText string
+	if conn != nil {
+		stateLower := strings.ToLower(conn.State)
+		healthLower := strings.ToLower(conn.Health)
+		if stateLower == "running" && healthLower == "healthy" {
+			healthIcon = SafeIcon(IconCheck)
+			healthText = "Healthy"
+		} else if stateLower == "failed" || healthLower == "unhealthy" {
+			healthIcon = SafeIcon(IconCross)
+			healthText = "Unhealthy"
+		} else {
+			healthIcon = SafeIcon(IconHourglass)
+			healthText = "Checking..."
+		}
+	} else {
+		healthIcon = SafeIcon(IconHourglass)
+		healthText = "Checking..."
+	}
+	b.WriteString(contentFg.Render(fmt.Sprintf("Health: %s%s", healthIcon, healthText)))
+
+	// Add version if available
+	if conn != nil && conn.Version != "" {
+		b.WriteString("\n")
+		b.WriteString(contentFg.Render(fmt.Sprintf("Version: %s", conn.Version)))
+	}
+
+	// Add node status if available
+	if conn != nil && conn.State == "Running" {
+		b.WriteString("\n")
+		nodeIcon := IconCheck
+		if conn.ReadyNodes < conn.TotalNodes {
+			nodeIcon = IconWarning
+		}
+		b.WriteString(contentFg.Render(fmt.Sprintf("Nodes: %s%d/%d", SafeIcon(nodeIcon), conn.ReadyNodes, conn.TotalNodes)))
+	}
+
+	frame := finalPanelStyle.GetHorizontalFrameSize()
+	contentWidth := paneWidth - frame
+	if contentWidth < 0 {
+		contentWidth = 0
+	}
+	return finalPanelStyle.Copy().Width(contentWidth).Render(b.String())
 }

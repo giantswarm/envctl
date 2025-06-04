@@ -25,6 +25,7 @@ type K8sConnectionService struct {
 	readyNodes      int
 	totalNodes      int
 	healthError     error
+	version         string
 
 	// Context for cancellation
 	cancelFunc context.CancelFunc
@@ -129,13 +130,17 @@ func (s *K8sConnectionService) GetServiceData() map[string]interface{} {
 		data["healthError"] = s.healthError.Error()
 	}
 
+	if s.version != "" {
+		data["version"] = s.version
+	}
+
 	return data
 }
 
 // CheckHealth implements HealthChecker
 func (s *K8sConnectionService) CheckHealth(ctx context.Context) (services.HealthStatus, error) {
 	// First check if API is responsive - this is the primary health indicator
-	apiErr := s.kubeMgr.CheckAPIHealth(ctx, s.contextName)
+	version, apiErr := s.kubeMgr.CheckAPIHealth(ctx, s.contextName)
 
 	// Also get node health for informational purposes
 	nodeHealth, nodeErr := s.kubeMgr.GetClusterNodeHealth(ctx, s.contextName)
@@ -148,11 +153,15 @@ func (s *K8sConnectionService) CheckHealth(ctx context.Context) (services.Health
 		s.healthError = apiErr
 		s.readyNodes = -1
 		s.totalNodes = -1
+		s.version = ""
 		s.mu.Unlock()
 
 		logging.Error("K8sConnection-"+s.label, apiErr, "API health check failed")
 		return services.HealthUnhealthy, apiErr
 	}
+
+	// Store the version
+	s.version = version
 
 	// API is responsive, so the cluster is healthy
 	// Update node counts if available

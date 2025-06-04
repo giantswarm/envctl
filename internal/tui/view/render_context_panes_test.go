@@ -36,9 +36,12 @@ func TestRenderMcPane_FindsConnectionWithNewLabel(t *testing.T) {
 		t.Error("Expected result to contain 'MC: test'")
 	}
 
-	// Should contain healthy node status
-	if !contains(result, "3/3") {
-		t.Error("Expected result to contain healthy node count '3/3'")
+	// Should contain status and health
+	if !contains(result, "Status:") {
+		t.Error("Expected result to contain 'Status:'")
+	}
+	if !contains(result, "Health:") {
+		t.Error("Expected result to contain 'Health:'")
 	}
 }
 
@@ -73,9 +76,12 @@ func TestRenderWcPane_FindsConnectionWithNewLabel(t *testing.T) {
 		t.Error("Expected result to contain 'WC: work'")
 	}
 
-	// Should contain degraded node status
-	if !contains(result, "1/2") {
-		t.Error("Expected result to contain degraded node count '1/2'")
+	// Should contain status and health
+	if !contains(result, "Status:") {
+		t.Error("Expected result to contain 'Status:'")
+	}
+	if !contains(result, "Health:") {
+		t.Error("Expected result to contain 'Health:'")
 	}
 }
 

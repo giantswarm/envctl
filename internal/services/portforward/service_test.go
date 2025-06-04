@@ -105,9 +105,9 @@ func (m *mockKubeManager) DetermineClusterProvider(ctx context.Context, kubeCont
 	return "aws", nil
 }
 
-func (m *mockKubeManager) CheckAPIHealth(ctx context.Context, kubeContextName string) error {
-	// By default, return nil (healthy)
-	return nil
+func (m *mockKubeManager) CheckAPIHealth(ctx context.Context, kubeContextName string) (string, error) {
+	// By default, return version and nil (healthy)
+	return "v1.28.0", nil
 }
 
 func TestNewPortForwardService(t *testing.T) {

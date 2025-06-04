@@ -20,6 +20,7 @@ func TestGetAggregatorInfo(t *testing.T) {
 			setupMocks: func(registry *MockServiceRegistry, service *MockServiceDataProvider) {
 				// Setup aggregator service
 				registry.On("GetByType", services.ServiceType("Aggregator")).Return([]services.Service{service})
+				service.On("GetState").Return(services.StateRunning)
 				service.On("GetHealth").Return(services.HealthHealthy)
 				service.On("GetServiceData").Return(map[string]interface{}{
 					"endpoint":          "http://localhost:8080/sse",
@@ -36,6 +37,7 @@ func TestGetAggregatorInfo(t *testing.T) {
 				Endpoint:         "http://localhost:8080/sse",
 				Port:             8080,
 				Host:             "localhost",
+				State:            "Running",
 				Health:           "Healthy",
 				ServersTotal:     3,
 				ServersConnected: 2,
@@ -56,10 +58,12 @@ func TestGetAggregatorInfo(t *testing.T) {
 			setupMocks: func(registry *MockServiceRegistry, service *MockServiceDataProvider) {
 				// Create a mock service that doesn't implement ServiceDataProvider
 				basicService := new(MockService)
+				basicService.On("GetState").Return(services.StateRunning)
 				basicService.On("GetHealth").Return(services.HealthHealthy)
 				registry.On("GetByType", services.ServiceType("Aggregator")).Return([]services.Service{basicService})
 			},
 			expectedInfo: &AggregatorInfo{
+				State:  "Running",
 				Health: "Healthy",
 			},
 		},

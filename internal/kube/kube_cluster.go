@@ -140,8 +140,8 @@ func GetClientsetForContext(ctx context.Context, kubeContextName string) (kubern
 	return clientset, nil
 }
 
-// CheckAPIHealth checks if the Kubernetes API server is responsive
-var CheckAPIHealth = func(clientset kubernetes.Interface) error {
+// CheckAPIHealth checks if the Kubernetes API server is responsive and returns the version
+var CheckAPIHealth = func(clientset kubernetes.Interface) (string, error) {
 	// Create a context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -150,20 +150,22 @@ var CheckAPIHealth = func(clientset kubernetes.Interface) error {
 	// to get the server version. This works with all Kubernetes versions.
 	version, err := clientset.Discovery().ServerVersion()
 	if err != nil {
-		return fmt.Errorf("API server not responding: %w", err)
+		return "", fmt.Errorf("API server not responding: %w", err)
 	}
 
 	// If we can get the version, we could also try to list a small resource
 	// to ensure the API is fully functional (not just responding to discovery)
 	_, err = clientset.CoreV1().Namespaces().List(ctx, metav1.ListOptions{Limit: 1})
 	if err != nil {
-		return fmt.Errorf("API server not fully functional: %w", err)
+		return "", fmt.Errorf("API server not fully functional: %w", err)
 	}
 
 	// Log the server version for debugging
+	versionStr := ""
 	if version != nil {
-		logging.Debug("CheckAPIHealth", "API server version: %s", version.GitVersion)
+		versionStr = version.GitVersion
+		logging.Debug("CheckAPIHealth", "API server version: %s", versionStr)
 	}
 
-	return nil
+	return versionStr, nil
 }

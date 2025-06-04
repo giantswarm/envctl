@@ -16,6 +16,7 @@ type AggregatorInfo struct {
 	Endpoint         string `json:"endpoint"`
 	Port             int    `json:"port"`
 	Host             string `json:"host"`
+	State            string `json:"state"`
 	Health           string `json:"health"`
 	ServersTotal     int    `json:"servers_total"`
 	ServersConnected int    `json:"servers_connected"`
@@ -59,6 +60,7 @@ func (api *aggregatorAPI) GetAggregatorInfo(ctx context.Context) (*AggregatorInf
 	aggregator := aggregatorServices[0]
 
 	info := &AggregatorInfo{
+		State:  string(aggregator.GetState()),
 		Health: string(aggregator.GetHealth()),
 	}
 

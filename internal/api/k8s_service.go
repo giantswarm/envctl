@@ -18,6 +18,7 @@ type K8sConnectionInfo struct {
 	TotalNodes int       `json:"totalNodes"`
 	LastCheck  time.Time `json:"lastCheck"`
 	Error      string    `json:"error,omitempty"`
+	Version    string    `json:"version,omitempty"`
 }
 
 // K8sServiceAPI provides access to K8s connection service information
@@ -84,6 +85,9 @@ func (api *k8sServiceAPI) GetConnectionInfo(ctx context.Context, label string) (
 		}
 		if lastCheck, ok := data["lastCheck"].(time.Time); ok {
 			info.LastCheck = lastCheck
+		}
+		if version, ok := data["version"].(string); ok {
+			info.Version = version
 		}
 	}
 

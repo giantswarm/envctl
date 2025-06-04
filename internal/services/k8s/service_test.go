@@ -69,8 +69,11 @@ func (m *mockKubeManager) DetermineClusterProvider(ctx context.Context, kubeCont
 	return "", nil
 }
 
-func (m *mockKubeManager) CheckAPIHealth(ctx context.Context, kubeContextName string) error {
-	return m.apiHealthErr
+func (m *mockKubeManager) CheckAPIHealth(ctx context.Context, kubeContextName string) (string, error) {
+	if m.apiHealthErr != nil {
+		return "", m.apiHealthErr
+	}
+	return "v1.28.0", nil
 }
 
 func TestNewK8sConnectionService(t *testing.T) {
