@@ -223,6 +223,8 @@ func (o *Orchestrator) startK8sConnectionsInParallel(servicesToStart []string) e
 func (o *Orchestrator) startPortForwardsInParallel(servicesToStart []string) error {
 	var pfWg sync.WaitGroup
 	var pfServices []string
+	skippedServices := make([]string, 0)
+	var mu sync.Mutex
 
 	// Identify port forward services
 	for _, label := range servicesToStart {
@@ -240,9 +242,12 @@ func (o *Orchestrator) startPortForwardsInParallel(servicesToStart []string) err
 		go func(svcLabel string) {
 			defer pfWg.Done()
 
-			// Wait for dependencies before starting
-			if err := o.waitForDependencies(svcLabel, 30*time.Second); err != nil {
-				logging.Error("Orchestrator", err, "Port forward %s dependencies not ready", svcLabel)
+			// Check dependencies first with a shorter timeout for failed deps
+			if err := o.waitForDependencies(svcLabel, 5*time.Second); err != nil {
+				logging.Warn("Orchestrator", "Skipping port forward %s: %v", svcLabel, err)
+				mu.Lock()
+				skippedServices = append(skippedServices, svcLabel)
+				mu.Unlock()
 				return
 			}
 
@@ -252,8 +257,13 @@ func (o *Orchestrator) startPortForwardsInParallel(servicesToStart []string) err
 		}(label)
 	}
 
-	// Wait for all port forwards to complete starting (or fail)
+	// Wait for all port forwards to complete starting (or be skipped)
 	pfWg.Wait()
+
+	if len(skippedServices) > 0 {
+		logging.Info("Orchestrator", "Skipped %d port forwards due to missing dependencies: %v",
+			len(skippedServices), skippedServices)
+	}
 
 	return nil
 }
@@ -263,6 +273,8 @@ func (o *Orchestrator) startPortForwardsInParallel(servicesToStart []string) err
 func (o *Orchestrator) startMCPServersInParallel(servicesToStart []string) error {
 	var mcpWg sync.WaitGroup
 	var mcpServices []string
+	skippedServices := make([]string, 0)
+	var mu sync.Mutex
 
 	// Identify MCP server services
 	for _, label := range servicesToStart {
@@ -280,9 +292,12 @@ func (o *Orchestrator) startMCPServersInParallel(servicesToStart []string) error
 		go func(svcLabel string) {
 			defer mcpWg.Done()
 
-			// Wait for dependencies before starting
-			if err := o.waitForDependencies(svcLabel, 30*time.Second); err != nil {
-				logging.Error("Orchestrator", err, "MCP server %s dependencies not ready", svcLabel)
+			// Check dependencies first with a shorter timeout for failed deps
+			if err := o.waitForDependencies(svcLabel, 5*time.Second); err != nil {
+				logging.Warn("Orchestrator", "Skipping MCP server %s: %v", svcLabel, err)
+				mu.Lock()
+				skippedServices = append(skippedServices, svcLabel)
+				mu.Unlock()
 				return
 			}
 
@@ -292,8 +307,13 @@ func (o *Orchestrator) startMCPServersInParallel(servicesToStart []string) error
 		}(label)
 	}
 
-	// Wait for all MCP servers to finish starting (or fail)
+	// Wait for all MCP servers to finish starting (or be skipped)
 	mcpWg.Wait()
+
+	if len(skippedServices) > 0 {
+		logging.Info("Orchestrator", "Skipped %d MCP servers due to missing dependencies: %v",
+			len(skippedServices), skippedServices)
+	}
 
 	return nil
 }
@@ -326,13 +346,22 @@ func (o *Orchestrator) waitForDependencies(label string, timeout time.Duration) 
 	defer ticker.Stop()
 
 	for time.Now().Before(deadline) {
-		allReady, _, err := o.checkDependencyStatus(label)
+		allReady, missingDep, err := o.checkDependencyStatus(label)
 		if err != nil {
 			return err
 		}
 		if allReady {
 			logging.Debug("Orchestrator", "All dependencies ready for %s", label)
 			return nil
+		}
+
+		// Check if dependency is in a failed state - fail fast
+		if missingDep != "" {
+			if depService, exists := o.registry.Get(missingDep); exists {
+				if depService.GetState() == services.StateFailed {
+					return fmt.Errorf("dependency %s is in failed state", missingDep)
+				}
+			}
 		}
 
 		select {

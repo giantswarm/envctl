@@ -682,6 +682,26 @@ func TestOrchestrator_waitForDependencies(t *testing.T) {
 			wantErr:      true,
 			errContains:  "timeout waiting for dependencies",
 		},
+		{
+			name: "fail fast when dependency is failed",
+			setupOrch: func(o *Orchestrator) {
+				o.depGraph = dependency.New()
+				o.depGraph.AddNode(dependency.Node{
+					ID:        "test-service",
+					DependsOn: []dependency.NodeID{"failed-dep"},
+				})
+
+				// Register dependency that's failed
+				o.registry.Register(&mockService{
+					label: "failed-dep",
+					state: services.StateFailed,
+				})
+			},
+			serviceLabel: "test-service",
+			timeout:      10 * time.Second, // Long timeout to ensure we fail fast
+			wantErr:      true,
+			errContains:  "dependency failed-dep is in failed state",
+		},
 	}
 
 	for _, tt := range tests {
@@ -764,6 +784,70 @@ func TestOrchestrator_startPortForwardsInParallel(t *testing.T) {
 	assert.Len(t, startOrder, 2)
 	assert.Contains(t, startOrder, "pf1")
 	assert.Contains(t, startOrder, "pf2")
+	mu.Unlock()
+}
+
+func TestOrchestrator_startPortForwardsInParallel_SkipsFailedDependencies(t *testing.T) {
+	o := New(Config{})
+	ctx := context.Background()
+	err := o.Start(ctx)
+	require.NoError(t, err)
+	defer o.Stop()
+
+	// Setup dependency graph
+	o.depGraph = dependency.New()
+	o.depGraph.AddNode(dependency.Node{ID: "k8s-running"})
+	o.depGraph.AddNode(dependency.Node{ID: "k8s-failed"})
+	o.depGraph.AddNode(dependency.Node{
+		ID:        "pf:pf-good",
+		DependsOn: []dependency.NodeID{"k8s-running"},
+	})
+	o.depGraph.AddNode(dependency.Node{
+		ID:        "pf:pf-bad",
+		DependsOn: []dependency.NodeID{"k8s-failed"},
+	})
+
+	// Register K8s dependencies - one running, one failed
+	o.registry.Register(&mockService{
+		label: "k8s-running",
+		state: services.StateRunning,
+	})
+	o.registry.Register(&mockService{
+		label: "k8s-failed",
+		state: services.StateFailed,
+	})
+
+	var mu sync.Mutex
+	startedServices := []string{}
+
+	// Register port forward services
+	for _, label := range []string{"pf-good", "pf-bad"} {
+		labelCopy := label // Capture for closure
+		svc := &mockService{
+			label:       label,
+			serviceType: services.TypePortForward,
+			state:       services.StateStopped,
+			startFunc: func(ctx context.Context) error {
+				mu.Lock()
+				startedServices = append(startedServices, labelCopy)
+				mu.Unlock()
+				return nil
+			},
+		}
+		o.registry.Register(svc)
+	}
+
+	servicesToStart := []string{"pf-good", "pf-bad"}
+
+	// Start port forwards in parallel
+	err = o.startPortForwardsInParallel(servicesToStart)
+	assert.NoError(t, err)
+
+	// Verify only pf-good was started, pf-bad was skipped
+	mu.Lock()
+	assert.Len(t, startedServices, 1)
+	assert.Contains(t, startedServices, "pf-good")
+	assert.NotContains(t, startedServices, "pf-bad")
 	mu.Unlock()
 }
 
