@@ -1,0 +1,259 @@
+package agent
+
+import (
+	"encoding/json"
+	"fmt"
+	"time"
+)
+
+// ANSI color codes
+const (
+	colorReset  = "\033[0m"
+	colorRed    = "\033[31m"
+	colorGreen  = "\033[32m"
+	colorYellow = "\033[33m"
+	colorBlue   = "\033[34m"
+	colorGray   = "\033[90m"
+)
+
+// Logger provides formatted logging for the agent
+type Logger struct {
+	verbose     bool
+	useColor    bool
+	jsonRPCMode bool
+}
+
+// NewLogger creates a new logger
+func NewLogger(verbose, useColor, jsonRPCMode bool) *Logger {
+	return &Logger{
+		verbose:     verbose,
+		useColor:    useColor,
+		jsonRPCMode: jsonRPCMode,
+	}
+}
+
+// timestamp returns the current timestamp string
+func (l *Logger) timestamp() string {
+	return time.Now().Format("2006-01-02 15:04:05")
+}
+
+// colorize applies color to text if colors are enabled
+func (l *Logger) colorize(text, colorCode string) string {
+	if !l.useColor {
+		return text
+	}
+	return fmt.Sprintf("%s%s%s", colorCode, text, colorReset)
+}
+
+// Info logs an informational message
+func (l *Logger) Info(format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	fmt.Printf("[%s] %s\n", l.timestamp(), msg)
+}
+
+// Debug logs a debug message (only in verbose mode)
+func (l *Logger) Debug(format string, args ...interface{}) {
+	if !l.verbose {
+		return
+	}
+	msg := fmt.Sprintf(format, args...)
+	fmt.Printf("[%s] %s\n", l.timestamp(), l.colorize(msg, colorGray))
+}
+
+// Error logs an error message
+func (l *Logger) Error(format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	fmt.Printf("[%s] %s\n", l.timestamp(), l.colorize(msg, colorRed))
+}
+
+// Success logs a success message
+func (l *Logger) Success(format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	fmt.Printf("[%s] %s\n", l.timestamp(), l.colorize(msg, colorGreen))
+}
+
+// Request logs an outgoing request
+func (l *Logger) Request(method string, params interface{}) {
+	if !l.jsonRPCMode {
+		// Simple mode - just log what we're doing
+		switch method {
+		case "initialize":
+			l.Info("Initializing MCP session...")
+		case "tools/list":
+			l.Info("Listing available tools...")
+		default:
+			l.Info("Sending request: %s", method)
+		}
+		return
+	}
+
+	// JSON-RPC mode - full protocol logging
+	arrow := l.colorize("→", colorBlue)
+	methodStr := l.colorize(fmt.Sprintf("REQUEST (%s)", method), colorBlue)
+
+	fmt.Printf("[%s] %s %s:\n", l.timestamp(), arrow, methodStr)
+
+	// Pretty print the params
+	if params != nil {
+		jsonStr := l.prettyJSON(params)
+		fmt.Println(l.colorize(jsonStr, colorBlue))
+	}
+	fmt.Println()
+}
+
+// Response logs an incoming response
+func (l *Logger) Response(method string, result interface{}) {
+	if !l.jsonRPCMode {
+		// Simple mode - log meaningful information
+		switch method {
+		case "initialize":
+			// Extract protocol version if possible
+			if initResult, ok := result.(map[string]interface{}); ok {
+				if protocolVersion, exists := initResult["protocolVersion"]; exists {
+					l.Success("Session initialized successfully (protocol: %v)", protocolVersion)
+				} else {
+					l.Success("Session initialized successfully")
+				}
+			} else {
+				l.Success("Session initialized successfully")
+			}
+		case "tools/list":
+			// Try to count tools
+			toolCount := l.countTools(result)
+			if toolCount >= 0 {
+				l.Success("Found %d tools", toolCount)
+			} else {
+				l.Success("Retrieved tool list")
+			}
+		default:
+			l.Success("Received response for: %s", method)
+		}
+		return
+	}
+
+	// JSON-RPC mode - full protocol logging
+	arrow := l.colorize("←", colorGreen)
+	methodStr := l.colorize(fmt.Sprintf("RESPONSE (%s)", method), colorGreen)
+
+	fmt.Printf("[%s] %s %s:\n", l.timestamp(), arrow, methodStr)
+
+	// Pretty print the result
+	if result != nil {
+		jsonStr := l.prettyJSON(result)
+		fmt.Println(l.colorize(jsonStr, colorGreen))
+	}
+	fmt.Println()
+}
+
+// Notification logs an incoming notification
+func (l *Logger) Notification(method string, params interface{}) {
+	// Skip keepalive notifications unless in verbose mode
+	if method == "$/keepalive" && !l.verbose {
+		return
+	}
+
+	if !l.jsonRPCMode {
+		// Simple mode - just log the notification type
+		switch method {
+		case "notifications/tools/list_changed":
+			l.Info("Tools list changed! Fetching updated list...")
+		case "notifications/resources/list_changed":
+			l.Info("Resources list changed")
+		case "notifications/prompts/list_changed":
+			l.Info("Prompts list changed")
+		default:
+			if l.verbose {
+				l.Debug("Received notification: %s", method)
+			}
+		}
+		return
+	}
+
+	// JSON-RPC mode - full protocol logging
+	arrow := l.colorize("←", colorYellow)
+	methodStr := l.colorize(fmt.Sprintf("NOTIFICATION (%s)", method), colorYellow)
+
+	fmt.Printf("[%s] %s %s:\n", l.timestamp(), arrow, methodStr)
+
+	// Pretty print the params
+	if params != nil {
+		jsonStr := l.prettyJSON(params)
+		fmt.Println(l.colorize(jsonStr, colorYellow))
+	}
+	fmt.Println()
+}
+
+// prettyJSON formats JSON for display
+func (l *Logger) prettyJSON(v interface{}) string {
+	// Create a wrapper that includes the full JSON-RPC structure if needed
+	wrapper := make(map[string]interface{})
+
+	switch val := v.(type) {
+	case map[string]interface{}:
+		// Already a map, use as-is
+		wrapper = val
+	default:
+		// Wrap in a simple structure
+		wrapper["jsonrpc"] = "2.0"
+
+		// Try to detect the type and structure appropriately
+		switch vt := v.(type) {
+		case struct {
+			ProtocolVersion string      `json:"protocolVersion"`
+			Capabilities    interface{} `json:"capabilities"`
+			ClientInfo      interface{} `json:"clientInfo"`
+		}:
+			// Initialize request params
+			wrapper["method"] = "initialize"
+			wrapper["params"] = v
+			wrapper["id"] = 1
+		default:
+			// Generic wrapping
+			wrapper["result"] = v
+			_ = vt // avoid unused variable warning
+		}
+	}
+
+	b, err := json.MarshalIndent(wrapper, "", "  ")
+	if err != nil {
+		// Fallback to direct marshaling
+		b, err = json.MarshalIndent(v, "", "  ")
+		if err != nil {
+			return fmt.Sprintf("%+v", v)
+		}
+	}
+	return string(b)
+}
+
+// Write implements io.Writer for compatibility
+func (l *Logger) Write(p []byte) (n int, err error) {
+	l.Debug("%s", string(p))
+	return len(p), nil
+}
+
+// countTools attempts to count the number of tools in a tools/list response
+func (l *Logger) countTools(result interface{}) int {
+	// Try to extract tools array from various response structures
+	switch v := result.(type) {
+	case map[string]interface{}:
+		if tools, ok := v["tools"]; ok {
+			if toolsArray, ok := tools.([]interface{}); ok {
+				return len(toolsArray)
+			}
+		}
+	}
+
+	// Try type assertion for the specific ListToolsResult type
+	type toolsResult struct {
+		Tools []interface{} `json:"tools"`
+	}
+
+	if jsonBytes, err := json.Marshal(result); err == nil {
+		var tr toolsResult
+		if err := json.Unmarshal(jsonBytes, &tr); err == nil && tr.Tools != nil {
+			return len(tr.Tools)
+		}
+	}
+
+	return -1 // Indicate we couldn't count
+}

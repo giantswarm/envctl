@@ -108,6 +108,9 @@ envctl version
 # Update envctl to the latest release
 envctl self-update
 
+# Debug the MCP aggregator as a client
+envctl agent
+
 # Use the CLI mode without TUI (for scripts or CI environments)
 # This mode will:
 # - Log into the specified cluster(s) via tsh
