@@ -1,61 +1,97 @@
 # Basic envctl configuration example
-# This file demonstrates a minimal configuration for envctl
+# This shows a minimal configuration with the new cluster system
+
+globalSettings:
+  defaultContainerRuntime: "docker"
+
+# Define your clusters
+clusters:
+  # Management cluster for monitoring infrastructure
+  - name: "mc-prod"
+    context: "teleport.giantswarm.io-production"
+    role: "observability"
+    displayName: "Production MC"
+    icon: "🏢"
+  
+  # Workload cluster where your applications run
+  - name: "wc-prod-apps"
+    context: "teleport.giantswarm.io-production-apps"
+    role: "target"
+    displayName: "Production Apps"
+    icon: "🚀"
+
+# Set which cluster is active for each role
+activeClusters:
+  observability: "mc-prod"
+  target: "wc-prod-apps"
 
 # Port forwards define which services to expose locally
 portForwards:
-  # Prometheus from the management cluster
-  - name: mc-prometheus
-    enabled: true
-    namespace: mimir
-    service: prometheus-operated
-    localPort: 8080
-    remotePort: 9090
-    kubeContextTarget: "mc"  # Target the management cluster
-
-  # Grafana from the management cluster  
-  - name: mc-grafana
-    enabled: true
-    namespace: mimir
-    service: grafana
-    localPort: 3000
-    remotePort: 3000
-    kubeContextTarget: "mc"
-
-  # Alloy metrics - targets WC if available, otherwise MC
-  - name: alloy-metrics
-    enabled: true
-    namespace: kube-system
-    service: alloy-metrics
-    localPort: 12345
-    remotePort: 12345
-    kubeContextTarget: "dynamic"  # Automatically selects WC or MC
+  - name: "mc-prometheus"
+    enabledByDefault: true
+    icon: "📊"
+    category: "Monitoring"
+    clusterRole: "observability"  # Uses the active observability cluster
+    namespace: "mimir"
+    targetType: "service"
+    targetName: "mimir-query-frontend"
+    localPort: "8080"
+    remotePort: "8080"
+  
+  - name: "mc-grafana"
+    enabledByDefault: true
+    icon: "📈"
+    category: "Monitoring"
+    clusterRole: "observability"
+    namespace: "mimir"
+    targetType: "service"
+    targetName: "grafana"
+    localPort: "3000"
+    remotePort: "3000"
+  
+  # Additional app-specific port forward
+  - name: "app-api"
+    enabledByDefault: false
+    icon: "🔌"
+    category: "Applications"
+    clusterRole: "target"  # Uses the active target cluster
+    namespace: "production"
+    targetType: "service"
+    targetName: "api-gateway"
+    localPort: "8000"
+    remotePort: "80"
 
 # MCP servers provide AI assistants with access to your clusters
 mcpServers:
   # Kubernetes MCP server for cluster operations
-  - name: kubernetes
-    enabled: true
-    type: localCommand
+  - name: "kubernetes"
+    type: "localCommand"
+    enabledByDefault: true
+    icon: "☸️"
+    category: "Core"
     command: ["mcp-server-kubernetes"]
-    proxyPort: 8001
-    requiresK8sConnection: "mc"  # Requires MC connection
-
+    requiresClusterRole: "target"  # Connects to the active target cluster
+  
   # Prometheus MCP server for metrics queries
-  - name: prometheus
-    enabled: true
-    type: localCommand
+  - name: "prometheus"
+    type: "localCommand"
+    enabledByDefault: true
+    icon: "📊"
+    category: "Monitoring"
     command: ["mcp-server-prometheus"]
-    proxyPort: 8002
-    requiresPortForwards: ["mc-prometheus"]  # Depends on prometheus port forward
     env:
       PROMETHEUS_URL: "http://localhost:8080"
+      ORG_ID: "1"  # For multi-tenant Prometheus
+    requiresPortForwards:
+      - "mc-prometheus"
 
   # Grafana MCP server for dashboard access
-  - name: grafana
-    enabled: true
-    type: localCommand
+  - name: "grafana"
+    type: "localCommand"
+    enabledByDefault: true
+    icon: "📈"
+    category: "Monitoring"
     command: ["mcp-server-grafana"]
-    proxyPort: 8003
-    requiresPortForwards: ["mc-grafana"]  # Depends on grafana port forward
+    requiresPortForwards: ["mc-grafana"]
     env:
       GRAFANA_URL: "http://localhost:3000" 

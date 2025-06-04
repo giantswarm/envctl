@@ -14,8 +14,24 @@ import (
 func TestOrchestrator_BasicLifecycle(t *testing.T) {
 	// Test basic orchestrator lifecycle without timing dependencies
 	o := New(Config{
-		MCName: "test-mc",
-		WCName: "test-wc",
+		Clusters: []config.ClusterDefinition{
+			{
+				Name:        "mc-test",
+				Context:     "test-context",
+				Role:        config.ClusterRoleObservability,
+				DisplayName: "Test MC",
+			},
+			{
+				Name:        "wc-test",
+				Context:     "wc-context",
+				Role:        config.ClusterRoleTarget,
+				DisplayName: "Test WC",
+			},
+		},
+		ActiveClusters: map[config.ClusterRole]string{
+			config.ClusterRoleObservability: "mc-test",
+			config.ClusterRoleTarget:        "wc-test",
+		},
 	})
 
 	ctx := context.Background()
@@ -39,10 +55,26 @@ func TestOrchestrator_BasicLifecycle(t *testing.T) {
 func TestOrchestrator_ServiceRegistration(t *testing.T) {
 	// Test that services are properly registered
 	o := New(Config{
-		MCName: "test-mc",
-		WCName: "test-wc",
+		Clusters: []config.ClusterDefinition{
+			{
+				Name:        "mc-test",
+				Context:     "test-context",
+				Role:        config.ClusterRoleObservability,
+				DisplayName: "Test MC",
+			},
+			{
+				Name:        "wc-test",
+				Context:     "wc-context",
+				Role:        config.ClusterRoleTarget,
+				DisplayName: "Test WC",
+			},
+		},
+		ActiveClusters: map[config.ClusterRole]string{
+			config.ClusterRoleObservability: "mc-test",
+			config.ClusterRoleTarget:        "wc-test",
+		},
 		PortForwards: []config.PortForwardDefinition{
-			{Name: "pf1", Enabled: true},
+			{Name: "pf1", Enabled: true, ClusterRole: config.ClusterRoleObservability},
 			{Name: "pf2", Enabled: false},
 		},
 		MCPServers: []config.MCPServerDefinition{
@@ -55,10 +87,10 @@ func TestOrchestrator_ServiceRegistration(t *testing.T) {
 	require.NoError(t, err)
 
 	// Check that enabled services are registered
-	_, exists := o.registry.Get("k8s-mc-test-mc")
+	_, exists := o.registry.Get("mc-test")
 	assert.True(t, exists)
 
-	_, exists = o.registry.Get("k8s-wc-test-wc")
+	_, exists = o.registry.Get("wc-test")
 	assert.True(t, exists)
 
 	_, exists = o.registry.Get("pf1")
@@ -78,24 +110,31 @@ func TestOrchestrator_ServiceRegistration(t *testing.T) {
 func TestOrchestrator_DependencyGraph(t *testing.T) {
 	// Test dependency graph construction
 	o := New(Config{
-		MCName: "test-mc",
-		WCName: "test-wc",
-		PortForwards: []config.PortForwardDefinition{
+		Clusters: []config.ClusterDefinition{
 			{
-				Name:              "pf1",
-				Enabled:           true,
-				KubeContextTarget: "gs-test-mc",
+				Name:        "mc-test",
+				Context:     "test-context",
+				Role:        config.ClusterRoleObservability,
+				DisplayName: "Test MC",
+			},
+			{
+				Name:        "wc-test",
+				Context:     "wc-context",
+				Role:        config.ClusterRoleTarget,
+				DisplayName: "Test WC",
 			},
 		},
-		// Commenting out MCP servers to avoid aggregator creation in tests
-		// The dependency graph test doesn't need MCP servers
-		// MCPServers: []config.MCPServerDefinition{
-		// 	{
-		// 		Name:                 "mcp1",
-		// 		Enabled:              true,
-		// 		RequiresPortForwards: []string{"pf1"},
-		// 	},
-		// },
+		ActiveClusters: map[config.ClusterRole]string{
+			config.ClusterRoleObservability: "mc-test",
+			config.ClusterRoleTarget:        "wc-test",
+		},
+		PortForwards: []config.PortForwardDefinition{
+			{
+				Name:        "pf1",
+				Enabled:     true,
+				ClusterRole: config.ClusterRoleObservability,
+			},
+		},
 	})
 
 	// Only register services and build the dependency graph - don't start services
@@ -112,25 +151,19 @@ func TestOrchestrator_DependencyGraph(t *testing.T) {
 	assert.NotNil(t, graph)
 
 	// Check MC node
-	mcNode := graph.Get(dependency.NodeID("k8s-mc-test-mc"))
+	mcNode := graph.Get(dependency.NodeID("mc-test"))
 	assert.NotNil(t, mcNode)
 	assert.Empty(t, mcNode.DependsOn)
 
 	// Check WC node - no longer depends on MC
-	wcNode := graph.Get(dependency.NodeID("k8s-wc-test-wc"))
+	wcNode := graph.Get(dependency.NodeID("wc-test"))
 	assert.NotNil(t, wcNode)
 	assert.Empty(t, wcNode.DependsOn) // WC is now independent
 
 	// Check PF node depends on MC
 	pfNode := graph.Get(dependency.NodeID("pf:pf1"))
 	assert.NotNil(t, pfNode)
-	assert.Contains(t, pfNode.DependsOn, dependency.NodeID("k8s-mc-test-mc"))
-
-	// The MCP node test is no longer needed since we removed MCP servers
-	// Check MCP node depends on PF
-	// mcpNode := graph.Get(dependency.NodeID("mcp:mcp1"))
-	// assert.NotNil(t, mcpNode)
-	// assert.Contains(t, mcpNode.DependsOn, dependency.NodeID("pf:pf1"))
+	assert.Contains(t, pfNode.DependsOn, dependency.NodeID("mc-test"))
 }
 
 func TestOrchestrator_StopReasons(t *testing.T) {

@@ -10,6 +10,7 @@ When implementing new features or fixing bugs, ensure the following testing crit
 - New functionality must be covered by appropriate unit, integration, or end-to-end tests.
 - If the user describes a bug, the behaviour that lead to the bug needs to be covered in a test.
 - Existing tests must be updated to reflect any changes in behavior.
+- Never use timers, timeouts, or other means to wait for conditions in the tests. This is bad practice and only produces slow and flaky tests.
 - If the changes affect the TUI views:
     - Corresponding golden files (located in `internal/tui/view/testdata/*.golden`) must be generated or updated.
     - This is typically done by running `go test ./internal/tui/view/... -update`.

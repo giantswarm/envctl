@@ -19,10 +19,26 @@ func TestOrchestrator_registerServices(t *testing.T) {
 		{
 			name: "registers all service types",
 			cfg: Config{
-				MCName: "test-mc",
-				WCName: "test-wc",
+				Clusters: []config.ClusterDefinition{
+					{
+						Name:        "mc-test",
+						Context:     "test-context",
+						Role:        config.ClusterRoleObservability,
+						DisplayName: "Test MC",
+					},
+					{
+						Name:        "wc-test",
+						Context:     "wc-context",
+						Role:        config.ClusterRoleTarget,
+						DisplayName: "Test WC",
+					},
+				},
+				ActiveClusters: map[config.ClusterRole]string{
+					config.ClusterRoleObservability: "mc-test",
+					config.ClusterRoleTarget:        "wc-test",
+				},
 				PortForwards: []config.PortForwardDefinition{
-					{Name: "pf1", Enabled: true},
+					{Name: "pf1", Enabled: true, ClusterRole: config.ClusterRoleObservability},
 					{Name: "pf2", Enabled: false}, // Should be skipped
 				},
 				MCPServers: []config.MCPServerDefinition{
@@ -32,11 +48,11 @@ func TestOrchestrator_registerServices(t *testing.T) {
 			},
 			check: func(t *testing.T, o *Orchestrator) {
 				// Check K8s services
-				mcService, exists := o.registry.Get("k8s-mc-test-mc")
+				mcService, exists := o.registry.Get("mc-test")
 				assert.True(t, exists)
 				assert.NotNil(t, mcService)
 
-				wcService, exists := o.registry.Get("k8s-wc-test-wc")
+				wcService, exists := o.registry.Get("wc-test")
 				assert.True(t, exists)
 				assert.NotNil(t, wcService)
 
@@ -62,7 +78,17 @@ func TestOrchestrator_registerServices(t *testing.T) {
 		{
 			name: "registers only enabled services",
 			cfg: Config{
-				MCName: "test-mc",
+				Clusters: []config.ClusterDefinition{
+					{
+						Name:        "mc-test",
+						Context:     "test-context",
+						Role:        config.ClusterRoleObservability,
+						DisplayName: "Test MC",
+					},
+				},
+				ActiveClusters: map[config.ClusterRole]string{
+					config.ClusterRoleObservability: "mc-test",
+				},
 				PortForwards: []config.PortForwardDefinition{
 					{Name: "pf1", Enabled: false},
 					{Name: "pf2", Enabled: false},
@@ -72,10 +98,10 @@ func TestOrchestrator_registerServices(t *testing.T) {
 				},
 			},
 			check: func(t *testing.T, o *Orchestrator) {
-				// Only MC service should be registered
+				// Only cluster service should be registered
 				allServices := o.registry.GetAll()
 				assert.Len(t, allServices, 1)
-				assert.Equal(t, "k8s-mc-test-mc", allServices[0].GetLabel())
+				assert.Equal(t, "mc-test", allServices[0].GetLabel())
 			},
 		},
 		{
@@ -114,30 +140,56 @@ func TestOrchestrator_registerK8sServices(t *testing.T) {
 		{
 			name: "registers MC only",
 			cfg: Config{
-				MCName: "test-mc",
+				Clusters: []config.ClusterDefinition{
+					{
+						Name:        "mc-test",
+						Context:     "test-context",
+						Role:        config.ClusterRoleObservability,
+						DisplayName: "Test MC",
+					},
+				},
+				ActiveClusters: map[config.ClusterRole]string{
+					config.ClusterRoleObservability: "mc-test",
+				},
 			},
 			check: func(t *testing.T, o *Orchestrator) {
-				mcService, exists := o.registry.Get("k8s-mc-test-mc")
+				mcService, exists := o.registry.Get("mc-test")
 				assert.True(t, exists)
 				assert.NotNil(t, mcService)
 
 				// No WC service should be registered
-				_, exists = o.registry.Get("k8s-wc-test-wc")
+				_, exists = o.registry.Get("wc-test")
 				assert.False(t, exists)
 			},
 		},
 		{
 			name: "registers MC and WC",
 			cfg: Config{
-				MCName: "test-mc",
-				WCName: "test-wc",
+				Clusters: []config.ClusterDefinition{
+					{
+						Name:        "mc-test",
+						Context:     "test-context",
+						Role:        config.ClusterRoleObservability,
+						DisplayName: "Test MC",
+					},
+					{
+						Name:        "wc-test",
+						Context:     "wc-context",
+						Role:        config.ClusterRoleTarget,
+						DisplayName: "Test WC",
+					},
+				},
+				ActiveClusters: map[config.ClusterRole]string{
+					config.ClusterRoleObservability: "mc-test",
+					config.ClusterRoleTarget:        "wc-test",
+				},
 			},
 			check: func(t *testing.T, o *Orchestrator) {
-				mcService, exists := o.registry.Get("k8s-mc-test-mc")
+				mcService, exists := o.registry.Get("mc-test")
 				assert.True(t, exists)
 				assert.NotNil(t, mcService)
 
-				wcService, exists := o.registry.Get("k8s-wc-test-wc")
+				wcService, exists := o.registry.Get("wc-test")
 				assert.True(t, exists)
 				assert.NotNil(t, wcService)
 			},
@@ -145,12 +197,23 @@ func TestOrchestrator_registerK8sServices(t *testing.T) {
 		{
 			name: "skips WC if no MC",
 			cfg: Config{
-				WCName: "test-wc", // No MC name
+				Clusters: []config.ClusterDefinition{
+					{
+						Name:        "wc-test",
+						Context:     "wc-context",
+						Role:        config.ClusterRoleTarget,
+						DisplayName: "Test WC",
+					},
+				},
+				ActiveClusters: map[config.ClusterRole]string{
+					config.ClusterRoleTarget: "wc-test",
+				},
 			},
 			check: func(t *testing.T, o *Orchestrator) {
-				// No services should be registered
+				// The cluster should still be registered regardless of role
 				allServices := o.registry.GetAll()
-				assert.Empty(t, allServices)
+				assert.Len(t, allServices, 1)
+				assert.Equal(t, "wc-test", allServices[0].GetLabel())
 			},
 		},
 		{
@@ -185,9 +248,20 @@ func TestOrchestrator_registerPortForwardServices(t *testing.T) {
 		{
 			name: "registers enabled port forwards",
 			cfg: Config{
+				Clusters: []config.ClusterDefinition{
+					{
+						Name:        "mc-test",
+						Context:     "test-context",
+						Role:        config.ClusterRoleObservability,
+						DisplayName: "Test MC",
+					},
+				},
+				ActiveClusters: map[config.ClusterRole]string{
+					config.ClusterRoleObservability: "mc-test",
+				},
 				PortForwards: []config.PortForwardDefinition{
-					{Name: "pf1", Enabled: true},
-					{Name: "pf2", Enabled: true},
+					{Name: "pf1", Enabled: true, ClusterRole: config.ClusterRoleObservability},
+					{Name: "pf2", Enabled: true, ClusterRole: config.ClusterRoleObservability},
 					{Name: "pf3", Enabled: false}, // Should be skipped
 				},
 			},
@@ -208,6 +282,17 @@ func TestOrchestrator_registerPortForwardServices(t *testing.T) {
 		{
 			name: "skips all disabled port forwards",
 			cfg: Config{
+				Clusters: []config.ClusterDefinition{
+					{
+						Name:        "mc-test",
+						Context:     "test-context",
+						Role:        config.ClusterRoleObservability,
+						DisplayName: "Test MC",
+					},
+				},
+				ActiveClusters: map[config.ClusterRole]string{
+					config.ClusterRoleObservability: "mc-test",
+				},
 				PortForwards: []config.PortForwardDefinition{
 					{Name: "pf1", Enabled: false},
 					{Name: "pf2", Enabled: false},
@@ -250,6 +335,17 @@ func TestOrchestrator_registerMCPServices(t *testing.T) {
 		{
 			name: "registers enabled MCP servers",
 			cfg: Config{
+				Clusters: []config.ClusterDefinition{
+					{
+						Name:        "mc-test",
+						Context:     "test-context",
+						Role:        config.ClusterRoleObservability,
+						DisplayName: "Test MC",
+					},
+				},
+				ActiveClusters: map[config.ClusterRole]string{
+					config.ClusterRoleObservability: "mc-test",
+				},
 				MCPServers: []config.MCPServerDefinition{
 					{Name: "mcp1", Enabled: true},
 					{Name: "mcp2", Enabled: true},
@@ -273,6 +369,17 @@ func TestOrchestrator_registerMCPServices(t *testing.T) {
 		{
 			name: "skips all disabled MCP servers",
 			cfg: Config{
+				Clusters: []config.ClusterDefinition{
+					{
+						Name:        "mc-test",
+						Context:     "test-context",
+						Role:        config.ClusterRoleObservability,
+						DisplayName: "Test MC",
+					},
+				},
+				ActiveClusters: map[config.ClusterRole]string{
+					config.ClusterRoleObservability: "mc-test",
+				},
 				MCPServers: []config.MCPServerDefinition{
 					{Name: "mcp1", Enabled: false},
 					{Name: "mcp2", Enabled: false},

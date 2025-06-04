@@ -1,69 +1,150 @@
 # Example configuration for running MCP servers in containers
 # This can be placed in ~/.config/envctl/config.yaml or ./.envctl/config.yaml
 
-mcpServers:
-  - name: kubernetes
-    type: container
-    enabledByDefault: true
-    icon: "☸"
-    category: "Core"
-    image: "giantswarm/mcp-server-kubernetes:latest"
-    proxyPort: 8001
-    containerPorts:
-      - "8001:3000"  # host:container
-    containerVolumes:
-      - "~/.kube/config:/home/mcpuser/.kube/config:ro"
-    containerEnv:
-      KUBECONFIG: "/home/mcpuser/.kube/config"
-
-  - name: prometheus
-    type: container
-    enabledByDefault: true
-    icon: "🔥"
-    category: "Monitoring"
-    image: "giantswarm/mcp-server-prometheus:latest"
-    proxyPort: 8002
-    containerPorts:
-      - "8002:3000"
-    containerEnv:
-      PROMETHEUS_URL: "http://host.docker.internal:8080/prometheus"
-      ORG_ID: "giantswarm"
-    requiresPortForwards:
-      - "mc-prometheus"
-
-  - name: grafana
-    type: container
-    enabledByDefault: true
-    icon: "📊"
-    category: "Monitoring"
-    image: "giantswarm/mcp-server-grafana:latest"
-    proxyPort: 8003
-    containerPorts:
-      - "8003:3000"
-    containerEnv:
-      GRAFANA_URL: "http://host.docker.internal:3000"
-    requiresPortForwards:
-      - "mc-grafana"
+# Containerized MCP servers configuration example
+# This demonstrates running MCP servers as Docker containers with cluster support
 
 globalSettings:
-  defaultContainerRuntime: "docker"
+  defaultContainerRuntime: "docker"  # or "podman"
 
-# Port forwards can be defined here too
+# Define clusters for containerized services
+clusters:
+  - name: "prod-mc"
+    context: "teleport.giantswarm.io-production"
+    role: "observability"
+    displayName: "Production MC"
+    icon: "🏢"
+  
+  - name: "prod-wc"
+    context: "teleport.giantswarm.io-production-main"
+    role: "target"
+    displayName: "Production WC"
+    icon: "🎯"
+
+activeClusters:
+  observability: "prod-mc"
+  target: "prod-wc"
+
+# Port forwards for containerized services
 portForwards:
-  - name: mc-prometheus
+  - name: "mc-prometheus"
     enabledByDefault: true
-    kubeContextTarget: "mc"  # Will be resolved to actual MC context
+    clusterRole: "observability"
     namespace: "mimir"
     targetType: "service"
     targetName: "mimir-query-frontend"
     localPort: "8080"
-    remotePort: "80"
-
-  - name: mc-grafana
+    remotePort: "8080"
+  
+  - name: "mc-grafana"
     enabledByDefault: true
-    kubeContextTarget: "mc"
-    namespace: "monitoring"
+    clusterRole: "observability"
+    namespace: "mimir"
     targetType: "service"
     targetName: "grafana"
     localPort: "3000"
-    remotePort: "3000" 
+    remotePort: "3000"
+
+# Containerized MCP servers
+mcpServers:
+  # Kubernetes MCP server running in container
+  - name: "kubernetes"
+    type: "container"
+    enabledByDefault: true
+    icon: "☸️"
+    category: "Core"
+    image: "ghcr.io/giantswarm/mcp-server-kubernetes:latest"
+    containerPorts:
+      - "8001:8080"  # Map container port 8080 to local 8001
+    containerVolumes:
+      - "~/.kube/config:/root/.kube/config:ro"  # Mount kubeconfig
+    containerEnv:
+      KUBECONFIG: "/root/.kube/config"
+      LOG_LEVEL: "info"
+    requiresClusterRole: "target"  # Uses active target cluster
+
+  # Prometheus MCP server in container
+  - name: "prometheus"
+    type: "container"
+    enabledByDefault: true
+    icon: "📊"
+    category: "Monitoring"
+    image: "ghcr.io/giantswarm/mcp-server-prometheus:latest"
+    containerPorts:
+      - "8002:8080"
+    containerVolumes:
+      - "/tmp/prometheus-cache:/cache"  # Cache directory
+    containerEnv:
+      PROMETHEUS_URL: "http://host.docker.internal:8080"  # Access host's port forward
+      CACHE_DIR: "/cache"
+      TIMEOUT: "30s"
+    requiresPortForwards:
+      - "mc-prometheus"
+    # Health check to ensure container is ready
+    healthCheckCmd: ["wget", "--spider", "-q", "http://localhost:8080/health"]
+
+  # Grafana MCP server with custom user
+  - name: "grafana"
+    type: "container"
+    enabledByDefault: true
+    icon: "📈"
+    category: "Monitoring"
+    image: "myregistry/mcp-server-grafana:v2.0"
+    containerPorts:
+      - "8003:8080"
+    containerEnv:
+      GRAFANA_URL: "http://host.docker.internal:3000"
+      GRAFANA_API_KEY: "${GRAFANA_API_KEY}"  # Use env variable from host
+    containerUser: "1000:1000"  # Run as non-root user
+    requiresPortForwards:
+      - "mc-grafana"
+
+  # Custom containerized MCP with advanced features
+  - name: "log-analyzer"
+    type: "container"
+    enabledByDefault: false
+    icon: "📝"
+    category: "Analysis"
+    image: "internal.registry.com/mcp-log-analyzer:latest"
+    containerPorts:
+      - "8004:8080"
+      - "9000:9000"  # Metrics port
+    containerVolumes:
+      - "~/.kube/config:/kube/config:ro"
+      - "/var/log/envctl:/logs:ro"  # Mount log directory
+      - "./config/analyzer.yaml:/etc/analyzer/config.yaml:ro"
+    containerEnv:
+      KUBECONFIG: "/kube/config"
+      CONFIG_FILE: "/etc/analyzer/config.yaml"
+      METRICS_PORT: "9000"
+      LOG_LEVEL: "debug"
+    entrypoint: ["/bin/sh", "-c"]  # Custom entrypoint
+    command: ["exec /app/analyzer --config $CONFIG_FILE"]
+    requiresClusterRole: "observability"  # Needs access to monitoring cluster
+
+  # Multi-cluster aware MCP server
+  - name: "cluster-compare"
+    type: "container"
+    enabledByDefault: false
+    icon: "🔍"
+    category: "Analysis"
+    image: "ghcr.io/giantswarm/mcp-cluster-compare:latest"
+    containerPorts:
+      - "8005:8080"
+    containerVolumes:
+      - "~/.kube/config:/root/.kube/config:ro"
+    containerEnv:
+      # This MCP can access multiple clusters
+      OBSERVABILITY_CONTEXT: "teleport.giantswarm.io-production"
+      TARGET_CONTEXT: "teleport.giantswarm.io-production-main"
+      COMPARE_MODE: "resources"
+    # No specific cluster requirement - accesses multiple
+
+# Additional configuration for container runtime
+# containerRuntimeOptions:
+#   docker:
+#     networkMode: "host"  # Use host network
+#     extraArgs: ["--gpus", "all"]  # For GPU-enabled containers
+#   podman:
+#     userns: "keep-id"  # Preserve user namespace
+#     extraArgs: ["--device", "/dev/fuse"]  # For FUSE filesystems 

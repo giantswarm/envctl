@@ -62,7 +62,7 @@ func renderMcPane(m *model.Model, conn *api.K8sConnectionInfo, paneWidth int) st
 
 	// Get connection info if not passed
 	if conn == nil {
-		expectedLabel := fmt.Sprintf("k8s-mc-%s", m.ManagementClusterName)
+		expectedLabel := fmt.Sprintf("mc-%s", m.ManagementClusterName)
 		for label, c := range m.K8sConnections {
 			if label == expectedLabel {
 				conn = c
@@ -133,7 +133,7 @@ func renderWcPane(m *model.Model, conn *api.K8sConnectionInfo, paneWidth int) st
 
 	// Get connection info if not passed
 	if conn == nil {
-		expectedLabel := fmt.Sprintf("k8s-wc-%s", m.WorkloadClusterName)
+		expectedLabel := fmt.Sprintf("wc-%s", m.WorkloadClusterName)
 		for label, c := range m.K8sConnections {
 			if label == expectedLabel {
 				conn = c

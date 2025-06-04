@@ -347,17 +347,33 @@ func TestServicesRegisteredOnStart(t *testing.T) {
 		{
 			name: "registers k8s and port forward services",
 			config: Config{
-				MCName: "test-mc",
-				WCName: "test-wc",
+				Clusters: []config.ClusterDefinition{
+					{
+						Name:        "mc-test",
+						Context:     "test-context",
+						Role:        config.ClusterRoleObservability,
+						DisplayName: "Test MC",
+					},
+					{
+						Name:        "wc-test",
+						Context:     "wc-context",
+						Role:        config.ClusterRoleTarget,
+						DisplayName: "Test WC",
+					},
+				},
+				ActiveClusters: map[config.ClusterRole]string{
+					config.ClusterRoleObservability: "mc-test",
+					config.ClusterRoleTarget:        "wc-test",
+				},
 				PortForwards: []config.PortForwardDefinition{
-					{Name: "pf-prometheus", Enabled: true},
-					{Name: "pf-grafana", Enabled: true},
+					{Name: "pf-prometheus", Enabled: true, ClusterRole: config.ClusterRoleObservability},
+					{Name: "pf-grafana", Enabled: true, ClusterRole: config.ClusterRoleObservability},
 					{Name: "pf-disabled", Enabled: false}, // Should not be registered
 				},
 			},
 			expectedServices: []string{
-				"k8s-mc-test-mc",
-				"k8s-wc-test-wc",
+				"mc-test",
+				"wc-test",
 				"pf-prometheus",
 				"pf-grafana",
 			},
@@ -365,7 +381,17 @@ func TestServicesRegisteredOnStart(t *testing.T) {
 		{
 			name: "registers mcp services only (aggregator registered externally)",
 			config: Config{
-				MCName: "test-mc",
+				Clusters: []config.ClusterDefinition{
+					{
+						Name:        "mc-test",
+						Context:     "test-context",
+						Role:        config.ClusterRoleObservability,
+						DisplayName: "Test MC",
+					},
+				},
+				ActiveClusters: map[config.ClusterRole]string{
+					config.ClusterRoleObservability: "mc-test",
+				},
 				MCPServers: []config.MCPServerDefinition{
 					{Name: "mcp-kube", Enabled: true},
 					{Name: "mcp-grafana", Enabled: true},
@@ -373,7 +399,7 @@ func TestServicesRegisteredOnStart(t *testing.T) {
 				},
 			},
 			expectedServices: []string{
-				"k8s-mc-test-mc",
+				"mc-test",
 				"mcp-kube",
 				"mcp-grafana",
 				// "mcp-aggregator" is now registered externally in connect.go
@@ -382,11 +408,21 @@ func TestServicesRegisteredOnStart(t *testing.T) {
 		{
 			name: "registers only k8s service when no mcp servers",
 			config: Config{
-				MCName: "test-mc",
+				Clusters: []config.ClusterDefinition{
+					{
+						Name:        "mc-test",
+						Context:     "test-context",
+						Role:        config.ClusterRoleObservability,
+						DisplayName: "Test MC",
+					},
+				},
+				ActiveClusters: map[config.ClusterRole]string{
+					config.ClusterRoleObservability: "mc-test",
+				},
 				// No enabled MCP servers
 			},
 			expectedServices: []string{
-				"k8s-mc-test-mc",
+				"mc-test",
 			},
 		},
 	}

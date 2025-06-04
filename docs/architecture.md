@@ -196,6 +196,7 @@ Services with `StopReasonDependency` are automatically restarted when their depe
 ```go
 const (
     StateUnknown   State = "unknown"
+    StateWaiting   State = "waiting"
     StateStarting  State = "starting"
     StateRunning   State = "running"
     StateStopping  State = "stopping"
@@ -205,11 +206,13 @@ const (
 ```
 
 ### State Transitions
-1. **Starting → Running**: Service successfully started
-2. **Starting → Failed**: Service failed to start
-3. **Running → Stopping**: Stop requested
-4. **Stopping → Stopped**: Service stopped cleanly
-5. **Running → Failed**: Service crashed or health check failed
+1. **Unknown → Waiting**: Service dependencies are not ready
+2. **Waiting → Starting**: Dependencies become available
+3. **Starting → Running**: Service successfully started
+4. **Starting → Failed**: Service failed to start
+5. **Running → Stopping**: Stop requested
+6. **Stopping → Stopped**: Service stopped cleanly
+7. **Running → Failed**: Service crashed or health check failed
 
 ### State Persistence
 - States are maintained in memory via StateStore
@@ -382,18 +385,4 @@ Provides centralized service management through a registry pattern.
 
 **Managed Service Types:**
 - K8s Connections (`internal/services/k8s/`)
-- Port Forwards (`internal/services/portforward/`)
-- MCP Servers (`internal/services/mcpserver/`)
-
-**Key Operations:**
-- `Register()`: Add a service to the registry
-- `Get()`: Retrieve a service by label
-- `GetAll()`: Get all registered services
-- `GetByType()`: Get services of a specific type
-
-**Service Interface:**
-All services implement a common interface for lifecycle management:
-- `Start()`: Start the service
-- `Stop()`: Stop the service
-- `GetState()`: Get current service state
-- `GetHealth()`: Get service health status 
+- Port Forwards (`

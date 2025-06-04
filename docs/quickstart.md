@@ -179,9 +179,16 @@ envctl comes with predefined services:
 
 ### Custom Configuration
 
+envctl supports a flexible configuration system that allows you to:
+- Define multiple clusters with roles (observability, target, custom)
+- Switch between clusters dynamically
+- Configure services to use specific clusters
+- Support multi-cloud environments
+
 Create a configuration file at `~/.config/envctl/config.yaml`:
 
 ```yaml
+# Simple example - see Configuration Guide for advanced options
 portForwards:
   - name: my-service
     namespace: my-namespace
@@ -189,17 +196,20 @@ portForwards:
     targetName: my-service-name
     localPort: "9999"
     remotePort: "80"
-    kubeContextTarget: "mc"  # or "wc"
+    clusterRole: "observability"  # Uses active observability cluster
     enabledByDefault: true
 
 mcpServers:
   - name: custom-mcp
     type: localCommand
     command: ["my-mcp-server"]
-    proxyPort: 8100
-    requiresPortForwards: []
+    requiresClusterRole: "target"  # Connects to active target cluster
     enabledByDefault: true
 ```
+
+For advanced cluster configurations including multi-environment setups, see:
+- [Configuration Guide](configuration.md) - Complete configuration reference
+- [Cluster Configuration Examples](cluster-configuration-examples.md) - Practical examples
 
 ## Troubleshooting
 

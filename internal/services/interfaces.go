@@ -10,6 +10,7 @@ type ServiceState string
 
 const (
 	StateUnknown  ServiceState = "Unknown"
+	StateWaiting  ServiceState = "Waiting"
 	StateStarting ServiceState = "Starting"
 	StateRunning  ServiceState = "Running"
 	StateStopping ServiceState = "Stopping"
@@ -61,6 +62,12 @@ type Service interface {
 
 // StateChangeCallback is called when a service's state changes
 type StateChangeCallback func(label string, oldState, newState ServiceState, health HealthStatus, err error)
+
+// StateUpdater is an optional interface for services that allow external state updates
+// This is used by the orchestrator to set services to StateWaiting when dependencies fail
+type StateUpdater interface {
+	UpdateState(state ServiceState, health HealthStatus, err error)
+}
 
 // ServiceDataProvider is an optional interface for services that expose additional data
 type ServiceDataProvider interface {

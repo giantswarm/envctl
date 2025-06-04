@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"context"
+	"envctl/internal/config"
 	"envctl/internal/dependency"
 	"envctl/internal/services"
 	"envctl/pkg/logging"
@@ -24,24 +25,13 @@ import (
 func (o *Orchestrator) buildDependencyGraph() *dependency.Graph {
 	graph := dependency.New()
 
-	// Add K8s connection nodes - these are the foundation services
-	if o.mcName != "" {
-		mcLabel := fmt.Sprintf("k8s-mc-%s", o.mcName)
+	// Add K8s cluster connection nodes from cluster state
+	for _, cluster := range o.clusters {
 		graph.AddNode(dependency.Node{
-			ID:           dependency.NodeID(mcLabel),
-			FriendlyName: fmt.Sprintf("K8s MC: %s", o.mcName),
+			ID:           dependency.NodeID(cluster.Name),
+			FriendlyName: cluster.DisplayName,
 			Kind:         dependency.KindK8sConnection,
 			DependsOn:    []dependency.NodeID{}, // No dependencies
-		})
-	}
-
-	if o.wcName != "" && o.mcName != "" {
-		wcLabel := fmt.Sprintf("k8s-wc-%s", o.wcName)
-		graph.AddNode(dependency.Node{
-			ID:           dependency.NodeID(wcLabel),
-			FriendlyName: fmt.Sprintf("K8s WC: %s", o.wcName),
-			Kind:         dependency.KindK8sConnection,
-			DependsOn:    []dependency.NodeID{},
 		})
 	}
 
@@ -54,19 +44,12 @@ func (o *Orchestrator) buildDependencyGraph() *dependency.Graph {
 		nodeID := dependency.NodeID("pf:" + pf.Name)
 		var deps []dependency.NodeID
 
-		// Port forwards depend on their target K8s connection
-		// We determine this by checking if the context name contains the cluster name
-		if pf.KubeContextTarget != "" {
-			var k8sNodeID string
-			if strings.Contains(pf.KubeContextTarget, o.wcName) && o.wcName != "" {
-				k8sNodeID = fmt.Sprintf("k8s-wc-%s", o.wcName)
-			} else if strings.Contains(pf.KubeContextTarget, o.mcName) && o.mcName != "" {
-				k8sNodeID = fmt.Sprintf("k8s-mc-%s", o.mcName)
-			}
-
-			if k8sNodeID != "" {
-				deps = append(deps, dependency.NodeID(k8sNodeID))
-			}
+		// Determine which cluster this port forward depends on
+		clusterName, err := o.resolveClusterForPortForward(pf)
+		if err != nil {
+			logging.Warn("Orchestrator", "Could not resolve cluster for port forward %s: %v", pf.Name, err)
+		} else if clusterName != "" {
+			deps = append(deps, dependency.NodeID(clusterName))
 		}
 
 		graph.AddNode(dependency.Node{
@@ -77,7 +60,7 @@ func (o *Orchestrator) buildDependencyGraph() *dependency.Graph {
 		})
 	}
 
-	// Add MCP server nodes and their port forward dependencies
+	// Add MCP server nodes and their dependencies
 	for _, mcp := range o.mcpServers {
 		if !mcp.Enabled {
 			continue
@@ -86,8 +69,16 @@ func (o *Orchestrator) buildDependencyGraph() *dependency.Graph {
 		nodeID := dependency.NodeID("mcp:" + mcp.Name)
 		var deps []dependency.NodeID
 
+		// Handle direct cluster dependencies
+		clusterName, err := o.resolveClusterForMCPServer(mcp)
+		if err != nil {
+			logging.Warn("Orchestrator", "Could not resolve cluster for MCP server %s: %v", mcp.Name, err)
+		} else if clusterName != "" {
+			deps = append(deps, dependency.NodeID(clusterName))
+			logging.Debug("Orchestrator", "MCP server %s depends on cluster: %s", mcp.Name, clusterName)
+		}
+
 		// MCP servers depend on their configured port forwards
-		// This ensures required services are accessible before starting the MCP server
 		for _, pfName := range mcp.RequiresPortForwards {
 			depNodeID := dependency.NodeID("pf:" + pfName)
 			// Verify the port forward exists and is enabled
@@ -119,6 +110,63 @@ func (o *Orchestrator) buildDependencyGraph() *dependency.Graph {
 	})
 
 	return graph
+}
+
+// resolveClusterForPortForward determines which cluster a port forward should connect to
+func (o *Orchestrator) resolveClusterForPortForward(pf config.PortForwardDefinition) (string, error) {
+	// Priority: ClusterName > ClusterRole > KubeContextTarget (deprecated)
+
+	if pf.ClusterName != "" {
+		// Specific cluster requested
+		if cluster, exists := o.clusterState.GetClusterByName(pf.ClusterName); exists {
+			return cluster.Name, nil
+		}
+		return "", fmt.Errorf("cluster %s not found", pf.ClusterName)
+	}
+
+	if pf.ClusterRole != "" {
+		// Use active cluster for role
+		if clusterName, exists := o.clusterState.GetActiveCluster(pf.ClusterRole); exists {
+			return clusterName, nil
+		}
+		return "", fmt.Errorf("no active cluster for role %s", pf.ClusterRole)
+	}
+
+	// Fallback to deprecated KubeContextTarget
+	if pf.KubeContextTarget != "" {
+		// Try to find a cluster with matching context
+		for _, cluster := range o.clusters {
+			if cluster.Context == pf.KubeContextTarget {
+				return cluster.Name, nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("no cluster specified for port forward %s", pf.Name)
+}
+
+// resolveClusterForMCPServer determines which cluster an MCP server should connect to
+func (o *Orchestrator) resolveClusterForMCPServer(mcp config.MCPServerDefinition) (string, error) {
+	// Priority: RequiresClusterName > RequiresClusterRole
+
+	if mcp.RequiresClusterName != "" {
+		// Specific cluster requested
+		if cluster, exists := o.clusterState.GetClusterByName(mcp.RequiresClusterName); exists {
+			return cluster.Name, nil
+		}
+		return "", fmt.Errorf("cluster %s not found", mcp.RequiresClusterName)
+	}
+
+	if mcp.RequiresClusterRole != "" {
+		// Use active cluster for role
+		if clusterName, exists := o.clusterState.GetActiveCluster(mcp.RequiresClusterRole); exists {
+			return clusterName, nil
+		}
+		return "", fmt.Errorf("no active cluster for role %s", mcp.RequiresClusterRole)
+	}
+
+	// No direct cluster dependency
+	return "", nil
 }
 
 // startServicesInOrder starts all services in dependency order with parallel execution.
@@ -245,6 +293,19 @@ func (o *Orchestrator) startPortForwardsInParallel(servicesToStart []string) err
 			// Check dependencies first with a shorter timeout for failed deps
 			if err := o.waitForDependencies(svcLabel, 5*time.Second); err != nil {
 				logging.Warn("Orchestrator", "Skipping port forward %s: %v", svcLabel, err)
+
+				// Update the service state to Waiting
+				if service, exists := o.registry.Get(svcLabel); exists {
+					if updater, ok := service.(services.StateUpdater); ok {
+						updater.UpdateState(services.StateWaiting, services.HealthUnknown, fmt.Errorf("waiting for dependencies: %w", err))
+					}
+				}
+
+				// Mark as stopped due to dependency so it can be auto-started later
+				o.mu.Lock()
+				o.stopReasons[svcLabel] = StopReasonDependency
+				o.mu.Unlock()
+
 				mu.Lock()
 				skippedServices = append(skippedServices, svcLabel)
 				mu.Unlock()
@@ -295,6 +356,19 @@ func (o *Orchestrator) startMCPServersInParallel(servicesToStart []string) error
 			// Check dependencies first with a shorter timeout for failed deps
 			if err := o.waitForDependencies(svcLabel, 5*time.Second); err != nil {
 				logging.Warn("Orchestrator", "Skipping MCP server %s: %v", svcLabel, err)
+
+				// Update the service state to Waiting
+				if service, exists := o.registry.Get(svcLabel); exists {
+					if updater, ok := service.(services.StateUpdater); ok {
+						updater.UpdateState(services.StateWaiting, services.HealthUnknown, fmt.Errorf("waiting for dependencies: %w", err))
+					}
+				}
+
+				// Mark as stopped due to dependency so it can be auto-started later
+				o.mu.Lock()
+				o.stopReasons[svcLabel] = StopReasonDependency
+				o.mu.Unlock()
+
 				mu.Lock()
 				skippedServices = append(skippedServices, svcLabel)
 				mu.Unlock()

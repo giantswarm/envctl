@@ -13,6 +13,19 @@ All services in envctl follow a consistent pattern for reporting state transitio
 3. **Synchronous Updates**: State updates are processed synchronously for easier debugging
 4. **Consistent Flow**: All services follow the same state transition flow
 
+## Service States
+
+Services can be in one of the following states:
+
+- **Unknown**: Initial state before any operations
+- **Waiting**: Service is waiting for dependencies to become available
+- **Starting**: Service is in the process of starting
+- **Running**: Service is running normally
+- **Stopping**: Service is in the process of stopping
+- **Stopped**: Service has been stopped
+- **Failed**: Service has failed to start or has crashed
+- **Retrying**: Service is being restarted after a failure
+
 ## Architecture
 
 ### 1. Status Update Flow

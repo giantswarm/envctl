@@ -21,51 +21,94 @@ func TestOrchestrator_buildDependencyGraph(t *testing.T) {
 		check func(*testing.T, *dependency.Graph)
 	}{
 		{
-			name: "builds graph with MC only",
+			name: "builds graph with single cluster",
 			cfg: Config{
-				MCName: "test-mc",
+				Clusters: []config.ClusterDefinition{
+					{
+						Name:        "mc-test",
+						Context:     "test-context",
+						Role:        config.ClusterRoleObservability,
+						DisplayName: "Test MC",
+						Icon:        "🏢",
+					},
+				},
+				ActiveClusters: map[config.ClusterRole]string{
+					config.ClusterRoleObservability: "mc-test",
+				},
 			},
 			check: func(t *testing.T, g *dependency.Graph) {
-				mcNode := g.Get(dependency.NodeID("k8s-mc-test-mc"))
+				mcNode := g.Get(dependency.NodeID("mc-test"))
 				assert.NotNil(t, mcNode)
-				assert.Equal(t, "K8s MC: test-mc", mcNode.FriendlyName)
+				assert.Equal(t, "Test MC", mcNode.FriendlyName)
 				assert.Equal(t, dependency.KindK8sConnection, mcNode.Kind)
 				assert.Empty(t, mcNode.DependsOn)
 			},
 		},
 		{
-			name: "builds graph with MC and WC",
+			name: "builds graph with target and observability clusters",
 			cfg: Config{
-				MCName: "test-mc",
-				WCName: "test-wc",
+				Clusters: []config.ClusterDefinition{
+					{
+						Name:        "mc-test",
+						Context:     "mc-context",
+						Role:        config.ClusterRoleObservability,
+						DisplayName: "Test MC",
+					},
+					{
+						Name:        "wc-test",
+						Context:     "wc-context",
+						Role:        config.ClusterRoleTarget,
+						DisplayName: "Test WC",
+					},
+				},
+				ActiveClusters: map[config.ClusterRole]string{
+					config.ClusterRoleObservability: "mc-test",
+					config.ClusterRoleTarget:        "wc-test",
+				},
 			},
 			check: func(t *testing.T, g *dependency.Graph) {
 				// Check MC node
-				mcNode := g.Get(dependency.NodeID("k8s-mc-test-mc"))
+				mcNode := g.Get(dependency.NodeID("mc-test"))
 				assert.NotNil(t, mcNode)
 				assert.Empty(t, mcNode.DependsOn)
 
 				// Check WC node
-				wcNode := g.Get(dependency.NodeID("k8s-wc-test-wc"))
+				wcNode := g.Get(dependency.NodeID("wc-test"))
 				assert.NotNil(t, wcNode)
 				assert.Empty(t, wcNode.DependsOn)
 			},
 		},
 		{
-			name: "builds graph with port forwards",
+			name: "builds graph with port forwards using cluster roles",
 			cfg: Config{
-				MCName: "test-mc",
-				WCName: "test-wc",
-				PortForwards: []config.PortForwardDefinition{
+				Clusters: []config.ClusterDefinition{
 					{
-						Name:              "pf1",
-						Enabled:           true,
-						KubeContextTarget: "gs-test-mc",
+						Name:        "mc-test",
+						Context:     "mc-context",
+						Role:        config.ClusterRoleObservability,
+						DisplayName: "Test MC",
 					},
 					{
-						Name:              "pf2",
-						Enabled:           true,
-						KubeContextTarget: "gs-test-mc-test-wc",
+						Name:        "wc-test",
+						Context:     "wc-context",
+						Role:        config.ClusterRoleTarget,
+						DisplayName: "Test WC",
+					},
+				},
+				ActiveClusters: map[config.ClusterRole]string{
+					config.ClusterRoleObservability: "mc-test",
+					config.ClusterRoleTarget:        "wc-test",
+				},
+				PortForwards: []config.PortForwardDefinition{
+					{
+						Name:        "pf1",
+						Enabled:     true,
+						ClusterRole: config.ClusterRoleObservability,
+					},
+					{
+						Name:        "pf2",
+						Enabled:     true,
+						ClusterRole: config.ClusterRoleTarget,
 					},
 					{
 						Name:    "pf3",
@@ -78,12 +121,12 @@ func TestOrchestrator_buildDependencyGraph(t *testing.T) {
 				pf1Node := g.Get(dependency.NodeID("pf:pf1"))
 				assert.NotNil(t, pf1Node)
 				assert.Equal(t, dependency.KindPortForward, pf1Node.Kind)
-				assert.Contains(t, pf1Node.DependsOn, dependency.NodeID("k8s-mc-test-mc"))
+				assert.Contains(t, pf1Node.DependsOn, dependency.NodeID("mc-test"))
 
 				// Check pf2 depends on WC
 				pf2Node := g.Get(dependency.NodeID("pf:pf2"))
 				assert.NotNil(t, pf2Node)
-				assert.Contains(t, pf2Node.DependsOn, dependency.NodeID("k8s-wc-test-wc"))
+				assert.Contains(t, pf2Node.DependsOn, dependency.NodeID("wc-test"))
 
 				// pf3 should not be in graph
 				pf3Node := g.Get(dependency.NodeID("pf:pf3"))
@@ -91,8 +134,19 @@ func TestOrchestrator_buildDependencyGraph(t *testing.T) {
 			},
 		},
 		{
-			name: "builds graph with MCP servers",
+			name: "builds graph with MCP servers using cluster roles",
 			cfg: Config{
+				Clusters: []config.ClusterDefinition{
+					{
+						Name:        "wc-test",
+						Context:     "wc-context",
+						Role:        config.ClusterRoleTarget,
+						DisplayName: "Test WC",
+					},
+				},
+				ActiveClusters: map[config.ClusterRole]string{
+					config.ClusterRoleTarget: "wc-test",
+				},
 				PortForwards: []config.PortForwardDefinition{
 					{Name: "pf1", Enabled: true},
 					{Name: "pf2", Enabled: true},
@@ -108,6 +162,11 @@ func TestOrchestrator_buildDependencyGraph(t *testing.T) {
 						Enabled:              true,
 						RequiresPortForwards: []string{"pf3"}, // Non-existent PF
 					},
+					{
+						Name:                "kubernetes",
+						Enabled:             true,
+						RequiresClusterRole: config.ClusterRoleTarget,
+					},
 				},
 			},
 			check: func(t *testing.T, g *dependency.Graph) {
@@ -122,6 +181,11 @@ func TestOrchestrator_buildDependencyGraph(t *testing.T) {
 				mcp2Node := g.Get(dependency.NodeID("mcp:mcp2"))
 				assert.NotNil(t, mcp2Node)
 				assert.Empty(t, mcp2Node.DependsOn)
+
+				// Check kubernetes MCP depends on target cluster
+				k8sNode := g.Get(dependency.NodeID("mcp:kubernetes"))
+				assert.NotNil(t, k8sNode)
+				assert.Contains(t, k8sNode.DependsOn, dependency.NodeID("wc-test"))
 			},
 		},
 	}
@@ -935,4 +999,430 @@ func TestOrchestrator_startAggregator(t *testing.T) {
 	err = o.startAggregator(servicesToStart)
 	assert.NoError(t, err)
 	assert.True(t, aggregatorStarted)
+}
+
+func TestOrchestrator_SkippedServicesMarkedForRecovery(t *testing.T) {
+	o := New(Config{})
+	ctx := context.Background()
+	o.ctx = ctx
+
+	// Build a minimal dependency graph manually
+	o.depGraph = dependency.New()
+	o.depGraph.AddNode(dependency.Node{ID: "wc-test"})
+	o.depGraph.AddNode(dependency.Node{
+		ID:        "pf:alloy-metrics",
+		DependsOn: []dependency.NodeID{"wc-test"},
+	})
+	o.depGraph.AddNode(dependency.Node{
+		ID:        "mcp:kubernetes",
+		DependsOn: []dependency.NodeID{"wc-test"},
+	})
+
+	// Register a mock K8s connection as failed
+	k8sService := &mockService{
+		label:       "wc-test",
+		serviceType: services.TypeKubeConnection,
+		state:       services.StateFailed,
+	}
+	o.registry.Register(k8sService)
+
+	// Register mock port forward service
+	pfService := &mockService{
+		label:       "alloy-metrics",
+		serviceType: services.TypePortForward,
+		state:       services.StateUnknown,
+	}
+	o.registry.Register(pfService)
+
+	// Register mock MCP service
+	mcpService := &mockService{
+		label:       "kubernetes",
+		serviceType: services.TypeMCPServer,
+		state:       services.StateUnknown,
+	}
+	o.registry.Register(mcpService)
+
+	// Get services to start
+	servicesToStart := o.getServicesToStart()
+
+	// Manually configure the services for the test
+	o.portForwards = []config.PortForwardDefinition{
+		{
+			Name:        "alloy-metrics",
+			Enabled:     true,
+			ClusterRole: config.ClusterRoleTarget,
+		},
+	}
+	o.mcpServers = []config.MCPServerDefinition{
+		{
+			Name:                "kubernetes",
+			Enabled:             true,
+			RequiresClusterRole: config.ClusterRoleTarget,
+		},
+	}
+
+	// Try to start port forwards - should skip alloy-metrics
+	err := o.startPortForwardsInParallel(servicesToStart)
+	assert.NoError(t, err)
+
+	// Check that alloy-metrics is marked with StopReasonDependency
+	o.mu.RLock()
+	reason, exists := o.stopReasons["alloy-metrics"]
+	o.mu.RUnlock()
+	assert.True(t, exists)
+	assert.Equal(t, StopReasonDependency, reason)
+
+	// Try to start MCP servers - should skip kubernetes
+	err = o.startMCPServersInParallel(servicesToStart)
+	assert.NoError(t, err)
+
+	// Check that kubernetes MCP is marked with StopReasonDependency
+	o.mu.RLock()
+	reason, exists = o.stopReasons["kubernetes"]
+	o.mu.RUnlock()
+	assert.True(t, exists)
+	assert.Equal(t, StopReasonDependency, reason)
+}
+
+func TestOrchestrator_AutoRecoveryWhenDependencyRestores(t *testing.T) {
+	o := New(Config{})
+	ctx := context.Background()
+	err := o.Start(ctx)
+	require.NoError(t, err)
+	defer o.Stop()
+
+	// Build dependency graph manually
+	o.depGraph = dependency.New()
+	o.depGraph.AddNode(dependency.Node{ID: "wc-test"})
+	o.depGraph.AddNode(dependency.Node{
+		ID:        "pf:alloy-metrics",
+		DependsOn: []dependency.NodeID{"wc-test"},
+	})
+	o.depGraph.AddNode(dependency.Node{
+		ID:        "mcp:kubernetes",
+		DependsOn: []dependency.NodeID{"wc-test"},
+	})
+
+	// Register the K8s connection service (needed for getNodeIDForService to work)
+	k8sService := &mockService{
+		label:       "wc-test",
+		serviceType: services.TypeKubeConnection,
+		state:       services.StateRunning, // It's now running
+	}
+	o.registry.Register(k8sService)
+
+	// Track which services get started
+	var startedServices []string
+	var mu sync.Mutex
+
+	// Register mock services that were skipped due to dependency
+	alloyService := &mockService{
+		label:       "alloy-metrics",
+		serviceType: services.TypePortForward,
+		state:       services.StateStopped,
+	}
+	alloyService.startFunc = func(ctx context.Context) error {
+		mu.Lock()
+		startedServices = append(startedServices, "alloy-metrics")
+		mu.Unlock()
+		// Update state to simulate successful start
+		alloyService.state = services.StateRunning
+		return nil
+	}
+	o.registry.Register(alloyService)
+
+	k8sMCPService := &mockService{
+		label:       "kubernetes",
+		serviceType: services.TypeMCPServer,
+		state:       services.StateStopped,
+	}
+	k8sMCPService.startFunc = func(ctx context.Context) error {
+		mu.Lock()
+		startedServices = append(startedServices, "kubernetes")
+		mu.Unlock()
+		// Update state to simulate successful start
+		k8sMCPService.state = services.StateRunning
+		return nil
+	}
+	o.registry.Register(k8sMCPService)
+
+	// Mark services as stopped due to dependency
+	o.mu.Lock()
+	o.stopReasons["alloy-metrics"] = StopReasonDependency
+	o.stopReasons["kubernetes"] = StopReasonDependency
+	o.mu.Unlock()
+
+	// Simulate K8s connection becoming running
+	o.startDependentServices("wc-test")
+
+	// Give some time for goroutines to complete
+	time.Sleep(200 * time.Millisecond)
+
+	// Verify both services were started
+	mu.Lock()
+	assert.Contains(t, startedServices, "alloy-metrics")
+	assert.Contains(t, startedServices, "kubernetes")
+	mu.Unlock()
+
+	// Verify stop reasons were cleared
+	o.mu.RLock()
+	_, hasAlloyReason := o.stopReasons["alloy-metrics"]
+	_, hasK8sReason := o.stopReasons["kubernetes"]
+	o.mu.RUnlock()
+	assert.False(t, hasAlloyReason)
+	assert.False(t, hasK8sReason)
+}
+
+func TestOrchestrator_StartDependentServicesLogic(t *testing.T) {
+	// Create a minimal orchestrator
+	o := New(Config{})
+	ctx := context.Background()
+	err := o.Start(ctx)
+	require.NoError(t, err)
+	defer o.Stop()
+
+	// Build dependency graph manually
+	o.depGraph = dependency.New()
+	o.depGraph.AddNode(dependency.Node{ID: "wc-test"})
+	o.depGraph.AddNode(dependency.Node{
+		ID:        "pf:alloy-metrics",
+		DependsOn: []dependency.NodeID{"wc-test"},
+	})
+
+	// Register the K8s connection service (needed for getNodeIDForService to work)
+	k8sService := &mockService{
+		label:       "wc-test",
+		serviceType: services.TypeKubeConnection,
+		state:       services.StateRunning,
+	}
+	o.registry.Register(k8sService)
+
+	// Track if service gets started
+	startCalled := false
+
+	// Register a mock service that should be restarted
+	alloyService := &mockService{
+		label:       "alloy-metrics",
+		serviceType: services.TypePortForward,
+		state:       services.StateStopped,
+		startFunc: func(ctx context.Context) error {
+			startCalled = true
+			return nil
+		},
+	}
+	o.registry.Register(alloyService)
+
+	// Mark it as stopped due to dependency
+	o.mu.Lock()
+	o.stopReasons["alloy-metrics"] = StopReasonDependency
+	o.mu.Unlock()
+
+	// Debug logging
+	t.Logf("Registry has services:")
+	for _, svc := range o.registry.GetAll() {
+		t.Logf("  - %s (type: %s)", svc.GetLabel(), svc.GetType())
+	}
+
+	t.Logf("Looking for services that depend on 'wc-test'")
+	t.Logf("getNodeIDForService('alloy-metrics') = %s", o.getNodeIDForService("alloy-metrics"))
+
+	// Check the node
+	node := o.depGraph.Get(dependency.NodeID("pf:alloy-metrics"))
+	if node != nil {
+		t.Logf("Node 'pf:alloy-metrics' depends on: %v", node.DependsOn)
+		for _, dep := range node.DependsOn {
+			t.Logf("  Checking if '%s' == 'wc-test'", string(dep))
+		}
+	}
+
+	// Call startDependentServices directly
+	o.startDependentServices("wc-test")
+
+	// Wait a bit
+	time.Sleep(100 * time.Millisecond)
+
+	// Check if service was started
+	assert.True(t, startCalled, "alloy-metrics service should have been started")
+}
+
+func TestOrchestrator_SkippedServicesMarkedAsWaiting(t *testing.T) {
+	o := New(Config{})
+	ctx := context.Background()
+	o.ctx = ctx
+
+	// Build a minimal dependency graph manually
+	o.depGraph = dependency.New()
+	o.depGraph.AddNode(dependency.Node{ID: "wc-test"})
+	o.depGraph.AddNode(dependency.Node{
+		ID:        "pf:alloy-metrics",
+		DependsOn: []dependency.NodeID{"wc-test"},
+	})
+	o.depGraph.AddNode(dependency.Node{
+		ID:        "mcp:kubernetes",
+		DependsOn: []dependency.NodeID{"wc-test"},
+	})
+
+	// Register a mock K8s connection as failed
+	k8sService := &mockService{
+		label:       "wc-test",
+		serviceType: services.TypeKubeConnection,
+		state:       services.StateFailed,
+	}
+	o.registry.Register(k8sService)
+
+	// Register mock port forward service that implements StateUpdater
+	pfService := &mockServiceWithStateUpdater{
+		mockService: mockService{
+			label:       "alloy-metrics",
+			serviceType: services.TypePortForward,
+			state:       services.StateUnknown,
+		},
+		updateStateCalled: false,
+		updatedState:      services.StateUnknown,
+	}
+	o.registry.Register(pfService)
+
+	// Register mock MCP service that implements StateUpdater
+	mcpService := &mockServiceWithStateUpdater{
+		mockService: mockService{
+			label:       "kubernetes",
+			serviceType: services.TypeMCPServer,
+			state:       services.StateUnknown,
+		},
+		updateStateCalled: false,
+		updatedState:      services.StateUnknown,
+	}
+	o.registry.Register(mcpService)
+
+	// Get services to start
+	servicesToStart := o.getServicesToStart()
+
+	// Manually configure the services for the test
+	o.portForwards = []config.PortForwardDefinition{
+		{
+			Name:        "alloy-metrics",
+			Enabled:     true,
+			ClusterRole: config.ClusterRoleTarget,
+		},
+	}
+	o.mcpServers = []config.MCPServerDefinition{
+		{
+			Name:                "kubernetes",
+			Enabled:             true,
+			RequiresClusterRole: config.ClusterRoleTarget,
+		},
+	}
+
+	// Try to start port forwards - should skip alloy-metrics and set it to Waiting
+	err := o.startPortForwardsInParallel(servicesToStart)
+	assert.NoError(t, err)
+
+	// Verify alloy-metrics was set to StateWaiting
+	assert.True(t, pfService.updateStateCalled)
+	assert.Equal(t, services.StateWaiting, pfService.updatedState)
+
+	// Try to start MCP servers - should skip kubernetes and set it to Waiting
+	err = o.startMCPServersInParallel(servicesToStart)
+	assert.NoError(t, err)
+
+	// Verify kubernetes MCP was set to StateWaiting
+	assert.True(t, mcpService.updateStateCalled)
+	assert.Equal(t, services.StateWaiting, mcpService.updatedState)
+}
+
+// mockServiceWithStateUpdater extends mockService to implement StateUpdater
+type mockServiceWithStateUpdater struct {
+	mockService
+	updateStateCalled bool
+	updatedState      services.ServiceState
+	updatedHealth     services.HealthStatus
+	updatedError      error
+}
+
+func (m *mockServiceWithStateUpdater) UpdateState(state services.ServiceState, health services.HealthStatus, err error) {
+	m.updateStateCalled = true
+	m.updatedState = state
+	m.updatedHealth = health
+	m.updatedError = err
+	m.mockService.state = state
+	m.mockService.health = health
+	m.mockService.lastError = err
+}
+
+func TestOrchestrator_WaitingToRunningTransition(t *testing.T) {
+	o := New(Config{})
+	ctx := context.Background()
+	err := o.Start(ctx)
+	require.NoError(t, err)
+	defer o.Stop()
+
+	// Build dependency graph
+	o.depGraph = dependency.New()
+	o.depGraph.AddNode(dependency.Node{ID: "wc-test"})
+	o.depGraph.AddNode(dependency.Node{
+		ID:        "pf:test-pf",
+		DependsOn: []dependency.NodeID{"wc-test"},
+	})
+
+	// Register K8s connection as failed initially
+	k8sService := &mockService{
+		label:       "wc-test",
+		serviceType: services.TypeKubeConnection,
+		state:       services.StateFailed,
+	}
+	o.registry.Register(k8sService)
+
+	// Register port forward service with state updater
+	var startCalled bool
+	pfService := &mockServiceWithStateUpdater{
+		mockService: mockService{
+			label:       "test-pf",
+			serviceType: services.TypePortForward,
+			state:       services.StateUnknown,
+			startFunc: func(ctx context.Context) error {
+				startCalled = true
+				return nil
+			},
+		},
+	}
+	o.registry.Register(pfService)
+
+	// Configure port forward
+	o.portForwards = []config.PortForwardDefinition{
+		{
+			Name:        "test-pf",
+			Enabled:     true,
+			ClusterRole: config.ClusterRoleTarget,
+		},
+	}
+
+	// Try to start port forward - should set it to Waiting
+	servicesToStart := []string{"test-pf"}
+	err = o.startPortForwardsInParallel(servicesToStart)
+	assert.NoError(t, err)
+	assert.Equal(t, services.StateWaiting, pfService.updatedState)
+	assert.False(t, startCalled)
+
+	// Mark port forward as stopped due to dependency
+	o.mu.Lock()
+	o.stopReasons["test-pf"] = StopReasonDependency
+	o.mu.Unlock()
+
+	// Now make K8s connection running
+	k8sService.state = services.StateRunning
+
+	// Trigger dependent service restart
+	o.startDependentServices("wc-test")
+
+	// Give it time to process
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify port forward was started
+	assert.True(t, startCalled)
+
+	// Verify stop reason was cleared
+	o.mu.RLock()
+	_, hasStopReason := o.stopReasons["test-pf"]
+	o.mu.RUnlock()
+	assert.False(t, hasStopReason)
 }

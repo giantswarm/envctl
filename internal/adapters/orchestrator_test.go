@@ -3,6 +3,8 @@ package adapters
 import (
 	"envctl/internal/aggregator"
 	"envctl/internal/api"
+	"envctl/internal/config"
+	"envctl/internal/orchestrator"
 	"errors"
 	"testing"
 	"time"
@@ -10,7 +12,11 @@ import (
 
 // mockOrchestratorAPI implements a mock OrchestratorAPI for testing
 type mockOrchestratorAPI struct {
-	events chan api.ServiceStateChangedEvent
+	events           chan api.ServiceStateChangedEvent
+	serviceCalled    string
+	operationCalled  string
+	returnError      error
+	subscriptionDone chan struct{} // Channel to signal when subscription loop exits
 }
 
 func newMockOrchestratorAPI() *mockOrchestratorAPI {
@@ -22,27 +28,58 @@ func newMockOrchestratorAPI() *mockOrchestratorAPI {
 // Implement all required OrchestratorAPI methods
 
 func (m *mockOrchestratorAPI) StartService(label string) error {
-	return nil
+	m.serviceCalled = label
+	m.operationCalled = "start"
+	return m.returnError
 }
 
 func (m *mockOrchestratorAPI) StopService(label string) error {
-	return nil
+	m.serviceCalled = label
+	m.operationCalled = "stop"
+	return m.returnError
 }
 
 func (m *mockOrchestratorAPI) RestartService(label string) error {
-	return nil
+	m.serviceCalled = label
+	m.operationCalled = "restart"
+	return m.returnError
 }
 
-func (m *mockOrchestratorAPI) GetServiceStatus(label string) (api.ServiceStatus, error) {
-	return api.ServiceStatus{}, nil
+func (m *mockOrchestratorAPI) GetServiceStatus(label string) (*api.ServiceStatus, error) {
+	return &api.ServiceStatus{}, nil
 }
 
 func (m *mockOrchestratorAPI) GetAllServices() []api.ServiceStatus {
 	return []api.ServiceStatus{}
 }
 
-func (m *mockOrchestratorAPI) SubscribeToStateChanges() <-chan api.ServiceStateChangedEvent {
-	return m.events
+func (m *mockOrchestratorAPI) SubscribeToStateChanges() <-chan orchestrator.ServiceStateChangedEvent {
+	// Create a chan of orchestrator type and convert it
+	orchChan := make(chan orchestrator.ServiceStateChangedEvent)
+	go func() {
+		// If subscriptionDone is set, signal when this goroutine exits
+		if m.subscriptionDone != nil {
+			defer close(m.subscriptionDone)
+		}
+		for event := range m.events {
+			orchChan <- orchestrator.ServiceStateChangedEvent(event)
+		}
+		close(orchChan)
+	}()
+	return orchChan
+}
+
+// Cluster management methods
+func (m *mockOrchestratorAPI) GetAvailableClusters(role config.ClusterRole) []config.ClusterDefinition {
+	return []config.ClusterDefinition{}
+}
+
+func (m *mockOrchestratorAPI) GetActiveCluster(role config.ClusterRole) (string, bool) {
+	return "", false
+}
+
+func (m *mockOrchestratorAPI) SwitchCluster(role config.ClusterRole, clusterName string) error {
+	return nil
 }
 
 // Helper methods for testing

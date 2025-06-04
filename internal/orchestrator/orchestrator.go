@@ -40,6 +40,10 @@ type Orchestrator struct {
 	portForwards []config.PortForwardDefinition
 	mcpServers   []config.MCPServerDefinition
 
+	// Cluster management
+	clusterState *ClusterState
+	clusters     []config.ClusterDefinition
+
 	// Service tracking
 	stopReasons     map[string]StopReason // Tracks why each service was stopped for auto-recovery decisions
 	pendingRestarts map[string]bool       // Services waiting to be restarted after dependency recovery
@@ -62,10 +66,12 @@ type Orchestrator struct {
 // This structure is passed during orchestrator creation to define
 // which services should be managed and their configurations.
 type Config struct {
-	MCName       string                         // Management cluster name
-	WCName       string                         // Workload cluster name (optional)
-	PortForwards []config.PortForwardDefinition // Port forward configurations
-	MCPServers   []config.MCPServerDefinition   // MCP server configurations
+	MCName         string                         // Management cluster name (DEPRECATED: use Clusters)
+	WCName         string                         // Workload cluster name (DEPRECATED: use Clusters)
+	Clusters       []config.ClusterDefinition     // Available clusters with roles
+	ActiveClusters map[config.ClusterRole]string  // Initial active cluster for each role
+	PortForwards   []config.PortForwardDefinition // Port forward configurations
+	MCPServers     []config.MCPServerDefinition   // MCP server configurations
 }
 
 // New creates a new orchestrator using the service registry.
@@ -78,11 +84,30 @@ func New(cfg Config) *Orchestrator {
 	// Create kube manager
 	kubeMgr := kube.NewManager(nil)
 
+	// If using legacy MC/WC config, convert to clusters
+	clusters := cfg.Clusters
+	activeClusters := cfg.ActiveClusters
+	if len(clusters) == 0 && (cfg.MCName != "" || cfg.WCName != "") {
+		// Legacy mode: generate clusters from MC/WC names
+		clusters = config.GenerateGiantSwarmClusters(cfg.MCName, cfg.WCName)
+		activeClusters = make(map[config.ClusterRole]string)
+		for _, c := range clusters {
+			if _, exists := activeClusters[c.Role]; !exists {
+				activeClusters[c.Role] = c.Name
+			}
+		}
+	}
+
+	// Create cluster state
+	clusterState := NewClusterState(clusters, activeClusters)
+
 	return &Orchestrator{
 		registry:               registry,
 		kubeMgr:                kubeMgr,
 		mcName:                 cfg.MCName,
 		wcName:                 cfg.WCName,
+		clusters:               clusters,
+		clusterState:           clusterState,
 		portForwards:           cfg.PortForwards,
 		mcpServers:             cfg.MCPServers,
 		stopReasons:            make(map[string]StopReason),
@@ -303,43 +328,26 @@ func (o *Orchestrator) registerServices() error {
 // These are the foundation services that establish connections to
 // Giant Swarm clusters via Teleport. All other services depend on these.
 func (o *Orchestrator) registerK8sServices() error {
-	// Register MC connection if configured
-	if o.mcName != "" {
-		mcContext := o.kubeMgr.BuildMcContextName(o.mcName)
-		mcLabel := fmt.Sprintf("k8s-mc-%s", o.mcName)
-
-		mcService := k8s.NewK8sConnectionService(mcLabel, mcContext, true, o.kubeMgr)
-
-		// Set the global state change callback if configured
-		o.mu.RLock()
-		if o.globalStateChangeCallback != nil {
-			mcService.SetStateChangeCallback(o.globalStateChangeCallback)
-		}
-		o.mu.RUnlock()
-
-		o.registry.Register(mcService)
-
-		logging.Debug("Orchestrator", "Registered K8s MC service: %s", mcLabel)
-	}
-
-	// Register WC connection if configured
-	// WC connections require an MC name to build the full context name
-	if o.wcName != "" && o.mcName != "" {
-		wcContext := o.kubeMgr.BuildWcContextName(o.mcName, o.wcName)
-		wcLabel := fmt.Sprintf("k8s-wc-%s", o.wcName)
-
-		wcService := k8s.NewK8sConnectionService(wcLabel, wcContext, false, o.kubeMgr)
+	// Register all configured clusters
+	for _, cluster := range o.clusters {
+		k8sService := k8s.NewK8sConnectionService(
+			cluster.Name,
+			cluster.Context,
+			cluster.Role == config.ClusterRoleObservability, // isMC for health check purposes
+			o.kubeMgr,
+		)
 
 		// Set the global state change callback if configured
 		o.mu.RLock()
 		if o.globalStateChangeCallback != nil {
-			wcService.SetStateChangeCallback(o.globalStateChangeCallback)
+			k8sService.SetStateChangeCallback(o.globalStateChangeCallback)
 		}
 		o.mu.RUnlock()
 
-		o.registry.Register(wcService)
+		o.registry.Register(k8sService)
 
-		logging.Debug("Orchestrator", "Registered K8s WC service: %s", wcLabel)
+		logging.Debug("Orchestrator", "Registered K8s service: %s (role: %s, context: %s)",
+			cluster.Name, cluster.Role, cluster.Context)
 	}
 
 	return nil
@@ -355,7 +363,39 @@ func (o *Orchestrator) registerPortForwardServices() error {
 			continue
 		}
 
-		pfService := portforward.NewPortForwardService(pf, o.kubeMgr)
+		// Resolve the actual Kubernetes context for this port forward
+		var context string
+		var resolveError error
+		if pf.ClusterName != "" {
+			// Specific cluster requested
+			if cluster, exists := o.clusterState.GetClusterByName(pf.ClusterName); exists {
+				context = cluster.Context
+			} else {
+				resolveError = fmt.Errorf("cluster %s not found", pf.ClusterName)
+				logging.Warn("Orchestrator", "Port forward %s: %v", pf.Name, resolveError)
+			}
+		} else if pf.ClusterRole != "" {
+			// Use active cluster for role
+			ctx, err := o.clusterState.GetActiveClusterContext(pf.ClusterRole)
+			if err != nil {
+				resolveError = err
+				logging.Warn("Orchestrator", "Port forward %s: %v", pf.Name, err)
+			} else {
+				context = ctx
+			}
+		} else if pf.KubeContextTarget != "" {
+			// Fallback to deprecated field
+			context = pf.KubeContextTarget
+		} else {
+			resolveError = fmt.Errorf("no cluster specified")
+			logging.Warn("Orchestrator", "Port forward %s: %v", pf.Name, resolveError)
+		}
+
+		// Update the port forward configuration with resolved context
+		pfConfig := pf
+		pfConfig.KubeContextTarget = context
+
+		pfService := portforward.NewPortForwardService(pfConfig, o.kubeMgr)
 
 		// Set the global state change callback if configured
 		o.mu.RLock()
@@ -366,7 +406,15 @@ func (o *Orchestrator) registerPortForwardServices() error {
 
 		o.registry.Register(pfService)
 
-		logging.Debug("Orchestrator", "Registered port forward service: %s", pf.Name)
+		// If we couldn't resolve the cluster, mark it as stopped due to dependency
+		if resolveError != nil {
+			o.mu.Lock()
+			o.stopReasons[pf.Name] = StopReasonDependency
+			o.mu.Unlock()
+			logging.Debug("Orchestrator", "Registered port forward service: %s (marked as dependency-stopped: %v)", pf.Name, resolveError)
+		} else {
+			logging.Debug("Orchestrator", "Registered port forward service: %s (context: %s)", pf.Name, context)
+		}
 	}
 
 	return nil
@@ -394,7 +442,21 @@ func (o *Orchestrator) registerMCPServices() error {
 
 		o.registry.Register(mcpService)
 
-		logging.Debug("Orchestrator", "Registered MCP server service: %s", mcp.Name)
+		// Check if this MCP server requires a cluster role that might not be available
+		if mcp.RequiresClusterRole != "" {
+			_, err := o.clusterState.GetActiveClusterContext(mcp.RequiresClusterRole)
+			if err != nil {
+				// Mark as stopped due to dependency
+				o.mu.Lock()
+				o.stopReasons[mcp.Name] = StopReasonDependency
+				o.mu.Unlock()
+				logging.Debug("Orchestrator", "Registered MCP server service: %s (marked as dependency-stopped: %v)", mcp.Name, err)
+			} else {
+				logging.Debug("Orchestrator", "Registered MCP server service: %s", mcp.Name)
+			}
+		} else {
+			logging.Debug("Orchestrator", "Registered MCP server service: %s", mcp.Name)
+		}
 	}
 
 	return nil
@@ -475,4 +537,85 @@ type ServiceStateChangedEvent struct {
 	NewState    string
 	Health      string
 	Error       error
+}
+
+// GetAvailableClusters returns all clusters configured for a specific role
+func (o *Orchestrator) GetAvailableClusters(role config.ClusterRole) []config.ClusterDefinition {
+	return o.clusterState.GetAvailableClusters(role)
+}
+
+// GetActiveCluster returns the currently active cluster for a role
+func (o *Orchestrator) GetActiveCluster(role config.ClusterRole) (string, bool) {
+	return o.clusterState.GetActiveCluster(role)
+}
+
+// SwitchCluster changes the active cluster for a role and restarts affected services
+func (o *Orchestrator) SwitchCluster(role config.ClusterRole, clusterName string) error {
+	// Get the old cluster name before switching
+	oldCluster, _ := o.clusterState.GetActiveCluster(role)
+
+	// Update cluster state
+	if err := o.clusterState.SetActiveCluster(role, clusterName); err != nil {
+		return err
+	}
+
+	logging.Info("Orchestrator", "Switching %s cluster from %s to %s", role, oldCluster, clusterName)
+
+	// Find affected services that need to be restarted
+	affectedServices := o.findServicesUsingClusterRole(role)
+
+	// Stop affected services
+	for _, svcLabel := range affectedServices {
+		logging.Debug("Orchestrator", "Stopping service %s for cluster switch", svcLabel)
+		if err := o.StopService(svcLabel); err != nil {
+			logging.Error("Orchestrator", err, "Failed to stop service %s for cluster switch", svcLabel)
+		}
+	}
+
+	// Clear the manual stop reason so services can be restarted
+	o.mu.Lock()
+	for _, svcLabel := range affectedServices {
+		delete(o.stopReasons, svcLabel)
+	}
+	o.mu.Unlock()
+
+	// Restart affected services with new cluster
+	for _, svcLabel := range affectedServices {
+		logging.Debug("Orchestrator", "Starting service %s with new cluster", svcLabel)
+		if err := o.StartService(svcLabel); err != nil {
+			logging.Error("Orchestrator", err, "Failed to restart service %s after cluster switch", svcLabel)
+		}
+	}
+
+	return nil
+}
+
+// findServicesUsingClusterRole finds all services that depend on a specific cluster role
+func (o *Orchestrator) findServicesUsingClusterRole(role config.ClusterRole) []string {
+	var affected []string
+
+	// Check K8s connection services
+	activeClusterName, exists := o.clusterState.GetActiveCluster(role)
+	if exists {
+		// The K8s connection service itself
+		if _, exists := o.registry.Get(activeClusterName); exists {
+			affected = append(affected, activeClusterName)
+		}
+	}
+
+	// Check port forwards
+	for _, pf := range o.portForwards {
+		if pf.ClusterRole == role {
+			affected = append(affected, pf.Name)
+		}
+	}
+
+	// Check MCP servers
+	for _, mcp := range o.mcpServers {
+		if mcp.RequiresClusterRole == role {
+			affected = append(affected, mcp.Name)
+		}
+	}
+
+	return affected
 }

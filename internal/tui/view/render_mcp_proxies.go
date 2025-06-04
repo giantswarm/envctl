@@ -106,6 +106,9 @@ func renderMcpProxyPanel(serverName string, predefinedData config.MCPServerDefin
 		case st == "running":
 			baseStyle = color.PanelStatusRunningStyle
 			contentFg = color.StatusMsgRunningStyle
+		case st == "waiting":
+			baseStyle = color.PanelStatusInitializingStyle
+			contentFg = color.StatusMsgInitializingStyle
 		case st == "stopped":
 			baseStyle = color.PanelStatusExitedStyle
 			contentFg = color.StatusMsgExitedStyle
@@ -141,6 +144,8 @@ func renderMcpProxyPanel(serverName string, predefinedData config.MCPServerDefin
 			iconStr = SafeIcon(IconCross)
 		case st == "running":
 			iconStr = SafeIcon(IconPlay)
+		case st == "waiting":
+			iconStr = SafeIcon(IconHourglass)
 		case st == "stopped":
 			iconStr = SafeIcon(IconStop)
 		default:

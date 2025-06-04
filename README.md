@@ -9,6 +9,7 @@ It automates the process of logging into clusters via Teleport (`tsh`) and setti
 ## Features ✨
 
 *   **Simplified Connection:** Connect to management and workload clusters with a single command.
+*   **Flexible Cluster Configuration:** Define clusters with roles (observability, target, custom) and switch between them dynamically.
 *   **Automatic Context Switching:** Sets your Kubernetes context correctly.
 *   **Port-Forwarding Management:** 
     *   Prometheus and Grafana services (always from the Management Cluster)
@@ -25,6 +26,8 @@ It automates the process of logging into clusters via Teleport (`tsh`) and setti
 ## What's New 🎉
 
 ### Recent Improvements
+- **Flexible Cluster Configuration:** New cluster role system allows defining multiple clusters with roles (observability, target, custom) and dynamically switching between them
+- **Service-Specific Cluster Targeting:** Services can now depend on specific clusters or cluster roles, enabling complex multi-cluster setups
 - **Unified Service Architecture:** All components (K8s connections, port forwards, MCP servers) are now managed as services with consistent lifecycle management
 - **Advanced Dependency Management:** Services automatically start/stop based on their dependencies with intelligent cascade handling
 - **Health Monitoring:** Continuous health checks for all services with automatic recovery when dependencies are restored
@@ -278,7 +281,16 @@ envctl connect myinstallation <TAB>      # Shows short names of workload cluster
 
 `envctl` supports a powerful YAML-based configuration system to customize its behavior, define new MCP servers, and manage port-forwarding rules. This allows you to tailor `envctl` precisely to your development needs.
 
-Configurations are loaded in layers (default, user-global, project-specific), with later layers overriding earlier ones. You can manage global settings, define how MCP servers are run (as local commands or containers), and specify detailed port-forwarding rules, including dynamic Kubernetes context targeting (`"mc"`, `"wc"`, or explicit contexts).
+### New: Flexible Cluster Configuration 🚀
+
+The new cluster configuration system allows you to:
+- Define multiple clusters with specific roles (observability, target, custom)
+- Switch between clusters dynamically through the TUI
+- Have different services connect to different clusters based on their needs
+- Mix and match clusters from different providers (Giant Swarm, GKE, EKS, etc.)
+- Override cluster configurations for different environments (dev vs prod)
+
+Configurations are loaded in layers (default, user-global, project-specific), with later layers overriding earlier ones. You can manage global settings, define how MCP servers are run (as local commands or containers), and specify detailed port-forwarding rules, including dynamic cluster targeting.
 
 ### Configuration Examples
 
@@ -286,6 +298,7 @@ See the [examples directory](docs/examples/) for:
 - [Basic configuration](docs/examples/basic-config.yaml) - Minimal setup for getting started
 - [Advanced configuration](docs/examples/advanced-config.yaml) - Complex scenarios with custom services
 - [Containerized MCP servers](docs/examples/containerized-config.yaml) - Running MCP servers in Docker
+- [Cluster configuration examples](docs/cluster-configuration-examples.md) - Various cluster setup scenarios
 
 For a detailed explanation of the configuration file structure, all available options, and comprehensive examples, please see the [**Flexible Configuration Documentation (docs/configuration.md)**](docs/configuration.md).
 

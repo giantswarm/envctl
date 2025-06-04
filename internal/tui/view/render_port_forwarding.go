@@ -105,6 +105,9 @@ func renderPortForwardPanel(m *model.Model, label string, pf *api.PortForwardSer
 	case stateLower == "running":
 		baseStyleForPanel = color.PanelStatusRunningStyle
 		focusedBaseStyleForPanel = color.FocusedPanelStatusRunningStyle
+	case stateLower == "waiting":
+		baseStyleForPanel = color.PanelStatusInitializingStyle
+		focusedBaseStyleForPanel = color.FocusedPanelStatusInitializingStyle
 	case stateLower == "stopped" || strings.HasPrefix(statusToCheck, "exited") || strings.HasPrefix(statusToCheck, "killed"):
 		baseStyleForPanel = color.PanelStatusExitedStyle
 		focusedBaseStyleForPanel = color.FocusedPanelStatusExitedStyle
@@ -124,6 +127,8 @@ func renderPortForwardPanel(m *model.Model, label string, pf *api.PortForwardSer
 		contentFg = color.StatusMsgErrorStyle
 	case stateLower == "running":
 		contentFg = color.StatusMsgRunningStyle
+	case stateLower == "waiting":
+		contentFg = color.StatusMsgInitializingStyle
 	case stateLower == "stopped" || strings.HasPrefix(statusToCheck, "exited") || strings.HasPrefix(statusToCheck, "killed"):
 		contentFg = color.StatusMsgExitedStyle
 	default:
@@ -151,6 +156,8 @@ func renderPortForwardPanel(m *model.Model, label string, pf *api.PortForwardSer
 		statusIcon = SafeIcon(IconPlay)
 	case stateLower == "failed" || strings.HasPrefix(statusToCheck, "error"):
 		statusIcon = SafeIcon(IconCross)
+	case stateLower == "waiting":
+		statusIcon = SafeIcon(IconHourglass)
 	case stateLower == "stopped" || strings.HasPrefix(statusToCheck, "exited") || strings.HasPrefix(statusToCheck, "killed"):
 		statusIcon = SafeIcon(IconStop)
 	default:
@@ -203,6 +210,10 @@ func renderPortForwardPanelFromConfig(m *model.Model, pfConfig config.PortForwar
 			baseStyleForPanel = color.PanelStatusRunningStyle
 			focusedBaseStyleForPanel = color.FocusedPanelStatusRunningStyle
 			contentFg = color.StatusMsgRunningStyle
+		case stateLower == "waiting":
+			baseStyleForPanel = color.PanelStatusInitializingStyle
+			focusedBaseStyleForPanel = color.FocusedPanelStatusInitializingStyle
+			contentFg = color.StatusMsgInitializingStyle
 		case stateLower == "stopped" || strings.HasPrefix(statusToCheck, "exited") || strings.HasPrefix(statusToCheck, "killed"):
 			baseStyleForPanel = color.PanelStatusExitedStyle
 			focusedBaseStyleForPanel = color.FocusedPanelStatusExitedStyle
@@ -271,6 +282,8 @@ func renderPortForwardPanelFromConfig(m *model.Model, pfConfig config.PortForwar
 			statusIcon = SafeIcon(IconPlay)
 		case stateLower == "failed" || strings.HasPrefix(stateLower, "error"):
 			statusIcon = SafeIcon(IconCross)
+		case stateLower == "waiting":
+			statusIcon = SafeIcon(IconHourglass)
 		case stateLower == "stopped" || strings.HasPrefix(stateLower, "exited") || strings.HasPrefix(stateLower, "killed"):
 			statusIcon = SafeIcon(IconStop)
 		default:

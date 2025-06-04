@@ -2,6 +2,9 @@ package model
 
 import (
 	"envctl/internal/api"
+	"envctl/internal/config"
+	"envctl/internal/orchestrator"
+	"envctl/internal/services"
 	"errors"
 	"testing"
 	"time"
@@ -322,10 +325,10 @@ func (m *mockOrchestratorAPI) RestartService(label string) error {
 	return nil
 }
 
-func (m *mockOrchestratorAPI) GetServiceStatus(label string) (api.ServiceStatus, error) {
-	return api.ServiceStatus{
+func (m *mockOrchestratorAPI) GetServiceStatus(label string) (*api.ServiceStatus, error) {
+	return &api.ServiceStatus{
 		Label: label,
-		State: "running",
+		State: services.StateRunning,
 	}, nil
 }
 
@@ -333,10 +336,23 @@ func (m *mockOrchestratorAPI) GetAllServices() []api.ServiceStatus {
 	return []api.ServiceStatus{}
 }
 
-func (m *mockOrchestratorAPI) SubscribeToStateChanges() <-chan api.ServiceStateChangedEvent {
-	ch := make(chan api.ServiceStateChangedEvent)
+func (m *mockOrchestratorAPI) SubscribeToStateChanges() <-chan orchestrator.ServiceStateChangedEvent {
+	ch := make(chan orchestrator.ServiceStateChangedEvent)
 	close(ch)
 	return ch
+}
+
+// Cluster management methods
+func (m *mockOrchestratorAPI) GetAvailableClusters(role config.ClusterRole) []config.ClusterDefinition {
+	return []config.ClusterDefinition{}
+}
+
+func (m *mockOrchestratorAPI) GetActiveCluster(role config.ClusterRole) (string, bool) {
+	return "", false
+}
+
+func (m *mockOrchestratorAPI) SwitchCluster(role config.ClusterRole, clusterName string) error {
+	return nil
 }
 
 func TestStartService(t *testing.T) {

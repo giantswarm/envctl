@@ -26,6 +26,7 @@ const (
 	StatusStarting     = "Starting"
 	StatusRunning      = "Running"
 	StatusActive       = "Active"
+	StatusWaiting      = "Waiting"
 	StatusStopping     = "Stopping"
 	StatusStopped      = "Stopped"
 	StatusFailed       = "Failed"
@@ -39,6 +40,8 @@ func MapStatusToState(status string) ServiceState {
 		return StateStarting
 	case StatusRunning, StatusActive:
 		return StateRunning
+	case StatusWaiting:
+		return StateWaiting
 	case StatusStopping:
 		return StateStopping
 	case StatusStopped:
@@ -62,6 +65,8 @@ func MapStatusToHealth(status string, isError bool) HealthStatus {
 		return HealthUnhealthy
 	case StatusInitializing, StatusStarting:
 		return HealthChecking
+	case StatusWaiting:
+		return HealthUnknown
 	case StatusFailed:
 		return HealthUnhealthy
 	case StatusStopped, StatusStopping:

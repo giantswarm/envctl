@@ -1,140 +1,235 @@
 # Advanced envctl configuration example
-# This file demonstrates advanced configuration options including
-# custom port forwards, additional MCP servers, and environment-specific settings
+# This demonstrates complex multi-cluster setups with the new flexible cluster system
 
-# Port forwards with advanced configurations
+globalSettings:
+  defaultContainerRuntime: "podman"
+
+# Define multiple clusters across different environments
+clusters:
+  # Production environment
+  - name: "prod-mc"
+    context: "teleport.giantswarm.io-prod"
+    role: "observability"
+    displayName: "Production Management Cluster"
+    icon: "🏢"
+  
+  - name: "prod-api"
+    context: "teleport.giantswarm.io-prod-api"
+    role: "target"
+    displayName: "Production API Cluster"
+    icon: "🚀"
+  
+  - name: "prod-web"
+    context: "teleport.giantswarm.io-prod-web"
+    role: "target"
+    displayName: "Production Web Cluster"
+    icon: "🌐"
+  
+  # Staging environment
+  - name: "staging-mc"
+    context: "teleport.giantswarm.io-staging"
+    role: "observability"
+    displayName: "Staging Management Cluster"
+    icon: "🧪"
+  
+  - name: "staging-apps"
+    context: "teleport.giantswarm.io-staging-apps"
+    role: "target"
+    displayName: "Staging Applications"
+    icon: "🔧"
+  
+  # Special purpose clusters
+  - name: "logging-central"
+    context: "teleport.giantswarm.io-logging"
+    role: "custom"
+    displayName: "Central Logging Platform"
+    icon: "📝"
+  
+  - name: "ml-platform"
+    context: "gke_my-project_us-central1_ml-platform"
+    role: "custom"
+    displayName: "ML Training Platform"
+    icon: "🤖"
+
+# Set initial active clusters (can be changed via TUI)
+activeClusters:
+  observability: "prod-mc"
+  target: "prod-api"
+  custom: "logging-central"
+
+# Complex port forwarding setups
 portForwards:
-  # Standard services (as in basic config)
-  - name: mc-prometheus
-    enabled: true
-    namespace: mimir
-    service: prometheus-operated
-    localPort: 8080
-    remotePort: 9090
-    kubeContextTarget: "mc"
+  # Core monitoring services from observability cluster
+  - name: "prometheus"
+    enabledByDefault: true
+    icon: "📊"
+    category: "Core Monitoring"
+    clusterRole: "observability"
+    namespace: "mimir"
+    targetType: "service"
+    targetName: "mimir-query-frontend"
+    localPort: "8080"
+    remotePort: "8080"
+  
+  - name: "grafana"
+    enabledByDefault: true
+    icon: "📈"
+    category: "Core Monitoring"
+    clusterRole: "observability"
+    namespace: "mimir"
+    targetType: "service"
+    targetName: "grafana"
+    localPort: "3000"
+    remotePort: "3000"
+  
+  - name: "alertmanager"
+    enabledByDefault: true
+    icon: "🚨"
+    category: "Core Monitoring"
+    clusterRole: "observability"
+    namespace: "mimir"
+    targetType: "service"
+    targetName: "alertmanager"
+    localPort: "9093"
+    remotePort: "9093"
+  
+  # Application-specific forwards from target clusters
+  - name: "api-gateway"
+    enabledByDefault: true
+    icon: "🔌"
+    category: "API Services"
+    clusterRole: "target"
+    namespace: "production"
+    targetType: "service"
+    targetName: "api-gateway"
+    localPort: "8000"
+    remotePort: "80"
+    bindAddress: "0.0.0.0"  # Bind to all interfaces for team access
+  
+  - name: "api-metrics"
+    enabledByDefault: false
+    icon: "📊"
+    category: "API Services"
+    clusterRole: "target"
+    namespace: "production"
+    targetType: "pod"
+    targetLabelSelector: "app=api,component=metrics"
+    localPort: "9090"
+    remotePort: "9090"
+  
+  # Specific cluster forwards (not role-based)
+  - name: "loki-central"
+    enabledByDefault: true
+    icon: "📜"
+    category: "Logging"
+    clusterName: "logging-central"  # Always from this specific cluster
+    namespace: "loki"
+    targetType: "service"
+    targetName: "loki-gateway"
+    localPort: "3100"
+    remotePort: "80"
+  
+  - name: "jupyter-notebooks"
+    enabledByDefault: false
+    icon: "📓"
+    category: "ML Platform"
+    clusterName: "ml-platform"  # Always from ML platform
+    namespace: "jupyter"
+    targetType: "service"
+    targetName: "jupyter-hub"
+    localPort: "8888"
+    remotePort: "8888"
 
-  - name: mc-grafana
-    enabled: true
-    namespace: mimir
-    service: grafana
-    localPort: 3000
-    remotePort: 3000
-    kubeContextTarget: "mc"
-
-  # Loki for log aggregation
-  - name: mc-loki
-    enabled: true
-    namespace: loki
-    service: loki-gateway
-    localPort: 3100
-    remotePort: 80
-    kubeContextTarget: "mc"
-
-  # Alertmanager for alert management
-  - name: mc-alertmanager
-    enabled: true
-    namespace: mimir
-    service: alertmanager-operated
-    localPort: 9093
-    remotePort: 9093
-    kubeContextTarget: "mc"
-
-  # Custom application from workload cluster
-  - name: wc-myapp
-    enabled: false  # Disabled by default, enable when needed
-    namespace: myapp-namespace
-    service: myapp-service
-    localPort: 8888
-    remotePort: 8080
-    kubeContextTarget: "wc"  # Targets workload cluster
-
-  # Alloy metrics with custom port
-  - name: alloy-metrics
-    enabled: true
-    namespace: kube-system
-    service: alloy-metrics
-    localPort: 12345
-    remotePort: 12345
-    kubeContextTarget: "dynamic"
-
-# Extended MCP server configurations
+# Advanced MCP server configurations
 mcpServers:
-  # Standard MCP servers
-  - name: kubernetes
-    enabled: true
-    type: localCommand
+  # Multiple Kubernetes MCPs for different clusters
+  - name: "kubernetes-prod"
+    type: "localCommand"
+    enabledByDefault: true
+    icon: "☸️"
+    category: "Production"
     command: ["mcp-server-kubernetes"]
-    proxyPort: 8001
-    requiresK8sConnection: "mc"
-
-  - name: prometheus
-    enabled: true
-    type: localCommand
-    command: ["mcp-server-prometheus"]
-    proxyPort: 8002
-    requiresPortForwards: ["mc-prometheus"]
     env:
-      PROMETHEUS_URL: "http://localhost:8080"
-      # Additional Prometheus configuration
-      PROMETHEUS_TIMEOUT: "30s"
-      PROMETHEUS_MAX_SAMPLES: "50000"
-
-  - name: grafana
-    enabled: true
-    type: localCommand
-    command: ["mcp-server-grafana"]
-    proxyPort: 8003
-    requiresPortForwards: ["mc-grafana"]
+      CLUSTER_LABEL: "production"
+    requiresClusterRole: "target"  # Connects to active target cluster
+  
+  - name: "kubernetes-staging"
+    type: "localCommand"
+    enabledByDefault: false
+    icon: "🧪"
+    category: "Staging"
+    command: ["mcp-server-kubernetes"]
     env:
-      GRAFANA_URL: "http://localhost:3000"
-      # Grafana API configuration
-      GRAFANA_API_KEY: "${GRAFANA_API_KEY}"  # Use environment variable
-
-  # Custom MCP server with Python script
-  - name: custom-analyzer
-    enabled: false
-    type: localCommand
-    command: ["python3", "-m", "custom_mcp_analyzer"]
-    proxyPort: 8004
-    requiresPortForwards: ["mc-prometheus", "mc-loki"]
-    env:
-      PROMETHEUS_URL: "http://localhost:8080"
+      CLUSTER_LABEL: "staging"
+    requiresClusterName: "staging-apps"  # Always connects to staging
+  
+  # Custom containerized MCP for ML workloads
+  - name: "ml-assistant"
+    type: "container"
+    enabledByDefault: false
+    icon: "🤖"
+    category: "ML Platform"
+    image: "myregistry/mcp-ml-assistant:latest"
+    containerPorts:
+      - "8004:8080"
+    containerEnv:
+      MODEL_PATH: "/models"
+      GPU_ENABLED: "true"
+    containerVolumes:
+      - "~/.kube/config:/root/.kube/config:ro"
+      - "/var/ml-models:/models:ro"
+    requiresClusterName: "ml-platform"
+    requiresPortForwards: ["jupyter-notebooks"]
+  
+  # Enhanced monitoring MCPs
+  - name: "prometheus-multi"
+    type: "container"
+    enabledByDefault: true
+    icon: "📊"
+    category: "Monitoring"
+    image: "giantswarm/mcp-prometheus-multi:latest"
+    containerPorts:
+      - "8002:8080"
+    containerEnv:
+      PROMETHEUS_URLS: "prod=http://localhost:8080,staging=http://localhost:8081"
+      DEFAULT_TENANT: "prod"
+    requiresPortForwards:
+      - "prometheus"
+  
+  - name: "loki-mcp"
+    type: "container"
+    enabledByDefault: true
+    icon: "📜"
+    category: "Logging"
+    image: "myregistry/mcp-loki:latest"
+    containerPorts:
+      - "8005:8080"
+    containerEnv:
       LOKI_URL: "http://localhost:3100"
-      ANALYSIS_INTERVAL: "60s"
-
-  # Containerized MCP server example
-  - name: kubernetes-container
-    enabled: false  # Enable to use containerized version
-    type: container
-    image: "ghcr.io/giantswarm/mcp-server-kubernetes:latest"
-    proxyPort: 8005
-    requiresK8sConnection: "mc"
-    ports:
-      - "8005:8000"  # Map container port 8000 to local 8005
-    volumes:
-      - "${HOME}/.kube:/root/.kube:ro"  # Mount kubeconfig
+    requiresPortForwards:
+      - "loki-central"
+  
+  # Development tools MCP with custom script
+  - name: "dev-tools"
+    type: "localCommand"
+    enabledByDefault: false
+    icon: "🛠️"
+    category: "Development"
+    command: ["./scripts/dev-mcp-wrapper.sh"]
     env:
-      KUBECONFIG: "/root/.kube/config"
-      LOG_LEVEL: "debug"
+      DEV_MODE: "true"
+      TOOLS_PATH: "/opt/dev-tools"
+      KUBECTL_CONTEXT_OVERRIDE: "true"
+    requiresClusterRole: "target"
 
-  # MCP server with complex dependencies
-  - name: cluster-monitor
-    enabled: false
-    type: localCommand
-    command: ["cluster-monitor-mcp"]
-    proxyPort: 8006
-    requiresK8sConnection: "mc"  # Needs K8s connection
-    requiresPortForwards: ["mc-prometheus", "mc-alertmanager"]  # Multiple dependencies
-    env:
-      PROMETHEUS_URL: "http://localhost:8080"
-      ALERTMANAGER_URL: "http://localhost:9093"
-      CLUSTER_NAME: "${CLUSTER_NAME:-unknown}"
-      MONITOR_INTERVAL: "30s"
-      ENABLE_ALERTS: "true"
-
-# Environment-specific overrides can be placed in:
-# - ~/.config/envctl/config.yaml (user-specific)
-# - ./.envctl/config.yaml (project-specific)
-#
-# These files will be merged with this configuration, with later
-# files taking precedence over earlier ones. 
+# Example of using hooks (future feature)
+# hooks:
+#   preStart:
+#     - name: "check-vpn"
+#       command: ["./scripts/check-vpn.sh"]
+#   postStart:
+#     - name: "notify-team"
+#       command: ["./scripts/notify-slack.sh", "Environment ready"]
+#   preStop:
+#     - name: "cleanup"
+#       command: ["./scripts/cleanup-temp-resources.sh"] 

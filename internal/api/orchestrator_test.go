@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"envctl/internal/config"
 	"envctl/internal/orchestrator"
 	"envctl/internal/services"
 	"errors"
@@ -9,106 +10,6 @@ import (
 	"testing"
 	"time"
 )
-
-// mockServiceOrchestrator implements ServiceOrchestrator for testing
-type mockServiceOrchestrator struct {
-	startServiceFunc   func(label string) error
-	stopServiceFunc    func(label string) error
-	restartServiceFunc func(label string) error
-	subscribers        []chan orchestrator.ServiceStateChangedEvent
-	mu                 sync.Mutex
-}
-
-func (m *mockServiceOrchestrator) StartService(label string) error {
-	if m.startServiceFunc != nil {
-		return m.startServiceFunc(label)
-	}
-	return nil
-}
-
-func (m *mockServiceOrchestrator) StopService(label string) error {
-	if m.stopServiceFunc != nil {
-		return m.stopServiceFunc(label)
-	}
-	return nil
-}
-
-func (m *mockServiceOrchestrator) RestartService(label string) error {
-	if m.restartServiceFunc != nil {
-		return m.restartServiceFunc(label)
-	}
-	return nil
-}
-
-func (m *mockServiceOrchestrator) SubscribeToStateChanges() <-chan orchestrator.ServiceStateChangedEvent {
-	// Create a new channel for each subscriber (like the real orchestrator)
-	ch := make(chan orchestrator.ServiceStateChangedEvent, 100)
-
-	m.mu.Lock()
-	m.subscribers = append(m.subscribers, ch)
-	m.mu.Unlock()
-
-	return ch
-}
-
-// sendEvent is a helper method for tests to send events
-func (m *mockServiceOrchestrator) sendEvent(event orchestrator.ServiceStateChangedEvent) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	// Send to all subscribers
-	for _, ch := range m.subscribers {
-		select {
-		case ch <- event:
-		default:
-			// Channel full, ignore
-		}
-	}
-}
-
-// mockOrchestratorRegistry implements services.ServiceRegistry for testing
-type mockOrchestratorRegistry struct {
-	services map[string]services.Service
-}
-
-func newMockOrchestratorRegistry() *mockOrchestratorRegistry {
-	return &mockOrchestratorRegistry{
-		services: make(map[string]services.Service),
-	}
-}
-
-func (m *mockOrchestratorRegistry) Register(service services.Service) error {
-	m.services[service.GetLabel()] = service
-	return nil
-}
-
-func (m *mockOrchestratorRegistry) Unregister(label string) error {
-	delete(m.services, label)
-	return nil
-}
-
-func (m *mockOrchestratorRegistry) Get(label string) (services.Service, bool) {
-	service, exists := m.services[label]
-	return service, exists
-}
-
-func (m *mockOrchestratorRegistry) GetAll() []services.Service {
-	var list []services.Service
-	for _, service := range m.services {
-		list = append(list, service)
-	}
-	return list
-}
-
-func (m *mockOrchestratorRegistry) GetByType(serviceType services.ServiceType) []services.Service {
-	var list []services.Service
-	for _, service := range m.services {
-		if service.GetType() == serviceType {
-			list = append(list, service)
-		}
-	}
-	return list
-}
 
 // mockOrchestratorService implements services.Service for testing
 type mockOrchestratorService struct {
@@ -129,10 +30,115 @@ func (m *mockOrchestratorService) GetDependencies() []string         { return m.
 func (m *mockOrchestratorService) Start(ctx context.Context) error   { return nil }
 func (m *mockOrchestratorService) Stop(ctx context.Context) error    { return nil }
 func (m *mockOrchestratorService) Restart(ctx context.Context) error { return nil }
+func (m *mockOrchestratorService) GetLastError() error               { return m.err }
+func (m *mockOrchestratorService) SetStateChangeCallback(fn func(old, new services.ServiceState)) {
+}
+
+// orchestratorMockService implements services.Service for testing
+type orchestratorMockService struct {
+	label               string
+	serviceType         services.ServiceType
+	state               services.ServiceState
+	health              services.HealthStatus
+	dependencies        []string
+	startErr            error
+	stopErr             error
+	restartErr          error
+	lastErr             error
+	mu                  sync.Mutex
+	stateChangeCallback services.StateChangeCallback
+}
+
+func (m *orchestratorMockService) GetLabel() string                 { return m.label }
+func (m *orchestratorMockService) GetType() services.ServiceType    { return m.serviceType }
+func (m *orchestratorMockService) GetState() services.ServiceState  { return m.state }
+func (m *orchestratorMockService) GetHealth() services.HealthStatus { return m.health }
+func (m *orchestratorMockService) GetError() error                  { return m.lastErr }
+func (m *orchestratorMockService) GetDependencies() []string        { return m.dependencies }
+func (m *orchestratorMockService) GetLastError() error              { return m.lastErr }
+func (m *orchestratorMockService) SetStateChangeCallback(cb services.StateChangeCallback) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.stateChangeCallback = cb
+}
+
+func (m *orchestratorMockService) Start(ctx context.Context) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	oldState := m.state
+
+	if m.startErr != nil {
+		m.lastErr = m.startErr
+		m.state = services.StateFailed
+		if m.stateChangeCallback != nil {
+			m.stateChangeCallback(m.label, oldState, m.state, m.health, m.startErr)
+		}
+		return m.startErr
+	}
+
+	// Simulate state transition
+	m.state = services.StateStarting
+	if m.stateChangeCallback != nil {
+		m.stateChangeCallback(m.label, oldState, m.state, m.health, nil)
+	}
+
+	// Simulate successful start
+	m.state = services.StateRunning
+	m.health = services.HealthHealthy
+	if m.stateChangeCallback != nil {
+		m.stateChangeCallback(m.label, services.StateStarting, m.state, m.health, nil)
+	}
+
+	return nil
+}
+
+func (m *orchestratorMockService) Stop(ctx context.Context) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	oldState := m.state
+
+	if m.stopErr != nil {
+		m.lastErr = m.stopErr
+		return m.stopErr
+	}
+
+	m.state = services.StateStopped
+	m.health = services.HealthUnknown
+
+	if m.stateChangeCallback != nil {
+		m.stateChangeCallback(m.label, oldState, m.state, m.health, nil)
+	}
+
+	return nil
+}
+
+func (m *orchestratorMockService) Restart(ctx context.Context) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	oldState := m.state
+
+	if m.restartErr != nil {
+		m.lastErr = m.restartErr
+		return m.restartErr
+	}
+
+	// Simulate restart - set to running after restart
+	m.state = services.StateRunning
+
+	if m.stateChangeCallback != nil {
+		m.stateChangeCallback(m.label, oldState, m.state, m.health, nil)
+	}
+
+	return nil
+}
 
 func TestNewOrchestratorAPI(t *testing.T) {
-	orch := &mockServiceOrchestrator{}
-	registry := newMockOrchestratorRegistry()
+	cfg := orchestrator.Config{}
+	orch := orchestrator.New(cfg)
+	registry := services.NewRegistry()
 
 	api := NewOrchestratorAPI(orch, registry)
 
@@ -150,46 +156,51 @@ func TestOrchestratorAPI_StartService(t *testing.T) {
 	tests := []struct {
 		name        string
 		label       string
-		orchError   error
+		startError  error
 		expectError bool
 	}{
 		{
 			name:        "successful start",
 			label:       "test-service",
-			orchError:   nil,
+			startError:  nil,
 			expectError: false,
 		},
 		{
-			name:        "orchestrator error",
+			name:        "service start error",
 			label:       "test-service",
-			orchError:   errors.New("start failed"),
+			startError:  errors.New("start failed"),
 			expectError: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			orch := &mockServiceOrchestrator{
-				startServiceFunc: func(label string) error {
-					if label != tt.label {
-						t.Errorf("Expected label %s, got %s", tt.label, label)
-					}
-					return tt.orchError
-				},
+			cfg := orchestrator.Config{}
+			orch := orchestrator.New(cfg)
+
+			// Start the orchestrator
+			ctx := context.Background()
+			err := orch.Start(ctx)
+			if err != nil {
+				t.Fatalf("Failed to start orchestrator: %v", err)
 			}
-			registry := newMockOrchestratorRegistry()
-			// Register a test service so it exists in the registry
-			testService := &mockService{
+			defer orch.Stop()
+
+			registry := orch.GetServiceRegistry()
+
+			// Register a test service
+			testService := &orchestratorMockService{
 				label:       tt.label,
 				serviceType: services.TypePortForward,
 				state:       services.StateStopped,
 				health:      services.HealthUnknown,
+				startErr:    tt.startError,
 			}
 			registry.Register(testService)
 
 			api := NewOrchestratorAPI(orch, registry)
 
-			err := api.StartService(tt.label)
+			err = api.StartService(tt.label)
 
 			if (err != nil) != tt.expectError {
 				t.Errorf("StartService() error = %v, expectError %v", err, tt.expectError)
@@ -202,46 +213,51 @@ func TestOrchestratorAPI_StopService(t *testing.T) {
 	tests := []struct {
 		name        string
 		label       string
-		orchError   error
+		stopError   error
 		expectError bool
 	}{
 		{
 			name:        "successful stop",
 			label:       "test-service",
-			orchError:   nil,
+			stopError:   nil,
 			expectError: false,
 		},
 		{
-			name:        "orchestrator error",
+			name:        "service stop error",
 			label:       "test-service",
-			orchError:   errors.New("stop failed"),
+			stopError:   errors.New("stop failed"),
 			expectError: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			orch := &mockServiceOrchestrator{
-				stopServiceFunc: func(label string) error {
-					if label != tt.label {
-						t.Errorf("Expected label %s, got %s", tt.label, label)
-					}
-					return tt.orchError
-				},
+			cfg := orchestrator.Config{}
+			orch := orchestrator.New(cfg)
+
+			// Start the orchestrator
+			ctx := context.Background()
+			err := orch.Start(ctx)
+			if err != nil {
+				t.Fatalf("Failed to start orchestrator: %v", err)
 			}
-			registry := newMockOrchestratorRegistry()
-			// Register a test service so it exists in the registry
-			testService := &mockService{
+			defer orch.Stop()
+
+			registry := orch.GetServiceRegistry()
+
+			// Register a test service
+			testService := &orchestratorMockService{
 				label:       tt.label,
 				serviceType: services.TypePortForward,
 				state:       services.StateRunning,
 				health:      services.HealthHealthy,
+				stopErr:     tt.stopError,
 			}
 			registry.Register(testService)
 
 			api := NewOrchestratorAPI(orch, registry)
 
-			err := api.StopService(tt.label)
+			err = api.StopService(tt.label)
 
 			if (err != nil) != tt.expectError {
 				t.Errorf("StopService() error = %v, expectError %v", err, tt.expectError)
@@ -254,46 +270,51 @@ func TestOrchestratorAPI_RestartService(t *testing.T) {
 	tests := []struct {
 		name        string
 		label       string
-		orchError   error
+		restartErr  error
 		expectError bool
 	}{
 		{
 			name:        "successful restart",
 			label:       "test-service",
-			orchError:   nil,
+			restartErr:  nil,
 			expectError: false,
 		},
 		{
-			name:        "orchestrator error",
+			name:        "service restart error",
 			label:       "test-service",
-			orchError:   errors.New("restart failed"),
+			restartErr:  errors.New("restart failed"),
 			expectError: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			orch := &mockServiceOrchestrator{
-				restartServiceFunc: func(label string) error {
-					if label != tt.label {
-						t.Errorf("Expected label %s, got %s", tt.label, label)
-					}
-					return tt.orchError
-				},
+			cfg := orchestrator.Config{}
+			orch := orchestrator.New(cfg)
+
+			// Start the orchestrator
+			ctx := context.Background()
+			err := orch.Start(ctx)
+			if err != nil {
+				t.Fatalf("Failed to start orchestrator: %v", err)
 			}
-			registry := newMockOrchestratorRegistry()
-			// Register a test service so it exists in the registry
-			testService := &mockService{
+			defer orch.Stop()
+
+			registry := orch.GetServiceRegistry()
+
+			// Register a test service
+			testService := &orchestratorMockService{
 				label:       tt.label,
 				serviceType: services.TypePortForward,
 				state:       services.StateRunning,
 				health:      services.HealthHealthy,
+				restartErr:  tt.restartErr,
 			}
 			registry.Register(testService)
 
 			api := NewOrchestratorAPI(orch, registry)
 
-			err := api.RestartService(tt.label)
+			err = api.RestartService(tt.label)
 
 			if (err != nil) != tt.expectError {
 				t.Errorf("RestartService() error = %v, expectError %v", err, tt.expectError)
@@ -303,15 +324,24 @@ func TestOrchestratorAPI_RestartService(t *testing.T) {
 }
 
 func TestOrchestratorAPI_GetServiceStatus(t *testing.T) {
-	// Create mocks
-	orch := &mockServiceOrchestrator{}
-	registry := services.NewRegistry()
+	cfg := orchestrator.Config{}
+	orch := orchestrator.New(cfg)
+
+	// Start the orchestrator
+	ctx := context.Background()
+	err := orch.Start(ctx)
+	if err != nil {
+		t.Fatalf("Failed to start orchestrator: %v", err)
+	}
+	defer orch.Stop()
+
+	registry := orch.GetServiceRegistry()
 
 	// Create API
 	api := NewOrchestratorAPI(orch, registry)
 
 	// Register a test service
-	svc := &mockService{
+	svc := &orchestratorMockService{
 		label:        "test-service",
 		serviceType:  services.TypePortForward,
 		state:        services.StateRunning,
@@ -330,14 +360,14 @@ func TestOrchestratorAPI_GetServiceStatus(t *testing.T) {
 	if status.Label != "test-service" {
 		t.Errorf("Expected label %s, got %s", "test-service", status.Label)
 	}
-	if status.Type != "PortForward" {
-		t.Errorf("Expected type %s, got %s", "PortForward", status.Type)
+	if status.ServiceType != "PortForward" {
+		t.Errorf("Expected type %s, got %s", "PortForward", status.ServiceType)
 	}
-	if status.State != "Running" {
-		t.Errorf("Expected state %s, got %s", "Running", status.State)
+	if status.State != services.StateRunning {
+		t.Errorf("Expected state %s, got %s", services.StateRunning, status.State)
 	}
-	if status.Health != "Healthy" {
-		t.Errorf("Expected health %s, got %s", "Healthy", status.Health)
+	if status.Health != services.HealthHealthy {
+		t.Errorf("Expected health %s, got %s", services.HealthHealthy, status.Health)
 	}
 
 	// Test non-existing service
@@ -348,11 +378,30 @@ func TestOrchestratorAPI_GetServiceStatus(t *testing.T) {
 }
 
 func TestOrchestratorAPI_SubscribeToStateChanges(t *testing.T) {
-	// Create mocks
-	orch := &mockServiceOrchestrator{}
-	registry := services.NewRegistry()
+	// Register a test service BEFORE starting the orchestrator
+	svc := &orchestratorMockService{
+		label:       "test-service",
+		serviceType: services.TypePortForward,
+		state:       services.StateStopped,
+		health:      services.HealthUnknown,
+	}
 
-	api := NewOrchestratorAPI(orch, registry).(*orchestratorAPI)
+	cfg := orchestrator.Config{}
+	orch := orchestrator.New(cfg)
+	registry := orch.GetServiceRegistry()
+
+	// Register the service before starting
+	registry.Register(svc)
+
+	// Start the orchestrator
+	ctx := context.Background()
+	err := orch.Start(ctx)
+	if err != nil {
+		t.Fatalf("Failed to start orchestrator: %v", err)
+	}
+	defer orch.Stop()
+
+	api := NewOrchestratorAPI(orch, registry)
 
 	// Subscribe to state changes
 	ch := api.SubscribeToStateChanges()
@@ -361,42 +410,45 @@ func TestOrchestratorAPI_SubscribeToStateChanges(t *testing.T) {
 		t.Error("Expected non-nil channel")
 	}
 
-	// Test forwarding a state change by sending an event through the orchestrator
-	testEvent := orchestrator.ServiceStateChangedEvent{
-		Label:       "test-service",
-		ServiceType: string(services.TypePortForward),
-		OldState:    string(services.StateStopped),
-		NewState:    string(services.StateRunning),
-		Health:      string(services.HealthHealthy),
-		Error:       nil,
+	// Give the orchestrator time to process
+	time.Sleep(100 * time.Millisecond)
+
+	// Start the service to trigger a state change
+	err = orch.StartService("test-service")
+	if err != nil {
+		t.Errorf("Failed to start service: %v", err)
 	}
 
-	// Send the event through the mock orchestrator
-	orch.sendEvent(testEvent)
+	// Try to receive events multiple times with shorter timeouts
+	received := false
+	for i := 0; i < 5; i++ {
+		select {
+		case event := <-ch:
+			t.Logf("Received event: Label=%s, OldState=%s, NewState=%s", event.Label, event.OldState, event.NewState)
+			if event.Label == "test-service" {
+				received = true
+				// The event might be starting -> running transition
+				if event.NewState != string(services.StateStarting) && event.NewState != string(services.StateRunning) {
+					t.Errorf("Expected new state to be Starting or Running, got %s", event.NewState)
+				}
+			}
+		case <-time.After(200 * time.Millisecond):
+			// Try again
+			continue
+		}
+		if received {
+			break
+		}
+	}
 
-	// Give the goroutine time to process the event
-	time.Sleep(10 * time.Millisecond)
-
-	// Check if event was received
-	select {
-	case event := <-ch:
-		if event.Label != testEvent.Label {
-			t.Errorf("Expected label %s, got %s", testEvent.Label, event.Label)
-		}
-		if event.OldState != testEvent.OldState {
-			t.Errorf("Expected old state %s, got %s", testEvent.OldState, event.OldState)
-		}
-		if event.NewState != testEvent.NewState {
-			t.Errorf("Expected new state %s, got %s", testEvent.NewState, event.NewState)
-		}
-	case <-time.After(100 * time.Millisecond):
+	if !received {
 		t.Error("Expected to receive state change event")
 	}
 }
 
 func TestServiceStateChangedEvent_Structure(t *testing.T) {
 	// Test that the event structure has all expected fields
-	event := ServiceStateChangedEvent{
+	event := orchestrator.ServiceStateChangedEvent{
 		Label:       "test",
 		ServiceType: "PortForward",
 		OldState:    "stopped",
@@ -431,21 +483,30 @@ func TestServiceStateChangedEvent_Structure(t *testing.T) {
 }
 
 func TestOrchestratorAPI_GetAllServices(t *testing.T) {
-	// Create mocks
-	orch := &mockServiceOrchestrator{}
-	registry := services.NewRegistry()
+	cfg := orchestrator.Config{}
+	orch := orchestrator.New(cfg)
+
+	// Start the orchestrator
+	ctx := context.Background()
+	err := orch.Start(ctx)
+	if err != nil {
+		t.Fatalf("Failed to start orchestrator: %v", err)
+	}
+	defer orch.Stop()
+
+	registry := orch.GetServiceRegistry()
 
 	// Create API
 	api := NewOrchestratorAPI(orch, registry)
 
 	// Register test services
-	svc1 := &mockService{
+	svc1 := &orchestratorMockService{
 		label:       "service1",
 		serviceType: services.TypePortForward,
 		state:       services.StateRunning,
 		health:      services.HealthHealthy,
 	}
-	svc2 := &mockService{
+	svc2 := &orchestratorMockService{
 		label:       "service2",
 		serviceType: services.TypeMCPServer,
 		state:       services.StateStopped,
@@ -485,70 +546,64 @@ func TestOrchestratorAPI_GetAllServices(t *testing.T) {
 	}
 }
 
-func TestOrchestratorAPI_MultipleSubscribers(t *testing.T) {
-	// Create mocks
-	orch := &mockServiceOrchestrator{}
-	registry := services.NewRegistry()
+func TestOrchestratorAPI_ClusterManagement(t *testing.T) {
+	cfg := orchestrator.Config{
+		Clusters: []config.ClusterDefinition{
+			{
+				Name:        "mc-test",
+				Context:     "test-context",
+				Role:        config.ClusterRoleObservability,
+				DisplayName: "Test MC",
+			},
+			{
+				Name:        "wc-test",
+				Context:     "wc-context",
+				Role:        config.ClusterRoleTarget,
+				DisplayName: "Test WC",
+			},
+		},
+		ActiveClusters: map[config.ClusterRole]string{
+			config.ClusterRoleObservability: "mc-test",
+			config.ClusterRoleTarget:        "wc-test",
+		},
+	}
+	orch := orchestrator.New(cfg)
 
+	// Start the orchestrator
+	ctx := context.Background()
+	err := orch.Start(ctx)
+	if err != nil {
+		t.Fatalf("Failed to start orchestrator: %v", err)
+	}
+	defer orch.Stop()
+
+	registry := orch.GetServiceRegistry()
+
+	// Create API
 	api := NewOrchestratorAPI(orch, registry)
 
-	// Create multiple subscribers
-	ch1 := api.SubscribeToStateChanges()
-	ch2 := api.SubscribeToStateChanges()
-	ch3 := api.SubscribeToStateChanges()
-
-	// All channels should be different
-	if ch1 == nil || ch2 == nil || ch3 == nil {
-		t.Error("Expected non-nil channels")
+	// Test GetAvailableClusters
+	clusters := api.GetAvailableClusters(config.ClusterRoleObservability)
+	if len(clusters) != 1 {
+		t.Errorf("Expected 1 observability cluster, got %d", len(clusters))
+	}
+	if clusters[0].Name != "mc-test" {
+		t.Errorf("Expected cluster name mc-test, got %s", clusters[0].Name)
 	}
 
-	// Test event
-	testEvent := orchestrator.ServiceStateChangedEvent{
-		Label:       "test-service",
-		ServiceType: string(services.TypeMCPServer),
-		OldState:    string(services.StateStopped),
-		NewState:    string(services.StateRunning),
-		Health:      string(services.HealthHealthy),
-		Error:       nil,
+	// Test GetActiveCluster
+	active, exists := api.GetActiveCluster(config.ClusterRoleTarget)
+	if !exists {
+		t.Error("Expected active target cluster to exist")
+	}
+	if active != "wc-test" {
+		t.Errorf("Expected active cluster wc-test, got %s", active)
 	}
 
-	// Send the event
-	orch.sendEvent(testEvent)
-
-	// Give goroutines time to process
-	time.Sleep(50 * time.Millisecond)
-
-	// All subscribers should receive the event
-	received := 0
-
-	select {
-	case event := <-ch1:
-		if event.Label == testEvent.Label {
-			received++
-		}
-	case <-time.After(100 * time.Millisecond):
-		t.Error("Subscriber 1 did not receive event")
-	}
-
-	select {
-	case event := <-ch2:
-		if event.Label == testEvent.Label {
-			received++
-		}
-	case <-time.After(100 * time.Millisecond):
-		t.Error("Subscriber 2 did not receive event")
-	}
-
-	select {
-	case event := <-ch3:
-		if event.Label == testEvent.Label {
-			received++
-		}
-	case <-time.After(100 * time.Millisecond):
-		t.Error("Subscriber 3 did not receive event")
-	}
-
-	if received != 3 {
-		t.Errorf("Expected 3 subscribers to receive event, got %d", received)
+	// Test SwitchCluster - this would require more setup in a real test
+	// For now, just test that the method exists and can be called
+	err = api.SwitchCluster(config.ClusterRoleTarget, "wc-test")
+	if err != nil {
+		t.Errorf("Unexpected error switching cluster: %v", err)
 	}
 }

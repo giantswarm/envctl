@@ -28,7 +28,7 @@ type Alias string
 // mcName and wcName are the canonical names provided by the user.
 func LoadConfig(mcName, wcName string) (EnvctlConfig, error) {
 	// 1. Start with the default configuration
-	config := GetDefaultConfig(mcName, wcName)
+	config := GetDefaultConfigWithRoles(mcName, wcName)
 
 	// 2. Determine user-specific configuration path
 	userConfigPath, err := getUserConfigPath()
@@ -111,6 +111,21 @@ func mergeConfigs(base, overlay EnvctlConfig, mcName, wcName string) EnvctlConfi
 	}
 	// Add merging for other GlobalSettings fields here if any
 
+	// Merge Clusters - overlay completely replaces base clusters
+	if len(overlay.Clusters) > 0 {
+		mergedConfig.Clusters = overlay.Clusters
+	}
+
+	// Merge ActiveClusters - overlay entries override base entries
+	if len(overlay.ActiveClusters) > 0 {
+		if mergedConfig.ActiveClusters == nil {
+			mergedConfig.ActiveClusters = make(map[ClusterRole]string)
+		}
+		for role, clusterName := range overlay.ActiveClusters {
+			mergedConfig.ActiveClusters[role] = clusterName
+		}
+	}
+
 	// Merge MCPServers
 	mcpServersMap := make(map[string]MCPServerDefinition)
 	for _, srv := range mergedConfig.MCPServers {
@@ -136,6 +151,16 @@ func mergeConfigs(base, overlay EnvctlConfig, mcName, wcName string) EnvctlConfi
 	for _, pf := range portForwardsMap {
 		mergedConfig.PortForwards = append(mergedConfig.PortForwards, pf)
 	}
+
+	// Merge Aggregator settings
+	if overlay.Aggregator.Port != 0 {
+		mergedConfig.Aggregator.Port = overlay.Aggregator.Port
+	}
+	if overlay.Aggregator.Host != "" {
+		mergedConfig.Aggregator.Host = overlay.Aggregator.Host
+	}
+	// Merge Enabled field - only if explicitly set in overlay
+	mergedConfig.Aggregator.Enabled = overlay.Aggregator.Enabled
 
 	return mergedConfig
 }

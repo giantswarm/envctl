@@ -1,5 +1,9 @@
 package api
 
+import (
+	"envctl/internal/orchestrator"
+)
+
 // MCPTool represents an MCP tool
 type MCPTool struct {
 	Name        string `json:"name"`
@@ -21,13 +25,5 @@ type MCPResource struct {
 	MimeType    string `json:"mimeType,omitempty"`
 }
 
-// ServiceStateChangedEvent represents a service state change event from the orchestrator
-// This is the standard event type used throughout the system for state changes
-type ServiceStateChangedEvent struct {
-	Label       string
-	ServiceType string
-	OldState    string
-	NewState    string
-	Health      string
-	Error       error
-}
+// ServiceStateChangedEvent is re-exported from orchestrator for consistency
+type ServiceStateChangedEvent = orchestrator.ServiceStateChangedEvent

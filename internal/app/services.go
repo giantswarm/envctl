@@ -32,6 +32,13 @@ func InitializeServices(cfg *Config) (*Services, error) {
 		PortForwards: cfg.EnvctlConfig.PortForwards,
 		MCPServers:   cfg.EnvctlConfig.MCPServers,
 	}
+
+	// Use new config if clusters are defined
+	if len(cfg.EnvctlConfig.Clusters) > 0 {
+		orchConfig.Clusters = cfg.EnvctlConfig.Clusters
+		orchConfig.ActiveClusters = cfg.EnvctlConfig.ActiveClusters
+	}
+
 	orch := orchestrator.New(orchConfig)
 
 	// Get the service registry

@@ -25,7 +25,7 @@ func createTempConfigFile(t *testing.T, dir string, filename string, content Env
 }
 
 func TestLoadConfig_DefaultOnly(t *testing.T) {
-	tc := GetDefaultConfig("test-mc", "test-wc")
+	tc := GetDefaultConfigWithRoles("test-mc", "test-wc")
 
 	loadedConfig, err := LoadConfig("test-mc", "test-wc")
 	assert.NoError(t, err)
@@ -36,6 +36,8 @@ func TestLoadConfig_DefaultOnly(t *testing.T) {
 	assert.True(t, reflect.DeepEqual(tc.GlobalSettings, loadedConfig.GlobalSettings), "GlobalSettings should match default")
 	assert.ElementsMatch(t, tc.MCPServers, loadedConfig.MCPServers, "MCPServers should match default")
 	assert.ElementsMatch(t, tc.PortForwards, loadedConfig.PortForwards, "PortForwards should match default")
+	assert.ElementsMatch(t, tc.Clusters, loadedConfig.Clusters, "Clusters should match default")
+	assert.Equal(t, tc.ActiveClusters, loadedConfig.ActiveClusters, "ActiveClusters should match default")
 }
 
 func TestLoadConfig_UserOverride(t *testing.T) {

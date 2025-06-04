@@ -10,6 +10,7 @@ func TestServiceState_String(t *testing.T) {
 		expected string
 	}{
 		{StateUnknown, "Unknown"},
+		{StateWaiting, "Waiting"},
 		{StateStarting, "Starting"},
 		{StateRunning, "Running"},
 		{StateStopping, "Stopping"},
@@ -67,6 +68,7 @@ func TestServiceStateConstants(t *testing.T) {
 	// Test that constants are defined and have expected values
 	states := map[ServiceState]string{
 		StateUnknown:  "Unknown",
+		StateWaiting:  "Waiting",
 		StateStarting: "Starting",
 		StateRunning:  "Running",
 		StateStopping: "Stopping",
