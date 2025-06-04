@@ -315,13 +315,16 @@ func (a *AggregatorServer) updateCapabilities() {
 
 	// Now add new handlers for items that don't exist yet
 
-	// Add tool handlers for each backend server
+	// Collect all tools to add in a batch
+	var toolsToAdd []server.ServerTool
+
+	// Build tool handlers for each backend server
 	for serverName, info := range servers {
 		if !info.IsConnected() {
 			continue
 		}
 
-		// Add handlers for each tool with smart prefixing
+		// Process each tool from this server
 		info.mu.RLock()
 		for _, tool := range info.Tools {
 			exposedTool := tool
@@ -341,21 +344,22 @@ func (a *AggregatorServer) updateCapabilities() {
 			a.activeTools[exposedTool.Name] = true
 			a.mu.Unlock()
 
-			// Capture the exposed name in the closure
-			exposedName := exposedTool.Name
+			// Capture the exposed name for the closure
+			capturedExposedName := exposedTool.Name
 
-			a.server.AddTool(exposedTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			// Create the handler
+			handler := func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 				// Check if this tool is still active
 				a.mu.RLock()
-				isActive := a.activeTools[exposedName]
+				isActive := a.activeTools[capturedExposedName]
 				a.mu.RUnlock()
 
 				if !isActive {
-					return nil, fmt.Errorf("tool %s is no longer available", exposedName)
+					return nil, fmt.Errorf("tool %s is no longer available", capturedExposedName)
 				}
 
 				// Resolve the exposed name back to server and original tool name
-				sName, originalName, err := a.registry.ResolveToolName(exposedName)
+				sName, originalName, err := a.registry.ResolveToolName(capturedExposedName)
 				if err != nil {
 					return nil, fmt.Errorf("failed to resolve tool name: %w", err)
 				}
@@ -381,11 +385,36 @@ func (a *AggregatorServer) updateCapabilities() {
 				}
 
 				return result, nil
+			}
+
+			// Add to batch
+			toolsToAdd = append(toolsToAdd, server.ServerTool{
+				Tool:    exposedTool,
+				Handler: handler,
 			})
 		}
 		info.mu.RUnlock()
+	}
 
-		// Add resource handlers
+	// Add all tools in one batch to minimize notifications
+	if len(toolsToAdd) > 0 {
+		logging.Debug("Aggregator", "Adding %d tools in batch", len(toolsToAdd))
+		a.server.AddTools(toolsToAdd...)
+	}
+
+	// Collect all resources to add in a batch
+	var resourcesToAdd []server.ServerResource
+
+	// Collect all prompts to add in a batch
+	var promptsToAdd []server.ServerPrompt
+
+	// Build resource and prompt handlers for each backend server
+	for serverName, info := range servers {
+		if !info.IsConnected() {
+			continue
+		}
+
+		// Process resources from this server
 		info.mu.RLock()
 		for _, resource := range info.Resources {
 			// Check if this resource is already active
@@ -405,7 +434,7 @@ func (a *AggregatorServer) updateCapabilities() {
 			// Capture resource URI in the closure
 			resURI := resource.URI
 
-			a.server.AddResource(resource, func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+			handler := func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 				// Check if this resource is still active
 				a.mu.RLock()
 				isActive := a.activeResources[resURI]
@@ -447,12 +476,16 @@ func (a *AggregatorServer) updateCapabilities() {
 				}
 
 				return nil, fmt.Errorf("no server can handle resource: %s", resURI)
+			}
+
+			// Add to batch
+			resourcesToAdd = append(resourcesToAdd, server.ServerResource{
+				Resource: resource,
+				Handler:  handler,
 			})
 		}
-		info.mu.RUnlock()
 
-		// Add prompt handlers with smart prefixing
-		info.mu.RLock()
+		// Process prompts from this server
 		for _, prompt := range info.Prompts {
 			exposedPrompt := prompt
 			exposedPrompt.Name = a.registry.nameTracker.GetExposedPromptName(serverName, prompt.Name)
@@ -472,20 +505,20 @@ func (a *AggregatorServer) updateCapabilities() {
 			a.mu.Unlock()
 
 			// Capture the exposed name in the closure
-			exposedName := exposedPrompt.Name
+			capturedExposedName := exposedPrompt.Name
 
-			a.server.AddPrompt(exposedPrompt, func(ctx context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
+			handler := func(ctx context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
 				// Check if this prompt is still active
 				a.mu.RLock()
-				isActive := a.activePrompts[exposedName]
+				isActive := a.activePrompts[capturedExposedName]
 				a.mu.RUnlock()
 
 				if !isActive {
-					return nil, fmt.Errorf("prompt %s is no longer available", exposedName)
+					return nil, fmt.Errorf("prompt %s is no longer available", capturedExposedName)
 				}
 
 				// Resolve the exposed name back to server and original prompt name
-				sName, originalName, err := a.registry.ResolvePromptName(exposedName)
+				sName, originalName, err := a.registry.ResolvePromptName(capturedExposedName)
 				if err != nil {
 					return nil, fmt.Errorf("failed to resolve prompt name: %w", err)
 				}
@@ -511,9 +544,27 @@ func (a *AggregatorServer) updateCapabilities() {
 				}
 
 				return result, nil
+			}
+
+			// Add to batch
+			promptsToAdd = append(promptsToAdd, server.ServerPrompt{
+				Prompt:  exposedPrompt,
+				Handler: handler,
 			})
 		}
 		info.mu.RUnlock()
+	}
+
+	// Add all resources in one batch to minimize notifications
+	if len(resourcesToAdd) > 0 {
+		logging.Debug("Aggregator", "Adding %d resources in batch", len(resourcesToAdd))
+		a.server.AddResources(resourcesToAdd...)
+	}
+
+	// Add all prompts in one batch to minimize notifications
+	if len(promptsToAdd) > 0 {
+		logging.Debug("Aggregator", "Adding %d prompts in batch", len(promptsToAdd))
+		a.server.AddPrompts(promptsToAdd...)
 	}
 
 	// Count tools, resources, and prompts manually since there are no getter methods

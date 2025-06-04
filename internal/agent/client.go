@@ -12,19 +12,23 @@ import (
 
 // Client represents an MCP agent client
 type Client struct {
-	endpoint  string
-	logger    *Logger
-	client    client.MCPClient
-	toolCache []mcp.Tool
-	mu        sync.RWMutex
+	endpoint      string
+	logger        *Logger
+	client        client.MCPClient
+	toolCache     []mcp.Tool
+	resourceCache []mcp.Resource
+	promptCache   []mcp.Prompt
+	mu            sync.RWMutex
 }
 
 // NewClient creates a new agent client
 func NewClient(endpoint string, logger *Logger) *Client {
 	return &Client{
-		endpoint:  endpoint,
-		logger:    logger,
-		toolCache: []mcp.Tool{},
+		endpoint:      endpoint,
+		logger:        logger,
+		toolCache:     []mcp.Tool{},
+		resourceCache: []mcp.Resource{},
+		promptCache:   []mcp.Prompt{},
 	}
 }
 
@@ -62,6 +66,16 @@ func (c *Client) Run(ctx context.Context) error {
 	// List tools initially
 	if err := c.listTools(ctx, true); err != nil {
 		return fmt.Errorf("initial tool listing failed: %w", err)
+	}
+
+	// List resources initially
+	if err := c.listResources(ctx, true); err != nil {
+		return fmt.Errorf("initial resource listing failed: %w", err)
+	}
+
+	// List prompts initially
+	if err := c.listPrompts(ctx, true); err != nil {
+		return fmt.Errorf("initial prompt listing failed: %w", err)
 	}
 
 	// Wait for notifications
@@ -152,6 +166,82 @@ func (c *Client) listTools(ctx context.Context, initial bool) error {
 	return nil
 }
 
+// listResources lists all available resources
+func (c *Client) listResources(ctx context.Context, initial bool) error {
+	req := mcp.ListResourcesRequest{}
+
+	// Log request
+	c.logger.Request("resources/list", req.Params)
+
+	// Send request
+	result, err := c.client.ListResources(ctx, req)
+	if err != nil {
+		c.logger.Error("ListResources failed: %v", err)
+		return err
+	}
+
+	// Log response
+	c.logger.Response("resources/list", result)
+
+	// Compare with cache if not initial
+	if !initial {
+		c.mu.RLock()
+		oldResources := c.resourceCache
+		c.mu.RUnlock()
+
+		c.mu.Lock()
+		c.resourceCache = result.Resources
+		c.mu.Unlock()
+
+		// Show differences
+		c.showResourceDiff(oldResources, result.Resources)
+	} else {
+		c.mu.Lock()
+		c.resourceCache = result.Resources
+		c.mu.Unlock()
+	}
+
+	return nil
+}
+
+// listPrompts lists all available prompts
+func (c *Client) listPrompts(ctx context.Context, initial bool) error {
+	req := mcp.ListPromptsRequest{}
+
+	// Log request
+	c.logger.Request("prompts/list", req.Params)
+
+	// Send request
+	result, err := c.client.ListPrompts(ctx, req)
+	if err != nil {
+		c.logger.Error("ListPrompts failed: %v", err)
+		return err
+	}
+
+	// Log response
+	c.logger.Response("prompts/list", result)
+
+	// Compare with cache if not initial
+	if !initial {
+		c.mu.RLock()
+		oldPrompts := c.promptCache
+		c.mu.RUnlock()
+
+		c.mu.Lock()
+		c.promptCache = result.Prompts
+		c.mu.Unlock()
+
+		// Show differences
+		c.showPromptDiff(oldPrompts, result.Prompts)
+	} else {
+		c.mu.Lock()
+		c.promptCache = result.Prompts
+		c.mu.Unlock()
+	}
+
+	return nil
+}
+
 // handleNotification processes incoming notifications
 func (c *Client) handleNotification(ctx context.Context, notification mcp.JSONRPCNotification) error {
 	// Log the notification
@@ -163,10 +253,10 @@ func (c *Client) handleNotification(ctx context.Context, notification mcp.JSONRP
 		return c.listTools(ctx, false)
 
 	case "notifications/resources/list_changed":
-		// Not handled in this demo
+		return c.listResources(ctx, false)
 
 	case "notifications/prompts/list_changed":
-		// Not handled in this demo
+		return c.listPrompts(ctx, false)
 
 	default:
 		// Unknown notification type
@@ -223,6 +313,108 @@ func (c *Client) showToolDiff(oldTools, newTools []mcp.Tool) {
 		}
 	} else {
 		c.logger.Info("No tool changes detected")
+	}
+}
+
+// showResourceDiff displays the differences between old and new resource lists
+func (c *Client) showResourceDiff(oldResources, newResources []mcp.Resource) {
+	// Create maps for easier comparison
+	oldMap := make(map[string]mcp.Resource)
+	for _, resource := range oldResources {
+		oldMap[resource.URI] = resource
+	}
+
+	newMap := make(map[string]mcp.Resource)
+	for _, resource := range newResources {
+		newMap[resource.URI] = resource
+	}
+
+	// Check for changes
+	var added []string
+	var removed []string
+	var unchanged []string
+
+	// Find added and unchanged
+	for uri := range newMap {
+		if _, exists := oldMap[uri]; exists {
+			unchanged = append(unchanged, uri)
+		} else {
+			added = append(added, uri)
+		}
+	}
+
+	// Find removed
+	for uri := range oldMap {
+		if _, exists := newMap[uri]; !exists {
+			removed = append(removed, uri)
+		}
+	}
+
+	// Display changes
+	if len(added) > 0 || len(removed) > 0 {
+		c.logger.Info("Resource changes detected:")
+		for _, uri := range unchanged {
+			c.logger.Success("  ✓ Unchanged: %s", uri)
+		}
+		for _, uri := range added {
+			c.logger.Success("  + Added: %s", uri)
+		}
+		for _, uri := range removed {
+			c.logger.Error("  - Removed: %s", uri)
+		}
+	} else {
+		c.logger.Info("No resource changes detected")
+	}
+}
+
+// showPromptDiff displays the differences between old and new prompt lists
+func (c *Client) showPromptDiff(oldPrompts, newPrompts []mcp.Prompt) {
+	// Create maps for easier comparison
+	oldMap := make(map[string]mcp.Prompt)
+	for _, prompt := range oldPrompts {
+		oldMap[prompt.Name] = prompt
+	}
+
+	newMap := make(map[string]mcp.Prompt)
+	for _, prompt := range newPrompts {
+		newMap[prompt.Name] = prompt
+	}
+
+	// Check for changes
+	var added []string
+	var removed []string
+	var unchanged []string
+
+	// Find added and unchanged
+	for name := range newMap {
+		if _, exists := oldMap[name]; exists {
+			unchanged = append(unchanged, name)
+		} else {
+			added = append(added, name)
+		}
+	}
+
+	// Find removed
+	for name := range oldMap {
+		if _, exists := newMap[name]; !exists {
+			removed = append(removed, name)
+		}
+	}
+
+	// Display changes
+	if len(added) > 0 || len(removed) > 0 {
+		c.logger.Info("Prompt changes detected:")
+		for _, name := range unchanged {
+			c.logger.Success("  ✓ Unchanged: %s", name)
+		}
+		for _, name := range added {
+			c.logger.Success("  + Added: %s", name)
+		}
+		for _, name := range removed {
+			c.logger.Error("  - Removed: %s", name)
+		}
+	} else {
+		c.logger.Info("No prompt changes detected")
 	}
 }
 

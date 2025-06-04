@@ -81,6 +81,10 @@ func (l *Logger) Request(method string, params interface{}) {
 			l.Info("Initializing MCP session...")
 		case "tools/list":
 			l.Info("Listing available tools...")
+		case "resources/list":
+			l.Info("Listing available resources...")
+		case "prompts/list":
+			l.Info("Listing available prompts...")
 		default:
 			l.Info("Sending request: %s", method)
 		}
@@ -125,6 +129,22 @@ func (l *Logger) Response(method string, result interface{}) {
 			} else {
 				l.Success("Retrieved tool list")
 			}
+		case "resources/list":
+			// Try to count resources
+			resourceCount := l.countResources(result)
+			if resourceCount >= 0 {
+				l.Success("Found %d resources", resourceCount)
+			} else {
+				l.Success("Retrieved resource list")
+			}
+		case "prompts/list":
+			// Try to count prompts
+			promptCount := l.countPrompts(result)
+			if promptCount >= 0 {
+				l.Success("Found %d prompts", promptCount)
+			} else {
+				l.Success("Retrieved prompt list")
+			}
 		default:
 			l.Success("Received response for: %s", method)
 		}
@@ -158,9 +178,9 @@ func (l *Logger) Notification(method string, params interface{}) {
 		case "notifications/tools/list_changed":
 			l.Info("Tools list changed! Fetching updated list...")
 		case "notifications/resources/list_changed":
-			l.Info("Resources list changed")
+			l.Info("Resources list changed! Fetching updated list...")
 		case "notifications/prompts/list_changed":
-			l.Info("Prompts list changed")
+			l.Info("Prompts list changed! Fetching updated list...")
 		default:
 			if l.verbose {
 				l.Debug("Received notification: %s", method)
@@ -252,6 +272,60 @@ func (l *Logger) countTools(result interface{}) int {
 		var tr toolsResult
 		if err := json.Unmarshal(jsonBytes, &tr); err == nil && tr.Tools != nil {
 			return len(tr.Tools)
+		}
+	}
+
+	return -1 // Indicate we couldn't count
+}
+
+// countResources attempts to count the number of resources in a resources/list response
+func (l *Logger) countResources(result interface{}) int {
+	// Try to extract resources array from various response structures
+	switch v := result.(type) {
+	case map[string]interface{}:
+		if resources, ok := v["resources"]; ok {
+			if resourcesArray, ok := resources.([]interface{}); ok {
+				return len(resourcesArray)
+			}
+		}
+	}
+
+	// Try type assertion for the specific ListResourcesResult type
+	type resourcesResult struct {
+		Resources []interface{} `json:"resources"`
+	}
+
+	if jsonBytes, err := json.Marshal(result); err == nil {
+		var rr resourcesResult
+		if err := json.Unmarshal(jsonBytes, &rr); err == nil && rr.Resources != nil {
+			return len(rr.Resources)
+		}
+	}
+
+	return -1 // Indicate we couldn't count
+}
+
+// countPrompts attempts to count the number of prompts in a prompts/list response
+func (l *Logger) countPrompts(result interface{}) int {
+	// Try to extract prompts array from various response structures
+	switch v := result.(type) {
+	case map[string]interface{}:
+		if prompts, ok := v["prompts"]; ok {
+			if promptsArray, ok := prompts.([]interface{}); ok {
+				return len(promptsArray)
+			}
+		}
+	}
+
+	// Try type assertion for the specific ListPromptsResult type
+	type promptsResult struct {
+		Prompts []interface{} `json:"prompts"`
+	}
+
+	if jsonBytes, err := json.Marshal(result); err == nil {
+		var pr promptsResult
+		if err := json.Unmarshal(jsonBytes, &pr); err == nil && pr.Prompts != nil {
+			return len(pr.Prompts)
 		}
 	}
 
