@@ -402,3 +402,166 @@ func TestAggregatorServer_ToolsRemovedOnServerStop(t *testing.T) {
 	assert.True(t, server.activeTools["tool3"], "tool3 should still be active")
 	server.mu.RUnlock()
 }
+
+func TestAggregatorServer_DynamicToolManagement(t *testing.T) {
+	// This test verifies that tools are dynamically added/removed without server restart
+	ctx := context.Background()
+	config := AggregatorConfig{
+		Host: "localhost",
+		Port: 0, // Use any available port
+	}
+
+	server := NewAggregatorServer(config)
+	require.NotNil(t, server)
+
+	// Start the server
+	err := server.Start(ctx)
+	require.NoError(t, err)
+	defer server.Stop(ctx)
+
+	// Capture the server instances - they should NOT change
+	server.mu.RLock()
+	originalMCPServer := server.server
+	originalSSEServer := server.sseServer
+	server.mu.RUnlock()
+
+	// Create and register a mock client
+	client1 := &mockMCPClient{
+		tools: []mcp.Tool{
+			{Name: "tool1", Description: "Tool 1"},
+			{Name: "tool2", Description: "Tool 2"},
+		},
+	}
+
+	err = server.RegisterServer(ctx, "server1", client1)
+	assert.NoError(t, err)
+
+	// Wait for the update to complete
+	time.Sleep(50 * time.Millisecond)
+
+	// Verify that the server instances have NOT changed
+	server.mu.RLock()
+	assert.Equal(t, originalMCPServer, server.server, "MCP server instance should remain the same")
+	assert.Equal(t, originalSSEServer, server.sseServer, "SSE server instance should remain the same")
+	server.mu.RUnlock()
+
+	// Verify tools are available
+	tools := server.GetTools()
+	assert.Len(t, tools, 2)
+
+	// Create another client and register it
+	client2 := &mockMCPClient{
+		tools: []mcp.Tool{
+			{Name: "tool3", Description: "Tool 3"},
+		},
+	}
+
+	err = server.RegisterServer(ctx, "server2", client2)
+	assert.NoError(t, err)
+
+	// Wait for the update to complete
+	time.Sleep(50 * time.Millisecond)
+
+	// Verify server instances still haven't changed
+	server.mu.RLock()
+	assert.Equal(t, originalMCPServer, server.server, "MCP server instance should remain the same")
+	assert.Equal(t, originalSSEServer, server.sseServer, "SSE server instance should remain the same")
+	server.mu.RUnlock()
+
+	// Verify all tools are available
+	tools = server.GetTools()
+	assert.Len(t, tools, 3)
+
+	// Now deregister server1
+	err = server.DeregisterServer("server1")
+	assert.NoError(t, err)
+
+	// Wait for the update to complete
+	time.Sleep(50 * time.Millisecond)
+
+	// Verify server instances still haven't changed
+	server.mu.RLock()
+	assert.Equal(t, originalMCPServer, server.server, "MCP server instance should remain the same")
+	assert.Equal(t, originalSSEServer, server.sseServer, "SSE server instance should remain the same")
+	server.mu.RUnlock()
+
+	// Verify only server2's tools remain
+	tools = server.GetTools()
+	assert.Len(t, tools, 1)
+	assert.Equal(t, "tool3", tools[0].Name)
+
+	// Verify no stale handlers - the active tools should only contain tool3
+	server.mu.RLock()
+	assert.Len(t, server.activeTools, 1, "Should only have 1 active tool")
+	assert.True(t, server.activeTools["tool3"], "tool3 should be active")
+	assert.False(t, server.activeTools["tool1"], "tool1 should not exist in active tools")
+	assert.False(t, server.activeTools["tool2"], "tool2 should not exist in active tools")
+	server.mu.RUnlock()
+}
+
+func TestAggregatorServer_NoStaleHandlersAfterRestart(t *testing.T) {
+	// This test verifies that after restart, old handlers are completely gone
+	ctx := context.Background()
+	config := AggregatorConfig{
+		Host: "localhost",
+		Port: 0,
+	}
+
+	server := NewAggregatorServer(config)
+	require.NotNil(t, server)
+
+	// Start the server
+	err := server.Start(ctx)
+	require.NoError(t, err)
+	defer server.Stop(ctx)
+
+	// Register server with conflicting tool names
+	client1 := &mockMCPClient{
+		tools: []mcp.Tool{
+			{Name: "common-tool", Description: "Tool from server1"},
+		},
+	}
+
+	err = server.RegisterServer(ctx, "server1", client1)
+	assert.NoError(t, err)
+
+	// Wait for registration
+	time.Sleep(50 * time.Millisecond)
+
+	// Verify tool is available without prefix (only one server has it)
+	tools := server.GetTools()
+	assert.Len(t, tools, 1)
+	assert.Equal(t, "common-tool", tools[0].Name)
+
+	// Deregister server1
+	err = server.DeregisterServer("server1")
+	assert.NoError(t, err)
+
+	// Wait for deregistration and restart
+	time.Sleep(100 * time.Millisecond)
+
+	// Register server2 with the same tool name
+	client2 := &mockMCPClient{
+		tools: []mcp.Tool{
+			{Name: "common-tool", Description: "Tool from server2"},
+		},
+	}
+
+	err = server.RegisterServer(ctx, "server2", client2)
+	assert.NoError(t, err)
+
+	// Wait for registration
+	time.Sleep(50 * time.Millisecond)
+
+	// Verify tool is available and is from server2
+	tools = server.GetTools()
+	assert.Len(t, tools, 1)
+	assert.Equal(t, "common-tool", tools[0].Name)
+	assert.Equal(t, "Tool from server2", tools[0].Description)
+
+	// Verify only server2's tool is active (no stale handlers from server1)
+	server.mu.RLock()
+	assert.Len(t, server.activeTools, 1)
+	assert.True(t, server.activeTools["common-tool"])
+	server.mu.RUnlock()
+}

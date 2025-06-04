@@ -108,43 +108,6 @@ func (s *AggregatorService) Restart(ctx context.Context) error {
 	return s.Start(ctx)
 }
 
-// CheckHealth implements HealthChecker
-func (s *AggregatorService) CheckHealth(ctx context.Context) (services.HealthStatus, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	if s.GetState() != services.StateRunning {
-		return services.HealthUnknown, nil
-	}
-
-	// Delegate to manager
-	if s.manager != nil {
-		managerHealth, err := s.manager.CheckHealth(ctx)
-
-		// Convert aggregator.HealthStatus to services.HealthStatus
-		var serviceHealth services.HealthStatus
-		switch managerHealth {
-		case aggregator.HealthHealthy:
-			serviceHealth = services.HealthHealthy
-		case aggregator.HealthUnhealthy:
-			serviceHealth = services.HealthUnhealthy
-		default:
-			serviceHealth = services.HealthUnknown
-		}
-
-		s.UpdateHealth(serviceHealth)
-		return serviceHealth, err
-	}
-
-	s.UpdateHealth(services.HealthHealthy)
-	return services.HealthHealthy, nil
-}
-
-// GetHealthCheckInterval implements HealthChecker
-func (s *AggregatorService) GetHealthCheckInterval() time.Duration {
-	return 30 * time.Second
-}
-
 // GetServiceData implements ServiceDataProvider
 func (s *AggregatorService) GetServiceData() map[string]interface{} {
 	s.mu.RLock()
@@ -184,7 +147,7 @@ func (s *AggregatorService) GetManager() *aggregator.AggregatorManager {
 	return s.manager
 }
 
-// ManualRefresh manually triggers a refresh of MCP server registrations
+// ManualRefresh manually triggers a refresh of healthy MCP server registrations
 // This can be useful for debugging or forced updates
 func (s *AggregatorService) ManualRefresh(ctx context.Context) error {
 	s.mu.RLock()

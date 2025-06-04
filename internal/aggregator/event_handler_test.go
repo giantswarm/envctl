@@ -2,6 +2,7 @@ package aggregator
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -30,56 +31,83 @@ func (m *mockStateEventProvider) close() {
 	close(m.eventChan)
 }
 
-// mockRefreshFunc tracks calls to the refresh function
-type mockRefreshFunc struct {
-	mu        sync.Mutex
-	calls     []context.Context
-	callErr   error
-	callDelay time.Duration
+// mockCallbacks tracks calls to register/deregister functions
+type mockCallbacks struct {
+	mu            sync.Mutex
+	registers     []string
+	deregisters   []string
+	registerErr   error
+	deregisterErr error
 }
 
-func newMockRefreshFunc() *mockRefreshFunc {
-	return &mockRefreshFunc{
-		calls: make([]context.Context, 0),
+func newMockCallbacks() *mockCallbacks {
+	return &mockCallbacks{
+		registers:   make([]string, 0),
+		deregisters: make([]string, 0),
 	}
 }
 
-func (m *mockRefreshFunc) refresh(ctx context.Context) error {
+func (m *mockCallbacks) register(ctx context.Context, serverName string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.calls = append(m.calls, ctx)
-
-	if m.callDelay > 0 {
-		time.Sleep(m.callDelay)
-	}
-
-	return m.callErr
+	m.registers = append(m.registers, serverName)
+	return m.registerErr
 }
 
-func (m *mockRefreshFunc) getCallCount() int {
+func (m *mockCallbacks) deregister(serverName string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return len(m.calls)
+
+	m.deregisters = append(m.deregisters, serverName)
+	return m.deregisterErr
 }
 
-func (m *mockRefreshFunc) setError(err error) {
+func (m *mockCallbacks) getRegisterCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.callErr = err
+	return len(m.registers)
 }
 
-func (m *mockRefreshFunc) setDelay(delay time.Duration) {
+func (m *mockCallbacks) getDeregisterCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.callDelay = delay
+	return len(m.deregisters)
+}
+
+func (m *mockCallbacks) getRegisteredServers() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	result := make([]string, len(m.registers))
+	copy(result, m.registers)
+	return result
+}
+
+func (m *mockCallbacks) getDeregisteredServers() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	result := make([]string, len(m.deregisters))
+	copy(result, m.deregisters)
+	return result
+}
+
+func (m *mockCallbacks) setRegisterError(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.registerErr = err
+}
+
+func (m *mockCallbacks) setDeregisterError(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.deregisterErr = err
 }
 
 func TestEventHandler_NewEventHandler(t *testing.T) {
 	provider := newMockStateEventProvider()
-	refreshFunc := newMockRefreshFunc()
+	callbacks := newMockCallbacks()
 
-	handler := NewEventHandler(provider, refreshFunc.refresh)
+	handler := NewEventHandler(provider, callbacks.register, callbacks.deregister)
 
 	if handler == nil {
 		t.Fatal("NewEventHandler returned nil")
@@ -96,8 +124,8 @@ func TestEventHandler_NewEventHandler(t *testing.T) {
 
 func TestEventHandler_StartStop(t *testing.T) {
 	provider := newMockStateEventProvider()
-	refreshFunc := newMockRefreshFunc()
-	handler := NewEventHandler(provider, refreshFunc.refresh)
+	callbacks := newMockCallbacks()
+	handler := NewEventHandler(provider, callbacks.register, callbacks.deregister)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -137,8 +165,8 @@ func TestEventHandler_StartStop(t *testing.T) {
 
 func TestEventHandler_FiltersMCPEvents(t *testing.T) {
 	provider := newMockStateEventProvider()
-	refreshFunc := newMockRefreshFunc()
-	handler := NewEventHandler(provider, refreshFunc.refresh)
+	callbacks := newMockCallbacks()
+	handler := NewEventHandler(provider, callbacks.register, callbacks.deregister)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -149,97 +177,148 @@ func TestEventHandler_FiltersMCPEvents(t *testing.T) {
 	}
 	defer handler.Stop()
 
-	// Send non-MCP event (should NOT trigger refresh)
+	// Send non-MCP event (should NOT trigger any callbacks)
 	provider.sendEvent(ServiceStateEvent{
 		Label:       "k8s-mc-test",
 		ServiceType: "KubeConnection",
 		OldState:    "Stopped",
 		NewState:    "Running",
+		Health:      "Healthy",
 	})
 
-	// Send MCP event (should trigger refresh)
+	// Send MCP event with healthy state (should trigger register)
 	provider.sendEvent(ServiceStateEvent{
 		Label:       "kubernetes",
 		ServiceType: "MCPServer",
 		OldState:    "Stopped",
 		NewState:    "Running",
+		Health:      "Healthy",
 	})
 
-	// Send aggregator event (should NOT trigger refresh)
+	// Send aggregator event (should NOT trigger any callbacks)
 	provider.sendEvent(ServiceStateEvent{
 		Label:       "mcp-aggregator",
 		ServiceType: "Aggregator",
 		OldState:    "Stopped",
 		NewState:    "Running",
+		Health:      "Healthy",
 	})
 
-	// Send port forward event (should NOT trigger refresh)
+	// Send port forward event (should NOT trigger any callbacks)
 	provider.sendEvent(ServiceStateEvent{
 		Label:       "pf:mc-prometheus",
 		ServiceType: "PortForward",
 		OldState:    "Stopped",
 		NewState:    "Running",
+		Health:      "Healthy",
 	})
 
 	// Give time for events to be processed
 	time.Sleep(100 * time.Millisecond)
 
-	// Should have only 1 refresh call (only the kubernetes event)
-	if refreshFunc.getCallCount() != 1 {
-		t.Errorf("Expected 1 refresh call, got %d", refreshFunc.getCallCount())
+	// Should have only 1 register call (only the kubernetes event)
+	if callbacks.getRegisterCount() != 1 {
+		t.Errorf("Expected 1 register call, got %d", callbacks.getRegisterCount())
+	}
+
+	if callbacks.getDeregisterCount() != 0 {
+		t.Errorf("Expected 0 deregister calls, got %d", callbacks.getDeregisterCount())
+	}
+
+	registered := callbacks.getRegisteredServers()
+	if len(registered) != 1 || registered[0] != "kubernetes" {
+		t.Errorf("Expected ['kubernetes'] to be registered, got %v", registered)
 	}
 }
 
-func TestEventHandler_RefreshTriggerConditions(t *testing.T) {
+func TestEventHandler_HealthBasedRegistration(t *testing.T) {
 	testCases := []struct {
-		name          string
-		oldState      string
-		newState      string
-		expectRefresh bool
+		name             string
+		oldState         string
+		newState         string
+		health           string
+		expectRegister   bool
+		expectDeregister bool
 	}{
 		{
-			name:          "service becomes running",
-			oldState:      "Stopped",
-			newState:      "Running",
-			expectRefresh: true,
+			name:             "service becomes running and healthy",
+			oldState:         "Stopped",
+			newState:         "Running",
+			health:           "Healthy",
+			expectRegister:   true,
+			expectDeregister: false,
 		},
 		{
-			name:          "service stops being running",
-			oldState:      "Running",
-			newState:      "Stopped",
-			expectRefresh: true,
+			name:             "service running but unhealthy",
+			oldState:         "Stopped",
+			newState:         "Running",
+			health:           "Unhealthy",
+			expectRegister:   false,
+			expectDeregister: true,
 		},
 		{
-			name:          "service fails",
-			oldState:      "Running",
-			newState:      "Failed",
-			expectRefresh: true,
+			name:             "service running but health unknown",
+			oldState:         "Stopped",
+			newState:         "Running",
+			health:           "unknown",
+			expectRegister:   false,
+			expectDeregister: true,
 		},
 		{
-			name:          "service stays stopped",
-			oldState:      "Stopped",
-			newState:      "Stopped",
-			expectRefresh: false,
+			name:             "healthy service stops",
+			oldState:         "Running",
+			newState:         "Stopped",
+			health:           "Healthy",
+			expectRegister:   false,
+			expectDeregister: true,
 		},
 		{
-			name:          "service stays running",
-			oldState:      "Running",
-			newState:      "Running",
-			expectRefresh: false,
+			name:             "service fails",
+			oldState:         "Running",
+			newState:         "Failed",
+			health:           "Unhealthy",
+			expectRegister:   false,
+			expectDeregister: true,
 		},
 		{
-			name:          "service goes from failed to stopped",
-			oldState:      "Failed",
-			newState:      "Stopped",
-			expectRefresh: false,
+			name:             "service becomes unhealthy while running",
+			oldState:         "Running",
+			newState:         "Running",
+			health:           "Unhealthy",
+			expectRegister:   false,
+			expectDeregister: true,
+		},
+		{
+			name:             "service becomes healthy while running",
+			oldState:         "Running",
+			newState:         "Running",
+			health:           "Healthy",
+			expectRegister:   true,
+			expectDeregister: false,
+		},
+		{
+			name:             "service stays stopped",
+			oldState:         "Stopped",
+			newState:         "Stopped",
+			health:           "Unknown",
+			expectRegister:   false,
+			expectDeregister: true,
+		},
+		{
+			name:             "service is starting",
+			oldState:         "Stopped",
+			newState:         "Starting",
+			health:           "Unknown",
+			expectRegister:   false,
+			expectDeregister: true,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			provider := newMockStateEventProvider()
-			refreshFunc := newMockRefreshFunc()
-			handler := NewEventHandler(provider, refreshFunc.refresh)
+			callbacks := newMockCallbacks()
+			handler := NewEventHandler(provider, callbacks.register, callbacks.deregister)
 
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
@@ -250,33 +329,97 @@ func TestEventHandler_RefreshTriggerConditions(t *testing.T) {
 			}
 			defer handler.Stop()
 
-			// Send event (we now accept all events, not just MCP)
+			// Send event
 			provider.sendEvent(ServiceStateEvent{
 				Label:       "kubernetes",
 				ServiceType: "MCPServer",
 				OldState:    tc.oldState,
 				NewState:    tc.newState,
+				Health:      tc.health,
 			})
 
 			// Give time for event to be processed
 			time.Sleep(100 * time.Millisecond)
 
-			expectedCalls := 0
-			if tc.expectRefresh {
-				expectedCalls = 1
+			expectedRegisters := 0
+			if tc.expectRegister {
+				expectedRegisters = 1
 			}
 
-			if refreshFunc.getCallCount() != expectedCalls {
-				t.Errorf("Expected %d refresh calls, got %d", expectedCalls, refreshFunc.getCallCount())
+			expectedDeregisters := 0
+			if tc.expectDeregister {
+				expectedDeregisters = 1
+			}
+
+			if callbacks.getRegisterCount() != expectedRegisters {
+				t.Errorf("Expected %d register calls, got %d", expectedRegisters, callbacks.getRegisterCount())
+			}
+
+			if callbacks.getDeregisterCount() != expectedDeregisters {
+				t.Errorf("Expected %d deregister calls, got %d", expectedDeregisters, callbacks.getDeregisterCount())
 			}
 		})
 	}
 }
 
+func TestEventHandler_HandlesErrors(t *testing.T) {
+	provider := newMockStateEventProvider()
+	callbacks := newMockCallbacks()
+	handler := NewEventHandler(provider, callbacks.register, callbacks.deregister)
+
+	// Set errors
+	callbacks.setRegisterError(fmt.Errorf("register failed"))
+	callbacks.setDeregisterError(fmt.Errorf("deregister failed"))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	err := handler.Start(ctx)
+	if err != nil {
+		t.Fatalf("Failed to start handler: %v", err)
+	}
+	defer handler.Stop()
+
+	// Send event that should trigger register (but will fail)
+	provider.sendEvent(ServiceStateEvent{
+		Label:       "kubernetes",
+		ServiceType: "MCPServer",
+		OldState:    "Stopped",
+		NewState:    "Running",
+		Health:      "Healthy",
+	})
+
+	// Send event that should trigger deregister (but will fail)
+	provider.sendEvent(ServiceStateEvent{
+		Label:       "envctl",
+		ServiceType: "MCPServer",
+		OldState:    "Running",
+		NewState:    "Stopped",
+		Health:      "Healthy",
+	})
+
+	// Give time for events to be processed
+	time.Sleep(100 * time.Millisecond)
+
+	// Handler should still be running despite errors
+	if !handler.IsRunning() {
+		t.Error("Handler should continue running despite callback errors")
+	}
+
+	// Callbacks should have been attempted
+	if callbacks.getRegisterCount() != 1 {
+		t.Errorf("Expected 1 register attempt, got %d", callbacks.getRegisterCount())
+	}
+
+	if callbacks.getDeregisterCount() != 1 {
+		t.Errorf("Expected 1 deregister attempt, got %d", callbacks.getDeregisterCount())
+	}
+}
+
 func TestEventHandler_HandlesChannelClose(t *testing.T) {
 	provider := newMockStateEventProvider()
-	refreshFunc := newMockRefreshFunc()
-	handler := NewEventHandler(provider, refreshFunc.refresh)
+	callbacks := newMockCallbacks()
+	handler := NewEventHandler(provider, callbacks.register, callbacks.deregister)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -300,8 +443,8 @@ func TestEventHandler_HandlesChannelClose(t *testing.T) {
 
 func TestEventHandler_HandlesContextCancellation(t *testing.T) {
 	provider := newMockStateEventProvider()
-	refreshFunc := newMockRefreshFunc()
-	handler := NewEventHandler(provider, refreshFunc.refresh)
+	callbacks := newMockCallbacks()
+	handler := NewEventHandler(provider, callbacks.register, callbacks.deregister)
 
 	ctx, cancel := context.WithCancel(context.Background())
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"envctl/pkg/logging"
 	"sync"
-	"time"
 )
 
 // ServiceStateEvent represents a service state change event
@@ -25,20 +24,26 @@ type StateEventProvider interface {
 
 // EventHandler handles orchestrator events and updates the aggregator accordingly
 type EventHandler struct {
-	stateProvider StateEventProvider
-	refreshFunc   func(context.Context) error
-	ctx           context.Context
-	cancelFunc    context.CancelFunc
-	wg            sync.WaitGroup
-	mu            sync.RWMutex
-	running       bool
+	stateProvider  StateEventProvider
+	registerFunc   func(context.Context, string) error
+	deregisterFunc func(string) error
+	ctx            context.Context
+	cancelFunc     context.CancelFunc
+	wg             sync.WaitGroup
+	mu             sync.RWMutex
+	running        bool
 }
 
-// NewEventHandler creates a new event handler
-func NewEventHandler(stateProvider StateEventProvider, refreshFunc func(context.Context) error) *EventHandler {
+// NewEventHandler creates a new event handler with simplified callbacks
+func NewEventHandler(
+	stateProvider StateEventProvider,
+	registerFunc func(context.Context, string) error,
+	deregisterFunc func(string) error,
+) *EventHandler {
 	return &EventHandler{
-		stateProvider: stateProvider,
-		refreshFunc:   refreshFunc,
+		stateProvider:  stateProvider,
+		registerFunc:   registerFunc,
+		deregisterFunc: deregisterFunc,
 	}
 }
 
@@ -128,74 +133,33 @@ func (eh *EventHandler) processEvent(event ServiceStateEvent) {
 		return
 	}
 
-	logging.Debug("Aggregator-EventHandler", "Processing MCP service event: %s %s->%s",
-		event.Label, event.OldState, event.NewState)
+	logging.Debug("Aggregator-EventHandler", "Processing MCP service event: %s (state=%s, health=%s)",
+		event.Label, event.NewState, event.Health)
 
-	// Check if this is a state change that requires aggregator refresh
-	if eh.shouldRefreshAggregator(event) {
-		eh.triggerRefresh(event)
+	// Only register servers that are BOTH Running AND Healthy
+	isHealthyAndRunning := event.NewState == "Running" && event.Health == "Healthy"
+
+	if isHealthyAndRunning {
+		// Register the healthy running server
+		logging.Info("Aggregator-EventHandler", "Registering healthy MCP server: %s", event.Label)
+
+		if err := eh.registerFunc(context.Background(), event.Label); err != nil {
+			logging.Error("Aggregator-EventHandler", err, "Failed to register MCP server %s", event.Label)
+		}
+	} else {
+		// Deregister for any other state/health combination
+		// This includes: Stopped, Failed, Starting, Stopping, or Running+Unhealthy
+		logging.Info("Aggregator-EventHandler", "Deregistering MCP server %s (state=%s, health=%s)",
+			event.Label, event.NewState, event.Health)
+
+		if err := eh.deregisterFunc(event.Label); err != nil {
+			// Log as debug since deregistering a non-existent server is not critical
+			logging.Debug("Aggregator-EventHandler", "Failed to deregister MCP server %s: %v", event.Label, err)
+		}
 	}
 }
 
 // isMCPServiceEvent checks if the event is related to an MCP service
 func (eh *EventHandler) isMCPServiceEvent(event ServiceStateEvent) bool {
 	return event.ServiceType == "MCPServer"
-}
-
-// shouldRefreshAggregator determines if the event requires aggregator refresh
-func (eh *EventHandler) shouldRefreshAggregator(event ServiceStateEvent) bool {
-	// Refresh when:
-	// 1. MCP service becomes running (needs to be registered)
-	// 2. MCP service stops being running (needs to be deregistered)
-	// 3. MCP service fails (might need to be deregistered)
-
-	oldState := event.OldState
-	newState := event.NewState
-
-	// Debug logging to track state changes
-	logging.Debug("Aggregator-EventHandler", "Checking if refresh needed for %s: oldState='%s', newState='%s'",
-		event.Label, oldState, newState)
-
-	// Service became running - register it
-	if oldState != "Running" && newState == "Running" {
-		logging.Debug("Aggregator-EventHandler", "Service %s became running, will refresh", event.Label)
-		return true
-	}
-
-	// Service stopped being running - deregister it
-	if oldState == "Running" && newState != "Running" {
-		logging.Debug("Aggregator-EventHandler", "Service %s stopped being running, will refresh", event.Label)
-		return true
-	}
-
-	// Service failed - might need deregistration
-	if newState == "Failed" {
-		logging.Debug("Aggregator-EventHandler", "Service %s failed, will refresh", event.Label)
-		return true
-	}
-
-	logging.Debug("Aggregator-EventHandler", "No refresh needed for %s state change", event.Label)
-	return false
-}
-
-// triggerRefresh calls the refresh function to update the aggregator
-func (eh *EventHandler) triggerRefresh(event ServiceStateEvent) {
-	logging.Info("Aggregator-EventHandler", "Refreshing aggregator due to MCP service change: %s (%s->%s)",
-		event.Label, event.OldState, event.NewState)
-
-	// Create a context with timeout for the refresh operation
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	// Call the refresh function
-	if err := eh.refreshFunc(ctx); err != nil {
-		logging.Error("Aggregator-EventHandler", err, "Failed to refresh aggregator after MCP service change: %s", event.Label)
-
-		// Log additional error details if available
-		if event.Error != nil {
-			logging.Debug("Aggregator-EventHandler", "Original service error: %v", event.Error)
-		}
-	} else {
-		logging.Debug("Aggregator-EventHandler", "Successfully refreshed aggregator after %s state change", event.Label)
-	}
 }

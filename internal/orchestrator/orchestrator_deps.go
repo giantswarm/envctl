@@ -129,9 +129,9 @@ func (o *Orchestrator) buildDependencyGraph() *dependency.Graph {
 //
 // Parallel startup groups:
 // 1. K8s connections (parallel) - foundation services
-// 2. Port forwards (parallel after dependencies) - depend on specific K8s connections
-// 3. MCP servers (parallel after dependencies) - may depend on port forwards
-// 4. Aggregator (sequential) - depends on MCP servers
+// 2. Aggregator (independent) - no dependencies, registers MCP servers as they become healthy
+// 3. Port forwards (parallel after dependencies) - depend on specific K8s connections
+// 4. MCP servers (parallel after dependencies) - may depend on port forwards
 func (o *Orchestrator) startServicesInOrder() error {
 	// Get all services that should be started
 	servicesToStart := o.getServicesToStart()
@@ -141,19 +141,19 @@ func (o *Orchestrator) startServicesInOrder() error {
 		return fmt.Errorf("failed to start K8s connections: %w", err)
 	}
 
-	// Group 2: Start port forwards in parallel (wait for their dependencies)
+	// Group 2: Start aggregator (no dependencies)
+	if err := o.startAggregator(servicesToStart); err != nil {
+		return fmt.Errorf("failed to start aggregator: %w", err)
+	}
+
+	// Group 3: Start port forwards in parallel (wait for their dependencies)
 	if err := o.startPortForwardsInParallel(servicesToStart); err != nil {
 		return fmt.Errorf("failed to start port forwards: %w", err)
 	}
 
-	// Group 3: Start MCP servers in parallel (wait for their dependencies)
+	// Group 4: Start MCP servers in parallel (wait for their dependencies)
 	if err := o.startMCPServersInParallel(servicesToStart); err != nil {
 		return fmt.Errorf("failed to start MCP servers: %w", err)
-	}
-
-	// Group 4: Start aggregator (depends on MCP servers)
-	if err := o.startAggregator(servicesToStart); err != nil {
-		return fmt.Errorf("failed to start aggregator: %w", err)
 	}
 
 	return nil
@@ -298,10 +298,11 @@ func (o *Orchestrator) startMCPServersInParallel(servicesToStart []string) error
 	return nil
 }
 
-// startAggregator starts the aggregator service after MCP servers are ready.
-// The aggregator depends on MCP servers being available, so it starts last.
+// startAggregator starts the aggregator service independently.
+// The aggregator has no dependencies and will dynamically register/deregister
+// MCP servers as they become healthy or unhealthy.
 func (o *Orchestrator) startAggregator(servicesToStart []string) error {
-	// Start the aggregator which depends on MCP servers
+	// Start the aggregator service
 	for _, label := range servicesToStart {
 		service, _ := o.registry.Get(label)
 		if string(service.GetType()) == "Aggregator" {
@@ -431,36 +432,18 @@ func (o *Orchestrator) stopDependentServices(label string) error {
 // shutdown completes even if some services hang.
 //
 // Stop order with timeouts:
-// 1. Aggregator (2 seconds) - depends on MCP servers
-// 2. MCP servers (3 seconds) - may need time to clean up
+// 1. MCP servers (3 seconds) - may need time to clean up
+// 2. Aggregator (2 seconds) - independent but should stop after MCP servers
 // 3. Port forwards (2 seconds) - kubectl processes to terminate
 // 4. K8s connections (1 second) - should stop quickly
 func (o *Orchestrator) stopAllServices() error {
 	allServices := o.registry.GetAll()
 
-	// Stop aggregator first with 2-second timeout
-	aggCtx, aggCancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer aggCancel()
-
-	var wg sync.WaitGroup
-	for _, service := range allServices {
-		if string(service.GetType()) == "Aggregator" {
-			wg.Add(1)
-			go func(svc services.Service) {
-				defer wg.Done()
-				if err := svc.Stop(aggCtx); err != nil && err != context.DeadlineExceeded {
-					logging.Error("Orchestrator", err, "Failed to stop aggregator %s", svc.GetLabel())
-				} else {
-					logging.Debug("Orchestrator", "Stopped aggregator %s", svc.GetLabel())
-				}
-			}(service)
-		}
-	}
-	wg.Wait()
-
-	// Stop MCP servers with 3-second timeout
+	// Stop MCP servers first with 3-second timeout
 	mcpCtx, mcpCancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer mcpCancel()
+
+	var wg sync.WaitGroup
 
 	for _, service := range allServices {
 		if service.GetType() == services.TypeMCPServer {
@@ -471,6 +454,25 @@ func (o *Orchestrator) stopAllServices() error {
 					logging.Error("Orchestrator", err, "Failed to stop MCP server %s", svc.GetLabel())
 				} else {
 					logging.Debug("Orchestrator", "Stopped MCP server %s", svc.GetLabel())
+				}
+			}(service)
+		}
+	}
+	wg.Wait()
+
+	// Stop aggregator with 2-second timeout
+	aggCtx, aggCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer aggCancel()
+
+	for _, service := range allServices {
+		if string(service.GetType()) == "Aggregator" {
+			wg.Add(1)
+			go func(svc services.Service) {
+				defer wg.Done()
+				if err := svc.Stop(aggCtx); err != nil && err != context.DeadlineExceeded {
+					logging.Error("Orchestrator", err, "Failed to stop aggregator %s", svc.GetLabel())
+				} else {
+					logging.Debug("Orchestrator", "Stopped aggregator %s", svc.GetLabel())
 				}
 			}(service)
 		}

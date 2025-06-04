@@ -199,22 +199,121 @@ func (a *AggregatorServer) monitorRegistryUpdates() {
 
 // updateCapabilities updates the aggregator's advertised capabilities
 func (a *AggregatorServer) updateCapabilities() {
+	a.mu.RLock()
 	if a.server == nil {
+		a.mu.RUnlock()
 		return
 	}
+	a.mu.RUnlock()
 
-	// Clear existing handlers
-	a.clearHandlers()
+	logging.Debug("Aggregator", "Updating capabilities dynamically")
 
 	// Get all servers
 	servers := a.registry.GetAllServers()
 
-	// Rebuild active handler sets
-	a.mu.Lock()
-	a.activeTools = make(map[string]bool)
-	a.activePrompts = make(map[string]bool)
-	a.activeResources = make(map[string]bool)
-	a.mu.Unlock()
+	// Build sets of what should exist
+	newTools := make(map[string]struct{})
+	newPrompts := make(map[string]struct{})
+	newResources := make(map[string]struct{})
+
+	// Track which server owns which item for adding handlers
+	toolOwners := make(map[string]*ServerInfo)
+	promptOwners := make(map[string]*ServerInfo)
+	resourceOwners := make(map[string]*ServerInfo)
+
+	// First pass: collect all items that should exist
+	for serverName, info := range servers {
+		if !info.IsConnected() {
+			continue
+		}
+
+		info.mu.RLock()
+		for _, tool := range info.Tools {
+			exposedName := a.registry.nameTracker.GetExposedToolName(serverName, tool.Name)
+			newTools[exposedName] = struct{}{}
+			toolOwners[exposedName] = info
+		}
+		for _, prompt := range info.Prompts {
+			exposedName := a.registry.nameTracker.GetExposedPromptName(serverName, prompt.Name)
+			newPrompts[exposedName] = struct{}{}
+			promptOwners[exposedName] = info
+		}
+		for _, resource := range info.Resources {
+			newResources[resource.URI] = struct{}{}
+			resourceOwners[resource.URI] = info
+		}
+		info.mu.RUnlock()
+	}
+
+	// Remove tools that no longer exist
+	a.mu.RLock()
+	toolsToRemove := []string{}
+	for toolName := range a.activeTools {
+		if _, exists := newTools[toolName]; !exists {
+			toolsToRemove = append(toolsToRemove, toolName)
+		}
+	}
+	a.mu.RUnlock()
+
+	if len(toolsToRemove) > 0 {
+		logging.Debug("Aggregator", "Removing %d tools: %v", len(toolsToRemove), toolsToRemove)
+		a.server.DeleteTools(toolsToRemove...)
+
+		// Update active tools map
+		a.mu.Lock()
+		for _, toolName := range toolsToRemove {
+			delete(a.activeTools, toolName)
+		}
+		a.mu.Unlock()
+	}
+
+	// Remove prompts that no longer exist
+	a.mu.RLock()
+	promptsToRemove := []string{}
+	for promptName := range a.activePrompts {
+		if _, exists := newPrompts[promptName]; !exists {
+			promptsToRemove = append(promptsToRemove, promptName)
+		}
+	}
+	a.mu.RUnlock()
+
+	if len(promptsToRemove) > 0 {
+		logging.Debug("Aggregator", "Removing %d prompts: %v", len(promptsToRemove), promptsToRemove)
+		a.server.DeletePrompts(promptsToRemove...)
+
+		// Update active prompts map
+		a.mu.Lock()
+		for _, promptName := range promptsToRemove {
+			delete(a.activePrompts, promptName)
+		}
+		a.mu.Unlock()
+	}
+
+	// Remove resources that no longer exist
+	a.mu.RLock()
+	resourcesToRemove := []string{}
+	for resourceURI := range a.activeResources {
+		if _, exists := newResources[resourceURI]; !exists {
+			resourcesToRemove = append(resourcesToRemove, resourceURI)
+		}
+	}
+	a.mu.RUnlock()
+
+	if len(resourcesToRemove) > 0 {
+		logging.Debug("Aggregator", "Removing %d resources: %v", len(resourcesToRemove), resourcesToRemove)
+		for _, resourceURI := range resourcesToRemove {
+			a.server.RemoveResource(resourceURI)
+		}
+
+		// Update active resources map
+		a.mu.Lock()
+		for _, resourceURI := range resourcesToRemove {
+			delete(a.activeResources, resourceURI)
+		}
+		a.mu.Unlock()
+	}
+
+	// Now add new handlers for items that don't exist yet
 
 	// Add tool handlers for each backend server
 	for serverName, info := range servers {
@@ -227,6 +326,15 @@ func (a *AggregatorServer) updateCapabilities() {
 		for _, tool := range info.Tools {
 			exposedTool := tool
 			exposedTool.Name = a.registry.nameTracker.GetExposedToolName(serverName, tool.Name)
+
+			// Check if this tool is already active
+			a.mu.RLock()
+			alreadyActive := a.activeTools[exposedTool.Name]
+			a.mu.RUnlock()
+
+			if alreadyActive {
+				continue // Skip if already registered
+			}
 
 			// Mark this tool as active
 			a.mu.Lock()
@@ -280,6 +388,15 @@ func (a *AggregatorServer) updateCapabilities() {
 		// Add resource handlers
 		info.mu.RLock()
 		for _, resource := range info.Resources {
+			// Check if this resource is already active
+			a.mu.RLock()
+			alreadyActive := a.activeResources[resource.URI]
+			a.mu.RUnlock()
+
+			if alreadyActive {
+				continue // Skip if already registered
+			}
+
 			// Mark this resource as active
 			a.mu.Lock()
 			a.activeResources[resource.URI] = true
@@ -339,6 +456,15 @@ func (a *AggregatorServer) updateCapabilities() {
 		for _, prompt := range info.Prompts {
 			exposedPrompt := prompt
 			exposedPrompt.Name = a.registry.nameTracker.GetExposedPromptName(serverName, prompt.Name)
+
+			// Check if this prompt is already active
+			a.mu.RLock()
+			alreadyActive := a.activePrompts[exposedPrompt.Name]
+			a.mu.RUnlock()
+
+			if alreadyActive {
+				continue // Skip if already registered
+			}
 
 			// Mark this prompt as active
 			a.mu.Lock()
@@ -408,12 +534,6 @@ func (a *AggregatorServer) updateCapabilities() {
 
 	logging.Debug("Aggregator", "Updated capabilities: %d tools, %d resources, %d prompts",
 		toolCount, resourceCount, promptCount)
-}
-
-// clearHandlers removes all existing handlers
-func (a *AggregatorServer) clearHandlers() {
-	// The mcp-go library doesn't provide a clear method, so we'll need to track and manage this
-	// For now, we'll rely on the fact that adding a handler with the same name overwrites the previous one
 }
 
 // GetEndpoint returns the aggregator's SSE endpoint URL

@@ -45,46 +45,18 @@ type OrchestratorAPI interface {
 
 // orchestratorAPI implements OrchestratorAPI
 type orchestratorAPI struct {
-	orch      ServiceOrchestrator
-	registry  services.ServiceRegistry
-	eventChan chan ServiceStateChangedEvent
+	orch     ServiceOrchestrator
+	registry services.ServiceRegistry
 }
 
 // NewOrchestratorAPI creates a new orchestrator API
 func NewOrchestratorAPI(orch ServiceOrchestrator, registry services.ServiceRegistry) OrchestratorAPI {
 	api := &orchestratorAPI{
-		orch:      orch,
-		registry:  registry,
-		eventChan: make(chan ServiceStateChangedEvent, 100),
+		orch:     orch,
+		registry: registry,
 	}
-
-	// Subscribe to orchestrator events instead of setting callbacks directly
-	// This uses the proper event-driven architecture
-	go api.forwardOrchestratorEvents(orch.SubscribeToStateChanges())
 
 	return api
-}
-
-// forwardOrchestratorEvents forwards events from the orchestrator to the API event channel
-func (api *orchestratorAPI) forwardOrchestratorEvents(orchestratorEvents <-chan orchestrator.ServiceStateChangedEvent) {
-	for event := range orchestratorEvents {
-		apiEvent := ServiceStateChangedEvent{
-			Label:       event.Label,
-			ServiceType: event.ServiceType,
-			OldState:    event.OldState,
-			NewState:    event.NewState,
-			Health:      event.Health,
-			Error:       event.Error,
-		}
-
-		select {
-		case api.eventChan <- apiEvent:
-			// Event forwarded successfully
-		default:
-			// Channel full, drop event
-			logging.Warn("OrchestratorAPI", "Dropped state change event for %s (channel full)", event.Label)
-		}
-	}
 }
 
 // StartService starts a service by label
@@ -197,5 +169,35 @@ func (api *orchestratorAPI) GetAllServices() []ServiceStatus {
 
 // SubscribeToStateChanges returns a channel for service state change events
 func (api *orchestratorAPI) SubscribeToStateChanges() <-chan ServiceStateChangedEvent {
-	return api.eventChan
+	// Create a new subscription to the orchestrator each time
+	// This ensures each subscriber gets their own channel
+	orchEvents := api.orch.SubscribeToStateChanges()
+
+	// Create a new channel for this subscriber
+	apiEvents := make(chan ServiceStateChangedEvent, 100)
+
+	// Convert orchestrator events to API events in a goroutine
+	go func() {
+		for event := range orchEvents {
+			apiEvent := ServiceStateChangedEvent{
+				Label:       event.Label,
+				ServiceType: event.ServiceType,
+				OldState:    event.OldState,
+				NewState:    event.NewState,
+				Health:      event.Health,
+				Error:       event.Error,
+			}
+
+			select {
+			case apiEvents <- apiEvent:
+				// Event forwarded successfully
+			default:
+				// Channel full, drop event
+				logging.Warn("OrchestratorAPI", "Dropped state change event for %s (subscriber channel full)", event.Label)
+			}
+		}
+		close(apiEvents)
+	}()
+
+	return apiEvents
 }

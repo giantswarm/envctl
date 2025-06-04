@@ -5,6 +5,7 @@ import (
 	"envctl/internal/orchestrator"
 	"envctl/internal/services"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 )
@@ -14,8 +15,8 @@ type mockServiceOrchestrator struct {
 	startServiceFunc   func(label string) error
 	stopServiceFunc    func(label string) error
 	restartServiceFunc func(label string) error
-	eventChan          chan orchestrator.ServiceStateChangedEvent
-	stateChanges       chan orchestrator.ServiceStateChangedEvent
+	subscribers        []chan orchestrator.ServiceStateChangedEvent
+	mu                 sync.Mutex
 }
 
 func (m *mockServiceOrchestrator) StartService(label string) error {
@@ -40,21 +41,28 @@ func (m *mockServiceOrchestrator) RestartService(label string) error {
 }
 
 func (m *mockServiceOrchestrator) SubscribeToStateChanges() <-chan orchestrator.ServiceStateChangedEvent {
-	if m.stateChanges == nil {
-		m.stateChanges = make(chan orchestrator.ServiceStateChangedEvent, 100)
-	}
-	return m.stateChanges
+	// Create a new channel for each subscriber (like the real orchestrator)
+	ch := make(chan orchestrator.ServiceStateChangedEvent, 100)
+
+	m.mu.Lock()
+	m.subscribers = append(m.subscribers, ch)
+	m.mu.Unlock()
+
+	return ch
 }
 
 // sendEvent is a helper method for tests to send events
 func (m *mockServiceOrchestrator) sendEvent(event orchestrator.ServiceStateChangedEvent) {
-	if m.stateChanges == nil {
-		m.stateChanges = make(chan orchestrator.ServiceStateChangedEvent, 100)
-	}
-	select {
-	case m.stateChanges <- event:
-	default:
-		// Channel full, ignore
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Send to all subscribers
+	for _, ch := range m.subscribers {
+		select {
+		case ch <- event:
+		default:
+			// Channel full, ignore
+		}
 	}
 }
 
@@ -341,9 +349,7 @@ func TestOrchestratorAPI_GetServiceStatus(t *testing.T) {
 
 func TestOrchestratorAPI_SubscribeToStateChanges(t *testing.T) {
 	// Create mocks
-	orch := &mockServiceOrchestrator{
-		stateChanges: make(chan orchestrator.ServiceStateChangedEvent, 10),
-	}
+	orch := &mockServiceOrchestrator{}
 	registry := services.NewRegistry()
 
 	api := NewOrchestratorAPI(orch, registry).(*orchestratorAPI)
@@ -476,5 +482,73 @@ func TestOrchestratorAPI_GetAllServices(t *testing.T) {
 	}
 	if !found2 {
 		t.Error("service2 not found in list")
+	}
+}
+
+func TestOrchestratorAPI_MultipleSubscribers(t *testing.T) {
+	// Create mocks
+	orch := &mockServiceOrchestrator{}
+	registry := services.NewRegistry()
+
+	api := NewOrchestratorAPI(orch, registry)
+
+	// Create multiple subscribers
+	ch1 := api.SubscribeToStateChanges()
+	ch2 := api.SubscribeToStateChanges()
+	ch3 := api.SubscribeToStateChanges()
+
+	// All channels should be different
+	if ch1 == nil || ch2 == nil || ch3 == nil {
+		t.Error("Expected non-nil channels")
+	}
+
+	// Test event
+	testEvent := orchestrator.ServiceStateChangedEvent{
+		Label:       "test-service",
+		ServiceType: string(services.TypeMCPServer),
+		OldState:    string(services.StateStopped),
+		NewState:    string(services.StateRunning),
+		Health:      string(services.HealthHealthy),
+		Error:       nil,
+	}
+
+	// Send the event
+	orch.sendEvent(testEvent)
+
+	// Give goroutines time to process
+	time.Sleep(50 * time.Millisecond)
+
+	// All subscribers should receive the event
+	received := 0
+
+	select {
+	case event := <-ch1:
+		if event.Label == testEvent.Label {
+			received++
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Error("Subscriber 1 did not receive event")
+	}
+
+	select {
+	case event := <-ch2:
+		if event.Label == testEvent.Label {
+			received++
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Error("Subscriber 2 did not receive event")
+	}
+
+	select {
+	case event := <-ch3:
+		if event.Label == testEvent.Label {
+			received++
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Error("Subscriber 3 did not receive event")
+	}
+
+	if received != 3 {
+		t.Errorf("Expected 3 subscribers to receive event, got %d", received)
 	}
 }
