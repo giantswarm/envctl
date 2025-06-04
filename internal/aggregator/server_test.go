@@ -160,13 +160,15 @@ func TestAggregatorServer_HandlerTracking(t *testing.T) {
 	tools := server.GetTools()
 	assert.Len(t, tools, 4) // tool1, tool2, and shared-tool from each server (prefixed)
 
-	// Verify active tools are tracked
-	server.mu.RLock()
-	assert.True(t, server.activeTools["tool1"])
-	assert.True(t, server.activeTools["tool2"])
-	assert.True(t, server.activeTools["server1.shared-tool"])
-	assert.True(t, server.activeTools["server2.shared-tool"])
-	server.mu.RUnlock()
+	// Verify tools are tracked by checking they exist in GetTools()
+	toolMap := make(map[string]bool)
+	for _, tool := range tools {
+		toolMap[tool.Name] = true
+	}
+	assert.True(t, toolMap["tool1"])
+	assert.True(t, toolMap["tool2"])
+	assert.True(t, toolMap["server1.shared-tool"])
+	assert.True(t, toolMap["server2.shared-tool"])
 
 	// Deregister server1
 	err = server.DeregisterServer("server1")
@@ -175,18 +177,20 @@ func TestAggregatorServer_HandlerTracking(t *testing.T) {
 	// Give the registry update a moment to process
 	time.Sleep(50 * time.Millisecond)
 
-	// Verify tools from server1 are no longer active
-	server.mu.RLock()
-	assert.False(t, server.activeTools["tool1"])
-	assert.False(t, server.activeTools["server1.shared-tool"])
-	assert.True(t, server.activeTools["tool2"])
-	// After deregistering server1, shared-tool should no longer be prefixed for server2
-	assert.True(t, server.activeTools["shared-tool"])
-	server.mu.RUnlock()
-
-	// Verify only server2 tools are available
+	// Get updated tools after deregistration
 	tools = server.GetTools()
 	assert.Len(t, tools, 2) // tool2 and shared-tool (no longer prefixed since only one server has it)
+
+	// Verify tools from server1 are no longer available
+	toolMap2 := make(map[string]bool)
+	for _, tool := range tools {
+		toolMap2[tool.Name] = true
+	}
+	assert.False(t, toolMap2["tool1"])
+	assert.False(t, toolMap2["server1.shared-tool"])
+	assert.True(t, toolMap2["tool2"])
+	// After deregistering server1, shared-tool should no longer be prefixed for server2
+	assert.True(t, toolMap2["shared-tool"])
 
 	// Verify the shared tool is now unprefixed
 	hasUnprefixedSharedTool := false
@@ -233,10 +237,15 @@ func TestAggregatorServer_InitialRegistration(t *testing.T) {
 	assert.Len(t, tools, 1)
 	assert.Equal(t, "test-tool", tools[0].Name)
 
-	// Verify the tool is marked as active
-	server.mu.RLock()
-	assert.True(t, server.activeTools["test-tool"])
-	server.mu.RUnlock()
+	// Verify the tool is available via the public API
+	found := false
+	for _, tool := range tools {
+		if tool.Name == "test-tool" {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "test-tool should be available")
 }
 
 func TestAggregatorServer_EmptyStart(t *testing.T) {
@@ -258,10 +267,8 @@ func TestAggregatorServer_EmptyStart(t *testing.T) {
 	tools := server.GetTools()
 	assert.Len(t, tools, 0)
 
-	// Active tools map should be empty
-	server.mu.RLock()
-	assert.Len(t, server.activeTools, 0)
-	server.mu.RUnlock()
+	// Verify no tools are available
+	assert.Empty(t, tools, "Should have no tools when starting empty")
 
 	// Now register a server
 	client := &mockMCPClient{
@@ -312,10 +319,15 @@ func TestAggregatorServer_HandlerExecution(t *testing.T) {
 	require.Len(t, tools, 1)
 	assert.Equal(t, "exec-tool", tools[0].Name)
 
-	// Verify the tool is active
-	server.mu.RLock()
-	assert.True(t, server.activeTools["exec-tool"])
-	server.mu.RUnlock()
+	// Verify the tool is available
+	found := false
+	for _, tool := range tools {
+		if tool.Name == "exec-tool" {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "exec-tool should be available")
 
 	// Deregister the server
 	err = server.DeregisterServer("exec-server")
@@ -324,10 +336,9 @@ func TestAggregatorServer_HandlerExecution(t *testing.T) {
 	// Wait for the asynchronous update to complete
 	time.Sleep(50 * time.Millisecond)
 
-	// Tool should no longer be active
-	server.mu.RLock()
-	assert.False(t, server.activeTools["exec-tool"])
-	server.mu.RUnlock()
+	// Tool should no longer be available
+	tools = server.GetTools()
+	assert.Empty(t, tools, "No tools should be available after deregistration")
 }
 
 func TestAggregatorServer_ToolsRemovedOnServerStop(t *testing.T) {
@@ -395,12 +406,14 @@ func TestAggregatorServer_ToolsRemovedOnServerStop(t *testing.T) {
 	assert.Len(t, tools, 1, "Should have only 1 tool after server1 is removed")
 	assert.Equal(t, "tool3", tools[0].Name)
 
-	// Verify server1's tools are no longer active
-	server.mu.RLock()
-	assert.False(t, server.activeTools["tool1"], "tool1 should not be active")
-	assert.False(t, server.activeTools["tool2"], "tool2 should not be active")
-	assert.True(t, server.activeTools["tool3"], "tool3 should still be active")
-	server.mu.RUnlock()
+	// Verify server1's tools are no longer available via the public API
+	toolNames = make(map[string]bool)
+	for _, tool := range tools {
+		toolNames[tool.Name] = true
+	}
+	assert.False(t, toolNames["tool1"], "tool1 should not be available")
+	assert.False(t, toolNames["tool2"], "tool2 should not be available")
+	assert.True(t, toolNames["tool3"], "tool3 should still be available")
 }
 
 func TestAggregatorServer_DynamicToolManagement(t *testing.T) {
@@ -490,13 +503,15 @@ func TestAggregatorServer_DynamicToolManagement(t *testing.T) {
 	assert.Len(t, tools, 1)
 	assert.Equal(t, "tool3", tools[0].Name)
 
-	// Verify no stale handlers - the active tools should only contain tool3
-	server.mu.RLock()
-	assert.Len(t, server.activeTools, 1, "Should only have 1 active tool")
-	assert.True(t, server.activeTools["tool3"], "tool3 should be active")
-	assert.False(t, server.activeTools["tool1"], "tool1 should not exist in active tools")
-	assert.False(t, server.activeTools["tool2"], "tool2 should not exist in active tools")
-	server.mu.RUnlock()
+	// Verify correct tools are available via the public API
+	toolNames := make(map[string]bool)
+	for _, tool := range tools {
+		toolNames[tool.Name] = true
+	}
+	assert.Len(t, tools, 1, "Should only have 1 tool available")
+	assert.True(t, toolNames["tool3"], "tool3 should be available")
+	assert.False(t, toolNames["tool1"], "tool1 should not be available")
+	assert.False(t, toolNames["tool2"], "tool2 should not be available")
 }
 
 func TestAggregatorServer_NoStaleHandlersAfterRestart(t *testing.T) {
@@ -559,9 +574,7 @@ func TestAggregatorServer_NoStaleHandlersAfterRestart(t *testing.T) {
 	assert.Equal(t, "common-tool", tools[0].Name)
 	assert.Equal(t, "Tool from server2", tools[0].Description)
 
-	// Verify only server2's tool is active (no stale handlers from server1)
-	server.mu.RLock()
-	assert.Len(t, server.activeTools, 1)
-	assert.True(t, server.activeTools["common-tool"])
-	server.mu.RUnlock()
+	// Verify only server2's tool is available (no stale handlers from server1)
+	assert.Len(t, tools, 1, "Should have exactly 1 tool")
+	assert.Equal(t, "common-tool", tools[0].Name, "Tool should be named common-tool")
 }

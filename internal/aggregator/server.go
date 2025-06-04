@@ -32,9 +32,9 @@ type AggregatorServer struct {
 	mu         sync.RWMutex
 
 	// Handler tracking - tracks which handlers are currently active
-	activeTools     map[string]bool // exposed tool name -> active
-	activePrompts   map[string]bool // exposed prompt name -> active
-	activeResources map[string]bool // resource URI -> active
+	toolManager     *activeItemManager
+	promptManager   *activeItemManager
+	resourceManager *activeItemManager
 }
 
 // NewAggregatorServer creates a new aggregator server
@@ -49,9 +49,9 @@ func NewAggregatorServer(config AggregatorConfig) *AggregatorServer {
 	return &AggregatorServer{
 		config:          config,
 		registry:        NewServerRegistry(),
-		activeTools:     make(map[string]bool),
-		activePrompts:   make(map[string]bool),
-		activeResources: make(map[string]bool),
+		toolManager:     newActiveItemManager(itemTypeTool),
+		promptManager:   newActiveItemManager(itemTypePrompt),
+		resourceManager: newActiveItemManager(itemTypeResource),
 	}
 }
 
@@ -211,368 +211,100 @@ func (a *AggregatorServer) updateCapabilities() {
 	// Get all servers
 	servers := a.registry.GetAllServers()
 
-	// Build sets of what should exist
-	newTools := make(map[string]struct{})
-	newPrompts := make(map[string]struct{})
-	newResources := make(map[string]struct{})
+	// Collect all items from connected servers
+	collected := collectItemsFromServers(servers, a.registry)
 
-	// Track which server owns which item for adding handlers
-	toolOwners := make(map[string]*ServerInfo)
-	promptOwners := make(map[string]*ServerInfo)
-	resourceOwners := make(map[string]*ServerInfo)
+	// Remove obsolete items
+	a.removeObsoleteItems(collected)
 
-	// First pass: collect all items that should exist
-	for serverName, info := range servers {
-		if !info.IsConnected() {
-			continue
-		}
+	// Add new items
+	a.addNewItems(servers)
 
-		info.mu.RLock()
-		for _, tool := range info.Tools {
-			exposedName := a.registry.nameTracker.GetExposedToolName(serverName, tool.Name)
-			newTools[exposedName] = struct{}{}
-			toolOwners[exposedName] = info
-		}
-		for _, prompt := range info.Prompts {
-			exposedName := a.registry.nameTracker.GetExposedPromptName(serverName, prompt.Name)
-			newPrompts[exposedName] = struct{}{}
-			promptOwners[exposedName] = info
-		}
-		for _, resource := range info.Resources {
-			newResources[resource.URI] = struct{}{}
-			resourceOwners[resource.URI] = info
-		}
-		info.mu.RUnlock()
-	}
+	// Log summary
+	a.logCapabilitiesSummary(servers)
+}
 
-	// Remove tools that no longer exist
-	a.mu.RLock()
-	toolsToRemove := []string{}
-	for toolName := range a.activeTools {
-		if _, exists := newTools[toolName]; !exists {
-			toolsToRemove = append(toolsToRemove, toolName)
-		}
-	}
-	a.mu.RUnlock()
+// removeObsoleteItems removes items that are no longer available
+func (a *AggregatorServer) removeObsoleteItems(collected *collectResult) {
+	// Remove obsolete tools
+	removeObsoleteItems(
+		a.toolManager,
+		collected.newTools,
+		func(items []string) {
+			a.server.DeleteTools(items...)
+		},
+	)
 
-	if len(toolsToRemove) > 0 {
-		logging.Debug("Aggregator", "Removing %d tools: %v", len(toolsToRemove), toolsToRemove)
-		a.server.DeleteTools(toolsToRemove...)
+	// Remove obsolete prompts
+	removeObsoleteItems(
+		a.promptManager,
+		collected.newPrompts,
+		func(items []string) {
+			a.server.DeletePrompts(items...)
+		},
+	)
 
-		// Update active tools map
-		a.mu.Lock()
-		for _, toolName := range toolsToRemove {
-			delete(a.activeTools, toolName)
-		}
-		a.mu.Unlock()
-	}
+	// Remove obsolete resources
+	removeObsoleteItems(
+		a.resourceManager,
+		collected.newResources,
+		func(items []string) {
+			// Note: The MCP server API doesn't provide a batch removal method for resources
+			// (unlike DeleteTools and DeletePrompts), so we have to remove them one by one.
+			// This will cause multiple notifications to the client.
+			// TODO: Consider requesting a RemoveResources/DeleteResources method in the MCP library
+			for _, uri := range items {
+				a.server.RemoveResource(uri)
+			}
+		},
+	)
+}
 
-	// Remove prompts that no longer exist
-	a.mu.RLock()
-	promptsToRemove := []string{}
-	for promptName := range a.activePrompts {
-		if _, exists := newPrompts[promptName]; !exists {
-			promptsToRemove = append(promptsToRemove, promptName)
-		}
-	}
-	a.mu.RUnlock()
-
-	if len(promptsToRemove) > 0 {
-		logging.Debug("Aggregator", "Removing %d prompts: %v", len(promptsToRemove), promptsToRemove)
-		a.server.DeletePrompts(promptsToRemove...)
-
-		// Update active prompts map
-		a.mu.Lock()
-		for _, promptName := range promptsToRemove {
-			delete(a.activePrompts, promptName)
-		}
-		a.mu.Unlock()
-	}
-
-	// Remove resources that no longer exist
-	a.mu.RLock()
-	resourcesToRemove := []string{}
-	for resourceURI := range a.activeResources {
-		if _, exists := newResources[resourceURI]; !exists {
-			resourcesToRemove = append(resourcesToRemove, resourceURI)
-		}
-	}
-	a.mu.RUnlock()
-
-	if len(resourcesToRemove) > 0 {
-		logging.Debug("Aggregator", "Removing %d resources: %v", len(resourcesToRemove), resourcesToRemove)
-		for _, resourceURI := range resourcesToRemove {
-			a.server.RemoveResource(resourceURI)
-		}
-
-		// Update active resources map
-		a.mu.Lock()
-		for _, resourceURI := range resourcesToRemove {
-			delete(a.activeResources, resourceURI)
-		}
-		a.mu.Unlock()
-	}
-
-	// Now add new handlers for items that don't exist yet
-
-	// Collect all tools to add in a batch
+// addNewItems adds new handlers for items that don't exist yet
+func (a *AggregatorServer) addNewItems(servers map[string]*ServerInfo) {
 	var toolsToAdd []server.ServerTool
+	var promptsToAdd []server.ServerPrompt
+	var resourcesToAdd []server.ServerResource
 
-	// Build tool handlers for each backend server
+	// Process each server
 	for serverName, info := range servers {
 		if !info.IsConnected() {
 			continue
 		}
 
-		// Process each tool from this server
-		info.mu.RLock()
-		for _, tool := range info.Tools {
-			exposedTool := tool
-			exposedTool.Name = a.registry.nameTracker.GetExposedToolName(serverName, tool.Name)
+		// Process tools for this server
+		toolsToAdd = append(toolsToAdd, processToolsForServer(a, serverName, info)...)
 
-			// Check if this tool is already active
-			a.mu.RLock()
-			alreadyActive := a.activeTools[exposedTool.Name]
-			a.mu.RUnlock()
+		// Process prompts for this server
+		promptsToAdd = append(promptsToAdd, processPromptsForServer(a, serverName, info)...)
 
-			if alreadyActive {
-				continue // Skip if already registered
-			}
-
-			// Mark this tool as active
-			a.mu.Lock()
-			a.activeTools[exposedTool.Name] = true
-			a.mu.Unlock()
-
-			// Capture the exposed name for the closure
-			capturedExposedName := exposedTool.Name
-
-			// Create the handler
-			handler := func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-				// Check if this tool is still active
-				a.mu.RLock()
-				isActive := a.activeTools[capturedExposedName]
-				a.mu.RUnlock()
-
-				if !isActive {
-					return nil, fmt.Errorf("tool %s is no longer available", capturedExposedName)
-				}
-
-				// Resolve the exposed name back to server and original tool name
-				sName, originalName, err := a.registry.ResolveToolName(capturedExposedName)
-				if err != nil {
-					return nil, fmt.Errorf("failed to resolve tool name: %w", err)
-				}
-
-				// Get the backend client
-				client, err := a.registry.GetClient(sName)
-				if err != nil {
-					return nil, fmt.Errorf("server not available: %w", err)
-				}
-
-				// Forward the request with the original tool name
-				args := make(map[string]interface{})
-				if req.Params.Arguments != nil {
-					// Type assert to map[string]interface{}
-					if argsMap, ok := req.Params.Arguments.(map[string]interface{}); ok {
-						args = argsMap
-					}
-				}
-
-				result, err := client.CallTool(ctx, originalName, args)
-				if err != nil {
-					return nil, fmt.Errorf("tool execution failed: %w", err)
-				}
-
-				return result, nil
-			}
-
-			// Add to batch
-			toolsToAdd = append(toolsToAdd, server.ServerTool{
-				Tool:    exposedTool,
-				Handler: handler,
-			})
-		}
-		info.mu.RUnlock()
+		// Process resources for this server
+		resourcesToAdd = append(resourcesToAdd, processResourcesForServer(a, serverName, info)...)
 	}
 
-	// Add all tools in one batch to minimize notifications
+	// Add all items in batches
 	if len(toolsToAdd) > 0 {
 		logging.Debug("Aggregator", "Adding %d tools in batch", len(toolsToAdd))
 		a.server.AddTools(toolsToAdd...)
 	}
 
-	// Collect all resources to add in a batch
-	var resourcesToAdd []server.ServerResource
-
-	// Collect all prompts to add in a batch
-	var promptsToAdd []server.ServerPrompt
-
-	// Build resource and prompt handlers for each backend server
-	for serverName, info := range servers {
-		if !info.IsConnected() {
-			continue
-		}
-
-		// Process resources from this server
-		info.mu.RLock()
-		for _, resource := range info.Resources {
-			// Check if this resource is already active
-			a.mu.RLock()
-			alreadyActive := a.activeResources[resource.URI]
-			a.mu.RUnlock()
-
-			if alreadyActive {
-				continue // Skip if already registered
-			}
-
-			// Mark this resource as active
-			a.mu.Lock()
-			a.activeResources[resource.URI] = true
-			a.mu.Unlock()
-
-			// Capture resource URI in the closure
-			resURI := resource.URI
-
-			handler := func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
-				// Check if this resource is still active
-				a.mu.RLock()
-				isActive := a.activeResources[resURI]
-				a.mu.RUnlock()
-
-				if !isActive {
-					return nil, fmt.Errorf("resource %s is no longer available", resURI)
-				}
-
-				// Find which server can handle this resource
-				for _, srvInfo := range a.registry.GetAllServers() {
-					if !srvInfo.IsConnected() {
-						continue
-					}
-
-					// Check if this server has the resource
-					hasResource := false
-					srvInfo.mu.RLock()
-					for _, res := range srvInfo.Resources {
-						if res.URI == resURI {
-							hasResource = true
-							break
-						}
-					}
-					srvInfo.mu.RUnlock()
-
-					if hasResource {
-						result, err := srvInfo.Client.ReadResource(ctx, resURI)
-						if err == nil {
-							// Return the resource contents from the result
-							var contents []mcp.ResourceContents
-							if result != nil && len(result.Contents) > 0 {
-								// The contents are already of the correct type
-								contents = result.Contents
-							}
-							return contents, nil
-						}
-					}
-				}
-
-				return nil, fmt.Errorf("no server can handle resource: %s", resURI)
-			}
-
-			// Add to batch
-			resourcesToAdd = append(resourcesToAdd, server.ServerResource{
-				Resource: resource,
-				Handler:  handler,
-			})
-		}
-
-		// Process prompts from this server
-		for _, prompt := range info.Prompts {
-			exposedPrompt := prompt
-			exposedPrompt.Name = a.registry.nameTracker.GetExposedPromptName(serverName, prompt.Name)
-
-			// Check if this prompt is already active
-			a.mu.RLock()
-			alreadyActive := a.activePrompts[exposedPrompt.Name]
-			a.mu.RUnlock()
-
-			if alreadyActive {
-				continue // Skip if already registered
-			}
-
-			// Mark this prompt as active
-			a.mu.Lock()
-			a.activePrompts[exposedPrompt.Name] = true
-			a.mu.Unlock()
-
-			// Capture the exposed name in the closure
-			capturedExposedName := exposedPrompt.Name
-
-			handler := func(ctx context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
-				// Check if this prompt is still active
-				a.mu.RLock()
-				isActive := a.activePrompts[capturedExposedName]
-				a.mu.RUnlock()
-
-				if !isActive {
-					return nil, fmt.Errorf("prompt %s is no longer available", capturedExposedName)
-				}
-
-				// Resolve the exposed name back to server and original prompt name
-				sName, originalName, err := a.registry.ResolvePromptName(capturedExposedName)
-				if err != nil {
-					return nil, fmt.Errorf("failed to resolve prompt name: %w", err)
-				}
-
-				// Get the backend client
-				client, err := a.registry.GetClient(sName)
-				if err != nil {
-					return nil, fmt.Errorf("server not available: %w", err)
-				}
-
-				// Forward the request with the original prompt name
-				args := make(map[string]interface{})
-				if req.Params.Arguments != nil {
-					// req.Params.Arguments is already map[string]string
-					for k, v := range req.Params.Arguments {
-						args[k] = v
-					}
-				}
-
-				result, err := client.GetPrompt(ctx, originalName, args)
-				if err != nil {
-					return nil, fmt.Errorf("prompt retrieval failed: %w", err)
-				}
-
-				return result, nil
-			}
-
-			// Add to batch
-			promptsToAdd = append(promptsToAdd, server.ServerPrompt{
-				Prompt:  exposedPrompt,
-				Handler: handler,
-			})
-		}
-		info.mu.RUnlock()
-	}
-
-	// Add all resources in one batch to minimize notifications
-	if len(resourcesToAdd) > 0 {
-		logging.Debug("Aggregator", "Adding %d resources in batch", len(resourcesToAdd))
-		a.server.AddResources(resourcesToAdd...)
-	}
-
-	// Add all prompts in one batch to minimize notifications
 	if len(promptsToAdd) > 0 {
 		logging.Debug("Aggregator", "Adding %d prompts in batch", len(promptsToAdd))
 		a.server.AddPrompts(promptsToAdd...)
 	}
 
-	// Count tools, resources, and prompts manually since there are no getter methods
+	if len(resourcesToAdd) > 0 {
+		logging.Debug("Aggregator", "Adding %d resources in batch", len(resourcesToAdd))
+		a.server.AddResources(resourcesToAdd...)
+	}
+}
+
+// logCapabilitiesSummary logs a summary of current capabilities
+func (a *AggregatorServer) logCapabilitiesSummary(servers map[string]*ServerInfo) {
 	toolCount := 0
 	resourceCount := 0
 	promptCount := 0
 
-	// Count from registry instead
 	for _, info := range servers {
 		if info.IsConnected() {
 			info.mu.RLock()

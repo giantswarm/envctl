@@ -160,26 +160,26 @@ func TestNameTracker_ResolveName(t *testing.T) {
 		exposedName      string
 		expectedServer   string
 		expectedOriginal string
-		isPrompt         bool
+		expectedItemType string
 		expectError      bool
 	}{
 		// Unique tool - no prefix
-		{"unique_tool", "serverA", "unique_tool", false, false},
+		{"unique_tool", "serverA", "unique_tool", "tool", false},
 		// Shared tool - prefixed
-		{"serverA.shared_tool", "serverA", "shared_tool", false, false},
-		{"serverB.shared_tool", "serverB", "shared_tool", false, false},
+		{"serverA.shared_tool", "serverA", "shared_tool", "tool", false},
+		{"serverB.shared_tool", "serverB", "shared_tool", "tool", false},
 		// Unique prompt - no prefix
-		{"unique_prompt", "serverA", "unique_prompt", true, false},
+		{"unique_prompt", "serverA", "unique_prompt", "prompt", false},
 		// Shared prompt - prefixed
-		{"serverB.shared_prompt", "serverB", "shared_prompt", true, false},
-		{"serverC.shared_prompt", "serverC", "shared_prompt", true, false},
+		{"serverB.shared_prompt", "serverB", "shared_prompt", "prompt", false},
+		{"serverC.shared_prompt", "serverC", "shared_prompt", "prompt", false},
 		// Non-existent name
-		{"non_existent", "", "", false, true},
+		{"non_existent", "", "", "", true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.exposedName, func(t *testing.T) {
-			serverName, originalName, isPrompt, err := tracker.ResolveName(tt.exposedName)
+			serverName, originalName, itemType, err := tracker.ResolveName(tt.exposedName)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -187,7 +187,7 @@ func TestNameTracker_ResolveName(t *testing.T) {
 				assert.NoError(t, err)
 				assert.Equal(t, tt.expectedServer, serverName)
 				assert.Equal(t, tt.expectedOriginal, originalName)
-				assert.Equal(t, tt.isPrompt, isPrompt)
+				assert.Equal(t, tt.expectedItemType, itemType)
 			}
 		})
 	}
