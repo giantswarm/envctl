@@ -58,6 +58,8 @@ func InitializeModel(cfg TUIConfig, logChannel <-chan logging.LogEntry) (*Model,
 		MainLogViewport:    viewport.New(80, 10),
 		McpConfigViewport:  viewport.New(80, 20),
 		McpToolsViewport:   viewport.New(80, 20),
+		AgentREPLViewport:  viewport.New(80, 20),
+		AgentREPLInput:     textinput.New(),
 		NewConnectionInput: textinput.New(),
 		Help:               help.New(),
 		Keys:               DefaultKeyMap(),
@@ -83,6 +85,11 @@ func InitializeModel(cfg TUIConfig, logChannel <-chan logging.LogEntry) (*Model,
 	m.NewConnectionInput.Focus()
 	m.NewConnectionInput.CharLimit = 50
 	m.NewConnectionInput.Width = 30
+
+	// Configure agent REPL input
+	m.AgentREPLInput.Placeholder = "Enter command..."
+	m.AgentREPLInput.CharLimit = 500
+	m.AgentREPLInput.Width = 80
 
 	return m, nil
 }
@@ -161,6 +168,10 @@ func DefaultKeyMap() KeyMap {
 		ToggleMcpTools: key.NewBinding(
 			key.WithKeys("M"),
 			key.WithHelp("M", "show MCP tools"),
+		),
+		ToggleAgentREPL: key.NewBinding(
+			key.WithKeys("A"),
+			key.WithHelp("A", "show agent REPL"),
 		),
 	}
 }

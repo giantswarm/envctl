@@ -3,6 +3,8 @@ package agent
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"os"
 	"time"
 )
 
@@ -21,11 +23,17 @@ type Logger struct {
 	verbose     bool
 	useColor    bool
 	jsonRPCMode bool
+	writer      io.Writer
 }
 
 // SetVerbose sets the verbose mode
 func (l *Logger) SetVerbose(verbose bool) {
 	l.verbose = verbose
+}
+
+// SetWriter sets a custom writer for the logger
+func (l *Logger) SetWriter(w io.Writer) {
+	l.writer = w
 }
 
 // NewLogger creates a new logger
@@ -34,6 +42,17 @@ func NewLogger(verbose, useColor, jsonRPCMode bool) *Logger {
 		verbose:     verbose,
 		useColor:    useColor,
 		jsonRPCMode: jsonRPCMode,
+		writer:      os.Stdout, // Default to stdout
+	}
+}
+
+// NewLoggerWithWriter creates a new logger with a custom writer
+func NewLoggerWithWriter(verbose, useColor, jsonRPCMode bool, writer io.Writer) *Logger {
+	return &Logger{
+		verbose:     verbose,
+		useColor:    useColor,
+		jsonRPCMode: jsonRPCMode,
+		writer:      writer,
 	}
 }
 
@@ -53,7 +72,7 @@ func (l *Logger) colorize(text, colorCode string) string {
 // Info logs an informational message
 func (l *Logger) Info(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
-	fmt.Printf("[%s] %s\n", l.timestamp(), msg)
+	fmt.Fprintf(l.writer, "[%s] %s\n", l.timestamp(), msg)
 }
 
 // Debug logs a debug message (only in verbose mode)
@@ -62,19 +81,19 @@ func (l *Logger) Debug(format string, args ...interface{}) {
 		return
 	}
 	msg := fmt.Sprintf(format, args...)
-	fmt.Printf("[%s] %s\n", l.timestamp(), l.colorize(msg, colorGray))
+	fmt.Fprintf(l.writer, "[%s] %s\n", l.timestamp(), l.colorize(msg, colorGray))
 }
 
 // Error logs an error message
 func (l *Logger) Error(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
-	fmt.Printf("[%s] %s\n", l.timestamp(), l.colorize(msg, colorRed))
+	fmt.Fprintf(l.writer, "[%s] %s\n", l.timestamp(), l.colorize(msg, colorRed))
 }
 
 // Success logs a success message
 func (l *Logger) Success(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
-	fmt.Printf("[%s] %s\n", l.timestamp(), l.colorize(msg, colorGreen))
+	fmt.Fprintf(l.writer, "[%s] %s\n", l.timestamp(), l.colorize(msg, colorGreen))
 }
 
 // Request logs an outgoing request
@@ -100,14 +119,14 @@ func (l *Logger) Request(method string, params interface{}) {
 	arrow := l.colorize("→", colorBlue)
 	methodStr := l.colorize(fmt.Sprintf("REQUEST (%s)", method), colorBlue)
 
-	fmt.Printf("[%s] %s %s:\n", l.timestamp(), arrow, methodStr)
+	fmt.Fprintf(l.writer, "[%s] %s %s:\n", l.timestamp(), arrow, methodStr)
 
 	// Pretty print the params
 	if params != nil {
 		jsonStr := l.prettyJSON(params)
-		fmt.Println(l.colorize(jsonStr, colorBlue))
+		fmt.Fprintln(l.writer, l.colorize(jsonStr, colorBlue))
 	}
-	fmt.Println()
+	fmt.Fprintln(l.writer)
 }
 
 // Response logs an incoming response
@@ -160,14 +179,14 @@ func (l *Logger) Response(method string, result interface{}) {
 	arrow := l.colorize("←", colorGreen)
 	methodStr := l.colorize(fmt.Sprintf("RESPONSE (%s)", method), colorGreen)
 
-	fmt.Printf("[%s] %s %s:\n", l.timestamp(), arrow, methodStr)
+	fmt.Fprintf(l.writer, "[%s] %s %s:\n", l.timestamp(), arrow, methodStr)
 
 	// Pretty print the result
 	if result != nil {
 		jsonStr := l.prettyJSON(result)
-		fmt.Println(l.colorize(jsonStr, colorGreen))
+		fmt.Fprintln(l.writer, l.colorize(jsonStr, colorGreen))
 	}
-	fmt.Println()
+	fmt.Fprintln(l.writer)
 }
 
 // Notification logs an incoming notification
@@ -198,14 +217,14 @@ func (l *Logger) Notification(method string, params interface{}) {
 	arrow := l.colorize("←", colorYellow)
 	methodStr := l.colorize(fmt.Sprintf("NOTIFICATION (%s)", method), colorYellow)
 
-	fmt.Printf("[%s] %s %s:\n", l.timestamp(), arrow, methodStr)
+	fmt.Fprintf(l.writer, "[%s] %s %s:\n", l.timestamp(), arrow, methodStr)
 
 	// Pretty print the params
 	if params != nil {
 		jsonStr := l.prettyJSON(params)
-		fmt.Println(l.colorize(jsonStr, colorYellow))
+		fmt.Fprintln(l.writer, l.colorize(jsonStr, colorYellow))
 	}
-	fmt.Println()
+	fmt.Fprintln(l.writer)
 }
 
 // prettyJSON formats JSON for display

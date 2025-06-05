@@ -4,11 +4,13 @@ import (
 	"envctl/internal/api"
 	"envctl/internal/config"
 	"envctl/internal/tui/model"
+	"envctl/internal/tui/view"
 	"envctl/pkg/logging"
 	"errors"
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -378,39 +380,96 @@ func TestHandleMainDashboardKeys(t *testing.T) {
 		expectedBehavior string
 	}{
 		{
-			name:             "restart focused service",
-			key:              "r",
-			focusedPanelKey:  "test-service",
+			name:            "restart focused service",
+			key:             "r",
+			focusedPanelKey: "mcpservers",
+			setupModel: func(m *model.Model) {
+				// Create a mock list with selected item
+				m.MCPServers["test-mcp"] = &api.MCPServerInfo{
+					Label: "test-mcp",
+					Name:  "test-mcp",
+					State: "running",
+				}
+				m.MCPServersList = &view.ServiceListModel{
+					List: list.New([]list.Item{
+						view.MCPServerListItem{
+							BaseListItem: view.BaseListItem{
+								ID:   "test-mcp",
+								Name: "test-mcp",
+							},
+						},
+					}, view.CommonItemDelegate{}, 100, 10),
+				}
+			},
 			expectedBehavior: "should restart service",
 		},
 		{
-			name:             "stop focused service",
-			key:              "x",
-			focusedPanelKey:  "test-service",
+			name:            "stop focused service",
+			key:             "x",
+			focusedPanelKey: "mcpservers",
+			setupModel: func(m *model.Model) {
+				// Create a mock list with selected item
+				m.MCPServers["test-mcp"] = &api.MCPServerInfo{
+					Label: "test-mcp",
+					Name:  "test-mcp",
+					State: "running",
+				}
+				m.MCPServersList = &view.ServiceListModel{
+					List: list.New([]list.Item{
+						view.MCPServerListItem{
+							BaseListItem: view.BaseListItem{
+								ID:   "test-mcp",
+								Name: "test-mcp",
+							},
+						},
+					}, view.CommonItemDelegate{}, 100, 10),
+				}
+			},
 			expectedBehavior: "should stop service",
 		},
 		{
 			name:            "start stopped service",
 			key:             "enter",
-			focusedPanelKey: "test-mcp",
+			focusedPanelKey: "mcpservers",
 			setupModel: func(m *model.Model) {
 				m.MCPServers["test-mcp"] = &api.MCPServerInfo{
+					Label: "test-mcp",
 					Name:  "test-mcp",
 					State: "stopped",
+				}
+				m.MCPServersList = &view.ServiceListModel{
+					List: list.New([]list.Item{
+						view.MCPServerListItem{
+							BaseListItem: view.BaseListItem{
+								ID:   "test-mcp",
+								Name: "test-mcp",
+							},
+						},
+					}, view.CommonItemDelegate{}, 100, 10),
 				}
 			},
 			expectedBehavior: "should start service",
 		},
 		{
-			name:             "switch to MC context",
-			key:              "s",
-			focusedPanelKey:  model.McPaneFocusKey,
-			expectedBehavior: "should switch context",
-		},
-		{
-			name:             "switch to WC context",
-			key:              "s",
-			focusedPanelKey:  model.WcPaneFocusKey,
+			name:            "switch to cluster context",
+			key:             "s",
+			focusedPanelKey: "clusters",
+			setupModel: func(m *model.Model) {
+				m.K8sConnections["test-cluster"] = &api.K8sConnectionInfo{
+					Label:   "test-cluster",
+					Context: "test-context",
+				}
+				m.ClustersList = &view.ServiceListModel{
+					List: list.New([]list.Item{
+						view.ClusterListItem{
+							BaseListItem: view.BaseListItem{
+								ID:   "test-cluster",
+								Name: "test-cluster",
+							},
+						},
+					}, view.CommonItemDelegate{}, 100, 10),
+				}
+			},
 			expectedBehavior: "should switch context",
 		},
 		{
@@ -462,46 +521,43 @@ func TestHandleMainDashboardKeys(t *testing.T) {
 func TestCycleFocus(t *testing.T) {
 	m, cleanup := createTestModel()
 	defer cleanup.cleanup()
-	m.ManagementClusterName = "test-mc"
-	m.WorkloadClusterName = "test-wc"
 
-	// Set up config instead of order arrays
-	m.PortForwardingConfig = []config.PortForwardDefinition{
-		{Name: "pf1", Enabled: true},
-		{Name: "pf2", Enabled: true},
+	// Set up connections and config for the new list-based UI
+	m.K8sConnections = map[string]*api.K8sConnectionInfo{
+		"mc-pane": {Label: "mc-pane", Context: "test-mc"},
+		"wc-pane": {Label: "wc-pane", Context: "test-wc"},
 	}
 	m.MCPServerConfig = []config.MCPServerDefinition{
 		{Name: "mcp1", Enabled: true},
 		{Name: "mcp2", Enabled: true},
 	}
+	// Aggregator is always present
+	m.AggregatorConfig = config.AggregatorConfig{
+		Port:    8090,
+		Enabled: true,
+	}
 
-	// Test forward cycling
-	m.FocusedPanelKey = model.McPaneFocusKey
+	// Test forward cycling: mcp-aggregator → clusters → mcpservers
+	m.FocusedPanelKey = "mcp-aggregator"
 	cycleFocus(m, 1)
-	assert.Equal(t, model.WcPaneFocusKey, m.FocusedPanelKey)
-
-	cycleFocus(m, 1)
-	assert.Equal(t, "pf1", m.FocusedPanelKey)
-
-	cycleFocus(m, 1)
-	assert.Equal(t, "pf2", m.FocusedPanelKey)
-
-	cycleFocus(m, 1)
-	assert.Equal(t, "mcp1", m.FocusedPanelKey)
+	assert.Equal(t, "clusters", m.FocusedPanelKey)
 
 	cycleFocus(m, 1)
-	assert.Equal(t, "mcp2", m.FocusedPanelKey)
+	assert.Equal(t, "mcpservers", m.FocusedPanelKey)
 
 	// Should wrap around
 	cycleFocus(m, 1)
-	assert.Equal(t, model.McPaneFocusKey, m.FocusedPanelKey)
+	assert.Equal(t, "mcp-aggregator", m.FocusedPanelKey)
 
 	// Test backward cycling
 	cycleFocus(m, -1)
-	assert.Equal(t, "mcp2", m.FocusedPanelKey)
+	assert.Equal(t, "mcpservers", m.FocusedPanelKey)
 
 	cycleFocus(m, -1)
-	assert.Equal(t, "mcp1", m.FocusedPanelKey)
+	assert.Equal(t, "clusters", m.FocusedPanelKey)
+
+	cycleFocus(m, -1)
+	assert.Equal(t, "mcp-aggregator", m.FocusedPanelKey)
 }
 
 func TestUpdate_MaxActivityLogLines(t *testing.T) {

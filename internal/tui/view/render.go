@@ -20,6 +20,8 @@ func Render(m *model.Model) string {
 	case model.ModeNewConnectionInput:
 		return renderNewConnectionInputView(m, m.Width)
 	case model.ModeMainDashboard:
+		// Initialize lists if not already done
+		initializeLists(m)
 		return renderMainDashboard(m)
 	case model.ModeHelpOverlay:
 		return renderHelpOverlay(m)
@@ -29,6 +31,8 @@ func Render(m *model.Model) string {
 		return renderMcpConfigOverlay(m)
 	case model.ModeMcpToolsOverlay:
 		return renderMcpToolsOverlay(m)
+	case model.ModeAgentREPLOverlay:
+		return renderAgentREPLOverlay(m)
 	default:
 		return color.StatusStyle.Render(fmt.Sprintf("Unhandled application mode: %s", m.CurrentAppMode.String()))
 	}
@@ -78,4 +82,31 @@ func trimStatusMessage(status string) string {
 		return status[:12] + "..."
 	}
 	return status
+}
+
+// initializeLists ensures the list models are initialized
+func initializeLists(m *model.Model) {
+	// Initialize clusters list if needed
+	if m.ClustersList == nil && len(m.K8sConnections) > 0 {
+		// Calculate reasonable dimensions
+		width := m.Width / 3
+		height := m.Height / 2
+		m.ClustersList = BuildClustersList(m, width, height, m.FocusedPanelKey == "clusters")
+	} else if m.ClustersList != nil {
+		// Update focus state
+		listModel := m.ClustersList.(*ServiceListModel)
+		listModel.SetFocused(m.FocusedPanelKey == "clusters")
+	}
+
+	// Initialize MCP servers list if needed
+	if m.MCPServersList == nil && len(m.MCPServerConfig) > 0 {
+		// Calculate reasonable dimensions
+		width := m.Width * 2 / 3
+		height := m.Height / 2
+		m.MCPServersList = BuildMCPServersList(m, width, height, m.FocusedPanelKey == "mcpservers")
+	} else if m.MCPServersList != nil {
+		// Update focus state
+		listModel := m.MCPServersList.(*ServiceListModel)
+		listModel.SetFocused(m.FocusedPanelKey == "mcpservers")
+	}
 }

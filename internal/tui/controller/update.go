@@ -2,8 +2,8 @@ package controller
 
 import (
 	"context"
+	"envctl/internal/agent"
 	"envctl/internal/api"
-	"envctl/internal/kube"
 	"envctl/internal/tui/model"
 	"envctl/internal/tui/view"
 	"envctl/pkg/logging"
@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/atotto/clipboard"
+	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -61,6 +62,11 @@ func Update(msg tea.Msg, m *model.Model) (*model.Model, tea.Cmd) {
 		logging.Debug("TUI", "Refreshing service data")
 		cmds = append(cmds, refreshServiceData(m))
 		return m, tea.Batch(cmds...)
+
+	case serviceDataRefreshedMsg:
+		// Service data has been refreshed, update list items
+		updateListItems(m)
+		return m, nil
 
 	case api.ServiceStateChangedEvent:
 		// Handle service state changes
@@ -195,6 +201,29 @@ func Update(msg tea.Msg, m *model.Model) (*model.Model, tea.Cmd) {
 				3*time.Second,
 			))
 		}
+
+	case model.AgentCommandResultMsg:
+		// Handle agent command result
+		if msg.Error != nil {
+			m.AgentREPLOutput = append(m.AgentREPLOutput, fmt.Sprintf("Error: %v", msg.Error))
+		} else {
+			// Split output by lines and add each
+			lines := strings.Split(msg.Output, "\n")
+			for _, line := range lines {
+				if line != "" {
+					m.AgentREPLOutput = append(m.AgentREPLOutput, line)
+				}
+			}
+		}
+
+		// Update viewport
+		if m.CurrentAppMode == model.ModeAgentREPLOverlay {
+			content := view.PrepareAgentREPLContent(m.AgentREPLOutput, m.AgentREPLViewport.Width)
+			m.AgentREPLViewport.SetContent(content)
+			m.AgentREPLViewport.GotoBottom()
+		}
+
+		return m, nil
 	}
 
 	// Re-queue listeners for continuous operation
@@ -323,6 +352,9 @@ func handleKeyPress(m *model.Model, key tea.KeyMsg) tea.Cmd {
 		}
 		return nil
 
+	case model.ModeAgentREPLOverlay:
+		return handleAgentREPLKeys(m, key)
+
 	case model.ModeMainDashboard:
 		return handleMainDashboardKeys(m, key)
 	}
@@ -337,6 +369,15 @@ func handleMainDashboardKeys(m *model.Model, key tea.KeyMsg) tea.Cmd {
 		m.QuitApp = true
 		m.CurrentAppMode = model.ModeQuitting
 		m.QuittingMessage = "Shutting down services..."
+
+		// Clean up agent client if connected
+		if m.AgentClient != nil {
+			if adapter, ok := m.AgentClient.(*agent.REPLAdapter); ok {
+				adapter.Close()
+			}
+			m.AgentClient = nil
+		}
+
 		// Stop the orchestrator to clean up all services
 		if m.Orchestrator != nil {
 			go func() {
@@ -392,6 +433,22 @@ func handleMainDashboardKeys(m *model.Model, key tea.KeyMsg) tea.Cmd {
 
 		return tea.Batch(cmds...)
 
+	case "A":
+		m.LastAppMode = m.CurrentAppMode
+		m.CurrentAppMode = model.ModeAgentREPLOverlay
+		// Initialize agent REPL if needed
+		if m.AgentREPLOutput == nil {
+			m.AgentREPLOutput = []string{}
+		}
+		// Set initial content
+		content := view.PrepareAgentREPLContent(m.AgentREPLOutput, m.AgentREPLViewport.Width)
+		m.AgentREPLViewport.SetContent(content)
+		m.AgentREPLViewport.GotoBottom()
+		// Focus the input
+		m.AgentREPLInput.Focus()
+		m.AgentREPLInput.Reset()
+		return nil
+
 	case "D":
 		// Toggle dark mode
 		currentIsDark := lipgloss.HasDarkBackground()
@@ -405,40 +462,49 @@ func handleMainDashboardKeys(m *model.Model, key tea.KeyMsg) tea.Cmd {
 
 	case "r":
 		// Restart focused service
-		if m.FocusedPanelKey != "" {
-			return m.RestartService(m.FocusedPanelKey)
+		serviceLabel := getSelectedServiceLabel(m)
+		if serviceLabel != "" {
+			return m.RestartService(serviceLabel)
 		}
 
 	case "x":
 		// Stop focused service
-		if m.FocusedPanelKey != "" {
-			return m.StopService(m.FocusedPanelKey)
+		serviceLabel := getSelectedServiceLabel(m)
+		if serviceLabel != "" {
+			return m.StopService(serviceLabel)
 		}
 
 	case "enter":
-		// Start focused service if stopped
-		if m.FocusedPanelKey != "" {
-			// Check if service is stopped
-			if svc, exists := m.MCPServers[m.FocusedPanelKey]; exists && svc.State != "running" {
-				return m.StartService(m.FocusedPanelKey)
-			}
-			if pf, exists := m.PortForwards[m.FocusedPanelKey]; exists && pf.State != "running" {
-				return m.StartService(m.FocusedPanelKey)
+		// Start focused service if stopped or handle list selection
+		if isListPanel(m.FocusedPanelKey) {
+			// For list panels, enter can be used to start stopped services
+			serviceLabel := getSelectedServiceLabel(m)
+			if serviceLabel != "" {
+				// Check if service is stopped
+				if svc, exists := m.MCPServers[serviceLabel]; exists && svc.State != "running" {
+					return m.StartService(serviceLabel)
+				}
+				if pf, exists := m.PortForwards[serviceLabel]; exists && pf.State != "running" {
+					return m.StartService(serviceLabel)
+				}
 			}
 		}
 
 	case "s":
 		// Context switch for K8s connections
-		if m.FocusedPanelKey == model.McPaneFocusKey && m.ManagementClusterName != "" {
-			// Switch to MC context
-			kubeMgr := kube.NewManager(nil)
-			target := kubeMgr.BuildMcContextName(m.ManagementClusterName)
-			return PerformSwitchKubeContextCmd(target)
-		} else if m.FocusedPanelKey == model.WcPaneFocusKey && m.WorkloadClusterName != "" && m.ManagementClusterName != "" {
-			// Switch to WC context
-			kubeMgr := kube.NewManager(nil)
-			target := kubeMgr.BuildWcContextName(m.ManagementClusterName, m.WorkloadClusterName)
-			return PerformSwitchKubeContextCmd(target)
+		if m.FocusedPanelKey == "clusters" {
+			// Get selected cluster from list
+			if m.ClustersList != nil {
+				listModel := m.ClustersList.(*view.ServiceListModel)
+				if item := listModel.GetSelectedItem(); item != nil {
+					if clusterItem, ok := item.(view.ClusterListItem); ok {
+						// Get the K8s connection for context switch
+						if conn, exists := m.K8sConnections[clusterItem.GetID()]; exists {
+							return PerformSwitchKubeContextCmd(conn.Context)
+						}
+					}
+				}
+			}
 		}
 
 	case "tab":
@@ -450,45 +516,249 @@ func handleMainDashboardKeys(m *model.Model, key tea.KeyMsg) tea.Cmd {
 		cycleFocus(m, -1)
 
 	case "k", "up":
-		// Move focus up
+		// Pass to list if focused panel is a list
+		if isListPanel(m.FocusedPanelKey) {
+			return handleListNavigation(m, key)
+		}
+		// Otherwise move focus up
 		cycleFocus(m, -1)
 
 	case "j", "down":
-		// Move focus down
+		// Pass to list if focused panel is a list
+		if isListPanel(m.FocusedPanelKey) {
+			return handleListNavigation(m, key)
+		}
+		// Otherwise move focus down
 		cycleFocus(m, 1)
 	}
 
 	return nil
 }
 
+// handleAgentREPLKeys handles keyboard input in the agent REPL overlay
+func handleAgentREPLKeys(m *model.Model, key tea.KeyMsg) tea.Cmd {
+	switch key.String() {
+	case "esc", "A":
+		// Close the overlay
+		m.CurrentAppMode = m.LastAppMode
+		// Unfocus the input
+		m.AgentREPLInput.Blur()
+		return nil
+
+	case "tab":
+		// Handle tab completion
+		currentInput := m.AgentREPLInput.Value()
+
+		// Get completions from agent client if available
+		var completions []string
+		if m.AgentClient != nil {
+			if executor, ok := m.AgentClient.(agent.CommandExecutor); ok {
+				completions = executor.GetCompletions(currentInput)
+			}
+		}
+
+		if len(completions) == 1 {
+			// Single completion - use it
+			m.AgentREPLInput.SetValue(completions[0])
+		} else if len(completions) > 1 {
+			// Multiple completions - show them
+			m.AgentREPLOutput = append(m.AgentREPLOutput, fmt.Sprintf("MCP> %s", currentInput))
+			m.AgentREPLOutput = append(m.AgentREPLOutput, "Available completions:")
+			for _, comp := range completions {
+				m.AgentREPLOutput = append(m.AgentREPLOutput, fmt.Sprintf("  %s", comp))
+			}
+
+			// Find common prefix
+			if len(completions) > 0 {
+				commonPrefix := completions[0]
+				for _, comp := range completions[1:] {
+					// Find common prefix
+					for i := 0; i < len(commonPrefix) && i < len(comp); i++ {
+						if commonPrefix[i] != comp[i] {
+							commonPrefix = commonPrefix[:i]
+							break
+						}
+					}
+				}
+				if len(commonPrefix) > len(currentInput) {
+					m.AgentREPLInput.SetValue(commonPrefix)
+				}
+			}
+
+			// Update viewport
+			content := view.PrepareAgentREPLContent(m.AgentREPLOutput, m.AgentREPLViewport.Width)
+			m.AgentREPLViewport.SetContent(content)
+			m.AgentREPLViewport.GotoBottom()
+		}
+		return nil
+
+	case "enter":
+		// Execute the command
+		cmd := m.AgentREPLInput.Value()
+		if cmd != "" {
+			// Add command to history
+			m.AgentREPLHistory = append(m.AgentREPLHistory, cmd)
+			m.AgentREPLHistoryIndex = len(m.AgentREPLHistory)
+
+			// Add command to output
+			m.AgentREPLOutput = append(m.AgentREPLOutput, fmt.Sprintf("MCP> %s", cmd))
+
+			// Clear input
+			m.AgentREPLInput.SetValue("")
+
+			// Update viewport immediately to show the command
+			content := view.PrepareAgentREPLContent(m.AgentREPLOutput, m.AgentREPLViewport.Width)
+			m.AgentREPLViewport.SetContent(content)
+			m.AgentREPLViewport.GotoBottom()
+
+			// Execute command asynchronously
+			return executeAgentCommand(m, cmd)
+		}
+		return nil
+
+	case "up":
+		// Navigate history up
+		if m.AgentREPLHistoryIndex > 0 && len(m.AgentREPLHistory) > 0 {
+			m.AgentREPLHistoryIndex--
+			if m.AgentREPLHistoryIndex < len(m.AgentREPLHistory) {
+				m.AgentREPLInput.SetValue(m.AgentREPLHistory[m.AgentREPLHistoryIndex])
+			}
+		}
+		return nil
+
+	case "down":
+		// Navigate history down
+		if m.AgentREPLHistoryIndex < len(m.AgentREPLHistory)-1 {
+			m.AgentREPLHistoryIndex++
+			m.AgentREPLInput.SetValue(m.AgentREPLHistory[m.AgentREPLHistoryIndex])
+		} else if m.AgentREPLHistoryIndex == len(m.AgentREPLHistory)-1 {
+			m.AgentREPLHistoryIndex = len(m.AgentREPLHistory)
+			m.AgentREPLInput.SetValue("")
+		}
+		return nil
+
+	case "pgup":
+		// Scroll viewport up
+		var vpCmd tea.Cmd
+		m.AgentREPLViewport, vpCmd = m.AgentREPLViewport.Update(key)
+		return vpCmd
+
+	case "pgdn":
+		// Scroll viewport down
+		var vpCmd tea.Cmd
+		m.AgentREPLViewport, vpCmd = m.AgentREPLViewport.Update(key)
+		return vpCmd
+
+	default:
+		// Pass to text input for typing
+		var inputCmd tea.Cmd
+		m.AgentREPLInput, inputCmd = m.AgentREPLInput.Update(key)
+		return inputCmd
+	}
+}
+
+// isListPanel checks if the focused panel is a list panel
+func isListPanel(focusedKey string) bool {
+	return focusedKey == "clusters" || focusedKey == "mcpservers"
+}
+
+// getSelectedServiceLabel returns the label of the currently selected service in a list
+func getSelectedServiceLabel(m *model.Model) string {
+	switch m.FocusedPanelKey {
+	case "clusters":
+		if m.ClustersList != nil {
+			listModel := m.ClustersList.(*view.ServiceListModel)
+			if item := listModel.GetSelectedItem(); item != nil {
+				return item.GetID()
+			}
+		}
+	case "mcpservers":
+		if m.MCPServersList != nil {
+			listModel := m.MCPServersList.(*view.ServiceListModel)
+			if item := listModel.GetSelectedItem(); item != nil {
+				return item.GetID()
+			}
+		}
+	}
+	return ""
+}
+
+// updateListItems updates the items in all list models with fresh data
+func updateListItems(m *model.Model) {
+	// Update clusters list
+	if m.ClustersList != nil {
+		listModel := m.ClustersList.(*view.ServiceListModel)
+		items := []list.Item{}
+		for _, label := range m.K8sConnectionOrder {
+			if conn, exists := m.K8sConnections[label]; exists {
+				items = append(items, view.ConvertK8sConnectionToListItem(conn))
+			}
+		}
+		listModel.List.SetItems(items)
+	}
+
+	// Update MCP servers list
+	if m.MCPServersList != nil {
+		// Temporarily use simple list
+		listModel := m.MCPServersList.(*view.ServiceListModel)
+		items := []list.Item{}
+		for _, config := range m.MCPServerConfig {
+			if mcp, exists := m.MCPServers[config.Name]; exists {
+				items = append(items, view.ConvertMCPServerToListItem(mcp))
+			} else {
+				// Create placeholder item for configured but not running MCP server
+				items = append(items, view.MCPServerListItem{
+					BaseListItem: view.BaseListItem{
+						ID:          config.Name,
+						Name:        config.Name,
+						Status:      view.StatusStopped,
+						Health:      view.HealthUnknown,
+						Icon:        view.SafeIcon(config.Icon),
+						Description: "Not Started",
+						Details:     fmt.Sprintf("MCP Server: %s (Not Started)", config.Name),
+					},
+				})
+			}
+		}
+		listModel.List.SetItems(items)
+	}
+}
+
+// handleListNavigation handles navigation within list panels
+func handleListNavigation(m *model.Model, key tea.KeyMsg) tea.Cmd {
+	var listModel *view.ServiceListModel
+	switch m.FocusedPanelKey {
+	case "clusters":
+		if m.ClustersList != nil {
+			listModel = m.ClustersList.(*view.ServiceListModel)
+		}
+	case "mcpservers":
+		if m.MCPServersList != nil {
+			listModel = m.MCPServersList.(*view.ServiceListModel)
+		}
+	}
+
+	if listModel != nil {
+		_, cmd := listModel.Update(key)
+		return cmd
+	}
+	return nil
+}
+
 // cycleFocus moves focus between panels
 func cycleFocus(m *model.Model, direction int) {
-	// Build list of focusable items
+	// Build list of focusable items in the new layout
 	var focusableItems []string
 
-	// Add MC pane
-	if m.ManagementClusterName != "" {
-		focusableItems = append(focusableItems, model.McPaneFocusKey)
-	}
+	// Aggregator is always present (primary component)
+	focusableItems = append(focusableItems, "mcp-aggregator")
 
-	// Add WC pane
-	if m.WorkloadClusterName != "" {
-		focusableItems = append(focusableItems, model.WcPaneFocusKey)
+	// Bottom row: Clusters and MCP Servers
+	if len(m.K8sConnections) > 0 {
+		focusableItems = append(focusableItems, "clusters")
 	}
-
-	// Add port forwards from config
-	for _, pf := range m.PortForwardingConfig {
-		focusableItems = append(focusableItems, pf.Name)
-	}
-
-	// Add aggregator if configured
-	if m.AggregatorConfig.Port > 0 {
-		focusableItems = append(focusableItems, "mcp-aggregator")
-	}
-
-	// Add MCP servers from config
-	for _, mcp := range m.MCPServerConfig {
-		focusableItems = append(focusableItems, mcp.Name)
+	if len(m.MCPServerConfig) > 0 {
+		focusableItems = append(focusableItems, "mcpservers")
 	}
 
 	if len(focusableItems) == 0 {
@@ -502,6 +772,12 @@ func cycleFocus(m *model.Model, direction int) {
 			currentIdx = i
 			break
 		}
+	}
+
+	// If no current focus, start with first item
+	if currentIdx == -1 {
+		m.FocusedPanelKey = focusableItems[0]
+		return
 	}
 
 	// Calculate next index
@@ -545,6 +821,75 @@ func fetchMCPTools(m *model.Model, serverName string) tea.Cmd {
 		return model.MCPToolsLoadedMsg{
 			ServerName: serverName,
 			Tools:      tools,
+		}
+	}
+}
+
+// executeAgentCommand executes a command asynchronously and handles the result
+func executeAgentCommand(m *model.Model, cmd string) tea.Cmd {
+	return func() tea.Msg {
+		// Check if we have an agent client
+		if m.AgentClient == nil {
+			// Try to initialize the agent client if we have aggregator info
+			if m.AggregatorInfo != nil && m.AggregatorInfo.Port > 0 {
+				// Create a logger that writes to the TUI viewport
+				writer := NewTUIAgentWriter(m)
+				logger := agent.NewLoggerWithWriter(false, false, false, writer)
+
+				// Create adapter with aggregator endpoint
+				endpoint := fmt.Sprintf("http://localhost:%d/sse", m.AggregatorInfo.Port)
+				adapter, err := agent.NewREPLAdapter(endpoint, logger)
+				if err != nil {
+					return model.AgentCommandResultMsg{
+						Command: cmd,
+						Error:   fmt.Errorf("failed to create agent adapter: %w", err),
+					}
+				}
+
+				// Connect to the aggregator
+				ctx := context.Background()
+				if err := adapter.Connect(ctx); err != nil {
+					return model.AgentCommandResultMsg{
+						Command: cmd,
+						Error:   fmt.Errorf("failed to connect to aggregator: %w", err),
+					}
+				}
+
+				// Store the adapter
+				m.AgentClient = adapter
+
+				// Return success message
+				return model.AgentCommandResultMsg{
+					Command: cmd,
+					Output:  "Connected to MCP aggregator successfully!",
+					Error:   nil,
+				}
+			} else {
+				return model.AgentCommandResultMsg{
+					Command: cmd,
+					Error:   fmt.Errorf("aggregator not running - start MCP servers first"),
+				}
+			}
+		}
+
+		// Cast to CommandExecutor interface
+		var executor agent.CommandExecutor
+		if adapter, ok := m.AgentClient.(*agent.REPLAdapter); ok {
+			executor = adapter
+		} else if simpleExec, ok := m.AgentClient.(agent.CommandExecutor); ok {
+			executor = simpleExec
+		} else {
+			// Fallback to simple executor
+			executor = agent.NewSimpleCommandExecutor()
+		}
+
+		ctx := context.Background()
+		output, err := executor.Execute(ctx, cmd)
+
+		return model.AgentCommandResultMsg{
+			Command: cmd,
+			Output:  output,
+			Error:   err,
 		}
 	}
 }

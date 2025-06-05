@@ -29,6 +29,7 @@ const (
 	ModeLogOverlay
 	ModeMcpConfigOverlay
 	ModeMcpToolsOverlay
+	ModeAgentREPLOverlay
 	ModeQuitting
 )
 
@@ -111,6 +112,8 @@ func (m AppMode) String() string {
 		return "McpConfigOverlay"
 	case ModeMcpToolsOverlay:
 		return "McpToolsOverlay"
+	case ModeAgentREPLOverlay:
+		return "AgentREPLOverlay"
 	case ModeQuitting:
 		return "Quitting"
 	default:
@@ -145,6 +148,7 @@ type KeyMap struct {
 	ToggleLog       key.Binding
 	ToggleMcpConfig key.Binding
 	ToggleMcpTools  key.Binding
+	ToggleAgentREPL key.Binding
 }
 
 // Model represents the state of the TUI application using the new service architecture
@@ -202,6 +206,12 @@ type Model struct {
 	MainLogViewport          viewport.Model
 	McpConfigViewport        viewport.Model
 	McpToolsViewport         viewport.Model
+	AgentREPLViewport        viewport.Model
+	AgentREPLInput           textinput.Model
+	AgentREPLHistory         []string
+	AgentREPLHistoryIndex    int
+	AgentREPLOutput          []string
+	AgentClient              interface{} // Will be *agent.Client, using interface{} to avoid circular import
 	Spinner                  spinner.Model
 	NewConnectionInput       textinput.Model
 	CurrentInputStep         InputStep
@@ -220,6 +230,11 @@ type Model struct {
 
 	// Event subscription
 	StateChangeEvents <-chan api.ServiceStateChangedEvent
+
+	// List models for the new UI (stored as interface{} to avoid circular import)
+	ClustersList     interface{}
+	PortForwardsList interface{}
+	MCPServersList   interface{}
 }
 
 // RefreshServiceData fetches the latest service data from APIs

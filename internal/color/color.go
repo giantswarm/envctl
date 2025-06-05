@@ -183,6 +183,14 @@ var (
 	StatusMessageWarningStyle = lipgloss.NewStyle().
 					Foreground(lipgloss.AdaptiveColor{Light: "#1F2937", Dark: "#111827"}) // Darker text on yellow
 
+	// Agent REPL styles
+	AgentPromptStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.AdaptiveColor{Light: "#0000CC", Dark: "#58A6FF"}).
+				Bold(true)
+
+	DimStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.AdaptiveColor{Light: "#888888", Dark: "#666666"})
+
 	// Shared overlay colour palette (Help & MCP Config)
 	HelpOverlayBgColor          = lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#1E1E1E"} // Renamed to avoid conflict
 	HelpOverlayDescFgColor      = lipgloss.Color("#C0C0C0")                                 // Renamed

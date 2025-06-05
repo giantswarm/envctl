@@ -28,6 +28,8 @@ const (
 	IconGear       = "⚙" // U+2699 without VS16
 	IconScroll     = "📜" // U+1F4DC
 	IconInfo       = "ℹ" // U+2139 without VS16
+	IconQuestion   = "❓" // U+2753
+	IconTerminal   = ">" // U+003E simple greater than for terminal prompt
 )
 
 // SafeIcon wraps an icon with proper spacing to prevent rendering issues

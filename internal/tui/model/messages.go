@@ -153,3 +153,23 @@ type ServiceStoppedMsg struct {
 type ServiceRestartedMsg struct {
 	Label string
 }
+
+// Agent REPL messages
+
+// AgentCommandMsg requests execution of an agent command
+type AgentCommandMsg struct {
+	Command string
+}
+
+// AgentCommandResultMsg contains the result of an agent command
+type AgentCommandResultMsg struct {
+	Command string
+	Output  string
+	Error   error
+}
+
+// AgentClientInitializedMsg indicates the agent client is ready
+type AgentClientInitializedMsg struct {
+	Success bool
+	Error   error
+}

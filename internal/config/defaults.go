@@ -95,12 +95,38 @@ func GetDefaultConfigWithRoles(mcName, wcName string) EnvctlConfig {
 		},
 		MCPServers: []MCPServerDefinition{
 			{
+				Name:     "teleport",
+				Type:     MCPServerTypeLocalCommand,
+				Enabled:  true,
+				Icon:     "🔌",
+				Category: "Core",
+				Command:  []string{"node", "/home/teemow/projects/giantswarm/teleport-mcp/dist/index.js"},
+			},
+			{
 				Name:                "kubernetes",
 				Type:                MCPServerTypeLocalCommand,
 				Enabled:             true,
 				Icon:                "☸",
 				Category:            "Core",
 				Command:             []string{"npx", "mcp-server-kubernetes"},
+				RequiresClusterRole: ClusterRoleTarget, // Uses the target cluster
+			},
+			{
+				Name:                "capi",
+				Type:                MCPServerTypeLocalCommand,
+				Enabled:             true,
+				Icon:                "☸",
+				Category:            "Core",
+				Command:             []string{"mcp-capi"},
+				RequiresClusterRole: ClusterRoleTarget, // Uses the target cluster
+			},
+			{
+				Name:                "flux",
+				Type:                MCPServerTypeLocalCommand,
+				Enabled:             true,
+				Icon:                "☸",
+				Category:            "Core",
+				Command:             []string{"flux-operator-mcp", "serve"},
 				RequiresClusterRole: ClusterRoleTarget, // Uses the target cluster
 			},
 			{
