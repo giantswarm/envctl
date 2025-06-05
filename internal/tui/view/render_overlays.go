@@ -148,36 +148,42 @@ func renderMcpConfigOverlay(m *model.Model) string {
 
 // renderMcpToolsOverlay(renders the MCP tools overlay
 func renderMcpToolsOverlay(m *model.Model) string {
-	// Match v1 exactly
-	toolsTitleText := SafeIcon(IconGear) + " MCP Server Tools  (↑/↓ scroll  •  Esc close)"
+	// Initialize list if needed
+	if m.MCPToolsList == nil && len(m.MCPToolsWithStatus) > 0 {
+		width := int(float64(m.Width) * 0.8)
+		height := int(float64(m.Height) * 0.7)
+		m.MCPToolsList = BuildMCPToolsList(m, width-4, height-6, true)
+	}
+
+	if m.MCPToolsList == nil {
+		return renderMainDashboard(m)
+	}
+
+	// Update list size and focus
+	listModel := m.MCPToolsList.(*ServiceListModel)
+	overlayWidth := int(float64(m.Width) * 0.8)
+	overlayHeight := int(float64(m.Height) * 0.7)
+	listModel.SetSize(overlayWidth-4, overlayHeight-6)
+	listModel.SetFocused(true)
+
+	// Title
+	toolsTitleText := SafeIcon(IconGear) + " MCP Server Tools"
+	if m.AggregatorInfo != nil && m.AggregatorInfo.YoloMode {
+		toolsTitleText += "  [YOLO MODE ACTIVE]"
+	}
+	toolsTitleText += "  (↑/↓ navigate  •  / filter  •  Esc close)"
 	toolsTitleView := color.LogPanelTitleStyle.Render(toolsTitleText)
-	toolsTitleHeight := lipgloss.Height(toolsTitleView)
 
-	toolsOverlayTotalWidth := int(float64(m.Width) * 0.8)
-	toolsOverlayTotalHeight := int(float64(m.Height) * 0.7)
+	// Get list view
+	listView := listModel.View()
 
-	newToolsViewportWidth := toolsOverlayTotalWidth - color.McpConfigOverlayStyle.GetHorizontalFrameSize()
-	newToolsViewportHeight := toolsOverlayTotalHeight - color.McpConfigOverlayStyle.GetVerticalFrameSize() - toolsTitleHeight
+	// Combine title and list
+	content := lipgloss.JoinVertical(lipgloss.Left, toolsTitleView, listView)
 
-	if newToolsViewportWidth < 0 {
-		newToolsViewportWidth = 0
-	}
-	if newToolsViewportHeight < 0 {
-		newToolsViewportHeight = 0
-	}
-
-	// Update viewport dimensions
-	m.McpToolsViewport.Width = newToolsViewportWidth
-	m.McpToolsViewport.Height = newToolsViewportHeight
-
-	// Content is already set by the controller when tools are loaded
-	// DO NOT set content here as it causes flickering during re-renders
-
-	viewportView := m.McpToolsViewport.View()
-	content := lipgloss.JoinVertical(lipgloss.Left, toolsTitleView, viewportView)
+	// Create overlay
 	toolsOverlay := color.McpConfigOverlayStyle.Copy().
-		Width(toolsOverlayTotalWidth - color.McpConfigOverlayStyle.GetHorizontalFrameSize()).
-		Height(toolsOverlayTotalHeight - color.McpConfigOverlayStyle.GetVerticalFrameSize()).
+		Width(overlayWidth - color.McpConfigOverlayStyle.GetHorizontalFrameSize()).
+		Height(overlayHeight - color.McpConfigOverlayStyle.GetVerticalFrameSize()).
 		Render(content)
 
 	overlayCanvas := lipgloss.Place(m.Width, m.Height-1, lipgloss.Center, lipgloss.Center, toolsOverlay,

@@ -240,6 +240,7 @@ type Model struct {
 	ClustersList     interface{}
 	PortForwardsList interface{}
 	MCPServersList   interface{}
+	MCPToolsList     interface{} // List for MCP tools display
 }
 
 // RefreshServiceData fetches the latest service data from APIs

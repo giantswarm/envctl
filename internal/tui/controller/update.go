@@ -344,11 +344,18 @@ func handleKeyPress(m *model.Model, key tea.KeyMsg) tea.Cmd {
 		switch key.String() {
 		case "M", "esc", "q":
 			m.CurrentAppMode = m.LastAppMode
+			// Unfocus the list
+			if m.MCPToolsList != nil {
+				listModel := m.MCPToolsList.(*view.ServiceListModel)
+				listModel.SetFocused(false)
+			}
 		default:
-			// Pass other keys to viewport for scrolling
-			var vpCmd tea.Cmd
-			m.McpToolsViewport, vpCmd = m.McpToolsViewport.Update(key)
-			return vpCmd
+			// Pass other keys to the list for navigation
+			if m.MCPToolsList != nil {
+				listModel := m.MCPToolsList.(*view.ServiceListModel)
+				_, cmd := listModel.Update(key)
+				return cmd
+			}
 		}
 		return nil
 
@@ -416,22 +423,9 @@ func handleMainDashboardKeys(m *model.Model, key tea.KeyMsg) tea.Cmd {
 	case "M":
 		m.LastAppMode = m.CurrentAppMode
 		m.CurrentAppMode = model.ModeMcpToolsOverlay
-		// Clear existing tools
-		m.MCPTools = make(map[string][]api.MCPTool)
 
-		// Show loading state
-		m.McpToolsViewport.SetContent("Loading MCP tools...\n")
-		m.McpToolsViewport.GotoTop()
-
-		// Fetch tools for all running MCP servers
-		var cmds []tea.Cmd
-		for serverName, serverInfo := range m.MCPServers {
-			if serverInfo.State == "Running" {
-				cmds = append(cmds, fetchMCPTools(m, serverName))
-			}
-		}
-
-		return tea.Batch(cmds...)
+		// Refresh the tools with status data
+		return refreshServiceData(m)
 
 	case "A":
 		m.LastAppMode = m.CurrentAppMode

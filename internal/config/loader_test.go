@@ -103,7 +103,7 @@ func TestLoadConfig_UserOverride(t *testing.T) {
 	assert.Equal(t, "podman", loadedConfig.GlobalSettings.DefaultContainerRuntime)
 
 	// Check MCPServers override and addition
-	assert.Len(t, loadedConfig.MCPServers, 7) // Default has 6 (teleport, kubernetes, capi, flux, prometheus, grafana), 1 overridden (kubernetes), 1 new (new-server)
+	assert.Len(t, loadedConfig.MCPServers, 8) // Default has 7 (teleport, kubernetes, capi, app-platform, flux, prometheus, grafana), 1 overridden (kubernetes), 1 new (new-server)
 	foundKube := false
 	foundNewServer := false
 	for _, srv := range loadedConfig.MCPServers {

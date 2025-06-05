@@ -109,4 +109,12 @@ func initializeLists(m *model.Model) {
 		listModel := m.MCPServersList.(*ServiceListModel)
 		listModel.SetFocused(m.FocusedPanelKey == "mcpservers")
 	}
+
+	// Initialize MCP tools list if needed
+	if m.MCPToolsList == nil && len(m.MCPToolsWithStatus) > 0 {
+		// Calculate reasonable dimensions for overlay
+		width := m.Width - 4
+		height := m.Height - 10
+		m.MCPToolsList = BuildMCPToolsList(m, width, height, false)
+	}
 }

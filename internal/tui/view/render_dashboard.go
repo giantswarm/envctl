@@ -128,7 +128,7 @@ func renderAggregator(m *model.Model, width int, height int) string {
 		lines = append(lines, serversLine)
 
 		// Resources and Prompts line
-		resourcesLine := fmt.Sprintf("Resources: %d    Prompts: %d", 
+		resourcesLine := fmt.Sprintf("Resources: %d    Prompts: %d",
 			m.AggregatorInfo.ResourcesCount, m.AggregatorInfo.PromptsCount)
 		lines = append(lines, resourcesLine)
 	} else {
@@ -141,7 +141,7 @@ func renderAggregator(m *model.Model, width int, height int) string {
 	if len(lines) < innerHeight-3 && len(m.MCPToolsWithStatus) > 0 {
 		lines = append(lines, "") // Empty line
 		lines = append(lines, "─ Available Tools ─")
-		
+
 		// Calculate how many tools we can show
 		remainingLines := innerHeight - len(lines) - 1
 		toolsToShow := len(m.MCPToolsWithStatus)
@@ -158,14 +158,14 @@ func renderAggregator(m *model.Model, width int, height int) string {
 				statusIcon = SafeIcon(IconBan)
 				statusText = " [BLOCKED]"
 			}
-			
+
 			toolLine := fmt.Sprintf("  %s %s%s", statusIcon, tool.Name, statusText)
-			
+
 			// Truncate if too long
 			if lipgloss.Width(toolLine) > innerWidth-2 {
 				toolLine = toolLine[:innerWidth-5] + "..."
 			}
-			
+
 			lines = append(lines, toolLine)
 		}
 
