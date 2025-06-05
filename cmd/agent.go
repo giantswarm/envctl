@@ -19,6 +19,7 @@ var (
 	agentVerbose  bool
 	agentNoColor  bool
 	agentJSONRPC  bool
+	agentREPL     bool
 )
 
 // agentCmd represents the agent command
@@ -31,6 +32,18 @@ logs all JSON-RPC communication, and demonstrates dynamic tool updates.
 This is useful for debugging the aggregator's behavior, verifying that
 tools are properly aggregated, and ensuring that notifications work correctly
 when tools are added or removed.
+
+The agent can run in two modes:
+1. Normal mode (default): Connects, lists tools, and waits for notifications
+2. REPL mode (--repl): Provides an interactive interface to explore and execute tools
+
+In REPL mode, you can:
+- List available tools, resources, and prompts
+- Get detailed information about specific items
+- Execute tools interactively with JSON arguments
+- View resources and retrieve their contents
+- Execute prompts with arguments
+- Toggle notification display
 
 By default, it connects to the aggregator endpoint configured in your
 envctl configuration file. You can override this with the --endpoint flag.`,
@@ -46,6 +59,7 @@ func init() {
 	agentCmd.Flags().BoolVar(&agentVerbose, "verbose", false, "Enable verbose logging (show keepalive messages)")
 	agentCmd.Flags().BoolVar(&agentNoColor, "no-color", false, "Disable colored output")
 	agentCmd.Flags().BoolVar(&agentJSONRPC, "json-rpc", false, "Enable full JSON-RPC message logging")
+	agentCmd.Flags().BoolVar(&agentREPL, "repl", false, "Start interactive REPL mode")
 }
 
 func runAgent(cmd *cobra.Command, args []string) error {
@@ -91,11 +105,21 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	// Create and run agent client
 	client := agent.NewClient(endpoint, logger)
 
-	// Create timeout context
+	// Run in REPL mode if requested
+	if agentREPL {
+		// REPL mode doesn't use timeout
+		repl := agent.NewREPL(client, logger)
+		if err := repl.Run(ctx); err != nil {
+			return fmt.Errorf("REPL error: %w", err)
+		}
+		return nil
+	}
+
+	// Create timeout context for non-REPL mode
 	timeoutCtx, timeoutCancel := context.WithTimeout(ctx, agentTimeout)
 	defer timeoutCancel()
 
-	// Run the agent
+	// Run the agent in normal mode
 	if err := client.Run(timeoutCtx); err != nil {
 		if err == context.DeadlineExceeded {
 			logger.Info("Timeout reached after %v", agentTimeout)

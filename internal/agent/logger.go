@@ -23,6 +23,11 @@ type Logger struct {
 	jsonRPCMode bool
 }
 
+// SetVerbose sets the verbose mode
+func (l *Logger) SetVerbose(verbose bool) {
+	l.verbose = verbose
+}
+
 // NewLogger creates a new logger
 func NewLogger(verbose, useColor, jsonRPCMode bool) *Logger {
 	return &Logger{

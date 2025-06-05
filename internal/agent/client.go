@@ -421,11 +421,16 @@ func (c *Client) showPromptDiff(oldPrompts, newPrompts []mcp.Prompt) {
 // OnNotification is a helper type for type-safe notification handling
 type NotificationHandler func(notification mcp.JSONRPCNotification)
 
-// Pretty-print JSON for logging
-func prettyJSON(v interface{}) string {
+// PrettyJSON pretty-prints JSON for logging
+func PrettyJSON(v interface{}) string {
 	b, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return fmt.Sprintf("%+v", v)
 	}
 	return string(b)
+}
+
+// prettyJSON is a wrapper for backward compatibility
+func prettyJSON(v interface{}) string {
+	return PrettyJSON(v)
 }

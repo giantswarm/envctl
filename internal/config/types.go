@@ -125,6 +125,16 @@ func GetDefaultConfig(mcName, wcName string) EnvctlConfig {
 	return EnvctlConfig{
 		PortForwards: []PortForwardDefinition{
 			{
+				Name:              "alloy-metrics",
+				Enabled:           true,
+				KubeContextTarget: alloyContext,
+				Namespace:         "kube-system",
+				TargetType:        "service",
+				TargetName:        "alloy-metrics",
+				LocalPort:         "12345",
+				RemotePort:        "12345",
+			},
+			{
 				Name:              "mc-prometheus",
 				Enabled:           true,
 				KubeContextTarget: mcContext,
@@ -143,16 +153,6 @@ func GetDefaultConfig(mcName, wcName string) EnvctlConfig {
 				TargetName:        "grafana",
 				LocalPort:         "3000",
 				RemotePort:        "3000",
-			},
-			{
-				Name:              "alloy-metrics",
-				Enabled:           true,
-				KubeContextTarget: alloyContext,
-				Namespace:         "kube-system",
-				TargetType:        "service",
-				TargetName:        "alloy-metrics",
-				LocalPort:         "12345",
-				RemotePort:        "12345",
 			},
 		},
 		MCPServers: []MCPServerDefinition{

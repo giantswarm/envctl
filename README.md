@@ -114,6 +114,9 @@ envctl self-update
 # Debug the MCP aggregator as a client
 envctl agent
 
+# Launch interactive REPL mode for MCP testing
+envctl agent --repl
+
 # Use the CLI mode without TUI (for scripts or CI environments)
 # This mode will:
 # - Log into the specified cluster(s) via tsh
@@ -127,6 +130,78 @@ envctl connect <management-cluster> [workload-cluster-shortname] --no-tui
 # Enable debug logging for troubleshooting
 envctl connect <management-cluster> --debug
 ```
+
+### Agent Command
+
+The `agent` command acts as an MCP (Model Context Protocol) client for debugging and testing:
+
+```bash
+# Basic mode - connects and monitors MCP servers
+envctl agent
+
+# Interactive REPL mode for exploring MCP capabilities
+envctl agent --repl
+```
+
+**REPL Mode Features:**
+
+The interactive REPL (Read-Eval-Print Loop) mode allows you to:
+- List and describe available tools, resources, and prompts
+- Execute tools with JSON arguments
+- Retrieve resource contents
+- Get prompts with arguments
+- Toggle notification display on/off
+- **Tab completion** for commands, tool names, resource URIs, and prompt names
+- **Command history** with arrow key navigation
+- **History search** with Ctrl+R
+- Persistent history across REPL sessions
+
+**Example REPL session:**
+```
+MCP> list tools
+Available tools (5):
+  1. mcp_envctl-mcp_execute_query       - Execute a PromQL instant query
+  2. mcp_envctl-mcp_execute_range_query - Execute a PromQL range query
+
+MCP> describe tool mcp_envctl-mcp_execute_query
+Tool: mcp_envctl-mcp_execute_query
+Description: Execute a PromQL instant query against Prometheus
+Input Schema:
+{
+  "type": "object",
+  "properties": {
+    "query": {"type": "string"},
+    "time": {"type": "string"}
+  },
+  "required": ["query"]
+}
+
+MCP> call mcp_envctl-mcp_execute_query {"query": "up"}
+Executing tool: mcp_envctl-mcp_execute_query...
+Result:
+{
+  "status": "success",
+  "data": {...}
+}
+
+MCP> exit
+```
+
+**REPL Keyboard Shortcuts:**
+
+| Key | Action |
+|-----|--------|
+| TAB | Auto-complete commands, tool names, resource URIs, and prompt names |
+| ↑/↓ | Navigate through command history |
+| Ctrl+R | Search command history |
+| Ctrl+A | Move cursor to beginning of line |
+| Ctrl+E | Move cursor to end of line |
+| Ctrl+W | Delete word before cursor |
+| Ctrl+K | Delete from cursor to end of line |
+| Ctrl+U | Delete from cursor to beginning of line |
+| Ctrl+L | Clear screen |
+| Ctrl+C | Cancel current line |
+| Ctrl+D | Exit REPL |
 
 **Arguments for `connect`:**
 
