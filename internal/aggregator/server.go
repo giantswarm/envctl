@@ -329,6 +329,35 @@ func (a *AggregatorServer) GetTools() []mcp.Tool {
 	return a.registry.GetAllTools()
 }
 
+// GetToolsWithStatus returns all available tools with their blocked status
+func (a *AggregatorServer) GetToolsWithStatus() []ToolWithStatus {
+	a.mu.RLock()
+	yolo := a.config.Yolo
+	a.mu.RUnlock()
+
+	tools := a.registry.GetAllTools()
+	result := make([]ToolWithStatus, 0, len(tools))
+
+	for _, tool := range tools {
+		// Resolve the tool to get the original name
+		var originalName string
+		if serverName, origName, err := a.registry.ResolveToolName(tool.Name); err == nil {
+			originalName = origName
+			_ = serverName // unused
+		} else {
+			// If we can't resolve, use the exposed name
+			originalName = tool.Name
+		}
+
+		result = append(result, ToolWithStatus{
+			Tool:    tool,
+			Blocked: !yolo && isDestructiveTool(originalName),
+		})
+	}
+
+	return result
+}
+
 // GetResources returns all available resources
 func (a *AggregatorServer) GetResources() []mcp.Resource {
 	return a.registry.GetAllResources()
@@ -337,4 +366,20 @@ func (a *AggregatorServer) GetResources() []mcp.Resource {
 // GetPrompts returns all available prompts with smart prefixing (only prefixed when conflicts exist)
 func (a *AggregatorServer) GetPrompts() []mcp.Prompt {
 	return a.registry.GetAllPrompts()
+}
+
+// ToggleToolBlock toggles the blocked status of a specific tool
+// This allows runtime changes to the denylist behavior for individual tools
+func (a *AggregatorServer) ToggleToolBlock(toolName string) error {
+	// For now, we can only toggle between fully enabled (yolo) or default denylist
+	// In a future enhancement, we could maintain a runtime override list
+	// For now, we just return an error indicating this needs more work
+	return fmt.Errorf("individual tool blocking toggle not yet implemented")
+}
+
+// IsYoloMode returns whether yolo mode is enabled
+func (a *AggregatorServer) IsYoloMode() bool {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.config.Yolo
 }

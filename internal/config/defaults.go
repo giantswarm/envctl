@@ -121,6 +121,15 @@ func GetDefaultConfigWithRoles(mcName, wcName string) EnvctlConfig {
 				RequiresClusterRole: ClusterRoleTarget, // Uses the target cluster
 			},
 			{
+				Name:                "app-platform",
+				Type:                MCPServerTypeLocalCommand,
+				Enabled:             true,
+				Icon:                "☸",
+				Category:            "Core",
+				Command:             []string{"mcp-giantswarm-apps"},
+				RequiresClusterRole: ClusterRoleTarget, // Uses the target cluster
+			},
+			{
 				Name:                "flux",
 				Type:                MCPServerTypeLocalCommand,
 				Enabled:             true,

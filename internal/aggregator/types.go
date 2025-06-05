@@ -136,3 +136,9 @@ type MCPServiceProvider interface {
 	// GetMCPClient returns the MCP client for a specific service
 	GetMCPClient(name string) interface{}
 }
+
+// ToolWithStatus represents a tool with its blocked status
+type ToolWithStatus struct {
+	Tool    mcp.Tool
+	Blocked bool
+}

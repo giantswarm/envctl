@@ -132,6 +132,7 @@ func (am *AggregatorManager) GetServiceData() map[string]interface{} {
 	data := map[string]interface{}{
 		"port": am.config.Port,
 		"host": am.config.Host,
+		"yolo": am.config.Yolo,
 	}
 
 	// Add aggregator server data
@@ -147,9 +148,22 @@ func (am *AggregatorManager) GetServiceData() map[string]interface{} {
 		data["resources"] = len(resources)
 		data["prompts"] = len(prompts)
 
+		// Get tools with status
+		toolsWithStatus := am.aggregatorServer.GetToolsWithStatus()
+		data["tools_with_status"] = toolsWithStatus
+
+		// Count blocked tools
+		blockedCount := 0
+		for _, t := range toolsWithStatus {
+			if t.Blocked {
+				blockedCount++
+			}
+		}
+		data["blocked_tools"] = blockedCount
+
 		// Debug logging for tool counts
-		logging.Debug("Aggregator-Manager", "GetServiceData: %d tools, %d resources, %d prompts",
-			len(tools), len(resources), len(prompts))
+		logging.Debug("Aggregator-Manager", "GetServiceData: %d tools (%d blocked), %d resources, %d prompts",
+			len(tools), blockedCount, len(resources), len(prompts))
 
 		// Get total number of MCP servers from the provider
 		totalServers := 0

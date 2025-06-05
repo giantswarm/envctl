@@ -30,6 +30,7 @@ const (
 	IconInfo       = "ℹ" // U+2139 without VS16
 	IconQuestion   = "❓" // U+2753
 	IconTerminal   = ">" // U+003E simple greater than for terminal prompt
+	IconBan        = "🚫" // U+1F6AB no entry sign
 )
 
 // SafeIcon wraps an icon with proper spacing to prevent rendering issues

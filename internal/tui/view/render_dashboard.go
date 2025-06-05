@@ -107,76 +107,73 @@ func renderAggregator(m *model.Model, width int, height int) string {
 			healthIcon, m.AggregatorInfo.Health)
 		lines = append(lines, statusLine)
 
-		// Servers and Tools line
+		// Servers and Tools line with blocked info
 		serversIcon := SafeIcon(IconCheck)
 		if m.AggregatorInfo.ServersConnected < m.AggregatorInfo.ServersTotal {
 			serversIcon = SafeIcon(IconWarning)
 		}
 
-		serversLine := fmt.Sprintf("Servers: %s %d/%d Connected    Tools: %s %d Available",
+		// Update tools display to show blocked count
+		toolsDisplay := fmt.Sprintf("%d Available", m.AggregatorInfo.ToolsCount)
+		if m.AggregatorInfo.BlockedTools > 0 {
+			toolsDisplay = fmt.Sprintf("%d Available (%d blocked)", m.AggregatorInfo.ToolsCount, m.AggregatorInfo.BlockedTools)
+		}
+		if m.AggregatorInfo.YoloMode {
+			toolsDisplay += " [YOLO]"
+		}
+
+		serversLine := fmt.Sprintf("Servers: %s %d/%d Connected    Tools: %s %s",
 			serversIcon, m.AggregatorInfo.ServersConnected, m.AggregatorInfo.ServersTotal,
-			SafeIcon(IconGear), m.AggregatorInfo.ToolsCount)
+			SafeIcon(IconGear), toolsDisplay)
 		lines = append(lines, serversLine)
+
+		// Resources and Prompts line
+		resourcesLine := fmt.Sprintf("Resources: %d    Prompts: %d", 
+			m.AggregatorInfo.ResourcesCount, m.AggregatorInfo.PromptsCount)
+		lines = append(lines, resourcesLine)
 	} else {
 		lines = append(lines, "Status: "+SafeIcon(IconHourglass)+" Initializing...")
 		lines = append(lines, "Servers: 0/0 Connected    Tools: 0 Available")
+		lines = append(lines, "Resources: 0    Prompts: 0")
 	}
 
-	// Add connected servers mini-dashboard if space allows
-	if len(lines) < innerHeight-3 && len(m.MCPServers) > 0 {
+	// Add tools list if space allows
+	if len(lines) < innerHeight-3 && len(m.MCPToolsWithStatus) > 0 {
 		lines = append(lines, "") // Empty line
-		// Create a properly sized box for the mini-dashboard
-		boxWidth := innerWidth - 2
-		if boxWidth > 50 {
-			boxWidth = 50 // Cap at 50 chars wide
-		}
-		header := "─ Connected MCP Servers ─"
-		headerPadding := boxWidth - len(header) - 2
-		if headerPadding < 0 {
-			headerPadding = 0
-		}
-		lines = append(lines, "┌"+header+strings.Repeat("─", headerPadding)+"┐")
-
-		var serverStatuses []string
-		for _, config := range m.MCPServerConfig {
-			if mcp, exists := m.MCPServers[config.Name]; exists {
-				icon := SafeIcon(config.Icon)
-				if icon == "" {
-					icon = SafeIcon(IconGear)
-				}
-
-				statusIcon := ""
-				if mcp.State == "Running" || mcp.State == "running" {
-					statusIcon = SafeIcon(IconCheck)
-				} else if mcp.State == "Failed" || mcp.State == "failed" {
-					statusIcon = SafeIcon(IconCross)
-				} else {
-					statusIcon = SafeIcon(IconHourglass)
-				}
-
-				serverStatuses = append(serverStatuses, fmt.Sprintf("%s %s %s", icon, config.Name, statusIcon))
-			}
+		lines = append(lines, "─ Available Tools ─")
+		
+		// Calculate how many tools we can show
+		remainingLines := innerHeight - len(lines) - 1
+		toolsToShow := len(m.MCPToolsWithStatus)
+		if toolsToShow > remainingLines {
+			toolsToShow = remainingLines - 1 // Leave room for "and X more..."
 		}
 
-		if len(serverStatuses) > 0 {
-			serversLine := strings.Join(serverStatuses, "    ")
-			// Center the servers line if it fits
-			if lipgloss.Width(serversLine) < innerWidth-4 {
-				leftPad := (innerWidth - 4 - lipgloss.Width(serversLine)) / 2
-				serversLine = strings.Repeat(" ", leftPad) + serversLine
+		// Show tools with their status
+		for i := 0; i < toolsToShow; i++ {
+			tool := m.MCPToolsWithStatus[i]
+			statusIcon := SafeIcon(IconCheck)
+			statusText := ""
+			if tool.Blocked {
+				statusIcon = SafeIcon(IconBan)
+				statusText = " [BLOCKED]"
 			}
-			// Ensure the line fits within the box
-			if lipgloss.Width(serversLine) > boxWidth-4 {
-				serversLine = serversLine[:boxWidth-7] + "..."
+			
+			toolLine := fmt.Sprintf("  %s %s%s", statusIcon, tool.Name, statusText)
+			
+			// Truncate if too long
+			if lipgloss.Width(toolLine) > innerWidth-2 {
+				toolLine = toolLine[:innerWidth-5] + "..."
 			}
-			// Pad to fill the box width
-			padding := boxWidth - 4 - lipgloss.Width(serversLine)
-			if padding > 0 {
-				serversLine += strings.Repeat(" ", padding)
-			}
-			lines = append(lines, "│ "+serversLine+" │")
+			
+			lines = append(lines, toolLine)
 		}
-		lines = append(lines, "└"+strings.Repeat("─", boxWidth-2)+"┘")
+
+		// Show count of remaining tools
+		if toolsToShow < len(m.MCPToolsWithStatus) {
+			remaining := len(m.MCPToolsWithStatus) - toolsToShow
+			lines = append(lines, fmt.Sprintf("  ...and %d more tools", remaining))
+		}
 	}
 
 	// Add empty lines if needed to fill height

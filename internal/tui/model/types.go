@@ -187,6 +187,11 @@ type Model struct {
 	MCPTools       map[string][]api.MCPTool
 	AggregatorInfo *api.AggregatorInfo
 
+	// MCP Items from aggregator
+	MCPToolsWithStatus []api.ToolWithStatus
+	MCPResources       []api.MCPResource
+	MCPPrompts         []api.MCPPrompt
+
 	// Service ordering for display
 	K8sConnectionOrder []string
 	PortForwardOrder   []string
@@ -326,6 +331,30 @@ func (m *Model) RefreshServiceData() error {
 			logging.Debug("Model", "Failed to get aggregator info: %v", err)
 		} else {
 			m.AggregatorInfo = aggInfo
+		}
+
+		// Fetch tools with status
+		tools, err := m.AggregatorAPI.GetAllToolsWithStatus(ctx)
+		if err != nil {
+			logging.Debug("Model", "Failed to get tools with status: %v", err)
+		} else {
+			m.MCPToolsWithStatus = tools
+		}
+
+		// Fetch resources
+		resources, err := m.AggregatorAPI.GetAllResources(ctx)
+		if err != nil {
+			logging.Debug("Model", "Failed to get resources: %v", err)
+		} else {
+			m.MCPResources = resources
+		}
+
+		// Fetch prompts
+		prompts, err := m.AggregatorAPI.GetAllPrompts(ctx)
+		if err != nil {
+			logging.Debug("Model", "Failed to get prompts: %v", err)
+		} else {
+			m.MCPPrompts = prompts
 		}
 	}
 
