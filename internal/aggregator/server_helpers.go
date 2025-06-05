@@ -250,6 +250,12 @@ func toolHandlerFactory(a *AggregatorServer, exposedName string) func(context.Co
 			return nil, fmt.Errorf("failed to resolve tool name: %w", err)
 		}
 
+		// Check if tool is destructive and yolo mode is not enabled
+		if !a.config.Yolo && isDestructiveTool(originalName) {
+			logging.Warn("Aggregator", "Blocked destructive tool call: %s (enable --yolo flag to allow)", originalName)
+			return nil, fmt.Errorf("tool '%s' is blocked as it is destructive. Use --yolo flag to allow destructive operations", originalName)
+		}
+
 		// Get the backend client
 		client, err := a.registry.GetClient(sName)
 		if err != nil {

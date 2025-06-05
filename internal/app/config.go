@@ -16,16 +16,20 @@ type Config struct {
 	// Debug settings
 	Debug bool
 
+	// Safety settings
+	Yolo bool
+
 	// Environment configuration
 	EnvctlConfig *config.EnvctlConfig
 }
 
 // NewConfig creates a new application configuration
-func NewConfig(managementCluster, workloadCluster string, noTUI, debug bool) *Config {
+func NewConfig(managementCluster, workloadCluster string, noTUI, debug, yolo bool) *Config {
 	return &Config{
 		ManagementCluster: managementCluster,
 		WorkloadCluster:   workloadCluster,
 		NoTUI:             noTUI,
 		Debug:             debug,
+		Yolo:              yolo,
 	}
 }

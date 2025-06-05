@@ -54,8 +54,8 @@ func InitializeServices(cfg *Config) (*Services, error) {
 	// Register all APIs in the global registry
 	api.SetAll(orchestratorAPI, mcpAPI, portForwardAPI, k8sAPI)
 
-	// Initialize aggregator if enabled
-	if err := initializeAggregator(cfg.EnvctlConfig, orchestratorAPI, mcpAPI, registry); err != nil {
+	// Initialize aggregator if enabled - pass the Yolo config
+	if err := initializeAggregator(cfg.EnvctlConfig, cfg.Yolo, orchestratorAPI, mcpAPI, registry); err != nil {
 		return nil, fmt.Errorf("failed to initialize aggregator: %w", err)
 	}
 
@@ -73,6 +73,7 @@ func InitializeServices(cfg *Config) (*Services, error) {
 // initializeAggregator creates and registers the aggregator service
 func initializeAggregator(
 	cfg *config.EnvctlConfig,
+	yolo bool,
 	orchestratorAPI api.OrchestratorAPI,
 	mcpAPI api.MCPServiceAPI,
 	registry services.ServiceRegistry,
@@ -87,6 +88,7 @@ func initializeAggregator(
 	aggConfig := aggregator.AggregatorConfig{
 		Host: cfg.Aggregator.Host,
 		Port: aggPort,
+		Yolo: yolo,
 	}
 	if aggConfig.Host == "" {
 		aggConfig.Host = "localhost"

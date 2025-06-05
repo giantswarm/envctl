@@ -18,6 +18,10 @@ var noTUI bool
 // This helps troubleshoot connection issues and understand service behavior.
 var debug bool
 
+// yolo disables the denylist for destructive tool calls.
+// When enabled, all MCP tools can be executed without restrictions.
+var yolo bool
+
 // kubeManagerFactory allows injection of custom kube.Manager for testing
 // In production, this uses the real kube.NewManager, but tests can override it
 var kubeManagerFactory func(interface{}) kube.Manager = kube.NewManager
@@ -80,7 +84,7 @@ func runConnect(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create application configuration
-	cfg := app.NewConfig(managementClusterArg, workloadClusterArg, noTUI, debug)
+	cfg := app.NewConfig(managementClusterArg, workloadClusterArg, noTUI, debug, yolo)
 
 	// Create and initialize the application
 	application, err := app.NewApplication(cfg)
@@ -104,6 +108,7 @@ func init() {
 	// Register command flags
 	connectCmdDef.Flags().BoolVar(&noTUI, "no-tui", false, "Disable TUI and run port forwarding in the background")
 	connectCmdDef.Flags().BoolVar(&debug, "debug", false, "Enable general debug logging")
+	connectCmdDef.Flags().BoolVar(&yolo, "yolo", false, "Disable denylist for destructive tool calls (use with caution)")
 }
 
 // getCompletionCandidates extracts the shell completion logic for testing.

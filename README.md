@@ -129,6 +129,11 @@ envctl connect <management-cluster> [workload-cluster-shortname] --no-tui
 
 # Enable debug logging for troubleshooting
 envctl connect <management-cluster> --debug
+
+# Disable the safety denylist for destructive MCP tool calls (use with caution!)
+# By default, destructive tools like kubectl apply/delete, helm install/uninstall, etc. are blocked
+# This flag allows all MCP tools to be executed without restrictions
+envctl connect <management-cluster> --yolo
 ```
 
 ### Agent Command

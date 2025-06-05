@@ -11,6 +11,7 @@ func TestNewConfig(t *testing.T) {
 		workloadCluster   string
 		noTUI             bool
 		debug             bool
+		yolo              bool
 	}{
 		{
 			name:              "full configuration",
@@ -18,6 +19,7 @@ func TestNewConfig(t *testing.T) {
 			workloadCluster:   "wc-test",
 			noTUI:             true,
 			debug:             true,
+			yolo:              true,
 		},
 		{
 			name:              "minimal configuration",
@@ -25,6 +27,7 @@ func TestNewConfig(t *testing.T) {
 			workloadCluster:   "",
 			noTUI:             false,
 			debug:             false,
+			yolo:              false,
 		},
 		{
 			name:              "empty configuration",
@@ -32,12 +35,13 @@ func TestNewConfig(t *testing.T) {
 			workloadCluster:   "",
 			noTUI:             false,
 			debug:             false,
+			yolo:              false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := NewConfig(tt.managementCluster, tt.workloadCluster, tt.noTUI, tt.debug)
+			cfg := NewConfig(tt.managementCluster, tt.workloadCluster, tt.noTUI, tt.debug, tt.yolo)
 
 			if cfg.ManagementCluster != tt.managementCluster {
 				t.Errorf("ManagementCluster = %v, want %v", cfg.ManagementCluster, tt.managementCluster)
@@ -50,6 +54,9 @@ func TestNewConfig(t *testing.T) {
 			}
 			if cfg.Debug != tt.debug {
 				t.Errorf("Debug = %v, want %v", cfg.Debug, tt.debug)
+			}
+			if cfg.Yolo != tt.yolo {
+				t.Errorf("Yolo = %v, want %v", cfg.Yolo, tt.yolo)
 			}
 			if cfg.EnvctlConfig != nil {
 				t.Error("EnvctlConfig should be nil before loading")
@@ -65,6 +72,7 @@ func TestConfigFields(t *testing.T) {
 		WorkloadCluster:   "test-wc",
 		NoTUI:             true,
 		Debug:             true,
+		Yolo:              true,
 	}
 
 	if cfg.ManagementCluster != "test-mc" {
@@ -78,5 +86,8 @@ func TestConfigFields(t *testing.T) {
 	}
 	if !cfg.Debug {
 		t.Error("Debug should be true")
+	}
+	if !cfg.Yolo {
+		t.Error("Yolo should be true")
 	}
 }

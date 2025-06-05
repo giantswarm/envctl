@@ -88,6 +88,7 @@ func (s *ServerInfo) IsConnected() bool {
 type AggregatorConfig struct {
 	Port int    // Port to listen on for the aggregated SSE endpoint
 	Host string // Host to bind to (default: localhost)
+	Yolo bool   // Disable denylist for destructive tools
 }
 
 // RegistrationEvent represents a server registration/deregistration event
