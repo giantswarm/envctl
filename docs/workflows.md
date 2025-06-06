@@ -115,6 +115,7 @@ Agents can manage workflows using these tools:
 - `workflow_update` - Update an existing workflow (if agentModifiable)
 - `workflow_delete` - Delete a workflow (only agent-created ones)
 - `workflow_validate` - Validate a workflow definition
+- `workflow_spec` - Get workflow YAML specification, schema, and examples
 
 ## Examples
 
