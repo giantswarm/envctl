@@ -127,8 +127,8 @@ func (wm *WorkflowManager) workflowToTool(workflow config.WorkflowDefinition) mc
 		Required:   required,
 	}
 
-	// Prefix workflow tools with "workflow_"
-	toolName := fmt.Sprintf("workflow_%s", workflow.Name)
+	// Prefix workflow tools with "action_" to indicate they are high-level actions
+	toolName := fmt.Sprintf("action_%s", workflow.Name)
 
 	return mcp.Tool{
 		Name:        toolName,

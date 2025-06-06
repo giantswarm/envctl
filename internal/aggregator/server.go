@@ -112,6 +112,12 @@ func (a *AggregatorServer) Start(ctx context.Context) error {
 	a.wg.Add(1)
 	go a.monitorRegistryUpdates()
 
+	// Start workflow update monitor if workflow manager exists
+	if a.workflowManager != nil {
+		a.wg.Add(1)
+		go a.monitorWorkflowUpdates()
+	}
+
 	// Release the lock before calling updateCapabilities to avoid deadlock
 	a.mu.Unlock()
 
@@ -223,6 +229,28 @@ func (a *AggregatorServer) monitorRegistryUpdates() {
 	}
 }
 
+// monitorWorkflowUpdates monitors for changes in workflows and updates capabilities
+func (a *AggregatorServer) monitorWorkflowUpdates() {
+	defer a.wg.Done()
+
+	if a.workflowManager == nil {
+		return
+	}
+
+	changeChannel := a.workflowManager.GetStorage().GetChangeChannel()
+
+	for {
+		select {
+		case <-a.ctx.Done():
+			return
+		case <-changeChannel:
+			logging.Debug("Aggregator", "Workflow changes detected, updating capabilities")
+			// Update capabilities to refresh workflow tools
+			a.updateCapabilities()
+		}
+	}
+}
+
 // updateCapabilities updates the aggregator's advertised capabilities
 func (a *AggregatorServer) updateCapabilities() {
 	a.mu.RLock()
@@ -315,6 +343,10 @@ func (a *AggregatorServer) addNewItems(servers map[string]*ServerInfo) {
 			// Apply envctl prefix to workflow tools
 			prefixedTool := tool
 			prefixedTool.Name = a.config.EnvctlPrefix + "_" + tool.Name
+			
+			// Mark workflow tool as active to prevent it from being removed
+			a.toolManager.setActive(prefixedTool.Name, true)
+			
 			toolsToAdd = append(toolsToAdd, a.createWorkflowServerTool(prefixedTool))
 		}
 
@@ -324,6 +356,10 @@ func (a *AggregatorServer) addNewItems(servers map[string]*ServerInfo) {
 			// Apply envctl prefix to management tools
 			prefixedTool := tool
 			prefixedTool.Name = a.config.EnvctlPrefix + "_" + tool.Name
+			
+			// Mark management tool as active to prevent it from being removed
+			a.toolManager.setActive(prefixedTool.Name, true)
+			
 			toolsToAdd = append(toolsToAdd, a.createManagementServerTool(prefixedTool, managementTools))
 		}
 	}
@@ -454,17 +490,17 @@ func (a *AggregatorServer) createWorkflowServerTool(tool mcp.Tool) server.Server
 		Tool: tool,
 		Handler: func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			// Extract workflow name from tool name
-			// Remove envctl prefix first (e.g., "x_workflow_test" -> "workflow_test")
+			// Remove envctl prefix first (e.g., "x_action_test" -> "action_test")
 			nameWithoutEnvctl := tool.Name
 			envctlPrefix := a.config.EnvctlPrefix + "_"
 			if strings.HasPrefix(tool.Name, envctlPrefix) {
 				nameWithoutEnvctl = tool.Name[len(envctlPrefix):]
 			}
 
-			// Then remove "workflow_" prefix
+			// Then remove "action_" prefix
 			workflowName := nameWithoutEnvctl
-			if strings.HasPrefix(nameWithoutEnvctl, "workflow_") {
-				workflowName = nameWithoutEnvctl[9:] // len("workflow_") = 9
+			if strings.HasPrefix(nameWithoutEnvctl, "action_") {
+				workflowName = nameWithoutEnvctl[7:] // len("action_") = 7
 			}
 
 			// Extract arguments
