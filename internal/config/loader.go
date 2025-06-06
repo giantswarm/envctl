@@ -191,3 +191,12 @@ func resolveKubeContextPlaceholders(config *EnvctlConfig, mcName, wcName string)
 	}
 	return nil
 }
+
+// GetUserConfigDir returns the user configuration directory path
+func GetUserConfigDir() (string, error) {
+	homeDir, err := osUserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(homeDir, userConfigDir), nil
+}

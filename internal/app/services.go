@@ -84,11 +84,20 @@ func initializeAggregator(
 		aggPort = 8080
 	}
 
+	// Get config directory for workflows
+	configDir, err := config.GetUserConfigDir()
+	if err != nil {
+		// Fall back to a default if we can't get the user config dir
+		logging.Warn("Services", "Failed to get user config directory, using default: %v", err)
+		configDir = ".config/envctl"
+	}
+
 	// Create aggregator configuration
 	aggConfig := aggregator.AggregatorConfig{
-		Host: cfg.Aggregator.Host,
-		Port: aggPort,
-		Yolo: yolo,
+		Host:      cfg.Aggregator.Host,
+		Port:      aggPort,
+		Yolo:      yolo,
+		ConfigDir: configDir,
 	}
 	if aggConfig.Host == "" {
 		aggConfig.Host = "localhost"

@@ -1,0 +1,231 @@
+# Example workflow definitions for envctl
+# Place this file in ~/.config/envctl/workflows.yaml
+
+workflows:
+  # Basic cluster connection workflow
+  - name: connect_cluster
+    description: "Connect to a cluster via Teleport and set up kubeconfig"
+    icon: "🔗"
+    agentModifiable: false
+    inputSchema:
+      type: object
+      properties:
+        cluster:
+          type: string
+          description: "Full name of the cluster (e.g., myinstallation-myworkload)"
+      required:
+        - cluster
+    steps:
+      - id: login
+        description: "Login to Teleport cluster"
+        tool: teleport_kube
+        args:
+          command: "login"
+          cluster: "{{ .input.cluster }}"
+      - id: get_context
+        description: "Get current kube context"
+        tool: kubectl_context
+        args:
+          operation: "get"
+        store: "current_context"
+
+  # Full cluster examination workflow
+  - name: examine_cluster
+    description: "Set up full access to analyze a workload cluster"
+    icon: "🔍"
+    agentModifiable: true
+    createdBy: "user"
+    inputSchema:
+      type: object
+      properties:
+        mc_name:
+          type: string
+          description: "Management cluster name"
+        wc_name:
+          type: string
+          description: "Workload cluster name"
+        prometheus_port:
+          type: string
+          description: "Local port for Prometheus"
+          default: "9090"
+        grafana_port:
+          type: string
+          description: "Local port for Grafana"
+          default: "3000"
+      required:
+        - mc_name
+        - wc_name
+    steps:
+      # Login to both clusters
+      - id: login_mc
+        description: "Login to management cluster"
+        tool: teleport_kube
+        args:
+          command: "login"
+          cluster: "{{ .input.mc_name }}"
+          
+      - id: login_wc
+        description: "Login to workload cluster"
+        tool: teleport_kube
+        args:
+          command: "login"
+          cluster: "{{ .input.mc_name }}-{{ .input.wc_name }}"
+          
+      # Set up port forwarding for observability
+      - id: prometheus_forward
+        description: "Create Prometheus port forward"
+        tool: port_forward
+        args:
+          localPort: "{{ .input.prometheus_port }}"
+          targetPort: "9090"
+          namespace: "mimir"
+          resourceName: "mimir-gateway"
+          resourceType: "service"
+          
+      - id: grafana_forward
+        description: "Create Grafana port forward"
+        tool: port_forward
+        args:
+          localPort: "{{ .input.grafana_port }}"
+          targetPort: "80"
+          namespace: "mimir"
+          resourceName: "grafana"
+          resourceType: "service"
+          
+      # Configure contexts
+      - id: set_capi_context
+        description: "Set context to management cluster for CAPI operations"
+        tool: kubectl_context
+        args:
+          operation: "set"
+          context: "teleport.giantswarm.io-{{ .input.mc_name }}"
+          
+      - id: get_final_context
+        description: "Get final context for confirmation"
+        tool: kubectl_context
+        args:
+          operation: "get"
+        store: "final_context"
+
+  # Search for available clusters
+  - name: search_clusters
+    description: "Search for available clusters matching a pattern"
+    icon: "🔎"
+    agentModifiable: true
+    inputSchema:
+      type: object
+      properties:
+        pattern:
+          type: string
+          description: "Search pattern for cluster names (supports wildcards)"
+          default: "*"
+    steps:
+      - id: list_clusters
+        description: "List available Teleport clusters"
+        tool: teleport_kube
+        args:
+          command: "ls"
+        store: "cluster_list"
+
+  # Get cluster information workflow
+  - name: get_cluster_info
+    description: "Get detailed information about a cluster"
+    icon: "ℹ️"
+    agentModifiable: true
+    inputSchema:
+      type: object
+      properties:
+        cluster:
+          type: string
+          description: "Cluster name to get information about"
+      required:
+        - cluster
+    steps:
+      - id: ensure_login
+        description: "Ensure we're logged into the cluster"
+        tool: teleport_kube
+        args:
+          command: "login"
+          cluster: "{{ .input.cluster }}"
+          
+      - id: set_context
+        description: "Set kubectl context"
+        tool: kubectl_context
+        args:
+          operation: "set"
+          context: "teleport.giantswarm.io-{{ .input.cluster }}"
+          
+      - id: get_nodes
+        description: "Get cluster nodes"
+        tool: kubectl_get
+        args:
+          resource: "nodes"
+          output: "wide"
+        store: "nodes"
+        
+      - id: get_namespaces
+        description: "Get all namespaces"
+        tool: kubectl_get
+        args:
+          resource: "namespaces"
+        store: "namespaces"
+        
+      - id: get_apps
+        description: "Get Giant Swarm apps"
+        tool: kubectl_get
+        args:
+          resource: "apps"
+          namespace: "giantswarm"
+        store: "apps"
+
+  # Quick diagnostics workflow
+  - name: quick_diagnostics
+    description: "Run quick diagnostics on a cluster"
+    icon: "🏥"
+    agentModifiable: false
+    inputSchema:
+      type: object
+      properties:
+        cluster:
+          type: string
+          description: "Cluster to diagnose"
+        namespace:
+          type: string
+          description: "Namespace to check (optional)"
+          default: "default"
+      required:
+        - cluster
+    steps:
+      - id: set_context
+        description: "Set kubectl context"
+        tool: kubectl_context
+        args:
+          operation: "set"
+          context: "teleport.giantswarm.io-{{ .input.cluster }}"
+          
+      - id: check_nodes
+        description: "Check node status"
+        tool: kubectl_get
+        args:
+          resource: "nodes"
+          output: "custom-columns=NAME:.metadata.name,STATUS:.status.conditions[?(@.type=='Ready')].status,VERSION:.status.nodeInfo.kubeletVersion"
+        store: "node_status"
+        
+      - id: check_pods
+        description: "Check problematic pods"
+        tool: kubectl_get
+        args:
+          resource: "pods"
+          allNamespaces: true
+          fieldSelector: "status.phase!=Running,status.phase!=Succeeded"
+        store: "problem_pods"
+        
+      - id: check_events
+        description: "Get recent warning events"
+        tool: kubectl_get
+        args:
+          resource: "events"
+          allNamespaces: true
+          fieldSelector: "type=Warning"
+          sortBy: ".lastTimestamp"
+        store: "warning_events" 

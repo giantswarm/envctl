@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"envctl/internal/workflow"
 	"envctl/pkg/logging"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -35,6 +36,9 @@ type AggregatorServer struct {
 	toolManager     *activeItemManager
 	promptManager   *activeItemManager
 	resourceManager *activeItemManager
+
+	// Workflow manager
+	workflowManager *workflow.WorkflowManager
 }
 
 // NewAggregatorServer creates a new aggregator server
@@ -87,6 +91,18 @@ func (a *AggregatorServer) Start(ctx context.Context) error {
 		server.WithKeepAlive(true),
 		server.WithKeepAliveInterval(30*time.Second),
 	)
+
+	// Initialize workflow manager if config directory is provided
+	if a.config.ConfigDir != "" {
+		wm, err := workflow.NewWorkflowManager(a.config.ConfigDir, a)
+		if err != nil {
+			logging.Warn("Aggregator", "Failed to initialize workflow manager: %v", err)
+			// Continue without workflows - they're optional
+		} else {
+			a.workflowManager = wm
+			logging.Info("Aggregator", "Initialized workflow manager")
+		}
+	}
 
 	// Start registry update monitor
 	a.wg.Add(1)
@@ -147,6 +163,11 @@ func (a *AggregatorServer) Stop(ctx context.Context) error {
 	// Wait for background routines
 	a.wg.Wait()
 
+	// Stop workflow manager if it exists
+	if a.workflowManager != nil {
+		a.workflowManager.Stop()
+	}
+
 	// Deregister all servers
 	for name := range a.registry.GetAllServers() {
 		if err := a.registry.Deregister(name); err != nil {
@@ -158,6 +179,7 @@ func (a *AggregatorServer) Stop(ctx context.Context) error {
 	a.server = nil
 	a.sseServer = nil
 	a.httpServer = nil
+	a.workflowManager = nil
 	a.mu.Unlock()
 
 	return nil
@@ -282,6 +304,20 @@ func (a *AggregatorServer) addNewItems(servers map[string]*ServerInfo) {
 		resourcesToAdd = append(resourcesToAdd, processResourcesForServer(a, serverName, info)...)
 	}
 
+	// Add workflow tools if workflow manager exists
+	if a.workflowManager != nil {
+		workflowTools := a.workflowManager.GetWorkflows()
+		for _, tool := range workflowTools {
+			toolsToAdd = append(toolsToAdd, a.createWorkflowServerTool(tool))
+		}
+
+		// Add workflow management tools
+		managementTools := workflow.NewManagementTools(a.workflowManager.GetStorage())
+		for _, tool := range managementTools.GetManagementTools() {
+			toolsToAdd = append(toolsToAdd, a.createManagementServerTool(tool, managementTools))
+		}
+	}
+
 	// Add all items in batches
 	if len(toolsToAdd) > 0 {
 		logging.Debug("Aggregator", "Adding %d tools in batch", len(toolsToAdd))
@@ -382,4 +418,86 @@ func (a *AggregatorServer) IsYoloMode() bool {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	return a.config.Yolo
+}
+
+// CallToolInternal allows internal components to call tools directly
+func (a *AggregatorServer) CallToolInternal(ctx context.Context, toolName string, args map[string]interface{}) (*mcp.CallToolResult, error) {
+	// Resolve the tool name to find which server provides it
+	serverName, originalName, err := a.registry.ResolveToolName(toolName)
+	if err != nil {
+		return nil, fmt.Errorf("tool not found: %s", toolName)
+	}
+
+	// Get the server info
+	serverInfo, exists := a.registry.GetServerInfo(serverName)
+	if !exists || serverInfo == nil {
+		return nil, fmt.Errorf("server not found: %s", serverName)
+	}
+
+	// Call the tool through the client using the original name
+	return serverInfo.Client.CallTool(ctx, originalName, args)
+}
+
+// createWorkflowServerTool creates a server tool handler for a workflow
+func (a *AggregatorServer) createWorkflowServerTool(tool mcp.Tool) server.ServerTool {
+	return server.ServerTool{
+		Tool: tool,
+		Handler: func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			// Extract workflow name from tool name (remove "workflow_" prefix)
+			workflowName := tool.Name[9:] // len("workflow_") = 9
+
+			// Extract arguments
+			args := make(map[string]interface{})
+			if req.Params.Arguments != nil {
+				if argsMap, ok := req.Params.Arguments.(map[string]interface{}); ok {
+					args = argsMap
+				}
+			}
+
+			// Execute workflow
+			result, err := a.workflowManager.ExecuteWorkflow(ctx, workflowName, args)
+			if err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("Workflow execution failed: %v", err)), nil
+			}
+
+			return result, nil
+		},
+	}
+}
+
+// createManagementServerTool creates a server tool handler for workflow management
+func (a *AggregatorServer) createManagementServerTool(tool mcp.Tool, mt *workflow.ManagementTools) server.ServerTool {
+	return server.ServerTool{
+		Tool: tool,
+		Handler: func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			// Route to appropriate handler based on tool name
+			var result *mcp.CallToolResult
+			var err error
+
+			switch tool.Name {
+			case "workflow_list":
+				result, err = mt.HandleListWorkflows(ctx, req)
+			case "workflow_get":
+				result, err = mt.HandleGetWorkflow(ctx, req)
+			case "workflow_create":
+				result, err = mt.HandleCreateWorkflow(ctx, req)
+			case "workflow_update":
+				result, err = mt.HandleUpdateWorkflow(ctx, req)
+			case "workflow_delete":
+				result, err = mt.HandleDeleteWorkflow(ctx, req)
+			case "workflow_validate":
+				result, err = mt.HandleValidateWorkflow(ctx, req)
+			case "workflow_spec":
+				result, err = mt.HandleGetWorkflowSpec(ctx, req)
+			default:
+				err = fmt.Errorf("unknown workflow management tool: %s", tool.Name)
+			}
+
+			if err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("Tool execution failed: %v", err)), nil
+			}
+
+			return result, nil
+		},
+	}
 }

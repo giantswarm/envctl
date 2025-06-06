@@ -22,6 +22,7 @@ It automates the process of logging into clusters via Teleport (`tsh`) and setti
 *   **Health Monitoring:** Continuous health checks for all services with automatic recovery.
 *   **Flexible Configuration:** Layer-based configuration system (default → user → project).
 *   **MCP Server Support:** Run Model Context Protocol servers as local commands or Docker containers.
+*   **MCP Tool Workflows:** Define reusable sequences of MCP tool calls as higher-level operations.
 
 ## What's New 🎉
 
@@ -415,6 +416,7 @@ For a detailed explanation of the configuration file structure, all available op
 - **[TUI Style Guide](docs/tui-styleguide.md)** - Design principles and styling guidelines
 
 ### Advanced Topics
+- **[MCP Tool Workflows](docs/workflows.md)** - Create reusable sequences of MCP tool calls
 - **[Containerized MCP Servers](docs/containerized-mcp-servers.md)** - Running MCP servers in containers
 - **[Benchmarking](docs/benchmarking.md)** - Performance testing and optimization
 
