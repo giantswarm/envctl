@@ -2,6 +2,7 @@ package view
 
 import (
 	"envctl/internal/api"
+	"envctl/internal/tui/design"
 	"envctl/internal/tui/model"
 	"fmt"
 	"strings"
@@ -60,7 +61,7 @@ func ConvertPortForwardToListItem(pf *api.PortForwardServiceInfo) PortForwardLis
 	// Use custom icon if provided, otherwise default
 	icon := pf.Icon
 	if icon == "" {
-		icon = IconLink
+		icon = design.IconLink
 	}
 
 	return PortForwardListItem{
@@ -69,7 +70,7 @@ func ConvertPortForwardToListItem(pf *api.PortForwardServiceInfo) PortForwardLis
 			Name:        pf.Name,
 			Status:      status,
 			Health:      health,
-			Icon:        SafeIcon(icon),
+			Icon:        design.SafeIcon(icon),
 			Description: fmt.Sprintf("%s/%s", pf.TargetType, pf.TargetName),
 			Details: fmt.Sprintf("Port: %d:%d, Target: %s/%s",
 				pf.LocalPort, pf.RemotePort, pf.TargetType, pf.TargetName),
@@ -97,7 +98,7 @@ func BuildPortForwardsList(m *model.Model, width, height int, focused bool) *Ser
 					Name:        name.Name,
 					Status:      StatusStopped,
 					Health:      HealthUnknown,
-					Icon:        SafeIcon(name.Icon),
+					Icon:        design.SafeIcon(name.Icon),
 					Description: fmt.Sprintf("%s/%s", name.TargetType, name.TargetName),
 					Details:     fmt.Sprintf("Port: %s:%s (Not Started)", name.LocalPort, name.RemotePort),
 				},

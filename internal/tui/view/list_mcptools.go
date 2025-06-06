@@ -2,6 +2,7 @@ package view
 
 import (
 	"envctl/internal/api"
+	"envctl/internal/tui/design"
 	"envctl/internal/tui/model"
 	"fmt"
 	"io"
@@ -63,36 +64,29 @@ func (d MCPToolDelegate) Render(w io.Writer, m list.Model, index int, item list.
 
 	if isSelected {
 		if d.focused {
-			titleStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("170")).
-				Bold(true).
+			titleStyle = design.ListItemSelectedStyle.Copy().
 				PaddingLeft(2)
-			descStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("241")).
+			descStyle = design.TextSecondaryStyle.Copy().
 				PaddingLeft(4)
 		} else {
-			titleStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("245")).
+			titleStyle = design.TextStyle.Copy().
 				PaddingLeft(2)
-			descStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("238")).
+			descStyle = design.TextTertiaryStyle.Copy().
 				PaddingLeft(4)
 		}
 	} else {
-		titleStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("240")).
+		titleStyle = design.TextSecondaryStyle.Copy().
 			PaddingLeft(2)
-		descStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("238")).
+		descStyle = design.TextTertiaryStyle.Copy().
 			PaddingLeft(4)
 	}
 
 	// Icon
 	icon := "✔ "
-	iconColor := lipgloss.Color("42") // green
+	iconColor := design.ColorSuccess
 	if mcpTool.Blocked {
 		icon = "🚫 "
-		iconColor = lipgloss.Color("160") // red
+		iconColor = design.ColorError
 	}
 
 	// Title with icon
@@ -100,7 +94,7 @@ func (d MCPToolDelegate) Render(w io.Writer, m list.Model, index int, item list.
 	if mcpTool.Blocked {
 		title = titleStyle.Copy().Foreground(iconColor).Render(icon) +
 			titleStyle.Copy().Strikethrough(true).Render(title) +
-			lipgloss.NewStyle().Foreground(lipgloss.Color("160")).Bold(true).Render(" [BLOCKED]")
+			design.TextErrorStyle.Bold(true).Render(" [BLOCKED]")
 	} else {
 		title = titleStyle.Copy().Foreground(iconColor).Render(icon) +
 			titleStyle.Render(title)
@@ -175,22 +169,18 @@ func BuildMCPToolsList(m *model.Model, width, height int, focused bool) *Service
 
 	// Apply styles
 	if focused {
-		l.Styles.Title = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("170")).
-			Background(lipgloss.Color("238")).
+		l.Styles.Title = design.TitleStyle.Copy().
+			Background(design.ColorHighlight).
+			Foreground(design.ColorPrimary).
 			PaddingLeft(1).
 			PaddingRight(1)
 	} else {
-		l.Styles.Title = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("241")).
+		l.Styles.Title = design.TitleStyle.Copy().
 			PaddingLeft(1).
 			PaddingRight(1)
 	}
 
-	l.Styles.StatusBar = lipgloss.NewStyle().
-		Foreground(lipgloss.AdaptiveColor{Light: "60", Dark: "110"}).
+	l.Styles.StatusBar = design.TextSecondaryStyle.Copy().
 		PaddingLeft(2)
 
 	// Show count in status

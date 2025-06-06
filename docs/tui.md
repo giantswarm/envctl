@@ -86,7 +86,7 @@ Responsible for rendering the UI:
 - `render_port_forwarding.go`: Port forward service panels
 - `render_mcp_proxies.go`: MCP server panels
 - `render_overlays.go`: Help, log, and config overlays
-- `colors.go`, `icons.go`: Visual elements (imports from `internal/color/`)
+- Visual elements are managed by the design system (`internal/tui/design/`)
 
 #### Controller (`internal/tui/controller/`)
 Handles user input and orchestrates updates:
@@ -131,7 +131,7 @@ Service Event → API Layer → TUI Channel → Controller Update → Model Upda
 
 ## Styling
 
-All UI styling is centralized in the `internal/color/` package:
+All UI styling is centralized in the `internal/tui/design/` package:
 
 - Adaptive colors that work in both light and dark modes
 - Consistent semantic colors (success=green, error=red, etc.)

@@ -1,341 +1,437 @@
 package view
 
 import (
-	"envctl/internal/color"
+	"envctl/internal/tui/components"
+	"envctl/internal/tui/design"
 	"envctl/internal/tui/model"
 	"fmt"
 	"strings"
-
-	"github.com/charmbracelet/lipgloss"
 )
 
-// renderMainDashboard renders the main dashboard
+// renderMainDashboard renders the main dashboard using the new component system
 func renderMainDashboard(m *model.Model) string {
-	// Use 95% of terminal dimensions to ensure everything fits
-	width := int(float64(m.Width) * 0.95)
-	height := int(float64(m.Height) * 0.95)
+	// Ensure minimum dimensions
+	width := m.Width
+	height := m.Height
+	if width < 80 {
+		width = 80
+	}
+	if height < 24 {
+		height = 24
+	}
 
-	// Calculate component heights
+	// Create layout manager with safe dimensions
+	layout := components.NewLayout(width, height)
+
+	// Calculate dimensions
 	headerHeight := 1
-	statusHeight := 1
-	contentHeight := height - headerHeight - statusHeight
+	statusBarHeight := 1
+	_ = layout.CalculateContentArea(headerHeight, statusBarHeight)
 
-	// Split content: 40% aggregator, 60% bottom panels
-	aggregatorHeight := int(float64(contentHeight) * 0.4)
-	if aggregatorHeight < 8 {
-		aggregatorHeight = 8
-	}
-	bottomHeight := contentHeight - aggregatorHeight
-	if bottomHeight < 10 {
-		bottomHeight = 10
-	}
+	// Split content area: 40% aggregator, 60% bottom panels
+	aggregatorHeight, bottomHeight := layout.SplitHorizontal(0.4)
 
-	// 1. Header
-	header := renderHeader(m, width)
+	// 1. Render Header
+	header := renderDashboardHeader(m, width)
 
-	// 2. Aggregator Panel
-	aggregatorPanel := renderAggregator(m, width, aggregatorHeight)
+	// 2. Render Aggregator Panel
+	aggregatorPanel := renderAggregatorPanel(m, width, aggregatorHeight)
 
-	// 3. Bottom panels (Clusters and MCP Servers)
-	bottomPanel := renderBottomPanels(m, width, bottomHeight)
+	// 3. Render Bottom Panels (Clusters and MCP Servers)
+	bottomPanels := renderBottomPanelsNew(m, width, bottomHeight)
 
-	// 4. Status bar
-	statusBar := renderStatusBar(m, width)
+	// 4. Render Status Bar
+	statusBar := renderDashboardStatusBar(m, width)
 
-	// Join all parts
-	return lipgloss.JoinVertical(lipgloss.Left,
+	// Join all components
+	return components.JoinVertical(
 		header,
 		aggregatorPanel,
-		bottomPanel,
+		bottomPanels,
 		statusBar,
 	)
 }
 
-func renderHeader(m *model.Model, width int) string {
-	title := "envctl TUI - Press h for Help | Tab to Navigate | q to Quit"
+// renderDashboardHeader renders the main header
+func renderDashboardHeader(m *model.Model, width int) string {
+	header := components.NewHeader("envctl TUI").
+		WithSubtitle("Press h for Help | Tab to Navigate | q to Quit").
+		WithWidth(width)
+
 	if m.IsLoading {
-		title = m.Spinner.View() + " " + title
+		header = header.WithSpinner(m.Spinner.View())
 	}
 
-	return color.HeaderStyle.Copy().
-		Width(width).
-		MaxWidth(width).
-		Render(title)
+	return header.Render()
 }
 
-func renderAggregator(m *model.Model, width int, height int) string {
-	// Apply border and styling first to get the actual content area
-	style := color.PanelStyle.Copy()
-	if m.FocusedPanelKey == "mcp-aggregator" {
-		style = color.FocusedPanelStyle.Copy()
+// renderAggregatorPanel renders the MCP aggregator panel
+func renderAggregatorPanel(m *model.Model, width, height int) string {
+	// Determine panel type based on aggregator state
+	panelType := components.PanelTypeDefault
+	if m.AggregatorInfo != nil {
+		switch m.AggregatorInfo.State {
+		case "Running", "running":
+			panelType = components.PanelTypeSuccess
+		case "Failed", "failed":
+			panelType = components.PanelTypeError
+		case "Starting", "starting":
+			panelType = components.PanelTypeWarning
+		}
 	}
 
-	// Calculate inner dimensions (accounting for border)
-	innerWidth := width - style.GetHorizontalFrameSize()
-	innerHeight := height - style.GetVerticalFrameSize()
+	// Build content
+	content := buildAggregatorContent(m, width-4) // Account for border and padding
 
-	// Build aggregator content
+	// Create panel
+	panel := components.NewPanel("MCP Aggregator").
+		WithContent(content).
+		WithDimensions(width, height).
+		WithType(panelType).
+		WithIcon("▣").
+		SetFocused(m.FocusedPanelKey == "mcp-aggregator")
+
+	return panel.Render()
+}
+
+// buildAggregatorContent builds the content for the aggregator panel
+func buildAggregatorContent(m *model.Model, innerWidth int) string {
 	var lines []string
 
-	// Title line with endpoint
-	titleLine := "▣ MCP Aggregator"
+	// Endpoint info
 	endpoint := fmt.Sprintf("[http://localhost:%d/sse]", m.AggregatorConfig.Port)
-	padding := innerWidth - lipgloss.Width(titleLine) - lipgloss.Width(endpoint)
-	if padding > 0 {
-		titleLine += strings.Repeat(" ", padding) + endpoint
-	}
-	lines = append(lines, titleLine)
+	lines = append(lines, design.TextSecondaryStyle.Render(endpoint))
 	lines = append(lines, "") // Empty line
 
-	// Status info
 	if m.AggregatorInfo != nil {
-		// Status and Health line
-		statusIcon := SafeIcon(IconPlay)
-		if m.AggregatorInfo.State == "Stopped" || m.AggregatorInfo.State == "stopped" {
-			statusIcon = SafeIcon(IconStop)
-		} else if m.AggregatorInfo.State == "Failed" || m.AggregatorInfo.State == "failed" {
-			statusIcon = SafeIcon(IconCross)
-		}
+		// Status line
+		statusIndicator := components.NewStatusIndicator(
+			components.StatusFromString(m.AggregatorInfo.State),
+		).WithText(m.AggregatorInfo.State)
 
-		healthIcon := SafeIcon(IconCheck)
-		if m.AggregatorInfo.Health != "Healthy" && m.AggregatorInfo.Health != "healthy" {
-			healthIcon = SafeIcon(IconWarning)
-		}
+		healthIndicator := components.NewStatusIndicator(
+			components.StatusFromString(m.AggregatorInfo.Health),
+		).WithText(m.AggregatorInfo.Health)
 
-		statusLine := fmt.Sprintf("Status: %s %-12s    Health: %s %s",
-			statusIcon, m.AggregatorInfo.State,
-			healthIcon, m.AggregatorInfo.Health)
+		statusLine := fmt.Sprintf("Status: %s    Health: %s",
+			statusIndicator.Render(),
+			healthIndicator.Render())
 		lines = append(lines, statusLine)
 
-		// Servers and Tools line with blocked info
-		serversIcon := SafeIcon(IconCheck)
+		// Servers and Tools line
+		serversStatus := components.StatusTypeHealthy
 		if m.AggregatorInfo.ServersConnected < m.AggregatorInfo.ServersTotal {
-			serversIcon = SafeIcon(IconWarning)
+			serversStatus = components.StatusTypeDegraded
 		}
+		serversIndicator := components.NewStatusIndicator(serversStatus).IconOnly()
 
-		// Update tools display to show blocked count
-		toolsDisplay := fmt.Sprintf("%d Available", m.AggregatorInfo.ToolsCount)
+		toolsText := fmt.Sprintf("%d Available", m.AggregatorInfo.ToolsCount)
 		if m.AggregatorInfo.BlockedTools > 0 {
-			toolsDisplay = fmt.Sprintf("%d Available (%d blocked)", m.AggregatorInfo.ToolsCount, m.AggregatorInfo.BlockedTools)
+			toolsText = fmt.Sprintf("%d Available (%d blocked)",
+				m.AggregatorInfo.ToolsCount, m.AggregatorInfo.BlockedTools)
 		}
 		if m.AggregatorInfo.YoloMode {
-			toolsDisplay += " [YOLO]"
+			toolsText += " [YOLO]"
 		}
 
 		serversLine := fmt.Sprintf("Servers: %s %d/%d Connected    Tools: %s %s",
-			serversIcon, m.AggregatorInfo.ServersConnected, m.AggregatorInfo.ServersTotal,
-			SafeIcon(IconGear), toolsDisplay)
+			serversIndicator.Render(),
+			m.AggregatorInfo.ServersConnected,
+			m.AggregatorInfo.ServersTotal,
+			design.SafeIcon(design.IconGear),
+			toolsText)
 		lines = append(lines, serversLine)
 
 		// Resources and Prompts line
 		resourcesLine := fmt.Sprintf("Resources: %d    Prompts: %d",
-			m.AggregatorInfo.ResourcesCount, m.AggregatorInfo.PromptsCount)
+			m.AggregatorInfo.ResourcesCount,
+			m.AggregatorInfo.PromptsCount)
 		lines = append(lines, resourcesLine)
 	} else {
-		lines = append(lines, "Status: "+SafeIcon(IconHourglass)+" Initializing...")
+		statusIndicator := components.NewStatusIndicator(components.StatusTypeStarting).
+			WithText("Initializing...")
+		lines = append(lines, "Status: "+statusIndicator.Render())
 		lines = append(lines, "Servers: 0/0 Connected    Tools: 0 Available")
 		lines = append(lines, "Resources: 0    Prompts: 0")
 	}
 
-	// Add tools list if space allows
-	if len(lines) < innerHeight-3 && len(m.MCPToolsWithStatus) > 0 {
-		lines = append(lines, "") // Empty line
-		lines = append(lines, "─ Available Tools ─")
+	// Add tools preview if space and data available
+	if len(m.MCPToolsWithStatus) > 0 {
+		lines = append(lines, "")
+		lines = append(lines, design.SubtitleStyle.Render("─ Available Tools ─"))
 
-		// Calculate how many tools we can show
-		remainingLines := innerHeight - len(lines) - 1
-		toolsToShow := len(m.MCPToolsWithStatus)
-		if toolsToShow > remainingLines {
-			toolsToShow = remainingLines - 1 // Leave room for "and X more..."
+		// Show first few tools
+		toolsToShow := 3
+		if toolsToShow > len(m.MCPToolsWithStatus) {
+			toolsToShow = len(m.MCPToolsWithStatus)
 		}
 
-		// Show tools with their status
 		for i := 0; i < toolsToShow; i++ {
 			tool := m.MCPToolsWithStatus[i]
-			statusIcon := SafeIcon(IconCheck)
-			statusText := ""
+			var toolLine string
+
 			if tool.Blocked {
-				statusIcon = SafeIcon(IconBan)
-				statusText = " [BLOCKED]"
-			}
-
-			toolLine := fmt.Sprintf("  %s %s%s", statusIcon, tool.Name, statusText)
-
-			// Truncate if too long
-			if lipgloss.Width(toolLine) > innerWidth-2 {
-				toolLine = toolLine[:innerWidth-5] + "..."
+				icon := components.NewStatusIndicator(components.StatusTypeFailed).
+					WithIcon(design.SafeIcon(design.IconBan)).IconOnly()
+				toolLine = fmt.Sprintf("  %s %s [BLOCKED]", icon.Render(), tool.Name)
+			} else {
+				icon := components.NewStatusIndicator(components.StatusTypeHealthy).IconOnly()
+				toolLine = fmt.Sprintf("  %s %s", icon.Render(), tool.Name)
 			}
 
 			lines = append(lines, toolLine)
 		}
 
-		// Show count of remaining tools
-		if toolsToShow < len(m.MCPToolsWithStatus) {
+		if len(m.MCPToolsWithStatus) > toolsToShow {
 			remaining := len(m.MCPToolsWithStatus) - toolsToShow
-			lines = append(lines, fmt.Sprintf("  ...and %d more tools", remaining))
+			lines = append(lines, design.TextSecondaryStyle.Render(
+				fmt.Sprintf("  ...and %d more tools", remaining)))
 		}
 	}
 
-	// Add empty lines if needed to fill height
-	for len(lines) < innerHeight {
-		lines = append(lines, "")
-	}
-
-	// Join lines and render with style
-	content := strings.Join(lines[:innerHeight], "\n")
-
-	return style.
-		Width(width).
-		Height(height).
-		Render(content)
+	return strings.Join(lines, "\n")
 }
 
-func renderBottomPanels(m *model.Model, width int, height int) string {
+// renderBottomPanelsNew renders the clusters and MCP servers panels
+func renderBottomPanelsNew(m *model.Model, width, height int) string {
+	layout := components.NewLayout(width, height)
+
 	// Split width: 33% clusters, 67% MCP servers
-	clustersWidth := width / 3
-	mcpWidth := width - clustersWidth - 1 // -1 for gap
+	clustersWidth, mcpWidth := layout.SplitVertical(0.33)
 
 	// Render clusters panel
-	clustersContent := renderClustersContent(m, clustersWidth-2, height-2) // -2 for border
-	clustersStyle := color.PanelStyle.Copy()
-	if m.FocusedPanelKey == "clusters" {
-		clustersStyle = color.FocusedPanelStyle.Copy()
-	}
-	clustersPanel := clustersStyle.
-		Width(clustersWidth).
-		Height(height).
-		Render(clustersContent)
+	clustersPanel := renderClustersPanel(m, clustersWidth, height)
 
 	// Render MCP servers panel
-	mcpContent := renderMCPServersContent(m, mcpWidth-2, height-2) // -2 for border
-	mcpStyle := color.PanelStyle.Copy()
-	if m.FocusedPanelKey == "mcpservers" {
-		mcpStyle = color.FocusedPanelStyle.Copy()
-	}
-	mcpPanel := mcpStyle.
-		Width(mcpWidth).
-		Height(height).
-		Render(mcpContent)
+	mcpPanel := renderMCPServersPanel(m, mcpWidth-1, height) // -1 for gap
 
 	// Join with gap
-	return lipgloss.JoinHorizontal(lipgloss.Top, clustersPanel, " ", mcpPanel)
+	return components.JoinHorizontal(1, clustersPanel, mcpPanel)
 }
 
-func renderClustersContent(m *model.Model, width int, height int) string {
-	var content strings.Builder
+// renderClustersPanel renders the Kubernetes clusters panel
+func renderClustersPanel(m *model.Model, width, height int) string {
+	content := buildClustersContent(m, width-4)
 
-	// Title
-	content.WriteString("⎈ Kubernetes Clusters\n\n")
+	// Determine panel type based on overall cluster health
+	panelType := components.PanelTypeDefault
+	hasConnected := false
+	hasFailed := false
 
-	// List clusters
-	lineCount := 2 // title + blank line
-	for _, label := range m.K8sConnectionOrder {
-		if lineCount >= height {
-			break
+	for _, conn := range m.K8sConnections {
+		if conn.State == "Connected" || conn.State == "connected" {
+			hasConnected = true
+		} else if conn.State == "Failed" || conn.State == "failed" {
+			hasFailed = true
 		}
+	}
 
+	if hasFailed {
+		panelType = components.PanelTypeError
+	} else if hasConnected {
+		panelType = components.PanelTypeSuccess
+	}
+
+	panel := components.NewPanel("Kubernetes Clusters").
+		WithContent(content).
+		WithDimensions(width, height).
+		WithType(panelType).
+		WithIcon(design.SafeIcon(design.IconKubernetes)).
+		SetFocused(m.FocusedPanelKey == "clusters")
+
+	return panel.Render()
+}
+
+// buildClustersContent builds the content for the clusters panel
+func buildClustersContent(m *model.Model, innerWidth int) string {
+	var lines []string
+
+	for _, label := range m.K8sConnectionOrder {
 		if conn, exists := m.K8sConnections[label]; exists {
 			selected := m.FocusedPanelKey == "clusters" && getSelectedLabel(m) == label
-			prefix := "  "
+
+			// Build line
+			var line string
 			if selected {
-				prefix = "▶ "
+				line = design.ListItemSelectedStyle.Render("▶ ")
+			} else {
+				line = "  "
 			}
 
-			line := fmt.Sprintf("%s%s %s", prefix, SafeIcon(IconKubernetes), conn.Label)
-			// Check if this is the management cluster
+			// Add cluster icon and name
+			line += fmt.Sprintf("%s %s", design.SafeIcon(design.IconKubernetes), conn.Label)
+
+			// Add cluster type indicator
 			if conn.Label == m.ManagementClusterName || strings.Contains(conn.Label, "(MC)") {
-				line += " (MC)"
+				line += " " + design.TextSecondaryStyle.Render("(MC)")
 			} else if conn.Label == m.WorkloadClusterName || strings.Contains(conn.Label, "(WC)") {
-				line += " (WC)"
+				line += " " + design.TextSecondaryStyle.Render("(WC)")
 			}
 
 			// Add status
-			if conn.State == "Connected" || conn.State == "connected" {
-				line += fmt.Sprintf(" %s", SafeIcon(IconCheck))
-			} else {
-				line += fmt.Sprintf(" %s", SafeIcon(IconHourglass))
-			}
+			statusIndicator := components.NewStatusIndicator(
+				components.StatusFromString(conn.State),
+			).IconOnly()
+			line += " " + statusIndicator.Render()
 
-			content.WriteString(line + "\n")
-			lineCount++
+			lines = append(lines, line)
 
-			// Add node info if space
-			if lineCount < height && selected {
-				nodeInfo := fmt.Sprintf("    Nodes: %d/%d Ready", conn.ReadyNodes, conn.TotalNodes)
-				content.WriteString(nodeInfo + "\n")
-				lineCount++
+			// Add node info if selected
+			if selected && (conn.State == "Connected" || conn.State == "connected") {
+				nodeInfo := design.TextSecondaryStyle.Render(
+					fmt.Sprintf("    Nodes: %d/%d Ready", conn.ReadyNodes, conn.TotalNodes))
+				lines = append(lines, nodeInfo)
 			}
 		}
 	}
 
-	return content.String()
+	if len(lines) == 0 {
+		lines = append(lines, design.TextSecondaryStyle.Render("No clusters configured"))
+	}
+
+	return strings.Join(lines, "\n")
 }
 
-func renderMCPServersContent(m *model.Model, width int, height int) string {
-	var content strings.Builder
+// renderMCPServersPanel renders the MCP servers panel
+func renderMCPServersPanel(m *model.Model, width, height int) string {
+	content := buildMCPServersContent(m, width-4)
 
-	// Title
-	content.WriteString("☸ MCP Servers & Dependencies\n\n")
+	// Determine panel type
+	panelType := components.PanelTypeDefault
+	hasRunning := false
+	hasFailed := false
 
-	// List MCP servers
-	lineCount := 2 // title + blank line
+	for _, mcp := range m.MCPServers {
+		if mcp.State == "Running" || mcp.State == "running" {
+			hasRunning = true
+		} else if mcp.State == "Failed" || mcp.State == "failed" {
+			hasFailed = true
+		}
+	}
+
+	if hasFailed {
+		panelType = components.PanelTypeError
+	} else if hasRunning {
+		panelType = components.PanelTypeSuccess
+	}
+
+	panel := components.NewPanel("MCP Servers & Dependencies").
+		WithContent(content).
+		WithDimensions(width, height).
+		WithType(panelType).
+		WithIcon("☸").
+		SetFocused(m.FocusedPanelKey == "mcpservers")
+
+	return panel.Render()
+}
+
+// buildMCPServersContent builds the content for the MCP servers panel
+func buildMCPServersContent(m *model.Model, innerWidth int) string {
+	var lines []string
+
 	for _, config := range m.MCPServerConfig {
-		if lineCount >= height {
-			break
-		}
-
 		selected := m.FocusedPanelKey == "mcpservers" && getSelectedLabel(m) == config.Name
-		prefix := "  "
+
+		// Build line
+		var line string
 		if selected {
-			prefix = "▶ "
-		}
-
-		// Get server info
-		var statusIcon string
-		if mcp, exists := m.MCPServers[config.Name]; exists {
-			if mcp.State == "Running" || mcp.State == "running" {
-				statusIcon = SafeIcon(IconCheck)
-			} else if mcp.State == "Failed" || mcp.State == "failed" {
-				statusIcon = SafeIcon(IconCross)
-			} else {
-				statusIcon = SafeIcon(IconHourglass)
-			}
+			line = design.ListItemSelectedStyle.Render("▶ ")
 		} else {
-			statusIcon = SafeIcon(IconStop)
+			line = "  "
 		}
 
+		// Get server status
+		var statusIndicator *components.StatusIndicator
+		if mcp, exists := m.MCPServers[config.Name]; exists {
+			statusIndicator = components.NewStatusIndicator(
+				components.StatusFromString(mcp.State),
+			).IconOnly()
+		} else {
+			statusIndicator = components.NewStatusIndicator(
+				components.StatusTypeStopped,
+			).IconOnly()
+		}
+
+		// Add icon and name
 		icon := config.Icon
 		if icon == "" {
-			icon = IconGear
+			icon = design.IconGear
 		}
+		line += fmt.Sprintf("%s %s MCP %s", design.SafeIcon(icon), config.Name, statusIndicator.Render())
 
-		line := fmt.Sprintf("%s%s %s MCP %s", prefix, SafeIcon(icon), config.Name, statusIcon)
-		content.WriteString(line + "\n")
-		lineCount++
+		lines = append(lines, line)
 
-		// Show port forward dependencies if selected and space available
-		if selected && lineCount < height && len(config.RequiresPortForwards) > 0 {
+		// Show dependencies if selected
+		if selected && len(config.RequiresPortForwards) > 0 {
 			for _, pfName := range config.RequiresPortForwards {
-				if lineCount >= height {
-					break
-				}
+				pfLine := fmt.Sprintf("    └─ %s %s", design.SafeIcon(design.IconLink), pfName)
 
-				pfLine := fmt.Sprintf("    └─ %s %s", SafeIcon(IconLink), pfName)
 				if pf, exists := m.PortForwards[pfName]; exists {
 					if pf.State == "Running" || pf.State == "running" {
-						pfLine += fmt.Sprintf(" (%d:%d) %s", pf.LocalPort, pf.RemotePort, SafeIcon(IconCheck))
+						pfLine += design.TextSuccessStyle.Render(
+							fmt.Sprintf(" (%d:%d) %s", pf.LocalPort, pf.RemotePort, design.SafeIcon(design.IconCheck)))
 					} else {
-						pfLine += " " + SafeIcon(IconCross)
+						pfLine += " " + design.TextErrorStyle.Render(design.SafeIcon(design.IconCross))
 					}
 				}
 
-				content.WriteString(pfLine + "\n")
-				lineCount++
+				lines = append(lines, pfLine)
 			}
 		}
 	}
 
-	return content.String()
+	if len(lines) == 0 {
+		lines = append(lines, design.TextSecondaryStyle.Render("No MCP servers configured"))
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+// renderDashboardStatusBar renders the status bar
+func renderDashboardStatusBar(m *model.Model, width int) string {
+	statusBar := components.NewStatusBar(width)
+
+	if m.StatusBarMessage != "" {
+		statusBar = statusBar.WithMessage(m.StatusBarMessage, m.StatusBarMessageType)
+	} else {
+		// Default status
+		leftText := design.TextSuccessStyle.Render("✓ Up")
+		rightText := components.FormatClusterInfo(m.ManagementClusterName, m.WorkloadClusterName)
+		statusBar = statusBar.WithLeftText(leftText).WithRightText(rightText)
+	}
+
+	return statusBar.Render()
+}
+
+// Keep existing helper functions below...
+
+// renderHeader renders the header - OLD VERSION kept for compatibility
+func renderHeader(m *model.Model, width int) string {
+	return renderDashboardHeader(m, width)
+}
+
+// renderAggregator renders the aggregator - OLD VERSION kept for compatibility
+func renderAggregator(m *model.Model, width int, height int) string {
+	return renderAggregatorPanel(m, width, height)
+}
+
+// renderBottomPanels renders bottom panels - OLD VERSION kept for compatibility
+func renderBottomPanels(m *model.Model, width int, height int) string {
+	return renderBottomPanelsNew(m, width, height)
+}
+
+// renderStatusBar renders status bar - OLD VERSION kept for compatibility
+func renderStatusBar(m *model.Model, width int) string {
+	return renderDashboardStatusBar(m, width)
+}
+
+// Keep existing helper functions
+func renderClustersContent(m *model.Model, width int, height int) string {
+	return buildClustersContent(m, width)
+}
+
+func renderMCPServersContent(m *model.Model, width int, height int) string {
+	return buildMCPServersContent(m, width)
 }
 
 func getSelectedLabel(m *model.Model) string {
@@ -357,28 +453,4 @@ func getSelectedLabel(m *model.Model) string {
 		}
 	}
 	return ""
-}
-
-// renderStatusBar renders the status bar at the bottom
-func renderStatusBar(m *model.Model, width int) string {
-	// Simple status bar for now
-	leftText := "✓ Up"
-	rightText := fmt.Sprintf("MC: %s", m.ManagementClusterName)
-	if m.WorkloadClusterName != "" {
-		rightText += fmt.Sprintf(" / WC: %s", m.WorkloadClusterName)
-	}
-
-	// Calculate padding
-	padding := width - lipgloss.Width(leftText) - lipgloss.Width(rightText)
-	if padding < 1 {
-		padding = 1
-	}
-
-	statusText := leftText + strings.Repeat(" ", padding) + rightText
-
-	return lipgloss.NewStyle().
-		Width(width).
-		Background(lipgloss.Color("62")).
-		Foreground(lipgloss.Color("230")).
-		Render(statusText)
 }

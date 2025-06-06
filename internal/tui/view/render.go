@@ -1,7 +1,7 @@
 package view
 
 import (
-	"envctl/internal/color"
+	"envctl/internal/tui/design"
 	"envctl/internal/tui/model"
 	"fmt"
 	"strings"
@@ -11,12 +11,12 @@ import (
 func Render(m *model.Model) string {
 	switch m.CurrentAppMode {
 	case model.ModeQuitting:
-		return color.StatusStyle.Render(m.QuittingMessage)
+		return design.TextStyle.Render(m.QuittingMessage)
 	case model.ModeInitializing:
 		if m.Width == 0 || m.Height == 0 {
-			return color.StatusStyle.Render("Initializing... (waiting for window size)")
+			return design.TextStyle.Render("Initializing... (waiting for window size)")
 		}
-		return color.StatusStyle.Render(fmt.Sprintf("%s Initializing...", m.Spinner.View()))
+		return design.TextStyle.Render(fmt.Sprintf("%s Initializing...", m.Spinner.View()))
 	case model.ModeNewConnectionInput:
 		return renderNewConnectionInputView(m, m.Width)
 	case model.ModeMainDashboard:
@@ -34,7 +34,7 @@ func Render(m *model.Model) string {
 	case model.ModeAgentREPLOverlay:
 		return renderAgentREPLOverlay(m)
 	default:
-		return color.StatusStyle.Render(fmt.Sprintf("Unhandled application mode: %s", m.CurrentAppMode.String()))
+		return design.TextStyle.Render(fmt.Sprintf("Unhandled application mode: %s", m.CurrentAppMode.String()))
 	}
 }
 

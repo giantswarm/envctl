@@ -2,6 +2,7 @@ package view
 
 import (
 	"envctl/internal/api"
+	"envctl/internal/tui/design"
 	"envctl/internal/tui/model"
 	"fmt"
 	"strings"
@@ -56,7 +57,7 @@ func ConvertMCPServerToListItem(mcp *api.MCPServerInfo) MCPServerListItem {
 	// Use custom icon if provided, otherwise default
 	icon := mcp.Icon
 	if icon == "" {
-		icon = IconGear
+		icon = "⚙"
 	}
 
 	// Build description
@@ -75,7 +76,7 @@ func ConvertMCPServerToListItem(mcp *api.MCPServerInfo) MCPServerListItem {
 			Name:        mcp.Name,
 			Status:      status,
 			Health:      health,
-			Icon:        SafeIcon(icon),
+			Icon:        design.SafeIcon(icon),
 			Description: description,
 			Details:     fmt.Sprintf("MCP Server: %s", mcp.Name),
 		},
@@ -98,7 +99,7 @@ func BuildMCPServersList(m *model.Model, width, height int, focused bool) *Servi
 					Name:        config.Name,
 					Status:      StatusStopped,
 					Health:      HealthUnknown,
-					Icon:        SafeIcon(config.Icon),
+					Icon:        design.SafeIcon(config.Icon),
 					Description: "Not Started",
 					Details:     fmt.Sprintf("MCP Server: %s (Not Started)", config.Name),
 				},

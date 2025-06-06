@@ -4,29 +4,30 @@
 
 This style guide outlines the visual design principles, color palette, and styling conventions used in the `envctl` Terminal User Interface (TUI). The goal is to maintain a consistent, visually appealing, and user-friendly experience.
 
-The TUI is built using Go with the [Bubble Tea](https://github.com/charmbracelet/bubbletea) framework and styled using [Lipgloss](https://github.com/charmbracelet/lipgloss). All styles are now centralized in the `internal/color/` package for consistency across the application.
+The TUI is built using Go with the [Bubble Tea](https://github.com/charmbracelet/bubbletea) framework and styled using [Lipgloss](https://github.com/charmbracelet/lipgloss). All styles are now centralized in the `internal/tui/design/` package for consistency across the application.
 
 A key principle is the use of **adaptive colors** to ensure readability and a good aesthetic in both light and dark terminal themes, with a primary focus on an excellent dark mode experience inspired by modern terminal applications.
 
-## 2. Color System Architecture
+## 2. Design System Architecture
 
-The styling system has been refactored into a centralized color package (`internal/color/`) that provides:
+The styling system has been refactored into a centralized design package (`internal/tui/design/`) that provides:
 
 - Consistent color definitions across all UI components
 - Adaptive colors that automatically adjust for light/dark modes
 - Semantic naming for easy understanding and maintenance
 - Reusable style compositions
+- Component library with pre-built UI elements
 
 ### Importing Styles
 
 All TUI components import styles from the centralized package:
 
 ```go
-import "envctl/internal/color"
+import "envctl/internal/tui/design"
 
 // Using predefined styles
-content := color.FocusedStyle.Render("Focused Panel")
-errorMsg := color.ErrorStyle.Render("Error occurred")
+content := design.FocusedStyle.Render("Focused Panel")
+errorMsg := design.ErrorStyle.Render("Error occurred")
 ```
 
 ## 3. Color Palette
@@ -36,155 +37,128 @@ The TUI uses adaptive colors that automatically adjust based on the terminal's b
 ### Primary Colors
 
 - **Text (General):** 
-  - Light mode: `#000000` (Black)
-  - Dark mode: `#FFFFFF` (White)
+  - Light mode: `#111827` (Dark Gray)
+  - Dark mode: `#F9FAFB` (Light Gray)
 - **Backgrounds:**
-  - Light mode: `#F8F8F8` to `#FFFFFF` (Light grays)
-  - Dark mode: `#1E1E1E` to `#2A2A3A` (Dark grays)
+  - Light mode: `#FFFFFF` to `#F9FAFB` (Light grays)
+  - Dark mode: `#0F0F0F` to `#1A1A1A` (Dark grays)
 - **Focus/Accent:** 
-  - Light mode: `#0000CC` (Blue)
-  - Dark mode: `#58A6FF` (Bright blue)
+  - Light mode: `#5A56E0` (Purple)
+  - Dark mode: `#7571F9` (Bright Purple)
 
 ### Status Colors
 
 Status colors are used consistently throughout the UI for panels, text, and status bar:
 
 #### Success/Running (Green)
-- **Panel Border:** Light: `#307030`, Dark: `#60A060`
-- **Panel Background:** Light: `#D4EFDF`, Dark: `#1A3A1A`
-- **Text:** Light: `#004400`, Dark: `#8AE234`
-- **Status Bar:** Light: `#10B981`, Dark: `#059669`
+- **Color:** Light: `#059669`, Dark: `#10B981`
+- **Usage:** Running services, healthy states, success messages
 
 #### Error/Failed (Red)
-- **Panel Border:** Light: `#A04040`, Dark: `#B07070`
-- **Panel Background:** Light: `#FADBD8`, Dark: `#4D2A2A`
-- **Text:** Light: `#880000`, Dark: `#FF8787`
-- **Status Bar:** Light: `#EF4444`, Dark: `#DC2626`
+- **Color:** Light: `#DC2626`, Dark: `#EF4444`
+- **Usage:** Failed services, errors, critical alerts
 
 #### Warning/Degraded (Yellow/Amber)
-- **Panel Border:** Light: `#A07030`, Dark: `#B0A070`
-- **Panel Background:** Light: `#FCF3CF`, Dark: `#4D4D2A`
-- **Text:** Light: `#553300`, Dark: `#FFB86C`
-- **Status Bar:** Light: `#F59E0B`, Dark: `#D97706`
+- **Color:** Light: `#D97706`, Dark: `#F59E0B`
+- **Usage:** Warning states, degraded performance, caution messages
 
 #### Info/Initializing (Blue)
-- **Panel Border:** Light: `#5060A0`, Dark: `#6A78AD`
-- **Panel Background:** Light: `#E0E8FF`, Dark: `#2A384D`
-- **Text:** Light: `#000080`, Dark: `#82B0FF`
-- **Status Bar:** Light: `#3B82F6`, Dark: `#2563EB`
+- **Color:** Light: `#2563EB`, Dark: `#3B82F6`
+- **Usage:** Information messages, initializing states
 
 ### Health Status Colors
 
-Used specifically for Kubernetes node health indicators:
-- **Healthy:** Light: `#005500`, Dark: `#90FF90`
-- **Warning:** Light: `#703000`, Dark: `#FFFF00`
-- **Error:** Light: `#990000`, Dark: `#FF9090`
-- **Loading:** Light: `#303030`, Dark: `#F0F0F0`
+Used specifically for Kubernetes node health indicators and service health:
+- Uses the same Success/Error/Warning colors for consistency
+- Loading states use standard text color
 
 ### Log Level Colors
 
 For activity log entries:
-- **Info:** Light: `#000000`, Dark: `#E0E0E0`
-- **Warning:** Light: `#A07000`, Dark: `#FFD066`
-- **Error:** Light: `#B30000`, Dark: `#FF6B6B`
-- **Debug:** Light: `#606060`, Dark: `#909090` (Italic)
+- **Info:** Standard text color
+- **Warning:** Warning color
+- **Error:** Error color
+- **Debug:** Muted text color with italic style
 
-## 4. Component Styles
+## 4. Component Library
 
-### 4.1. Header
-- **Style:** `color.HeaderStyle`
-- **Features:** Bold text, adaptive background (`#D0D0D0`/`#303030`), horizontal padding
-- **Purpose:** Application title and global navigation hints
+The design system includes pre-built components for consistent UI:
 
-### 4.2. Panels
+### 4.1. Panel Component
+```go
+panel := components.NewPanel().
+    WithTitle("Service Status").
+    WithType(components.PanelTypeDefault).
+    WithFocused(true)
+```
 
-#### Base Panel
-- **Style:** `color.PanelStyle`
-- **Features:** Rounded borders, minimal padding (0, 1)
-- **Usage:** Foundation for all service panels
+### 4.2. Status Indicator
+```go
+status := components.NewStatusIndicator("running").
+    WithIcon(true).
+    WithLabel("Service Running")
+```
 
-#### Focused Panel
-- **Style:** `color.FocusedPanelStyle`
-- **Features:** Thick border with bright blue color
-- **Border:** Light: `#0000CC`, Dark: `#58A6FF`
-
-#### Status-Based Panel Variants
-Panels change appearance based on service state:
-- **Default:** `color.PanelStatusDefaultStyle`
-- **Initializing:** `color.PanelStatusInitializingStyle` (Blue tint)
-- **Running:** `color.PanelStatusRunningStyle` (Green tint)
-- **Error:** `color.PanelStatusErrorStyle` (Red tint)
-- **Exited:** `color.PanelStatusExitedStyle` (Yellow tint)
-
-### 4.3. Context Panes (K8s Connections)
-- **Base:** `color.ContextPaneStyle`
-- **Active:** `color.ActiveContextPaneStyle` (Blue border)
-- **Focused:** `color.FocusedContextPaneStyle`
-- **Focused & Active:** `color.FocusedAndActiveContextPaneStyle`
+### 4.3. Header Component
+```go
+header := components.NewHeader("Envctl Dashboard").
+    WithSubtitle("Managing 5 services").
+    WithSpinner(spinner)
+```
 
 ### 4.4. Status Bar
-- **Base Style:** `color.StatusBarBaseStyle`
-- **Text Style:** `color.StatusBarTextStyle`
-- **Background Colors:**
-  - Default: `color.StatusBarDefaultBg`
-  - Success: `color.StatusBarSuccessBg`
-  - Error: `color.StatusBarErrorBg`
-  - Warning: `color.StatusBarWarningBg`
-  - Info: `color.StatusBarInfoBg`
+```go
+statusBar := components.NewStatusBar().
+    WithMessage("Ready", components.StatusBarTypeDefault).
+    WithRightText("Press ? for help")
+```
 
-### 4.5. Overlays
-
-#### Help Overlay
-- **Container:** `color.CenteredOverlayContainerStyle`
-- **Title:** `color.HelpTitleStyle`
-- **Background:** `color.HelpOverlayBgColor`
-
-#### Log Overlay
-- **Style:** `color.LogOverlayStyle`
-- **Features:** Rounded border, adaptive background, padding
-
-#### MCP Config Overlay
-- **Style:** `color.McpConfigOverlayStyle`
-- **Features:** Similar to log overlay with code-friendly styling
+### 4.5. Layout Manager
+```go
+layout := components.NewLayout(width, height).
+    SplitVertical(0.3).
+    SplitHorizontal(0.5)
+```
 
 ## 5. Typography & Text Styles
 
-### Titles
-- **Port Forward Titles:** `color.PortTitleStyle` (Bold, high contrast)
-- **Log Panel Title:** `color.LogPanelTitleStyle` (Bold with padding)
+### Base Text Styles
+- **Primary:** `design.TextStyle`
+- **Secondary:** `design.TextSecondaryStyle`
+- **Tertiary:** `design.TextTertiaryStyle`
 
-### Status Messages
-- **Initializing:** `color.StatusMsgInitializingStyle`
-- **Running:** `color.StatusMsgRunningStyle`
-- **Error:** `color.StatusMsgErrorStyle`
-- **Exited:** `color.StatusMsgExitedStyle`
-
-### Special Text
-- **Error Messages:** `color.ErrorStyle`
-- **Quit Confirmation:** `color.QuitKeyStyle`
+### State Text Styles
+- **Success:** `design.TextSuccessStyle`
+- **Error:** `design.TextErrorStyle`
+- **Warning:** `design.TextWarningStyle`
+- **Info:** `design.TextInfoStyle`
 
 ## 6. Layout & Spacing
 
-### Padding Conventions
-- **Panels:** `Padding(0, 1)` - Minimal vertical, standard horizontal
-- **Header:** `Padding(0, 2)` - Extra horizontal padding
-- **Overlays:** `Padding(1, 2)` - Standard padding for readability
+The design system uses a 4px base unit for consistent spacing:
 
-### Margins
-- **App Container:** `Margin(0, 0)` - Full terminal width
-- **Header:** `MarginBottom(0)` - No gap between header and content
-- **Titles:** `MarginBottom(1)` - Single line spacing
+### Spacing Constants
+- `design.SpaceXS` - 4px
+- `design.SpaceSM` - 8px
+- `design.SpaceMD` - 12px
+- `design.SpaceLG` - 16px
+- `design.SpaceXL` - 24px
+- `design.SpaceXXL` - 32px
+
+### Component Dimensions
+- Minimum panel height: 8 lines
+- Minimum panel width: 20 characters
 
 ## 7. Dark Mode Implementation
 
 Dark mode is handled automatically through Lipgloss's adaptive color system:
 
 ```go
-// Initialize color system (typically in main.go)
-color.Initialize(isDarkMode)
+// Initialize design system (typically in main.go)
+design.Initialize(isDarkMode)
 
 // All styles automatically adapt
-style := color.PanelStyle // Uses appropriate colors for current mode
+style := design.PanelStyle // Uses appropriate colors for current mode
 ```
 
 The system detects the terminal background and adjusts all adaptive colors accordingly.
@@ -193,42 +167,49 @@ The system detects the terminal background and adjusts all adaptive colors accor
 
 ### When Adding New Styles
 
-1. **Define in `internal/color/color.go`**: All styles should be centralized
+1. **Define in `internal/tui/design/system.go`**: All styles should be centralized
 2. **Use Adaptive Colors**: Always use `lipgloss.AdaptiveColor` for theme support
-3. **Follow Naming Conventions**: Use descriptive names ending with `Style`
-4. **Consider Inheritance**: Build on existing styles using `.Copy()` and `.Inherit()`
+3. **Follow Naming Conventions**: Use descriptive names with proper prefixes
+4. **Consider Component Reuse**: Use the component library for common UI patterns
 
 ### Color Selection Guidelines
 
 1. **Contrast**: Ensure sufficient contrast between text and background
 2. **Consistency**: Use semantic colors (success=green, error=red, etc.)
 3. **Accessibility**: Test in both light and dark modes
-4. **Subtlety**: Use muted backgrounds, vibrant borders/text
+4. **Subtlety**: Use muted backgrounds, vibrant accents
 
-### Testing Styles
+### Using Components
 
-1. **Both Modes**: Always test in light and dark terminals
-2. **Different Terminals**: Test in various terminal emulators
-3. **Color Profiles**: Verify with different color profile settings
-4. **Focus States**: Ensure focused elements are clearly distinguishable
+1. **Prefer Components**: Use pre-built components over custom implementations
+2. **Consistent Patterns**: Follow established patterns for similar UI elements
+3. **Composition**: Build complex UIs by composing simple components
+4. **State Management**: Let components handle their own visual states
 
 ## 9. Style Composition Example
 
 ```go
-// Creating a new style by composing existing ones
-MyCustomStyle := color.PanelStyle.Copy().
-    Inherit(color.FocusedPanelStyle).
-    Background(lipgloss.AdaptiveColor{Light: "#F0F0F0", Dark: "#2A2A2A"}).
-    Foreground(color.ErrorStyle.GetForeground())
+// Creating a custom style by composing existing ones
+MyCustomStyle := design.PanelStyle.Copy().
+    Inherit(design.PanelFocusedStyle).
+    Background(design.ColorHighlight).
+    Foreground(design.ColorText)
+
+// Using components
+panel := components.NewPanel().
+    WithTitle("Custom Panel").
+    WithContent(MyCustomStyle.Render("Content")).
+    WithFocused(true)
 ```
 
 ## 10. Migration Notes
 
-When migrating from inline styles to the centralized system:
+When migrating from inline styles to the design system:
 
-1. Replace local style definitions with imports from `internal/color`
-2. Update style references: `panelStyle` → `color.PanelStyle`
-3. Remove duplicate color definitions
-4. Test thoroughly to ensure visual consistency
+1. Replace local style definitions with imports from `internal/tui/design`
+2. Update style references: `color.PanelStyle` → `design.PanelStyle`
+3. Replace custom implementations with components from `internal/tui/components`
+4. Remove duplicate color and style definitions
+5. Test thoroughly to ensure visual consistency
 
-By adhering to these guidelines and using the centralized color system, `envctl` maintains a consistent, professional, and accessible terminal user interface. 
+By adhering to these guidelines and using the centralized design system, `envctl` maintains a consistent, professional, and accessible terminal user interface. 

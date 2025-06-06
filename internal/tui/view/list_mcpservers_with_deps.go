@@ -1,6 +1,7 @@
 package view
 
 import (
+	"envctl/internal/tui/design"
 	"envctl/internal/tui/model"
 	"fmt"
 	"io"
@@ -85,7 +86,7 @@ func BuildMCPServersWithDependenciesList(m *model.Model, width, height int, focu
 					Name:        config.Name,
 					Status:      StatusStopped,
 					Health:      HealthUnknown,
-					Icon:        SafeIcon(config.Icon),
+					Icon:        design.SafeIcon(config.Icon),
 					Description: fmt.Sprintf("%s/%s", config.TargetType, config.TargetName),
 					Details:     fmt.Sprintf("Port: %s:%s (Not Started)", config.LocalPort, config.RemotePort),
 				},
@@ -124,7 +125,7 @@ func BuildMCPServersWithDependenciesList(m *model.Model, width, height int, focu
 					Name:        config.Name,
 					Status:      StatusStopped,
 					Health:      HealthUnknown,
-					Icon:        SafeIcon(config.Icon),
+					Icon:        design.SafeIcon(config.Icon),
 					Description: "Not Started",
 					Details:     fmt.Sprintf("MCP Server: %s (Not Started)", config.Name),
 				},
@@ -149,20 +150,18 @@ func BuildMCPServersWithDependenciesList(m *model.Model, width, height int, focu
 	l.SetShowHelp(false)
 
 	// Style the title
-	l.Styles.Title = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("170")).
+	l.Styles.Title = design.TitleStyle.Copy().
 		PaddingLeft(1)
 
 	if focused {
 		l.Styles.Title = l.Styles.Title.
-			Background(lipgloss.Color("238")).
-			Foreground(lipgloss.Color("205"))
+			Background(design.ColorHighlight).
+			Foreground(design.ColorPrimary)
 	}
 
 	// Status bar styling
 	l.Styles.StatusBar = lipgloss.NewStyle().
-		Foreground(lipgloss.AdaptiveColor{Light: "60", Dark: "110"}).
+		Foreground(design.ColorTextSecondary).
 		PaddingLeft(2)
 
 	return &ServiceListModel{
@@ -208,16 +207,13 @@ func (d MCPWithDepsItemDelegate) renderMCPServer(w io.Writer, m list.Model, inde
 	// Description
 	if desc := item.Description(); desc != "" {
 		content.WriteString(" ")
-		content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(desc))
+		content.WriteString(design.TextSecondaryStyle.Render(desc))
 	}
 
 	// Render with selection indicator
 	str := content.String()
 	if index == m.Index() {
-		str = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("170")).
-			Bold(true).
-			Render("▶ " + str)
+		str = design.ListItemSelectedStyle.Render("▶ " + str)
 	} else {
 		str = "  " + str
 	}
@@ -246,7 +242,7 @@ func (d MCPWithDepsItemDelegate) renderPortForward(w io.Writer, m list.Model, in
 
 	// Target info
 	content.WriteString(" ")
-	content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(
+	content.WriteString(design.TextSecondaryStyle.Render(
 		fmt.Sprintf("Target: %s/%s", item.TargetType, item.TargetName)))
 
 	// Health status
@@ -261,10 +257,7 @@ func (d MCPWithDepsItemDelegate) renderPortForward(w io.Writer, m list.Model, in
 	str := content.String()
 	if index == m.Index() {
 		// Remove the indent for selected items
-		str = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("170")).
-			Bold(true).
-			Render("▶   " + strings.TrimPrefix(str, "    "))
+		str = design.ListItemSelectedStyle.Render("▶   " + strings.TrimPrefix(str, "    "))
 	}
 
 	fmt.Fprint(w, str)

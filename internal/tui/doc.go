@@ -92,14 +92,21 @@
 //   - Lists available tools (when healthy)
 //   - Shows dependencies
 //
-// # Styling System
+// # Design System
 //
-// The TUI uses a centralized styling system (internal/color/):
+// The TUI uses a comprehensive design system (internal/tui/design/):
 //
-//   - Consistent color palette
-//   - Theme support (dark/light)
-//   - Semantic color usage (success, warning, error)
-//   - Accessibility considerations
+//   - Semantic color palette with adaptive light/dark support
+//   - Consistent spacing based on 4px units
+//   - Reusable component library (internal/tui/components/)
+//   - Unified icon set with proper spacing
+//   - Typography scales and text styles
+//
+// Key design principles:
+//   - Consistency across all UI elements
+//   - Accessibility with high contrast colors
+//   - Modular components for maintainability
+//   - Clean, minimal interface design
 //
 // # State Management
 //

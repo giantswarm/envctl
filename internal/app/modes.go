@@ -2,8 +2,8 @@ package app
 
 import (
 	"context"
-	"envctl/internal/color"
 	"envctl/internal/tui/controller"
+	"envctl/internal/tui/design"
 	"envctl/internal/tui/model"
 	"envctl/pkg/logging"
 	"os"
@@ -40,8 +40,8 @@ func runCLIMode(ctx context.Context, config *Config, services *Services) error {
 func runTUIMode(ctx context.Context, config *Config, services *Services) error {
 	logging.Info("CLI", "Starting TUI mode...")
 
-	// Initialize color scheme for TUI (dark mode by default)
-	color.Initialize(true)
+	// Initialize design system for TUI (dark mode by default)
+	design.Initialize(true)
 
 	// Switch logging to channel-based system for TUI integration
 	logLevel := logging.LevelInfo

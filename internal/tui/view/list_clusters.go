@@ -2,6 +2,7 @@ package view
 
 import (
 	"envctl/internal/api"
+	"envctl/internal/tui/design"
 	"envctl/internal/tui/model"
 	"fmt"
 	"strings"
@@ -71,7 +72,7 @@ func ConvertK8sConnectionToListItem(conn *api.K8sConnectionInfo) ClusterListItem
 			Name:        conn.Label,
 			Status:      status,
 			Health:      health,
-			Icon:        SafeIcon(IconKubernetes),
+			Icon:        design.SafeIcon(design.IconKubernetes),
 			Description: conn.Context,
 			Details:     fmt.Sprintf("Context: %s", conn.Context),
 		},

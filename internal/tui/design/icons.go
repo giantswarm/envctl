@@ -1,4 +1,4 @@
-package view
+package design
 
 import (
 	"fmt"
@@ -31,6 +31,8 @@ const (
 	IconQuestion   = "❓" // U+2753
 	IconTerminal   = ">" // U+003E simple greater than for terminal prompt
 	IconBan        = "🚫" // U+1F6AB no entry sign
+	IconBox        = "▣" // U+25A3 white square containing black small square
+	IconService    = "☸" // U+2638 wheel of dharma (same as Kubernetes)
 )
 
 // SafeIcon wraps an icon with proper spacing to prevent rendering issues

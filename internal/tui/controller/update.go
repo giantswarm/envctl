@@ -4,6 +4,7 @@ import (
 	"context"
 	"envctl/internal/agent"
 	"envctl/internal/api"
+	"envctl/internal/tui/design"
 	"envctl/internal/tui/model"
 	"envctl/internal/tui/view"
 	"envctl/pkg/logging"
@@ -707,7 +708,7 @@ func updateListItems(m *model.Model) {
 						Name:        config.Name,
 						Status:      view.StatusStopped,
 						Health:      view.HealthUnknown,
-						Icon:        view.SafeIcon(config.Icon),
+						Icon:        design.SafeIcon(config.Icon),
 						Description: "Not Started",
 						Details:     fmt.Sprintf("MCP Server: %s (Not Started)", config.Name),
 					},

@@ -1,7 +1,7 @@
 package view
 
 import (
-	"envctl/internal/color"
+	"envctl/internal/tui/design"
 	"envctl/internal/tui/model"
 	"fmt"
 	"strings"
@@ -20,7 +20,7 @@ func renderNewConnectionInputView(m *model.Model, width int) string {
 // renderHelpOverlay(renders the help overlay
 func renderHelpOverlay(m *model.Model) string {
 	// Match v1 exactly
-	titleView := color.HelpTitleStyle.Render("KEYBOARD SHORTCUTS")
+	titleView := design.HelpTitleStyle.Render("KEYBOARD SHORTCUTS")
 
 	// Build help content
 	var helpLines []string
@@ -53,23 +53,23 @@ func renderHelpOverlay(m *model.Model) string {
 
 	helpContent := strings.Join(helpLines, "\n")
 
-	container := color.CenteredOverlayContainerStyle.Render(titleView + "\n" + helpContent)
+	container := design.CenteredOverlayContainerStyle.Render(titleView + "\n" + helpContent)
 	return lipgloss.Place(m.Width, m.Height, lipgloss.Center, lipgloss.Center, container)
 }
 
 // renderLogOverlay(renders the log overlay
 func renderLogOverlay(m *model.Model) string {
 	// Match v1 exactly
-	titleText := SafeIcon(IconScroll) + " Activity Log  (↑/↓ scroll  •  y copy  •  Esc close)"
-	titleView := color.LogPanelTitleStyle.Render(titleText)
+	titleText := design.SafeIcon(design.IconScroll) + " Activity Log  (↑/↓ scroll  •  y copy  •  Esc close)"
+	titleView := design.LogPanelTitleStyle.Render(titleText)
 	titleHeight := lipgloss.Height(titleView)
 
 	overlayTotalWidth := int(float64(m.Width) * 0.8)
 	overlayTotalHeight := int(float64(m.Height) * 0.7)
 
 	// Calculate actual content area for the viewport within the overlay
-	newViewportWidth := overlayTotalWidth - color.LogOverlayStyle.GetHorizontalFrameSize()
-	newViewportHeight := overlayTotalHeight - color.LogOverlayStyle.GetVerticalFrameSize() - titleHeight
+	newViewportWidth := overlayTotalWidth - design.LogOverlayStyle.GetHorizontalFrameSize()
+	newViewportHeight := overlayTotalHeight - design.LogOverlayStyle.GetVerticalFrameSize() - titleHeight
 
 	if newViewportWidth < 0 {
 		newViewportWidth = 0
@@ -91,17 +91,17 @@ func renderLogOverlay(m *model.Model) string {
 	}
 
 	// Render the overlay content
-	title := color.LogPanelTitleStyle.Render(SafeIcon(IconScroll) + " Activity Log  (↑/↓ scroll  •  y copy  •  Esc close)")
+	title := design.LogPanelTitleStyle.Render(design.SafeIcon(design.IconScroll) + " Activity Log  (↑/↓ scroll  •  y copy  •  Esc close)")
 	viewportView := m.LogViewport.View()
 	content := lipgloss.JoinVertical(lipgloss.Left, title, viewportView)
-	overlay := color.LogOverlayStyle.Copy().
-		Width(overlayTotalWidth - color.LogOverlayStyle.GetHorizontalFrameSize()).
-		Height(overlayTotalHeight - color.LogOverlayStyle.GetVerticalFrameSize()).
+	overlay := design.LogOverlayStyle.Copy().
+		Width(overlayTotalWidth - design.LogOverlayStyle.GetHorizontalFrameSize()).
+		Height(overlayTotalHeight - design.LogOverlayStyle.GetVerticalFrameSize()).
 		Render(content)
 
 	// Use lipgloss.Place to center the overlay
 	overlayCanvas := lipgloss.Place(m.Width, m.Height-1, lipgloss.Center, lipgloss.Center, overlay,
-		lipgloss.WithWhitespaceBackground(lipgloss.AdaptiveColor{Light: "rgba(0,0,0,0.1)", Dark: "rgba(0,0,0,0.6)"}))
+		lipgloss.WithWhitespaceBackground(design.ColorOverlay))
 
 	// Add status bar at the bottom
 	statusBar := renderStatusBar(m, m.Width)
@@ -111,15 +111,15 @@ func renderLogOverlay(m *model.Model) string {
 // renderMcpConfigOverlay(renders the MCP config overlay
 func renderMcpConfigOverlay(m *model.Model) string {
 	// Match v1 exactly
-	cfgTitleText := SafeIcon(IconGear) + " MCP Configuration  (↑/↓ scroll  •  y copy  •  Esc close)"
-	cfgTitleView := color.LogPanelTitleStyle.Render(cfgTitleText)
+	cfgTitleText := design.SafeIcon(design.IconGear) + " MCP Configuration  (↑/↓ scroll  •  y copy  •  Esc close)"
+	cfgTitleView := design.LogPanelTitleStyle.Render(cfgTitleText)
 	cfgTitleHeight := lipgloss.Height(cfgTitleView)
 
 	cfgOverlayTotalWidth := int(float64(m.Width) * 0.8)
 	cfgOverlayTotalHeight := int(float64(m.Height) * 0.7)
 
-	newMcpViewportWidth := cfgOverlayTotalWidth - color.McpConfigOverlayStyle.GetHorizontalFrameSize()
-	newMcpViewportHeight := cfgOverlayTotalHeight - color.McpConfigOverlayStyle.GetVerticalFrameSize() - cfgTitleHeight
+	newMcpViewportWidth := cfgOverlayTotalWidth - design.McpConfigOverlayStyle.GetHorizontalFrameSize()
+	newMcpViewportHeight := cfgOverlayTotalHeight - design.McpConfigOverlayStyle.GetVerticalFrameSize() - cfgTitleHeight
 
 	if newMcpViewportWidth < 0 {
 		newMcpViewportWidth = 0
@@ -135,13 +135,13 @@ func renderMcpConfigOverlay(m *model.Model) string {
 	// Content is set by controller when mode changes
 	viewportView := m.McpConfigViewport.View()
 	content := lipgloss.JoinVertical(lipgloss.Left, cfgTitleView, viewportView)
-	cfgOverlay := color.McpConfigOverlayStyle.Copy().
-		Width(cfgOverlayTotalWidth - color.McpConfigOverlayStyle.GetHorizontalFrameSize()).
-		Height(cfgOverlayTotalHeight - color.McpConfigOverlayStyle.GetVerticalFrameSize()).
+	cfgOverlay := design.McpConfigOverlayStyle.Copy().
+		Width(cfgOverlayTotalWidth - design.McpConfigOverlayStyle.GetHorizontalFrameSize()).
+		Height(cfgOverlayTotalHeight - design.McpConfigOverlayStyle.GetVerticalFrameSize()).
 		Render(content)
 
 	overlayCanvas := lipgloss.Place(m.Width, m.Height-1, lipgloss.Center, lipgloss.Center, cfgOverlay,
-		lipgloss.WithWhitespaceBackground(lipgloss.AdaptiveColor{Light: "rgba(0,0,0,0.1)", Dark: "rgba(0,0,0,0.6)"}))
+		lipgloss.WithWhitespaceBackground(design.ColorOverlay))
 	statusBar := renderStatusBar(m, m.Width)
 	return lipgloss.JoinVertical(lipgloss.Left, overlayCanvas, statusBar)
 }
@@ -167,12 +167,12 @@ func renderMcpToolsOverlay(m *model.Model) string {
 	listModel.SetFocused(true)
 
 	// Title
-	toolsTitleText := SafeIcon(IconGear) + " MCP Server Tools"
+	toolsTitleText := design.SafeIcon(design.IconGear) + " MCP Server Tools"
 	if m.AggregatorInfo != nil && m.AggregatorInfo.YoloMode {
 		toolsTitleText += "  [YOLO MODE ACTIVE]"
 	}
 	toolsTitleText += "  (↑/↓ navigate  •  / filter  •  Esc close)"
-	toolsTitleView := color.LogPanelTitleStyle.Render(toolsTitleText)
+	toolsTitleView := design.LogPanelTitleStyle.Render(toolsTitleText)
 
 	// Get list view
 	listView := listModel.View()
@@ -181,13 +181,13 @@ func renderMcpToolsOverlay(m *model.Model) string {
 	content := lipgloss.JoinVertical(lipgloss.Left, toolsTitleView, listView)
 
 	// Create overlay
-	toolsOverlay := color.McpConfigOverlayStyle.Copy().
-		Width(overlayWidth - color.McpConfigOverlayStyle.GetHorizontalFrameSize()).
-		Height(overlayHeight - color.McpConfigOverlayStyle.GetVerticalFrameSize()).
+	toolsOverlay := design.McpConfigOverlayStyle.Copy().
+		Width(overlayWidth - design.McpConfigOverlayStyle.GetHorizontalFrameSize()).
+		Height(overlayHeight - design.McpConfigOverlayStyle.GetVerticalFrameSize()).
 		Render(content)
 
 	overlayCanvas := lipgloss.Place(m.Width, m.Height-1, lipgloss.Center, lipgloss.Center, toolsOverlay,
-		lipgloss.WithWhitespaceBackground(lipgloss.AdaptiveColor{Light: "rgba(0,0,0,0.1)", Dark: "rgba(0,0,0,0.6)"}))
+		lipgloss.WithWhitespaceBackground(design.ColorOverlay))
 	statusBar := renderStatusBar(m, m.Width)
 	return lipgloss.JoinVertical(lipgloss.Left, overlayCanvas, statusBar)
 }

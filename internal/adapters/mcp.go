@@ -34,7 +34,7 @@ func (a *MCPServiceAdapter) GetAllMCPServices() []aggregator.MCPServiceInfo {
 				State:  string(service.GetState()),
 				Health: string(service.GetHealth()),
 			}
-			
+
 			// Get tool prefix from service data if available
 			if provider, ok := service.(services.ServiceDataProvider); ok {
 				if data := provider.GetServiceData(); data != nil {
@@ -43,7 +43,7 @@ func (a *MCPServiceAdapter) GetAllMCPServices() []aggregator.MCPServiceInfo {
 					}
 				}
 			}
-			
+
 			mcpServices = append(mcpServices, info)
 		}
 	}

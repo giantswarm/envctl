@@ -256,7 +256,7 @@ logHeight := contentHeight - k8sRowHeight - portForwardRowHeight - mcpRowHeight
 
 ## Styling System
 
-Styling has been centralized in the `internal/color/` package:
+Styling has been centralized in the `internal/tui/design/` package:
 
 - Consistent color palette across the application
 - Theme support (dark/light modes)
@@ -265,11 +265,11 @@ Styling has been centralized in the `internal/color/` package:
 
 The TUI view layer uses these styles through simple imports:
 ```go
-import "envctl/internal/color"
+import "envctl/internal/tui/design"
 
 // Using predefined styles
-color.FocusedStyle.Render(content)
-color.ErrorStyle.Render(errorMsg)
+design.PanelFocusedStyle.Render(content)
+design.TextErrorStyle.Render(errorMsg)
 ```
 
 ## Testing Approach

@@ -343,10 +343,10 @@ func (a *AggregatorServer) addNewItems(servers map[string]*ServerInfo) {
 			// Apply envctl prefix to workflow tools
 			prefixedTool := tool
 			prefixedTool.Name = a.config.EnvctlPrefix + "_" + tool.Name
-			
+
 			// Mark workflow tool as active to prevent it from being removed
 			a.toolManager.setActive(prefixedTool.Name, true)
-			
+
 			toolsToAdd = append(toolsToAdd, a.createWorkflowServerTool(prefixedTool))
 		}
 
@@ -356,10 +356,10 @@ func (a *AggregatorServer) addNewItems(servers map[string]*ServerInfo) {
 			// Apply envctl prefix to management tools
 			prefixedTool := tool
 			prefixedTool.Name = a.config.EnvctlPrefix + "_" + tool.Name
-			
+
 			// Mark management tool as active to prevent it from being removed
 			a.toolManager.setActive(prefixedTool.Name, true)
-			
+
 			toolsToAdd = append(toolsToAdd, a.createManagementServerTool(prefixedTool, managementTools))
 		}
 	}

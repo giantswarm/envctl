@@ -1,6 +1,7 @@
 package view
 
 import (
+	"envctl/internal/tui/design"
 	"fmt"
 	"io"
 	"strings"
@@ -68,15 +69,15 @@ func (i BaseListItem) FilterValue() string      { return i.Name + " " + i.Descri
 func GetStatusIcon(status ServiceStatus) string {
 	switch status {
 	case StatusRunning:
-		return SafeIcon(IconCheck)
+		return design.SafeIcon(design.IconCheck)
 	case StatusFailed:
-		return SafeIcon(IconCross)
+		return design.SafeIcon(design.IconCross)
 	case StatusStarting:
-		return SafeIcon(IconHourglass)
+		return design.SafeIcon(design.IconHourglass)
 	case StatusStopped:
-		return SafeIcon(IconStop)
+		return design.SafeIcon(design.IconStop)
 	default:
-		return SafeIcon(IconWarning)
+		return design.SafeIcon(design.IconWarning)
 	}
 }
 
@@ -84,15 +85,15 @@ func GetStatusIcon(status ServiceStatus) string {
 func GetHealthIcon(health ServiceHealth) string {
 	switch health {
 	case HealthHealthy:
-		return SafeIcon(IconCheck)
+		return design.SafeIcon(design.IconCheck)
 	case HealthUnhealthy:
-		return SafeIcon(IconCross)
+		return design.SafeIcon(design.IconCross)
 	case HealthDegraded:
-		return SafeIcon(IconWarning)
+		return design.SafeIcon(design.IconWarning)
 	case HealthChecking:
-		return SafeIcon(IconHourglass)
+		return design.SafeIcon(design.IconHourglass)
 	default:
-		return SafeIcon(IconQuestion)
+		return design.SafeIcon(design.IconQuestion)
 	}
 }
 
@@ -100,15 +101,15 @@ func GetHealthIcon(health ServiceHealth) string {
 func GetStatusColor(status ServiceStatus) lipgloss.Style {
 	switch status {
 	case StatusRunning:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("42")) // Green
+		return design.TextSuccessStyle
 	case StatusFailed:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("160")) // Red
+		return design.TextErrorStyle
 	case StatusStarting:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("214")) // Orange
+		return design.TextWarningStyle
 	case StatusStopped:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("240")) // Gray
+		return design.TextSecondaryStyle
 	default:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("214")) // Orange
+		return design.TextStyle
 	}
 }
 
@@ -116,15 +117,15 @@ func GetStatusColor(status ServiceStatus) lipgloss.Style {
 func GetHealthColor(health ServiceHealth) lipgloss.Style {
 	switch health {
 	case HealthHealthy:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("42")) // Green
+		return design.TextSuccessStyle
 	case HealthUnhealthy:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("160")) // Red
+		return design.TextErrorStyle
 	case HealthDegraded:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("214")) // Orange
+		return design.TextWarningStyle
 	case HealthChecking:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("33")) // Blue
+		return design.TextInfoStyle
 	default:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("240")) // Gray
+		return design.TextSecondaryStyle
 	}
 }
 
@@ -160,16 +161,13 @@ func (d CommonItemDelegate) Render(w io.Writer, m list.Model, index int, listIte
 	// Description if available
 	if item.GetDescription() != "" {
 		content.WriteString(" ")
-		content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(item.GetDescription()))
+		content.WriteString(design.TextSecondaryStyle.Render(item.GetDescription()))
 	}
 
 	// Render with selection indicator
 	str := content.String()
 	if index == m.Index() {
-		str = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("170")).
-			Bold(true).
-			Render("▶ " + str)
+		str = design.ListItemSelectedStyle.Render("▶ " + str)
 	} else {
 		str = "  " + str
 	}
@@ -184,21 +182,18 @@ func CreateStyledList(title string, items []list.Item, width, height int, focuse
 	l.SetShowStatusBar(true)
 	l.SetFilteringEnabled(true)
 	l.SetShowHelp(false) // We'll show help in status bar
-	l.Styles.Title = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("170")).
+	l.Styles.Title = design.TitleStyle.Copy().
 		PaddingLeft(1)
 
 	// Apply focus styling
 	if focused {
 		l.Styles.Title = l.Styles.Title.
-			Background(lipgloss.Color("238")).
-			Foreground(lipgloss.Color("205"))
+			Background(design.ColorHighlight).
+			Foreground(design.ColorPrimary)
 	}
 
 	// Status bar styling
-	l.Styles.StatusBar = lipgloss.NewStyle().
-		Foreground(lipgloss.AdaptiveColor{Light: "60", Dark: "110"}).
+	l.Styles.StatusBar = design.TextSecondaryStyle.Copy().
 		PaddingLeft(2)
 
 	return l
@@ -245,12 +240,10 @@ func (m *ServiceListModel) GetSelectedItem() CommonListItem {
 func (m *ServiceListModel) SetFocused(focused bool) {
 	if focused {
 		m.List.Styles.Title = m.List.Styles.Title.
-			Background(lipgloss.Color("238")).
-			Foreground(lipgloss.Color("205"))
+			Background(design.ColorHighlight).
+			Foreground(design.ColorPrimary)
 	} else {
-		m.List.Styles.Title = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("170")).
+		m.List.Styles.Title = design.TitleStyle.Copy().
 			PaddingLeft(1)
 	}
 }
