@@ -243,12 +243,22 @@ func (am *AggregatorManager) registerSingleServer(ctx context.Context, serverNam
 		return fmt.Errorf("invalid MCP client type for %s (got %T)", serverName, client)
 	}
 
+	// Get the service info to find the tool prefix
+	var toolPrefix string
+	mcpServices := am.mcpServiceProvider.GetAllMCPServices()
+	for _, service := range mcpServices {
+		if service.Name == serverName {
+			toolPrefix = service.ToolPrefix
+			break
+		}
+	}
+
 	// Register with the aggregator
-	if err := am.aggregatorServer.RegisterServer(ctx, serverName, mcpClient); err != nil {
+	if err := am.aggregatorServer.RegisterServer(ctx, serverName, mcpClient, toolPrefix); err != nil {
 		return fmt.Errorf("failed to register server: %w", err)
 	}
 
-	logging.Info("Aggregator-Manager", "Successfully registered MCP server %s", serverName)
+	logging.Info("Aggregator-Manager", "Successfully registered MCP server %s with prefix %s", serverName, toolPrefix)
 	return nil
 }
 

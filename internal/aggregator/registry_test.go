@@ -104,7 +104,7 @@ func TestNameTracker_SmartPrefixing(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tracker := NewNameTracker()
+			tracker := NewNameTracker("x")
 			tracker.RebuildMappings(tt.servers)
 
 			for key, expectedName := range tt.expected {
@@ -153,7 +153,7 @@ func TestNameTracker_ResolveName(t *testing.T) {
 		},
 	}
 
-	tracker := NewNameTracker()
+	tracker := NewNameTracker("x")
 	tracker.RebuildMappings(servers)
 
 	tests := []struct {

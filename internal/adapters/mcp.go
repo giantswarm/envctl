@@ -29,11 +29,22 @@ func (a *MCPServiceAdapter) GetAllMCPServices() []aggregator.MCPServiceInfo {
 	for _, service := range allServices {
 		// Filter for MCP server services
 		if service.GetType() == services.TypeMCPServer {
-			mcpServices = append(mcpServices, aggregator.MCPServiceInfo{
+			info := aggregator.MCPServiceInfo{
 				Name:   service.GetLabel(),
 				State:  string(service.GetState()),
 				Health: string(service.GetHealth()),
-			})
+			}
+			
+			// Get tool prefix from service data if available
+			if provider, ok := service.(services.ServiceDataProvider); ok {
+				if data := provider.GetServiceData(); data != nil {
+					if toolPrefix, ok := data["toolPrefix"].(string); ok {
+						info.ToolPrefix = toolPrefix
+					}
+				}
+			}
+			
+			mcpServices = append(mcpServices, info)
 		}
 	}
 

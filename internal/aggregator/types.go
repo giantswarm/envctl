@@ -3,6 +3,7 @@ package aggregator
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -38,15 +39,19 @@ type MCPClient interface {
 	Ping(ctx context.Context) error
 }
 
-// ServerInfo holds information about a registered MCP server
+// ServerInfo contains information about a registered server
 type ServerInfo struct {
-	Name      string
-	Client    MCPClient
+	Name       string
+	Client     MCPClient
+	LastUpdate time.Time
+	ToolPrefix string // Configured tool prefix for this server
+
+	// Cached capabilities
+	mu        sync.RWMutex
 	Tools     []mcp.Tool
 	Resources []mcp.Resource
 	Prompts   []mcp.Prompt
 	Connected bool
-	mu        sync.RWMutex
 }
 
 // UpdateTools updates the server's tool list
@@ -86,10 +91,11 @@ func (s *ServerInfo) IsConnected() bool {
 
 // AggregatorConfig holds configuration for the aggregator
 type AggregatorConfig struct {
-	Port      int    // Port to listen on for the aggregated SSE endpoint
-	Host      string // Host to bind to (default: localhost)
-	Yolo      bool   // Disable denylist for destructive tools
-	ConfigDir string // User configuration directory for workflows
+	Port         int    // Port to listen on for the aggregated SSE endpoint
+	Host         string // Host to bind to (default: localhost)
+	Yolo         bool   // Disable denylist for destructive tools
+	ConfigDir    string // User configuration directory for workflows
+	EnvctlPrefix string // Pre-prefix for all tools (default: "x")
 }
 
 // RegistrationEvent represents a server registration/deregistration event
@@ -124,9 +130,10 @@ type OrchestratorEventProvider interface {
 
 // MCPServiceInfo contains information about an MCP service
 type MCPServiceInfo struct {
-	Name   string
-	State  string
-	Health string
+	Name       string
+	State      string
+	Health     string
+	ToolPrefix string // Tool prefix for this service
 }
 
 // MCPServiceProvider provides access to MCP services and clients

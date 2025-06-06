@@ -78,23 +78,17 @@ func (m *activeItemManager) removeItems(items []string) {
 
 // collectResult holds the results of collecting items from servers
 type collectResult struct {
-	newTools       map[string]struct{}
-	newPrompts     map[string]struct{}
-	newResources   map[string]struct{}
-	toolOwners     map[string]*ServerInfo
-	promptOwners   map[string]*ServerInfo
-	resourceOwners map[string]*ServerInfo
+	newTools     map[string]struct{}
+	newPrompts   map[string]struct{}
+	newResources map[string]struct{}
 }
 
 // collectItemsFromServers collects all items from connected servers
 func collectItemsFromServers(servers map[string]*ServerInfo, registry *ServerRegistry) *collectResult {
 	result := &collectResult{
-		newTools:       make(map[string]struct{}),
-		newPrompts:     make(map[string]struct{}),
-		newResources:   make(map[string]struct{}),
-		toolOwners:     make(map[string]*ServerInfo),
-		promptOwners:   make(map[string]*ServerInfo),
-		resourceOwners: make(map[string]*ServerInfo),
+		newTools:     make(map[string]struct{}),
+		newPrompts:   make(map[string]struct{}),
+		newResources: make(map[string]struct{}),
 	}
 
 	for serverName, info := range servers {
@@ -107,19 +101,16 @@ func collectItemsFromServers(servers map[string]*ServerInfo, registry *ServerReg
 		for _, tool := range info.Tools {
 			exposedName := registry.nameTracker.GetExposedToolName(serverName, tool.Name)
 			result.newTools[exposedName] = struct{}{}
-			result.toolOwners[exposedName] = info
 		}
 		// Collect prompts
 		for _, prompt := range info.Prompts {
 			exposedName := registry.nameTracker.GetExposedPromptName(serverName, prompt.Name)
 			result.newPrompts[exposedName] = struct{}{}
-			result.promptOwners[exposedName] = info
 		}
 		// Collect resources
 		for _, resource := range info.Resources {
 			exposedURI := registry.nameTracker.GetExposedResourceURI(serverName, resource.URI)
 			result.newResources[exposedURI] = struct{}{}
-			result.resourceOwners[exposedURI] = info
 		}
 		info.mu.RUnlock()
 	}

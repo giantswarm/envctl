@@ -56,6 +56,7 @@ type MCPServerDefinition struct {
 	Icon                string        `yaml:"icon,omitempty"`                // Optional: an icon/emoji for display in TUI
 	Category            string        `yaml:"category,omitempty"`            // Optional: for grouping in TUI, e.g., "Core", "Monitoring"
 	HealthCheckInterval time.Duration `yaml:"healthCheckInterval,omitempty"` // Optional: custom health check interval
+	ToolPrefix          string        `yaml:"toolPrefix,omitempty"`          // Custom prefix for tools (defaults to server name with underscore)
 
 	// Fields for Type = "localCommand"
 	Command []string          `yaml:"command,omitempty"` // Command and its arguments, e.g., ["npx", "mcp-server-kubernetes"]
@@ -99,9 +100,10 @@ type PortForwardDefinition struct {
 
 // AggregatorConfig defines the configuration for the MCP aggregator service.
 type AggregatorConfig struct {
-	Port    int    `yaml:"port,omitempty"`    // Port for the aggregator SSE endpoint (default: 8080)
-	Host    string `yaml:"host,omitempty"`    // Host to bind to (default: localhost)
-	Enabled bool   `yaml:"enabled,omitempty"` // Whether the aggregator is enabled (default: true if MCP servers exist)
+	Port         int    `yaml:"port,omitempty"`         // Port for the aggregator SSE endpoint (default: 8080)
+	Host         string `yaml:"host,omitempty"`         // Host to bind to (default: localhost)
+	Enabled      bool   `yaml:"enabled,omitempty"`      // Whether the aggregator is enabled (default: true if MCP servers exist)
+	EnvctlPrefix string `yaml:"envctlPrefix,omitempty"` // Pre-prefix for all tools (default: "x")
 }
 
 // GetDefaultConfig returns the default configuration for envctl.
@@ -194,9 +196,10 @@ func GetDefaultConfig(mcName, wcName string) EnvctlConfig {
 			DefaultContainerRuntime: "docker",
 		},
 		Aggregator: AggregatorConfig{
-			Port:    8090,
-			Host:    "localhost",
-			Enabled: true,
+			Port:         8090,
+			Host:         "localhost",
+			Enabled:      true,
+			EnvctlPrefix: "x",
 		},
 	}
 }

@@ -2,200 +2,167 @@ package aggregator
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 )
 
-// NameTracker tracks tool and prompt name conflicts across servers
+// NameTracker handles prefixing of tool, prompt, and resource names
 type NameTracker struct {
-	// Map of tool name -> list of servers that have this tool
-	toolToServers map[string][]string
-	// Map of prompt name -> list of servers that have this prompt
-	promptToServers map[string][]string
-	// Map of resource URI -> list of servers that have this resource
-	resourceToServers map[string][]string
 	// Map of exposed name -> (server, original name)
 	nameMapping map[string]struct {
 		serverName   string
 		originalName string
 		itemType     string // "tool", "prompt", or "resource"
 	}
-	mu sync.RWMutex
+	// Server prefixes configuration
+	serverPrefixes map[string]string
+	// Global envctl prefix
+	envctlPrefix string
+	mu           sync.RWMutex
 }
 
 // NewNameTracker creates a new name tracker
-func NewNameTracker() *NameTracker {
+func NewNameTracker(envctlPrefix string) *NameTracker {
+	if envctlPrefix == "" {
+		envctlPrefix = "x"
+	}
 	return &NameTracker{
-		toolToServers:     make(map[string][]string),
-		promptToServers:   make(map[string][]string),
-		resourceToServers: make(map[string][]string),
 		nameMapping: make(map[string]struct {
 			serverName   string
 			originalName string
 			itemType     string
 		}),
+		serverPrefixes: make(map[string]string),
+		envctlPrefix:   envctlPrefix,
 	}
 }
 
-// RebuildMappings rebuilds the name mappings based on current server capabilities
-func (nt *NameTracker) RebuildMappings(servers map[string]*ServerInfo) {
+// SetServerPrefix sets the prefix for a server
+func (nt *NameTracker) SetServerPrefix(serverName, prefix string) {
 	nt.mu.Lock()
 	defer nt.mu.Unlock()
 
-	// Clear existing mappings
-	nt.toolToServers = make(map[string][]string)
-	nt.promptToServers = make(map[string][]string)
-	nt.resourceToServers = make(map[string][]string)
-	nt.nameMapping = make(map[string]struct {
-		serverName   string
-		originalName string
-		itemType     string
-	})
-
-	// Build item mappings
-	for serverName, info := range servers {
-		if !info.IsConnected() {
-			continue
-		}
-
-		info.mu.RLock()
-		for _, tool := range info.Tools {
-			nt.toolToServers[tool.Name] = append(nt.toolToServers[tool.Name], serverName)
-		}
-		for _, prompt := range info.Prompts {
-			nt.promptToServers[prompt.Name] = append(nt.promptToServers[prompt.Name], serverName)
-		}
-		for _, resource := range info.Resources {
-			nt.resourceToServers[resource.URI] = append(nt.resourceToServers[resource.URI], serverName)
-		}
-		info.mu.RUnlock()
+	// If no prefix is configured, use the server name as prefix
+	if prefix == "" {
+		prefix = serverName
 	}
-
-	// Build exposed name mappings
-	// Tools
-	for toolName, serverList := range nt.toolToServers {
-		if len(serverList) == 1 {
-			// No conflict - use original name
-			nt.nameMapping[toolName] = struct {
-				serverName   string
-				originalName string
-				itemType     string
-			}{
-				serverName:   serverList[0],
-				originalName: toolName,
-				itemType:     "tool",
-			}
-		} else {
-			// Conflict - prefix with server name
-			for _, serverName := range serverList {
-				prefixedName := fmt.Sprintf("%s.%s", serverName, toolName)
-				nt.nameMapping[prefixedName] = struct {
-					serverName   string
-					originalName string
-					itemType     string
-				}{
-					serverName:   serverName,
-					originalName: toolName,
-					itemType:     "tool",
-				}
-			}
-		}
-	}
-
-	// Prompts
-	for promptName, serverList := range nt.promptToServers {
-		if len(serverList) == 1 {
-			// No conflict - use original name
-			nt.nameMapping[promptName] = struct {
-				serverName   string
-				originalName string
-				itemType     string
-			}{
-				serverName:   serverList[0],
-				originalName: promptName,
-				itemType:     "prompt",
-			}
-		} else {
-			// Conflict - prefix with server name
-			for _, serverName := range serverList {
-				prefixedName := fmt.Sprintf("%s.%s", serverName, promptName)
-				nt.nameMapping[prefixedName] = struct {
-					serverName   string
-					originalName string
-					itemType     string
-				}{
-					serverName:   serverName,
-					originalName: promptName,
-					itemType:     "prompt",
-				}
-			}
-		}
-	}
-
-	// Resources
-	for resourceURI, serverList := range nt.resourceToServers {
-		if len(serverList) == 1 {
-			// No conflict - use original URI
-			nt.nameMapping[resourceURI] = struct {
-				serverName   string
-				originalName string
-				itemType     string
-			}{
-				serverName:   serverList[0],
-				originalName: resourceURI,
-				itemType:     "resource",
-			}
-		} else {
-			// Conflict - prefix with server name
-			for _, serverName := range serverList {
-				prefixedURI := fmt.Sprintf("%s.%s", serverName, resourceURI)
-				nt.nameMapping[prefixedURI] = struct {
-					serverName   string
-					originalName string
-					itemType     string
-				}{
-					serverName:   serverName,
-					originalName: resourceURI,
-					itemType:     "resource",
-				}
-			}
-		}
-	}
+	nt.serverPrefixes[serverName] = prefix
 }
 
-// GetExposedToolName returns the name to expose for a tool (with or without prefix)
+// applyPrefix applies the server prefix to a name if not already present
+func (nt *NameTracker) applyPrefix(serverName, name string, isResource bool) string {
+	prefix := nt.serverPrefixes[serverName]
+	if prefix == "" {
+		prefix = serverName
+	}
+
+	// For resources (URIs), we handle prefixing differently
+	if isResource {
+		// Don't prefix URIs that already have a scheme
+		if strings.Contains(name, "://") {
+			return name
+		}
+	}
+
+	// Check if the name already starts with the prefix
+	expectedPrefix := prefix + "_"
+	if strings.HasPrefix(name, expectedPrefix) {
+		return name
+	}
+
+	// Apply the prefix
+	return prefix + "_" + name
+}
+
+// GetExposedToolName returns the fully prefixed name for a tool
 func (nt *NameTracker) GetExposedToolName(serverName, toolName string) string {
 	nt.mu.RLock()
 	defer nt.mu.RUnlock()
 
-	servers := nt.toolToServers[toolName]
-	if len(servers) <= 1 {
-		return toolName
+	// Apply server prefix
+	prefixed := nt.applyPrefix(serverName, toolName, false)
+
+	// Apply envctl prefix
+	exposedName := nt.envctlPrefix + "_" + prefixed
+
+	// Store the mapping
+	nt.mu.RUnlock()
+	nt.mu.Lock()
+	nt.nameMapping[exposedName] = struct {
+		serverName   string
+		originalName string
+		itemType     string
+	}{
+		serverName:   serverName,
+		originalName: toolName,
+		itemType:     "tool",
 	}
-	return fmt.Sprintf("%s.%s", serverName, toolName)
+	nt.mu.Unlock()
+	nt.mu.RLock()
+
+	return exposedName
 }
 
-// GetExposedPromptName returns the name to expose for a prompt (with or without prefix)
+// GetExposedPromptName returns the fully prefixed name for a prompt
 func (nt *NameTracker) GetExposedPromptName(serverName, promptName string) string {
 	nt.mu.RLock()
 	defer nt.mu.RUnlock()
 
-	servers := nt.promptToServers[promptName]
-	if len(servers) <= 1 {
-		return promptName
+	// Apply server prefix
+	prefixed := nt.applyPrefix(serverName, promptName, false)
+
+	// Apply envctl prefix
+	exposedName := nt.envctlPrefix + "_" + prefixed
+
+	// Store the mapping
+	nt.mu.RUnlock()
+	nt.mu.Lock()
+	nt.nameMapping[exposedName] = struct {
+		serverName   string
+		originalName string
+		itemType     string
+	}{
+		serverName:   serverName,
+		originalName: promptName,
+		itemType:     "prompt",
 	}
-	return fmt.Sprintf("%s.%s", serverName, promptName)
+	nt.mu.Unlock()
+	nt.mu.RLock()
+
+	return exposedName
 }
 
-// GetExposedResourceURI returns the URI to expose for a resource (with or without prefix)
+// GetExposedResourceURI returns the fully prefixed URI for a resource
 func (nt *NameTracker) GetExposedResourceURI(serverName, resourceURI string) string {
 	nt.mu.RLock()
 	defer nt.mu.RUnlock()
 
-	servers := nt.resourceToServers[resourceURI]
-	if len(servers) <= 1 {
-		return resourceURI
+	// For resources, we might want different handling
+	// For now, apply the same prefixing logic
+	prefixed := nt.applyPrefix(serverName, resourceURI, true)
+
+	// Resources might not need the envctl prefix if they're URIs
+	exposedURI := prefixed
+	if !strings.Contains(prefixed, "://") {
+		exposedURI = nt.envctlPrefix + "_" + prefixed
 	}
-	return fmt.Sprintf("%s.%s", serverName, resourceURI)
+
+	// Store the mapping
+	nt.mu.RUnlock()
+	nt.mu.Lock()
+	nt.nameMapping[exposedURI] = struct {
+		serverName   string
+		originalName string
+		itemType     string
+	}{
+		serverName:   serverName,
+		originalName: resourceURI,
+		itemType:     "resource",
+	}
+	nt.mu.Unlock()
+	nt.mu.RLock()
+
+	return exposedURI
 }
 
 // ResolveName resolves an exposed name to server and original name
@@ -209,4 +176,10 @@ func (nt *NameTracker) ResolveName(exposedName string) (serverName, originalName
 	}
 
 	return mapping.serverName, mapping.originalName, mapping.itemType, nil
+}
+
+// RebuildMappings is no longer needed since we don't track conflicts
+func (nt *NameTracker) RebuildMappings(servers map[string]*ServerInfo) {
+	// This method is kept for compatibility but does nothing
+	// since we no longer need to track conflicts
 }

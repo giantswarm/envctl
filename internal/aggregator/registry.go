@@ -23,16 +23,16 @@ type ServerRegistry struct {
 }
 
 // NewServerRegistry creates a new server registry
-func NewServerRegistry() *ServerRegistry {
+func NewServerRegistry(envctlPrefix string) *ServerRegistry {
 	return &ServerRegistry{
 		servers:     make(map[string]*ServerInfo),
 		updateChan:  make(chan struct{}, 1),
-		nameTracker: NewNameTracker(),
+		nameTracker: NewNameTracker(envctlPrefix),
 	}
 }
 
 // Register adds a new MCP server to the registry
-func (r *ServerRegistry) Register(ctx context.Context, name string, client MCPClient) error {
+func (r *ServerRegistry) Register(ctx context.Context, name string, client MCPClient, toolPrefix string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -47,10 +47,14 @@ func (r *ServerRegistry) Register(ctx context.Context, name string, client MCPCl
 
 	// Create server info
 	info := &ServerInfo{
-		Name:      name,
-		Client:    client,
-		Connected: true,
+		Name:       name,
+		Client:     client,
+		Connected:  true,
+		ToolPrefix: toolPrefix,
 	}
+
+	// Set the server prefix in the name tracker
+	r.nameTracker.SetServerPrefix(name, toolPrefix)
 
 	// Get initial capabilities
 	if err := r.refreshServerCapabilities(ctx, info); err != nil {
@@ -70,8 +74,8 @@ func (r *ServerRegistry) Register(ctx context.Context, name string, client MCPCl
 	r.servers[name] = info
 	r.notifyUpdate()
 
-	// Rebuild name mappings with the new server
-	r.nameTracker.RebuildMappings(r.servers)
+	// No longer needed - we don't track collisions anymore
+	// r.nameTracker.RebuildMappings(r.servers)
 
 	logging.Info("Aggregator", "Registered MCP server: %s", name)
 	return nil
@@ -95,8 +99,8 @@ func (r *ServerRegistry) Deregister(name string) error {
 	delete(r.servers, name)
 	r.notifyUpdate()
 
-	// Rebuild name mappings without the removed server
-	r.nameTracker.RebuildMappings(r.servers)
+	// No longer needed - we don't track collisions anymore
+	// r.nameTracker.RebuildMappings(r.servers)
 
 	logging.Info("Aggregator", "Deregistered MCP server: %s", name)
 	return nil

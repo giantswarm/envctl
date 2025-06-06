@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -49,10 +50,13 @@ func NewAggregatorServer(config AggregatorConfig) *AggregatorServer {
 	if config.Port == 0 {
 		config.Port = 8080
 	}
+	if config.EnvctlPrefix == "" {
+		config.EnvctlPrefix = "x"
+	}
 
 	return &AggregatorServer{
 		config:          config,
-		registry:        NewServerRegistry(),
+		registry:        NewServerRegistry(config.EnvctlPrefix),
 		toolManager:     newActiveItemManager(itemTypeTool),
 		promptManager:   newActiveItemManager(itemTypePrompt),
 		resourceManager: newActiveItemManager(itemTypeResource),
@@ -186,9 +190,9 @@ func (a *AggregatorServer) Stop(ctx context.Context) error {
 }
 
 // RegisterServer registers a new backend MCP server
-func (a *AggregatorServer) RegisterServer(ctx context.Context, name string, client MCPClient) error {
+func (a *AggregatorServer) RegisterServer(ctx context.Context, name string, client MCPClient, toolPrefix string) error {
 	logging.Debug("Aggregator", "RegisterServer called for %s at %s", name, time.Now().Format("15:04:05.000"))
-	return a.registry.Register(ctx, name, client)
+	return a.registry.Register(ctx, name, client, toolPrefix)
 }
 
 // DeregisterServer removes a backend MCP server
@@ -308,13 +312,19 @@ func (a *AggregatorServer) addNewItems(servers map[string]*ServerInfo) {
 	if a.workflowManager != nil {
 		workflowTools := a.workflowManager.GetWorkflows()
 		for _, tool := range workflowTools {
-			toolsToAdd = append(toolsToAdd, a.createWorkflowServerTool(tool))
+			// Apply envctl prefix to workflow tools
+			prefixedTool := tool
+			prefixedTool.Name = a.config.EnvctlPrefix + "_" + tool.Name
+			toolsToAdd = append(toolsToAdd, a.createWorkflowServerTool(prefixedTool))
 		}
 
 		// Add workflow management tools
 		managementTools := workflow.NewManagementTools(a.workflowManager.GetStorage())
 		for _, tool := range managementTools.GetManagementTools() {
-			toolsToAdd = append(toolsToAdd, a.createManagementServerTool(tool, managementTools))
+			// Apply envctl prefix to management tools
+			prefixedTool := tool
+			prefixedTool.Name = a.config.EnvctlPrefix + "_" + tool.Name
+			toolsToAdd = append(toolsToAdd, a.createManagementServerTool(prefixedTool, managementTools))
 		}
 	}
 
@@ -443,8 +453,19 @@ func (a *AggregatorServer) createWorkflowServerTool(tool mcp.Tool) server.Server
 	return server.ServerTool{
 		Tool: tool,
 		Handler: func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			// Extract workflow name from tool name (remove "workflow_" prefix)
-			workflowName := tool.Name[9:] // len("workflow_") = 9
+			// Extract workflow name from tool name
+			// Remove envctl prefix first (e.g., "x_workflow_test" -> "workflow_test")
+			nameWithoutEnvctl := tool.Name
+			envctlPrefix := a.config.EnvctlPrefix + "_"
+			if strings.HasPrefix(tool.Name, envctlPrefix) {
+				nameWithoutEnvctl = tool.Name[len(envctlPrefix):]
+			}
+
+			// Then remove "workflow_" prefix
+			workflowName := nameWithoutEnvctl
+			if strings.HasPrefix(nameWithoutEnvctl, "workflow_") {
+				workflowName = nameWithoutEnvctl[9:] // len("workflow_") = 9
+			}
 
 			// Extract arguments
 			args := make(map[string]interface{})
@@ -471,10 +492,17 @@ func (a *AggregatorServer) createManagementServerTool(tool mcp.Tool, mt *workflo
 		Tool: tool,
 		Handler: func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			// Route to appropriate handler based on tool name
+			// Remove envctl prefix to get the actual tool name
+			actualToolName := tool.Name
+			envctlPrefix := a.config.EnvctlPrefix + "_"
+			if strings.HasPrefix(tool.Name, envctlPrefix) {
+				actualToolName = tool.Name[len(envctlPrefix):]
+			}
+
 			var result *mcp.CallToolResult
 			var err error
 
-			switch tool.Name {
+			switch actualToolName {
 			case "workflow_list":
 				result, err = mt.HandleListWorkflows(ctx, req)
 			case "workflow_get":
@@ -490,7 +518,7 @@ func (a *AggregatorServer) createManagementServerTool(tool mcp.Tool, mt *workflo
 			case "workflow_spec":
 				result, err = mt.HandleGetWorkflowSpec(ctx, req)
 			default:
-				err = fmt.Errorf("unknown workflow management tool: %s", tool.Name)
+				err = fmt.Errorf("unknown workflow management tool: %s", actualToolName)
 			}
 
 			if err != nil {

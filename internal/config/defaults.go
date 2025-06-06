@@ -103,7 +103,7 @@ func GetDefaultConfigWithRoles(mcName, wcName string) EnvctlConfig {
 				Command:  []string{"node", "/home/teemow/projects/giantswarm/teleport-mcp/dist/index.js"},
 			},
 			{
-				Name:                "kubernetes",
+				Name:                "k8s",
 				Type:                MCPServerTypeLocalCommand,
 				Enabled:             true,
 				Icon:                "☸",
@@ -121,7 +121,7 @@ func GetDefaultConfigWithRoles(mcName, wcName string) EnvctlConfig {
 				RequiresClusterRole: ClusterRoleTarget, // Uses the target cluster
 			},
 			{
-				Name:                "app-platform",
+				Name:                "app",
 				Type:                MCPServerTypeLocalCommand,
 				Enabled:             true,
 				Icon:                "☸",
