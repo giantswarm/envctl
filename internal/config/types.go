@@ -1,7 +1,6 @@
 package config
 
 import (
-	"envctl/internal/kube"
 	"time"
 )
 
@@ -109,99 +108,8 @@ type AggregatorConfig struct {
 // GetDefaultConfig returns the default configuration for envctl.
 // mcName and wcName are the canonical names provided by the user.
 func GetDefaultConfig(mcName, wcName string) EnvctlConfig {
-	// Build context names
-	mcContext := ""
-	wcContext := ""
-	if mcName != "" {
-		mcContext = kube.BuildMcContext(mcName)
-	}
-	if wcName != "" && mcName != "" {
-		wcContext = kube.BuildWcContext(mcName, wcName)
-	}
-
-	// Determine which context to use for Alloy Metrics
-	alloyContext := mcContext // Default to MC
-	if wcContext != "" {
-		alloyContext = wcContext // Use WC if available
-	}
-
-	return EnvctlConfig{
-		PortForwards: []PortForwardDefinition{
-			{
-				Name:              "alloy-metrics",
-				Enabled:           true,
-				KubeContextTarget: alloyContext,
-				Namespace:         "kube-system",
-				TargetType:        "service",
-				TargetName:        "alloy-metrics",
-				LocalPort:         "12345",
-				RemotePort:        "12345",
-			},
-			{
-				Name:              "mc-prometheus",
-				Enabled:           true,
-				KubeContextTarget: mcContext,
-				Namespace:         "mimir",
-				TargetType:        "service",
-				TargetName:        "mimir-query-frontend",
-				LocalPort:         "8080",
-				RemotePort:        "8080",
-			},
-			{
-				Name:              "mc-grafana",
-				Enabled:           true,
-				KubeContextTarget: mcContext,
-				Namespace:         "monitoring",
-				TargetType:        "service",
-				TargetName:        "grafana",
-				LocalPort:         "3000",
-				RemotePort:        "3000",
-			},
-		},
-		MCPServers: []MCPServerDefinition{
-			{
-				Name:                 "kubernetes",
-				Type:                 MCPServerTypeLocalCommand,
-				Enabled:              true,
-				Icon:                 "☸",
-				Category:             "Core",
-				Command:              []string{"npx", "mcp-server-kubernetes"},
-				RequiresPortForwards: []string{},
-			},
-			{
-				Name:     "prometheus",
-				Type:     MCPServerTypeLocalCommand,
-				Enabled:  true,
-				Icon:     "🔥",
-				Category: "Monitoring",
-				Command:  []string{"uv", "--directory", "/home/teemow/projects/prometheus-mcp-server", "run", "src/prometheus_mcp_server/main.py"},
-				Env: map[string]string{
-					"PROMETHEUS_URL": "http://localhost:8080/prometheus",
-					"ORG_ID":         "giantswarm",
-				},
-				RequiresPortForwards: []string{"mc-prometheus"},
-			},
-			{
-				Name:                 "grafana",
-				Type:                 MCPServerTypeLocalCommand,
-				Enabled:              true,
-				Icon:                 "📊",
-				Category:             "Monitoring",
-				Command:              []string{"mcp-grafana"},
-				Env:                  map[string]string{"GRAFANA_URL": "http://localhost:3000"},
-				RequiresPortForwards: []string{"mc-grafana"},
-			},
-		},
-		GlobalSettings: GlobalSettings{
-			DefaultContainerRuntime: "docker",
-		},
-		Aggregator: AggregatorConfig{
-			Port:         8090,
-			Host:         "localhost",
-			Enabled:      true,
-			EnvctlPrefix: "x",
-		},
-	}
+	// Return minimal defaults - no k8s connection, no MCP servers, no port forwarding
+	return GetDefaultConfigWithRoles(mcName, wcName)
 }
 
 // WorkflowDefinition defines a sequence of MCP tool calls

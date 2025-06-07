@@ -163,19 +163,95 @@ envctl connect myinstallation mycluster
 
 ## Configuration
 
-### Default Services
+### Getting Started
 
-envctl comes with predefined services:
+By default, envctl starts with no services configured. To get started, you need to create a configuration file that defines:
+- Your Kubernetes clusters and their roles
+- Port forwards to access services
+- MCP servers for AI-assisted operations
 
-**Port Forwards:**
-- `mc-prometheus` - Prometheus from MC (port 8080)
-- `mc-grafana` - Grafana from MC (port 3000)
-- `alloy-metrics` - Alloy metrics from WC (port 12345)
+### Configuration File Location
 
-**MCP Servers:**
-- `kubernetes` - Kubernetes operations
-- `prometheus` - Prometheus queries
-- `grafana` - Grafana dashboards
+Create your configuration at one of these locations:
+- **User config**: `~/.config/envctl/config.yaml` (applies to all projects)
+- **Project config**: `./.envctl/config.yaml` (project-specific, git-ignored)
+
+### Example Configuration
+
+Here's a typical configuration for Giant Swarm clusters:
+
+```yaml
+# Define your clusters
+clusters:
+  - name: mc-myinstallation
+    context: teleport.giantswarm.io-myinstallation
+    role: observability
+    displayName: "MC: myinstallation"
+    icon: "🏢"
+  
+  - name: wc-mycluster  
+    context: teleport.giantswarm.io-myinstallation-mycluster
+    role: target
+    displayName: "WC: mycluster"
+    icon: "⚙️"
+
+# Set active clusters for each role
+activeClusters:
+  observability: mc-myinstallation
+  target: wc-mycluster
+
+# Port forwards
+portForwards:
+  - name: mc-prometheus
+    namespace: mimir
+    targetType: service
+    targetName: mimir-query-frontend
+    localPort: "8080"
+    remotePort: "8080"
+    clusterRole: observability
+    enabledByDefault: true
+    
+  - name: mc-grafana
+    namespace: monitoring
+    targetType: service
+    targetName: grafana
+    localPort: "3000"
+    remotePort: "3000"
+    clusterRole: observability
+    enabledByDefault: true
+    
+  - name: alloy-metrics
+    namespace: kube-system
+    targetType: service
+    targetName: alloy-metrics
+    localPort: "12345"
+    remotePort: "12345"
+    clusterRole: target
+    enabledByDefault: true
+
+# MCP servers (optional - requires MCP executables)
+mcpServers:
+  - name: kubernetes
+    type: localCommand
+    command: ["npx", "mcp-server-kubernetes"]
+    requiresClusterRole: target
+    enabledByDefault: true
+    
+  - name: prometheus
+    type: localCommand
+    command: ["mcp-server-prometheus"]
+    env:
+      PROMETHEUS_URL: "http://localhost:8080/prometheus"
+      ORG_ID: "giantswarm"
+    requiresPortForwards: ["mc-prometheus"]
+    enabledByDefault: true
+```
+
+### Quick Start Templates
+
+You can find example configurations in the envctl repository:
+- `.envctl/config.yaml` - Complete template with all options (commented out)
+- `.envctl/config-example-basic.yaml` - Minimal example for getting started
 
 ### Custom Configuration
 

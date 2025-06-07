@@ -10,8 +10,8 @@
 // Configuration is loaded and merged in the following order:
 //
 //  1. Default Configuration (embedded in binary)
-//     - Provides sensible defaults for all settings
-//     - Ensures envctl works out-of-the-box
+//     - Provides minimal defaults (no k8s connections, no MCP servers, no port forwarding)
+//     - Users must configure what they need via YAML files
 //
 //  2. User Configuration (~/.config/envctl/config.yaml)
 //     - User-specific settings that apply to all projects
@@ -20,42 +20,65 @@
 //  3. Project Configuration (./.envctl/config.yaml)
 //     - Project-specific settings in the current directory
 //     - Allows teams to share configuration via version control
+//     - Note: This file is git-ignored by default
 //
 // # Configuration Structure
 //
 // The configuration file uses YAML format with the following main sections:
 //
+//	clusters:
+//	  - name: "mc-example"
+//	    context: "gs-example"
+//	    role: "observability"  # or "target", "custom"
+//	    displayName: "MC: example"
+//	    icon: "🏢"
+//
+//	activeClusters:
+//	  observability: "mc-example"
+//	  target: "wc-myworkload"
+//
 //	portForwards:
 //	  - name: "mc-prometheus"
-//	    enabled: true
+//	    enabledByDefault: true
+//	    clusterRole: "observability"  # or "target", or use clusterName
 //	    namespace: "mimir"
-//	    service: "prometheus-operated"
-//	    localPort: 8080
-//	    remotePort: 9090
-//	    kubeContextTarget: "mc"  # Can be "mc", "wc", or explicit context
+//	    targetType: "service"  # or "pod", "deployment", "statefulset"
+//	    targetName: "mimir-query-frontend"
+//	    localPort: "8080"
+//	    remotePort: "8080"
 //
 //	mcpServers:
 //	  - name: "kubernetes"
-//	    enabled: true
 //	    type: "localCommand"  # or "container"
-//	    command: ["mcp-server-kubernetes"]
-//	    proxyPort: 8001
-//	    requiresK8sConnection: "mc"
-//	    requiresPortForwards: []
+//	    enabledByDefault: true
+//	    command: ["npx", "mcp-server-kubernetes"]
+//	    requiresClusterRole: "target"
 //	    env:
 //	      KEY: "value"
+//
+// # Cluster Configuration
+//
+// Clusters define available Kubernetes contexts and their roles:
+//
+//   - name: Unique identifier for the cluster
+//   - context: Kubernetes context name from kubeconfig
+//   - role: The cluster's purpose (observability, target, custom)
+//   - displayName: Human-friendly name for UI display
+//   - icon: Optional emoji/icon for UI
 //
 // # Port Forward Configuration
 //
 // Port forwards define kubectl port-forward tunnels to expose cluster services locally:
 //
 //   - name: Unique identifier for the port forward
-//   - enabled: Whether this port forward should be created
-//   - namespace: Kubernetes namespace containing the service
-//   - service: Name of the Kubernetes service to forward
+//   - enabledByDefault: Whether this port forward should be started automatically
+//   - clusterRole: Which cluster role to use (references activeClusters)
+//   - clusterName: Specific cluster name (overrides clusterRole)
+//   - namespace: Kubernetes namespace containing the target
+//   - targetType: Type of Kubernetes resource (service, pod, deployment, statefulset)
+//   - targetName: Name of the Kubernetes resource
 //   - localPort: Local port to bind to
-//   - remotePort: Remote port on the service
-//   - kubeContextTarget: Which context to use ("mc", "wc", or explicit)
+//   - remotePort: Remote port on the target
 //
 // # MCP Server Configuration
 //
@@ -65,13 +88,15 @@
 //   - type: "localCommand"
 //   - command: Array of command and arguments
 //   - env: Environment variables to set
+//   - requiresClusterRole: Which cluster role this server needs
+//   - requiresPortForwards: Array of port forward names this server depends on
 //
 // Container:
 //   - type: "container"
 //   - image: Docker image to use
-//   - ports: Port mappings (container format)
-//   - volumes: Volume mounts
-//   - env: Environment variables
+//   - containerPorts: Port mappings (host:container format)
+//   - containerVolumes: Volume mounts
+//   - containerEnv: Environment variables
 //
 // # Environment Variable Expansion
 //
@@ -82,36 +107,25 @@
 //	  HOME_DIR: "${HOME}/data"
 //	  WITH_DEFAULT: "${MISSING:-default_value}"
 //
-// # Dynamic Context Targeting
-//
-// The kubeContextTarget field supports dynamic resolution:
-//
-//   - "mc": Uses the management cluster context
-//   - "wc": Uses the workload cluster context (if available)
-//   - "dynamic": Automatically selects WC if available, otherwise MC
-//   - Explicit context name: Uses the specified context directly
-//
 // # Usage Example
 //
-//	// Load configuration for a specific cluster setup
-//	cfg, err := config.LoadConfig("myinstallation", "myworkload")
+//	// Load configuration (returns minimal defaults if no config files exist)
+//	cfg, err := config.LoadConfig("", "")
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
 //
-//	// Access port forward configurations
-//	for _, pf := range cfg.PortForwards {
-//	    if pf.Enabled {
-//	        fmt.Printf("Port forward %s: %d -> %d\n",
-//	            pf.Name, pf.LocalPort, pf.RemotePort)
-//	    }
+//	// Access cluster configurations
+//	for _, cluster := range cfg.Clusters {
+//	    fmt.Printf("Cluster %s: %s (role: %s)\n",
+//	        cluster.Name, cluster.Context, cluster.Role)
 //	}
 //
 //	// Access MCP server configurations
 //	for _, mcp := range cfg.MCPServers {
 //	    if mcp.Enabled {
-//	        fmt.Printf("MCP server %s on port %d\n",
-//	            mcp.Name, mcp.ProxyPort)
+//	        fmt.Printf("MCP server %s: %v\n",
+//	            mcp.Name, mcp.Command)
 //	    }
 //	}
 package config

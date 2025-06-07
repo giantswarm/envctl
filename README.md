@@ -227,32 +227,33 @@ MCP> exit
 
 **Examples:**
 
-1.  **Connect to a Management Cluster only:**
+> **Note**: The behavior described below assumes you have configured clusters, port forwards, and MCP servers in your config file. By default, `envctl` starts with no services configured.
+
+1.  **Connect to a Management Cluster only (with typical configuration):**
 
     ```bash
     envctl connect myinstallation
     ```
 
-    *   Launches an interactive terminal UI
-    *   Logs into `myinstallation` via `tsh kube login myinstallation`.
-    *   Sets the current Kubernetes context to `teleport.giantswarm.io-myinstallation`.
-    *   Starts port-forwarding for Prometheus (MC) on `localhost:8080`, Grafana (MC) on `localhost:3000`, and Alloy Metrics (MC) on `localhost:12345`.
-    *   Displays cluster health and connection status
-    *   Allows management of port-forwards and contexts
+    With a typical Giant Swarm configuration, this would:
+    *   Launch an interactive terminal UI
+    *   Log into `myinstallation` via `tsh kube login myinstallation`
+    *   Set the current Kubernetes context to `teleport.giantswarm.io-myinstallation`
+    *   Start any configured port forwards (e.g., Prometheus, Grafana, Alloy Metrics)
+    *   Display cluster health and connection status
+    *   Allow management of port-forwards and contexts
 
-2.  **Connect to a Management and Workload Cluster:**
+2.  **Connect to a Management and Workload Cluster (with typical configuration):**
 
     ```bash
     envctl connect myinstallation myworkloadcluster
     ```
 
-    *   Logs into `myinstallation` via `tsh kube login myinstallation`.
-    *   Logs into the *full* workload cluster name (`myinstallation-myworkloadcluster`) via `tsh`.
-    *   Sets the current Kubernetes context to the *full* workload cluster name (`teleport.giantswarm.io-myinstallation-myworkloadcluster`).
-    *   Starts port-forwarding for Prometheus using the *management cluster* context (`teleport.giantswarm.io-myinstallation`) to `localhost:8080`.
-    *   Starts port-forwarding for Grafana using the *management cluster* context (`teleport.giantswarm.io-myinstallation`) to `localhost:3000`.
-    *   Starts port-forwarding for Alloy metrics using the *workload cluster* context (`teleport.giantswarm.io-myinstallation-myworkloadcluster`) to `localhost:12345`.
-    *   Displays all services in the TUI with health status
+    With a typical Giant Swarm configuration, this would:
+    *   Log into both management and workload clusters
+    *   Set appropriate Kubernetes contexts
+    *   Start port forwards based on your configuration
+    *   Launch the TUI to manage all services
 
 ## Terminal User Interface 🖥️
 
@@ -386,7 +387,18 @@ envctl connect myinstallation <TAB>      # Shows short names of workload cluster
 
 ## Flexible Configuration via YAML ⚙️
 
-`envctl` supports a powerful YAML-based configuration system to customize its behavior, define new MCP servers, and manage port-forwarding rules. This allows you to tailor `envctl` precisely to your development needs.
+`envctl` supports a powerful YAML-based configuration system to customize its behavior, define new MCP servers, and manage port-forwarding rules. By default, `envctl` starts with minimal configuration (no k8s connections, no MCP servers, no port forwarding) - you configure exactly what you need through YAML files.
+
+### Configuration File Location
+
+`envctl` looks for configuration in the following locations (later files override earlier ones):
+1. **Built-in defaults** - Minimal defaults (empty services)
+2. **User config** - `~/.config/envctl/config.yaml` 
+3. **Project config** - `./.envctl/config.yaml` (git-ignored by default)
+
+To get started, create your configuration file in one of these locations. You can find example configurations in:
+- `.envctl/config.yaml` - Template with all available options (commented out)
+- `.envctl/config-example-basic.yaml` - Basic example with one cluster and MCP server
 
 ### New: Flexible Cluster Configuration 🚀
 
@@ -396,8 +408,6 @@ The new cluster configuration system allows you to:
 - Have different services connect to different clusters based on their needs
 - Mix and match clusters from different providers (Giant Swarm, GKE, EKS, etc.)
 - Override cluster configurations for different environments (dev vs prod)
-
-Configurations are loaded in layers (default, user-global, project-specific), with later layers overriding earlier ones. You can manage global settings, define how MCP servers are run (as local commands or containers), and specify detailed port-forwarding rules, including dynamic cluster targeting.
 
 ### Configuration Examples
 
@@ -438,23 +448,25 @@ envctl manages MCP (Model Context Protocol) servers to provide AI assistants wit
 *   **Local Commands**: Traditional executables running as local processes
 *   **Docker Containers**: For isolated, reproducible environments
 
-### Default MCP Servers
+### Example MCP Server Configurations
 
-envctl comes with pre-configured MCP servers:
+`envctl` can manage various MCP servers. Here are some commonly used configurations that you can add to your config file:
 
 *   **Kubernetes** (port 8001): Provides Kubernetes API access
-    - Default command: `mcp-server-kubernetes`
-    - Requires: MC K8s connection
+    - Example command: `npx mcp-server-kubernetes`
+    - Requires: Target cluster connection
     
 *   **Prometheus** (port 8002): Enables Prometheus queries
-    - Default command: `mcp-server-prometheus`  
+    - Example command: `mcp-server-prometheus`  
     - Requires: `mc-prometheus` port forward
     - Environment: `PROMETHEUS_URL=http://localhost:8080`
     
 *   **Grafana** (port 8003): Access to Grafana dashboards
-    - Default command: `mcp-server-grafana`
+    - Example command: `mcp-server-grafana`
     - Requires: `mc-grafana` port forward
     - Environment: `GRAFANA_URL=http://localhost:3000`
+
+See the example configuration files in `.envctl/` for complete setup examples.
 
 ### API Tools
 

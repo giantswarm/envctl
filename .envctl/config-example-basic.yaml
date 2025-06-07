@@ -1,0 +1,33 @@
+# Basic envctl configuration example
+# This shows a minimal setup with one cluster and one MCP server
+
+clusters:
+  - name: my-cluster
+    context: my-k8s-context
+    role: target
+    displayName: "My Kubernetes Cluster"
+    icon: "☸"
+
+activeClusters:
+  target: my-cluster
+
+mcpServers:
+  - name: k8s
+    type: localCommand
+    enabledByDefault: true
+    icon: "☸"
+    category: "Core"
+    command: ["npx", "mcp-server-kubernetes"]
+    requiresClusterRole: target
+
+portForwards: []
+
+globalSettings:
+  defaultContainerRuntime: docker
+
+aggregator:
+  port: 8090
+  host: localhost
+  enabled: true
+
+workflows: [] 
