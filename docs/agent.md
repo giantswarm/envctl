@@ -1,150 +1,108 @@
 # Agent Command
 
-The `envctl agent` command acts as an MCP (Model Context Protocol) client to debug and test the aggregator's SSE server. It connects to the aggregator endpoint, logs all JSON-RPC communication, and demonstrates the dynamic tool update mechanism.
+The `envctl agent` command acts as an MCP (Model Context Protocol) client to debug and test the aggregator's SSE server. It connects to the aggregator endpoint, logs all JSON-RPC communication, and demonstrates dynamic tool updates.
 
 ## Usage
 
 ```bash
 envctl agent [--endpoint <sse-endpoint>] [--timeout <duration>] [--verbose] [--no-color]
+             [--json-rpc] [--repl] [--mcp-server]
 ```
 
-## Flags
+## Modes
 
-- `--endpoint`: Override the default SSE endpoint URL (default: from config, typically `http://localhost:8090/sse`)
-- `--timeout`: How long to wait for notifications before exiting (default: 5 minutes)
-- `--verbose`: Enable verbose logging (shows keepalive messages and other debug info)
+The agent command can run in three different modes:
+
+### 1. Normal Mode (default)
+Connects to the aggregator, lists tools, and waits for notifications about tool changes.
+
+```bash
+# Basic usage
+envctl agent
+
+# With custom endpoint
+envctl agent --endpoint http://localhost:8090/sse
+
+# With verbose logging
+envctl agent --verbose --json-rpc
+```
+
+### 2. REPL Mode
+Provides an interactive interface to explore and execute tools.
+
+```bash
+# Start REPL
+envctl agent --repl
+
+# REPL with custom endpoint
+envctl agent --repl --endpoint http://localhost:8090/sse
+```
+
+### 3. MCP Server Mode
+Runs as an MCP server exposing all REPL functionality via stdio transport for AI assistant integration.
+
+```bash
+# Start MCP server
+envctl agent --mcp-server
+
+# MCP server with custom endpoint
+envctl agent --mcp-server --endpoint http://localhost:8090/sse
+```
+
+## Options
+
+- `--endpoint`: SSE endpoint URL (default: from config or http://localhost:8080/sse)
+- `--timeout`: Timeout for waiting for notifications (default: 5m)
+- `--verbose`: Enable verbose logging (show keepalive messages)
 - `--no-color`: Disable colored output
-- `--json-rpc`: Enable full JSON-RPC message logging (shows complete request/response bodies)
+- `--json-rpc`: Enable full JSON-RPC message logging
+- `--repl`: Start interactive REPL mode
+- `--mcp-server`: Run as MCP server (stdio transport)
 
-## Default Behavior
+Note: The `--repl` and `--mcp-server` flags are mutually exclusive.
 
-1. Connects to the MCP aggregator using the endpoint from your envctl configuration
-2. Initializes an MCP session as a client
-3. Lists all available tools
-4. Waits for `tools/list_changed` notifications
-5. When tools change, lists them again and shows the differences
+## Examples
 
-## Example Output
+### Debugging Tool Changes
 
-### Default Mode (Simple)
-
-```
-[2024-01-10 15:30:01] Connecting to MCP aggregator at http://localhost:8090/sse...
-[2024-01-10 15:30:01] Initializing MCP session...
-[2024-01-10 15:30:01] Session initialized successfully (protocol: 2025-03-26)
-[2024-01-10 15:30:01] Listing available tools...
-[2024-01-10 15:30:01] Found 45 tools
-[2024-01-10 15:30:01] Waiting for notifications (press Ctrl+C to exit)...
-
-[2024-01-10 15:30:15] Tools list changed! Fetching updated list...
-[2024-01-10 15:30:15] Listing available tools...
-[2024-01-10 15:30:15] Found 46 tools
-[2024-01-10 15:30:15] Tool changes detected:
-  ✓ Unchanged: add_activity_to_incident
-  ✓ Unchanged: cleanup
-  ✓ Unchanged: create_incident
-  ... (43 more unchanged)
-  + Added: prometheus.query
+```bash
+# Watch for tool changes with verbose logging
+envctl agent --verbose --json-rpc --timeout 10m
 ```
 
-### JSON-RPC Mode (with --json-rpc flag)
+### Interactive Tool Exploration
 
+```bash
+# Start REPL to explore tools
+envctl agent --repl
+
+# In REPL:
+MCP> list tools
+MCP> describe tool x:kubernetes:get_pods
+MCP> call x:kubernetes:get_pods {"namespace": "default"}
 ```
-[2024-01-10 15:30:01] Connecting to MCP aggregator at http://localhost:8090/sse...
-[2024-01-10 15:30:01] → REQUEST (initialize):
+
+### AI Assistant Integration
+
+Configure in your AI assistant's MCP settings:
+
+```json
 {
-  "jsonrpc": "2.0",
-  "method": "initialize",
-  "params": {
-    "protocolVersion": "2024-11-05",
-    "clientInfo": {
-      "name": "envctl-agent",
-      "version": "1.0.0"
-    },
-    "capabilities": {}
-  },
-  "id": 1
-}
-
-[2024-01-10 15:30:01] ← RESPONSE (initialize):
-{
-  "jsonrpc": "2.0",
-  "result": {
-    "protocolVersion": "2025-03-26",
-    "serverInfo": {
-      "name": "envctl-aggregator",
-      "version": "1.0.0"
-    },
-    "capabilities": {
-      "tools": {
-        "listChanged": true
-      }
+  "mcpServers": {
+    "envctl": {
+      "command": "/path/to/envctl",
+      "args": ["agent", "--mcp-server"]
     }
-  },
-  "id": 1
+  }
 }
-
-[2024-01-10 15:30:01] → REQUEST (tools/list):
-{
-  "jsonrpc": "2.0",
-  "method": "tools/list",
-  "params": {},
-  "id": 2
-}
-
-[2024-01-10 15:30:01] ← RESPONSE (tools/list):
-{
-  "jsonrpc": "2.0",
-  "result": {
-    "tools": [
-      {
-        "name": "add_activity_to_incident",
-        "description": "Add a note to an incident...",
-        "inputSchema": { ... }
-      },
-      ... (complete tool definitions)
-    ]
-  },
-  "id": 2
-}
-
-[2024-01-10 15:30:01] Waiting for notifications (press Ctrl+C to exit)...
 ```
-
-## Color Coding
-
-When colors are enabled (default), the output uses the following color scheme:
-
-- **Blue (→)**: Outgoing requests
-- **Green (←)**: Incoming responses
-- **Yellow (←)**: Incoming notifications
-- **Red**: Errors and removed tools
-- **Gray**: Debug messages (in verbose mode)
-
-## Use Cases
-
-1. **Testing Dynamic Tool Updates**: Verify that the aggregator properly notifies clients when MCP servers register or deregister
-2. **Debugging Aggregator Issues**: See the exact JSON-RPC messages being exchanged
-3. **Monitoring Tool Availability**: Track which tools are available at any given time
-4. **Integration Testing**: Ensure your MCP server implementations work correctly with the aggregator
-
-## Tips
-
-- Use `--json-rpc` to see full JSON-RPC messages for debugging protocol issues
-- Use `--verbose` to see keepalive messages and other protocol-level details
-- Use `--no-color` when piping output to files or other tools
-- The agent will exit after the timeout period or when you press Ctrl+C
-- The default endpoint comes from your envctl configuration file (`~/.envctl.yaml`)
-- Combine `--json-rpc` and `--verbose` for maximum debugging information
 
 ## Configuration
 
-The agent command respects the aggregator configuration in your `~/.envctl.yaml` file:
+By default, the agent connects to the aggregator endpoint configured in your envctl configuration file. The endpoint is constructed as:
 
-```yaml
-aggregator:
-  port: 8090
-  host: localhost
+```
+http://<aggregator.host>:<aggregator.port>/sse
 ```
 
-You can override this with the `--endpoint` flag if needed. 
+You can override this with the `--endpoint` flag. 

@@ -149,7 +149,16 @@ envctl agent
 
 # Interactive REPL mode for exploring MCP capabilities
 envctl agent --repl
+
+# Run as MCP server for AI assistant integration
+envctl agent --mcp-server
 ```
+
+The agent command supports three modes:
+
+1. **Normal Mode** (default): Connects to the aggregator, lists tools, and waits for notifications
+2. **REPL Mode** (`--repl`): Provides an interactive interface to explore and execute tools
+3. **MCP Server Mode** (`--mcp-server`): Runs as an MCP server exposing all REPL functionality via stdio
 
 **REPL Mode Features:**
 

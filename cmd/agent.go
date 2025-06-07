@@ -14,12 +14,13 @@ import (
 )
 
 var (
-	agentEndpoint string
-	agentTimeout  time.Duration
-	agentVerbose  bool
-	agentNoColor  bool
-	agentJSONRPC  bool
-	agentREPL     bool
+	agentEndpoint  string
+	agentTimeout   time.Duration
+	agentVerbose   bool
+	agentNoColor   bool
+	agentJSONRPC   bool
+	agentREPL      bool
+	agentMCPServer bool
 )
 
 // agentCmd represents the agent command
@@ -33,9 +34,10 @@ This is useful for debugging the aggregator's behavior, verifying that
 tools are properly aggregated, and ensuring that notifications work correctly
 when tools are added or removed.
 
-The agent can run in two modes:
+The agent can run in three modes:
 1. Normal mode (default): Connects, lists tools, and waits for notifications
 2. REPL mode (--repl): Provides an interactive interface to explore and execute tools
+3. MCP Server mode (--mcp-server): Runs an MCP server that exposes REPL functionality via stdio
 
 In REPL mode, you can:
 - List available tools, resources, and prompts
@@ -44,6 +46,12 @@ In REPL mode, you can:
 - View resources and retrieve their contents
 - Execute prompts with arguments
 - Toggle notification display
+
+In MCP Server mode:
+- The agent acts as an MCP server using stdio transport
+- It exposes all REPL functionality as MCP tools
+- It's designed for integration with AI assistants like Claude or Cursor
+- Configure it in your AI assistant's MCP settings
 
 By default, it connects to the aggregator endpoint configured in your
 envctl configuration file. You can override this with the --endpoint flag.`,
@@ -60,6 +68,10 @@ func init() {
 	agentCmd.Flags().BoolVar(&agentNoColor, "no-color", false, "Disable colored output")
 	agentCmd.Flags().BoolVar(&agentJSONRPC, "json-rpc", false, "Enable full JSON-RPC message logging")
 	agentCmd.Flags().BoolVar(&agentREPL, "repl", false, "Start interactive REPL mode")
+	agentCmd.Flags().BoolVar(&agentMCPServer, "mcp-server", false, "Run as MCP server (stdio transport)")
+
+	// Mark flags as mutually exclusive
+	agentCmd.MarkFlagsMutuallyExclusive("repl", "mcp-server")
 }
 
 func runAgent(cmd *cobra.Command, args []string) error {
@@ -72,7 +84,9 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-sigChan
-		fmt.Println("\nReceived interrupt signal, shutting down gracefully...")
+		if !agentMCPServer {
+			fmt.Println("\nReceived interrupt signal, shutting down gracefully...")
+		}
 		cancel()
 	}()
 
@@ -83,8 +97,10 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		cfg, err := config.LoadConfig("", "")
 		if err != nil {
 			// Use default if config cannot be loaded
-			endpoint = "http://localhost:8090/sse"
-			fmt.Printf("Warning: Could not load config (%v), using default endpoint: %s\n", err, endpoint)
+			endpoint = "http://localhost:8080/sse"
+			if !agentMCPServer {
+				fmt.Printf("Warning: Could not load config (%v), using default endpoint: %s\n", err, endpoint)
+			}
 		} else {
 			// Build endpoint from config
 			host := cfg.Aggregator.Host
@@ -93,7 +109,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 			}
 			port := cfg.Aggregator.Port
 			if port == 0 {
-				port = 8090
+				port = 8080
 			}
 			endpoint = fmt.Sprintf("http://%s:%d/sse", host, port)
 		}
@@ -101,6 +117,22 @@ func runAgent(cmd *cobra.Command, args []string) error {
 
 	// Create logger
 	logger := agent.NewLogger(agentVerbose, !agentNoColor, agentJSONRPC)
+
+	// Run in MCP Server mode if requested
+	if agentMCPServer {
+		server, err := agent.NewMCPServer(endpoint, logger, false)
+		if err != nil {
+			return fmt.Errorf("failed to create MCP server: %w", err)
+		}
+
+		logger.Info("Starting envctl agent MCP server (stdio transport)...")
+		logger.Info("Connecting to aggregator at: %s", endpoint)
+
+		if err := server.Start(ctx); err != nil {
+			return fmt.Errorf("MCP server error: %w", err)
+		}
+		return nil
+	}
 
 	// Create and run agent client
 	client := agent.NewClient(endpoint, logger)
