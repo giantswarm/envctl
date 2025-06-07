@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"envctl/internal/api/tools"
 	"envctl/internal/workflow"
 	"envctl/pkg/logging"
 
@@ -40,6 +41,9 @@ type AggregatorServer struct {
 
 	// Workflow manager
 	workflowManager *workflow.WorkflowManager
+
+	// API tools
+	apiTools *tools.APITools
 }
 
 // NewAggregatorServer creates a new aggregator server
@@ -107,6 +111,10 @@ func (a *AggregatorServer) Start(ctx context.Context) error {
 			logging.Info("Aggregator", "Initialized workflow manager")
 		}
 	}
+
+	// Initialize API tools
+	a.apiTools = tools.NewAPITools()
+	logging.Info("Aggregator", "Initialized API tools")
 
 	// Start registry update monitor
 	a.wg.Add(1)
@@ -364,6 +372,20 @@ func (a *AggregatorServer) addNewItems(servers map[string]*ServerInfo) {
 		}
 	}
 
+	// Add API tools
+	if a.apiTools != nil {
+		for _, tool := range a.apiTools.GetAPITools() {
+			// Apply envctl prefix to API tools
+			prefixedTool := tool
+			prefixedTool.Name = a.config.EnvctlPrefix + "_" + tool.Name
+
+			// Mark API tool as active to prevent it from being removed
+			a.toolManager.setActive(prefixedTool.Name, true)
+
+			toolsToAdd = append(toolsToAdd, a.createAPIServerTool(prefixedTool, a.apiTools))
+		}
+	}
+
 	// Add all items in batches
 	if len(toolsToAdd) > 0 {
 		logging.Debug("Aggregator", "Adding %d tools in batch", len(toolsToAdd))
@@ -555,6 +577,73 @@ func (a *AggregatorServer) createManagementServerTool(tool mcp.Tool, mt *workflo
 				result, err = mt.HandleGetWorkflowSpec(ctx, req)
 			default:
 				err = fmt.Errorf("unknown workflow management tool: %s", actualToolName)
+			}
+
+			if err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("Tool execution failed: %v", err)), nil
+			}
+
+			return result, nil
+		},
+	}
+}
+
+// createAPIServerTool creates a server tool handler for API tools
+func (a *AggregatorServer) createAPIServerTool(tool mcp.Tool, at *tools.APITools) server.ServerTool {
+	return server.ServerTool{
+		Tool: tool,
+		Handler: func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			// Route to appropriate handler based on tool name
+			// Remove envctl prefix to get the actual tool name
+			actualToolName := tool.Name
+			envctlPrefix := a.config.EnvctlPrefix + "_"
+			if strings.HasPrefix(tool.Name, envctlPrefix) {
+				actualToolName = tool.Name[len(envctlPrefix):]
+			}
+
+			var result *mcp.CallToolResult
+			var err error
+
+			switch actualToolName {
+			// Service Management Tools
+			case "service_list":
+				result, err = at.HandleServiceList(ctx, req)
+			case "service_start":
+				result, err = at.HandleServiceStart(ctx, req)
+			case "service_stop":
+				result, err = at.HandleServiceStop(ctx, req)
+			case "service_restart":
+				result, err = at.HandleServiceRestart(ctx, req)
+			case "service_status":
+				result, err = at.HandleServiceStatus(ctx, req)
+			// Cluster Management Tools
+			case "cluster_list":
+				result, err = at.HandleClusterList(ctx, req)
+			case "cluster_switch":
+				result, err = at.HandleClusterSwitch(ctx, req)
+			case "cluster_active":
+				result, err = at.HandleClusterActive(ctx, req)
+			// MCP Server Tools
+			case "mcp_server_list":
+				result, err = at.HandleMCPServerList(ctx, req)
+			case "mcp_server_info":
+				result, err = at.HandleMCPServerInfo(ctx, req)
+			case "mcp_server_tools":
+				result, err = at.HandleMCPServerTools(ctx, req)
+			// K8s Connection Tools
+			case "k8s_connection_list":
+				result, err = at.HandleK8sConnectionList(ctx, req)
+			case "k8s_connection_info":
+				result, err = at.HandleK8sConnectionInfo(ctx, req)
+			case "k8s_connection_by_context":
+				result, err = at.HandleK8sConnectionByContext(ctx, req)
+			// Port Forward Tools
+			case "portforward_list":
+				result, err = at.HandlePortForwardList(ctx, req)
+			case "portforward_info":
+				result, err = at.HandlePortForwardInfo(ctx, req)
+			default:
+				err = fmt.Errorf("unknown API tool: %s", actualToolName)
 			}
 
 			if err != nil {

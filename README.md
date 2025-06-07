@@ -23,10 +23,12 @@ It automates the process of logging into clusters via Teleport (`tsh`) and setti
 *   **Flexible Configuration:** Layer-based configuration system (default → user → project).
 *   **MCP Server Support:** Run Model Context Protocol servers as local commands or Docker containers.
 *   **MCP Tool Workflows:** Define reusable sequences of MCP tool calls as higher-level operations.
+*   **API Tools:** Programmatic control of envctl through MCP tools for service management, cluster switching, and monitoring.
 
 ## What's New 🎉
 
 ### Recent Improvements
+- **API Tools for MCP:** New MCP tools expose envctl's API, allowing programmatic control of services, clusters, and connections through AI assistants
 - **Flexible Cluster Configuration:** New cluster role system allows defining multiple clusters with roles (observability, target, custom) and dynamically switching between them
 - **Service-Specific Cluster Targeting:** Services can now depend on specific clusters or cluster roles, enabling complex multi-cluster setups
 - **Unified Service Architecture:** All components (K8s connections, port forwards, MCP servers) are now managed as services with consistent lifecycle management
@@ -444,6 +446,49 @@ envctl comes with pre-configured MCP servers:
     - Default command: `mcp-server-grafana`
     - Requires: `mc-grafana` port forward
     - Environment: `GRAFANA_URL=http://localhost:3000`
+
+### API Tools
+
+envctl exposes its own API functionality through MCP tools, allowing AI assistants and other MCP clients to programmatically control envctl services. These tools are automatically available through the MCP aggregator server:
+
+**Service Management Tools** (prefix: `x_service_*`):
+- `x_service_list` - List all services with their current status
+- `x_service_start` - Start a specific service
+- `x_service_stop` - Stop a specific service
+- `x_service_restart` - Restart a specific service
+- `x_service_status` - Get detailed status of a service
+
+**Cluster Management Tools** (prefix: `x_cluster_*`):
+- `x_cluster_list` - List available clusters by role (talos, management, workload, observability)
+- `x_cluster_switch` - Switch active cluster for a role
+- `x_cluster_active` - Get currently active cluster for a role
+
+**MCP Server Tools** (prefix: `x_mcp_server_*`):
+- `x_mcp_server_list` - List all MCP servers
+- `x_mcp_server_info` - Get detailed information about an MCP server
+- `x_mcp_server_tools` - List tools exposed by an MCP server
+
+**K8s Connection Tools** (prefix: `x_k8s_connection_*`):
+- `x_k8s_connection_list` - List all Kubernetes connections
+- `x_k8s_connection_info` - Get information about a specific connection
+- `x_k8s_connection_by_context` - Find connection by context name
+
+**Port Forward Tools** (prefix: `x_portforward_*`):
+- `x_portforward_list` - List all port forwards
+- `x_portforward_info` - Get information about a specific port forward
+
+These API tools enable powerful automation scenarios, such as:
+- Automatically restarting services when they fail
+- Switching clusters based on workload requirements
+- Monitoring service health programmatically
+- Building custom workflows that orchestrate envctl operations
+
+Example usage in the REPL:
+```
+MCP> call x_service_list {}
+MCP> call x_cluster_switch {"role": "workload", "cluster_name": "mycluster-prod"}
+MCP> call x_service_restart {"label": "mc-prometheus"}
+```
 
 ### IDE Configuration
 
