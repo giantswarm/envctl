@@ -6,8 +6,6 @@ import (
 	"envctl/pkg/logging"
 	"fmt"
 	"sync"
-
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // This file contains aggregator manager logic that coordinates between
@@ -242,117 +240,58 @@ func (am *AggregatorManager) registerSingleServer(ctx context.Context, serverNam
 		return fmt.Errorf("service %s not found", serverName)
 	}
 
-	// Get MCP-specific handler for this service
-	mcpHandler, ok := api.GetMCPService(serverName)
-	if !ok {
-		return fmt.Errorf("no MCP handler registered for %s", serverName)
-	}
-
-	// Get the MCP client from the service
-	// The service should implement a method to get the client
-	type mcpClientProvider interface {
-		GetMCPClient() interface{}
-	}
-
-	// Try to get the client through service data
+	// Get service data to extract tool prefix
 	serviceData := service.GetServiceData()
 	if serviceData == nil {
 		return fmt.Errorf("no service data available for %s", serverName)
 	}
 
-	// Get the tool prefix from handler
+	// Get the tool prefix from service data
 	toolPrefix := ""
-	tools := mcpHandler.GetTools()
-	if len(tools) > 0 {
-		// Extract tool prefix from service data if available
-		if prefix, ok := serviceData["toolPrefix"].(string); ok {
-			toolPrefix = prefix
+	if prefix, ok := serviceData["toolPrefix"].(string); ok {
+		toolPrefix = prefix
+	}
+
+	// Get the actual MCP client from the service
+	// The service should provide a GetMCPClient method
+	var mcpClient MCPClient
+
+	// Check if we can get the client directly from service data
+	if clientInterface, ok := serviceData["client"]; ok && clientInterface != nil {
+		if client, ok := clientInterface.(MCPClient); ok {
+			mcpClient = client
 		}
 	}
 
-	// For the actual MCP client, we need to get it differently
-	// The MCP handler should provide the client
-	// For now, we'll create a wrapper that uses the handler
-	clientWrapper := &mcpClientWrapper{
-		handler: mcpHandler,
-		label:   serverName,
+	// If we didn't get the client from service data, try to get it through type assertion
+	if mcpClient == nil {
+		// Try to access the service as a type that has GetMCPClient method
+		type mcpClientProvider interface {
+			GetMCPClient() interface{}
+		}
+
+		if provider, ok := service.(mcpClientProvider); ok {
+			if clientInterface := provider.GetMCPClient(); clientInterface != nil {
+				if client, ok := clientInterface.(MCPClient); ok {
+					mcpClient = client
+				} else {
+					return fmt.Errorf("MCP client for %s is not of type MCPClient", serverName)
+				}
+			}
+		}
 	}
 
-	// Register with the aggregator
-	if err := am.aggregatorServer.RegisterServer(ctx, serverName, clientWrapper, toolPrefix); err != nil {
+	// If we still don't have a client, we can't proceed
+	if mcpClient == nil {
+		return fmt.Errorf("no MCP client available for %s", serverName)
+	}
+
+	// Register with the aggregator using the actual client
+	if err := am.aggregatorServer.RegisterServer(ctx, serverName, mcpClient, toolPrefix); err != nil {
 		return fmt.Errorf("failed to register server: %w", err)
 	}
 
 	logging.Info("Aggregator-Manager", "Successfully registered MCP server %s with prefix %s", serverName, toolPrefix)
-	return nil
-}
-
-// mcpClientWrapper wraps an MCP handler to implement MCPClient interface
-type mcpClientWrapper struct {
-	handler api.MCPServiceHandler
-	label   string
-}
-
-func (w *mcpClientWrapper) Initialize(ctx context.Context) error {
-	// Already initialized through the service
-	return nil
-}
-
-func (w *mcpClientWrapper) Close() error {
-	// Service manages its own lifecycle
-	return nil
-}
-
-func (w *mcpClientWrapper) ListTools(ctx context.Context) ([]mcp.Tool, error) {
-	tools := w.handler.GetTools()
-	// Convert api.MCPTool to mcp.Tool
-	result := make([]mcp.Tool, len(tools))
-	for i, tool := range tools {
-		result[i] = mcp.Tool{
-			Name:        tool.Name,
-			Description: tool.Description,
-		}
-	}
-	return result, nil
-}
-
-func (w *mcpClientWrapper) CallTool(ctx context.Context, name string, args map[string]interface{}) (*mcp.CallToolResult, error) {
-	// This would need to be implemented by extending the handler interface
-	return nil, fmt.Errorf("CallTool not implemented")
-}
-
-func (w *mcpClientWrapper) ListResources(ctx context.Context) ([]mcp.Resource, error) {
-	resources := w.handler.GetResources()
-	// Convert api.MCPResource to mcp.Resource
-	result := make([]mcp.Resource, len(resources))
-	for i, res := range resources {
-		result[i] = mcp.Resource{
-			URI:         res.URI,
-			Name:        res.Name,
-			Description: res.Description,
-			MIMEType:    res.MimeType,
-		}
-	}
-	return result, nil
-}
-
-func (w *mcpClientWrapper) ReadResource(ctx context.Context, uri string) (*mcp.ReadResourceResult, error) {
-	// This would need to be implemented by extending the handler interface
-	return nil, fmt.Errorf("ReadResource not implemented")
-}
-
-func (w *mcpClientWrapper) ListPrompts(ctx context.Context) ([]mcp.Prompt, error) {
-	// This would need to be implemented by extending the handler interface
-	return nil, fmt.Errorf("ListPrompts not implemented")
-}
-
-func (w *mcpClientWrapper) GetPrompt(ctx context.Context, name string, args map[string]interface{}) (*mcp.GetPromptResult, error) {
-	// This would need to be implemented by extending the handler interface
-	return nil, fmt.Errorf("GetPrompt not implemented")
-}
-
-func (w *mcpClientWrapper) Ping(ctx context.Context) error {
-	// The service is running if we have a handler
 	return nil
 }
 

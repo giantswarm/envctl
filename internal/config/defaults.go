@@ -136,7 +136,7 @@ func GetDefaultConfigWithRoles(mcName, wcName string) EnvctlConfig {
 				Icon:                "☸",
 				Category:            "Core",
 				Command:             []string{"flux-operator-mcp", "serve"},
-				Env:                 map[string]string{"KUBECONFIG": "~/.kube/config"},
+				Env:                 map[string]string{"KUBECONFIG": "/home/teemow/.kube/config"},
 				RequiresClusterRole: ClusterRoleTarget, // Uses the target cluster
 			},
 			{

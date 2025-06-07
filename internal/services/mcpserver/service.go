@@ -267,6 +267,10 @@ func (s *MCPServerService) GetServiceData() map[string]interface{} {
 	// We could potentially add a "running" status instead
 	if managedServer != nil {
 		data["running"] = true
+		// Include the client if available
+		if managedServer.Client != nil {
+			data["client"] = managedServer.Client
+		}
 	}
 
 	if containerID != "" {
