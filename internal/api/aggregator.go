@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"envctl/internal/services"
 	"envctl/pkg/logging"
 	"fmt"
 	"strings"
@@ -61,20 +60,23 @@ type AggregatorAPI interface {
 
 // aggregatorAPI implements AggregatorAPI
 type aggregatorAPI struct {
-	registry services.ServiceRegistry
+	// No fields - uses handlers from registry
 }
 
 // NewAggregatorAPI creates a new aggregator API
-func NewAggregatorAPI(registry services.ServiceRegistry) AggregatorAPI {
-	return &aggregatorAPI{
-		registry: registry,
-	}
+func NewAggregatorAPI() AggregatorAPI {
+	return &aggregatorAPI{}
 }
 
 // GetAggregatorInfo returns comprehensive aggregator statistics
 func (api *aggregatorAPI) GetAggregatorInfo(ctx context.Context) (*AggregatorInfo, error) {
+	registry := GetServiceRegistry()
+	if registry == nil {
+		return nil, fmt.Errorf("service registry not registered")
+	}
+
 	// Look for the aggregator service
-	aggregatorServices := api.registry.GetByType(services.ServiceType("Aggregator"))
+	aggregatorServices := registry.GetByType(TypeAggregator)
 	if len(aggregatorServices) == 0 {
 		return nil, fmt.Errorf("no MCP aggregator found")
 	}
@@ -87,9 +89,7 @@ func (api *aggregatorAPI) GetAggregatorInfo(ctx context.Context) (*AggregatorInf
 	}
 
 	// Get service-specific data if available
-	if provider, ok := aggregator.(services.ServiceDataProvider); ok {
-		data := provider.GetServiceData()
-
+	if data := aggregator.GetServiceData(); data != nil {
 		// Extract all the statistics from service data
 		if endpoint, ok := data["endpoint"].(string); ok {
 			info.Endpoint = endpoint
@@ -132,21 +132,25 @@ func (api *aggregatorAPI) GetAggregatorInfo(ctx context.Context) (*AggregatorInf
 
 // GetAllTools returns tools from all running MCP servers via the aggregator
 func (api *aggregatorAPI) GetAllTools(ctx context.Context) ([]MCPTool, error) {
+	registry := GetServiceRegistry()
+	if registry == nil {
+		return nil, fmt.Errorf("service registry not registered")
+	}
+
 	// Look for the aggregator service
-	aggregatorServices := api.registry.GetByType(services.ServiceType("Aggregator"))
+	aggregatorServices := registry.GetByType(TypeAggregator)
 	if len(aggregatorServices) == 0 {
 		return nil, fmt.Errorf("no MCP aggregator found")
 	}
 
 	aggregator := aggregatorServices[0]
-	if aggregator.GetState() != services.StateRunning {
+	if aggregator.GetState() != StateRunning {
 		return nil, fmt.Errorf("MCP aggregator is not running")
 	}
 
 	// Get the aggregator port from service data
 	var port int
-	if provider, ok := aggregator.(services.ServiceDataProvider); ok {
-		data := provider.GetServiceData()
+	if data := aggregator.GetServiceData(); data != nil {
 		if p, ok := data["port"].(int); ok {
 			port = p
 		}
@@ -207,8 +211,13 @@ func (api *aggregatorAPI) GetAllTools(ctx context.Context) ([]MCPTool, error) {
 
 // GetAllToolsWithStatus returns tools with their blocked status
 func (api *aggregatorAPI) GetAllToolsWithStatus(ctx context.Context) ([]ToolWithStatus, error) {
+	registry := GetServiceRegistry()
+	if registry == nil {
+		return nil, fmt.Errorf("service registry not registered")
+	}
+
 	// Look for the aggregator service
-	aggregatorServices := api.registry.GetByType(services.ServiceType("Aggregator"))
+	aggregatorServices := registry.GetByType(TypeAggregator)
 	if len(aggregatorServices) == 0 {
 		return nil, fmt.Errorf("no MCP aggregator found")
 	}
@@ -216,9 +225,7 @@ func (api *aggregatorAPI) GetAllToolsWithStatus(ctx context.Context) ([]ToolWith
 	aggregator := aggregatorServices[0]
 
 	// Get service-specific data if available
-	if provider, ok := aggregator.(services.ServiceDataProvider); ok {
-		data := provider.GetServiceData()
-
+	if data := aggregator.GetServiceData(); data != nil {
 		// Extract tools with status
 		// Note: For now we'll skip trying to extract from service data
 		// due to type conversion complexity across package boundaries
@@ -271,21 +278,25 @@ func (api *aggregatorAPI) GetAllToolsWithStatus(ctx context.Context) ([]ToolWith
 
 // GetAllResources returns resources from all connected MCP servers
 func (api *aggregatorAPI) GetAllResources(ctx context.Context) ([]MCPResource, error) {
+	registry := GetServiceRegistry()
+	if registry == nil {
+		return nil, fmt.Errorf("service registry not registered")
+	}
+
 	// Look for the aggregator service
-	aggregatorServices := api.registry.GetByType(services.ServiceType("Aggregator"))
+	aggregatorServices := registry.GetByType(TypeAggregator)
 	if len(aggregatorServices) == 0 {
 		return nil, fmt.Errorf("no MCP aggregator found")
 	}
 
 	aggregator := aggregatorServices[0]
-	if aggregator.GetState() != services.StateRunning {
+	if aggregator.GetState() != StateRunning {
 		return nil, fmt.Errorf("MCP aggregator is not running")
 	}
 
 	// Get the aggregator port from service data
 	var port int
-	if provider, ok := aggregator.(services.ServiceDataProvider); ok {
-		data := provider.GetServiceData()
+	if data := aggregator.GetServiceData(); data != nil {
 		if p, ok := data["port"].(int); ok {
 			port = p
 		}
@@ -351,21 +362,25 @@ func (api *aggregatorAPI) GetAllResources(ctx context.Context) ([]MCPResource, e
 
 // GetAllPrompts returns prompts from all connected MCP servers
 func (api *aggregatorAPI) GetAllPrompts(ctx context.Context) ([]MCPPrompt, error) {
+	registry := GetServiceRegistry()
+	if registry == nil {
+		return nil, fmt.Errorf("service registry not registered")
+	}
+
 	// Look for the aggregator service
-	aggregatorServices := api.registry.GetByType(services.ServiceType("Aggregator"))
+	aggregatorServices := registry.GetByType(TypeAggregator)
 	if len(aggregatorServices) == 0 {
 		return nil, fmt.Errorf("no MCP aggregator found")
 	}
 
 	aggregator := aggregatorServices[0]
-	if aggregator.GetState() != services.StateRunning {
+	if aggregator.GetState() != StateRunning {
 		return nil, fmt.Errorf("MCP aggregator is not running")
 	}
 
 	// Get the aggregator port from service data
 	var port int
-	if provider, ok := aggregator.(services.ServiceDataProvider); ok {
-		data := provider.GetServiceData()
+	if data := aggregator.GetServiceData(); data != nil {
 		if p, ok := data["port"].(int); ok {
 			port = p
 		}

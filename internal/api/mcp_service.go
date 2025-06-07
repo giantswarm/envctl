@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"envctl/internal/services"
 	"fmt"
 	"time"
 
@@ -34,24 +33,27 @@ type MCPServiceAPI interface {
 
 // mcpServiceAPI implements MCPServiceAPI
 type mcpServiceAPI struct {
-	registry services.ServiceRegistry
+	// No fields - uses handlers from registry
 }
 
 // NewMCPServiceAPI creates a new MCP service API
-func NewMCPServiceAPI(registry services.ServiceRegistry) MCPServiceAPI {
-	return &mcpServiceAPI{
-		registry: registry,
-	}
+func NewMCPServiceAPI() MCPServiceAPI {
+	return &mcpServiceAPI{}
 }
 
 // GetServerInfo returns information about a specific MCP server
 func (api *mcpServiceAPI) GetServerInfo(ctx context.Context, label string) (*MCPServerInfo, error) {
-	service, exists := api.registry.Get(label)
+	registry := GetServiceRegistry()
+	if registry == nil {
+		return nil, fmt.Errorf("service registry not registered")
+	}
+
+	service, exists := registry.Get(label)
 	if !exists {
 		return nil, fmt.Errorf("MCP server %s not found", label)
 	}
 
-	if service.GetType() != services.TypeMCPServer {
+	if service.GetType() != TypeMCPServer {
 		return nil, fmt.Errorf("service %s is not an MCP server", label)
 	}
 
@@ -67,9 +69,7 @@ func (api *mcpServiceAPI) GetServerInfo(ctx context.Context, label string) (*MCP
 	}
 
 	// Get service-specific data if available
-	if provider, ok := service.(services.ServiceDataProvider); ok {
-		data := provider.GetServiceData()
-
+	if data := service.GetServiceData(); data != nil {
 		if name, ok := data["name"].(string); ok {
 			info.Name = name
 		}
@@ -86,7 +86,12 @@ func (api *mcpServiceAPI) GetServerInfo(ctx context.Context, label string) (*MCP
 
 // ListServers returns information about all MCP servers
 func (api *mcpServiceAPI) ListServers(ctx context.Context) ([]*MCPServerInfo, error) {
-	services := api.registry.GetByType(services.TypeMCPServer)
+	registry := GetServiceRegistry()
+	if registry == nil {
+		return nil, fmt.Errorf("service registry not registered")
+	}
+
+	services := registry.GetByType(TypeMCPServer)
 
 	servers := make([]*MCPServerInfo, 0, len(services))
 	for _, service := range services {
@@ -107,41 +112,45 @@ func (api *mcpServiceAPI) GetTools(ctx context.Context, serverName string) ([]MC
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
+	registry := GetServiceRegistry()
+	if registry == nil {
+		return nil, fmt.Errorf("service registry not registered")
+	}
+
 	// Get the MCP server service
-	service, exists := api.registry.Get(serverName)
+	service, exists := registry.Get(serverName)
 	if !exists {
 		return nil, fmt.Errorf("MCP server %s not found", serverName)
 	}
 
-	if service.GetType() != services.TypeMCPServer {
+	if service.GetType() != TypeMCPServer {
 		return nil, fmt.Errorf("service %s is not an MCP server", serverName)
 	}
 
-	if service.GetState() != services.StateRunning {
+	if service.GetState() != StateRunning {
 		return nil, fmt.Errorf("MCP server %s is not running (state: %s)", serverName, service.GetState())
 	}
 
-	// Try to get the MCP client from the service
-	type mcpClientProvider interface {
-		GetMCPClient() interface{}
-	}
-
-	provider, ok := service.(mcpClientProvider)
+	// Get the MCP-specific handler for this service
+	mcpHandler, ok := GetMCPService(serverName)
 	if !ok {
-		return nil, fmt.Errorf("MCP server %s does not provide client access", serverName)
+		return nil, fmt.Errorf("MCP server %s does not have a registered handler", serverName)
 	}
 
-	mcpClient := provider.GetMCPClient()
-	if mcpClient == nil {
-		return nil, fmt.Errorf("MCP server %s has no client available", serverName)
-	}
+	// Get tools from the handler
+	tools := mcpHandler.GetTools()
 
+	return tools, nil
+}
+
+// GetToolsFromClient is a helper function that can be used by MCP handlers to convert tools
+func GetToolsFromClient(ctx context.Context, client interface{}) ([]MCPTool, error) {
 	// Use the client to list tools
 	type toolLister interface {
 		ListTools(ctx context.Context) ([]mcp.Tool, error)
 	}
 
-	lister, ok := mcpClient.(toolLister)
+	lister, ok := client.(toolLister)
 	if !ok {
 		return nil, fmt.Errorf("MCP client does not support listing tools")
 	}

@@ -2,14 +2,12 @@ package api
 
 import (
 	"context"
-	"envctl/internal/services"
 	"errors"
 	"testing"
 )
 
 func TestNewPortForwardServiceAPI(t *testing.T) {
-	registry := newMockRegistry()
-	api := NewPortForwardServiceAPI(registry)
+	api := NewPortForwardServiceAPI()
 
 	if api == nil {
 		t.Error("Expected NewPortForwardServiceAPI to return non-nil API")
@@ -17,8 +15,14 @@ func TestNewPortForwardServiceAPI(t *testing.T) {
 }
 
 func TestGetPortForwardInfo(t *testing.T) {
-	registry := newMockRegistry()
-	api := NewPortForwardServiceAPI(registry)
+	// Setup mock registry
+	registry := newMockServiceRegistryHandler()
+	RegisterServiceRegistry(registry)
+	defer func() {
+		RegisterServiceRegistry(nil)
+	}()
+
+	api := NewPortForwardServiceAPI()
 
 	// Test service not found
 	_, err := api.GetForwardInfo(context.Background(), "nonexistent")
@@ -27,12 +31,12 @@ func TestGetPortForwardInfo(t *testing.T) {
 	}
 
 	// Create a mock port forward service
-	mockSvc := &mockService{
-		label:       "test-pf",
-		serviceType: services.TypePortForward,
-		state:       services.StateRunning,
-		health:      services.HealthHealthy,
-		serviceData: map[string]interface{}{
+	mockSvc := &mockServiceInfo{
+		label:   "test-pf",
+		svcType: TypePortForward,
+		state:   StateRunning,
+		health:  HealthHealthy,
+		data: map[string]interface{}{
 			"name":        "test-pf",
 			"namespace":   "default",
 			"targetType":  "service",
@@ -48,7 +52,7 @@ func TestGetPortForwardInfo(t *testing.T) {
 		},
 	}
 
-	registry.Register(mockSvc)
+	registry.addService(mockSvc)
 
 	// Test successful retrieval
 	info, err := api.GetForwardInfo(context.Background(), "test-pf")
@@ -60,12 +64,12 @@ func TestGetPortForwardInfo(t *testing.T) {
 		t.Errorf("Expected label 'test-pf', got %s", info.Label)
 	}
 
-	if info.State != "Running" {
-		t.Errorf("Expected state 'Running', got %s", info.State)
+	if info.State != "running" {
+		t.Errorf("Expected state 'running', got %s", info.State)
 	}
 
-	if info.Health != "Healthy" {
-		t.Errorf("Expected health 'Healthy', got %s", info.Health)
+	if info.Health != "healthy" {
+		t.Errorf("Expected health 'healthy', got %s", info.Health)
 	}
 
 	if info.Name != "test-pf" {
@@ -118,23 +122,29 @@ func TestGetPortForwardInfo(t *testing.T) {
 }
 
 func TestGetPortForwardInfoWithError(t *testing.T) {
-	registry := newMockRegistry()
-	api := NewPortForwardServiceAPI(registry)
+	// Setup mock registry
+	registry := newMockServiceRegistryHandler()
+	RegisterServiceRegistry(registry)
+	defer func() {
+		RegisterServiceRegistry(nil)
+	}()
+
+	api := NewPortForwardServiceAPI()
 
 	// Create a mock service with error
 	testErr := errors.New("port forward failed")
-	mockSvc := &mockService{
-		label:       "error-pf",
-		serviceType: services.TypePortForward,
-		state:       services.StateFailed,
-		health:      services.HealthUnhealthy,
-		lastError:   testErr,
-		serviceData: map[string]interface{}{
+	mockSvc := &mockServiceInfo{
+		label:   "error-pf",
+		svcType: TypePortForward,
+		state:   StateError,
+		health:  HealthUnhealthy,
+		lastErr: testErr,
+		data: map[string]interface{}{
 			"name": "error-pf",
 		},
 	}
 
-	registry.Register(mockSvc)
+	registry.addService(mockSvc)
 
 	info, err := api.GetForwardInfo(context.Background(), "error-pf")
 	if err != nil {
@@ -147,18 +157,24 @@ func TestGetPortForwardInfoWithError(t *testing.T) {
 }
 
 func TestGetPortForwardInfoWrongType(t *testing.T) {
-	registry := newMockRegistry()
-	api := NewPortForwardServiceAPI(registry)
+	// Setup mock registry
+	registry := newMockServiceRegistryHandler()
+	RegisterServiceRegistry(registry)
+	defer func() {
+		RegisterServiceRegistry(nil)
+	}()
+
+	api := NewPortForwardServiceAPI()
 
 	// Create a mock service of wrong type
-	mockSvc := &mockService{
-		label:       "wrong-type",
-		serviceType: services.TypeKubeConnection,
-		state:       services.StateRunning,
-		health:      services.HealthHealthy,
+	mockSvc := &mockServiceInfo{
+		label:   "wrong-type",
+		svcType: TypeKubeConnection,
+		state:   StateRunning,
+		health:  HealthHealthy,
 	}
 
-	registry.Register(mockSvc)
+	registry.addService(mockSvc)
 
 	_, err := api.GetForwardInfo(context.Background(), "wrong-type")
 	if err == nil {
@@ -171,16 +187,22 @@ func TestGetPortForwardInfoWrongType(t *testing.T) {
 }
 
 func TestListPortForwards(t *testing.T) {
-	registry := newMockRegistry()
-	api := NewPortForwardServiceAPI(registry)
+	// Setup mock registry
+	registry := newMockServiceRegistryHandler()
+	RegisterServiceRegistry(registry)
+	defer func() {
+		RegisterServiceRegistry(nil)
+	}()
+
+	api := NewPortForwardServiceAPI()
 
 	// Create multiple mock port forward services
-	mockSvc1 := &mockService{
-		label:       "pf-1",
-		serviceType: services.TypePortForward,
-		state:       services.StateRunning,
-		health:      services.HealthHealthy,
-		serviceData: map[string]interface{}{
+	mockSvc1 := &mockServiceInfo{
+		label:   "pf-1",
+		svcType: TypePortForward,
+		state:   StateRunning,
+		health:  HealthHealthy,
+		data: map[string]interface{}{
 			"name":       "pf-1",
 			"namespace":  "default",
 			"localPort":  8080,
@@ -188,12 +210,12 @@ func TestListPortForwards(t *testing.T) {
 		},
 	}
 
-	mockSvc2 := &mockService{
-		label:       "pf-2",
-		serviceType: services.TypePortForward,
-		state:       services.StateStarting,
-		health:      services.HealthChecking,
-		serviceData: map[string]interface{}{
+	mockSvc2 := &mockServiceInfo{
+		label:   "pf-2",
+		svcType: TypePortForward,
+		state:   StateStarting,
+		health:  HealthUnknown,
+		data: map[string]interface{}{
 			"name":       "pf-2",
 			"namespace":  "kube-system",
 			"localPort":  9090,
@@ -202,16 +224,16 @@ func TestListPortForwards(t *testing.T) {
 	}
 
 	// Add a non-port-forward service (should be filtered out)
-	mockSvc3 := &mockService{
-		label:       "k8s-conn",
-		serviceType: services.TypeKubeConnection,
-		state:       services.StateRunning,
-		health:      services.HealthHealthy,
+	mockSvc3 := &mockServiceInfo{
+		label:   "k8s-conn",
+		svcType: TypeKubeConnection,
+		state:   StateRunning,
+		health:  HealthHealthy,
 	}
 
-	registry.Register(mockSvc1)
-	registry.Register(mockSvc2)
-	registry.Register(mockSvc3)
+	registry.addService(mockSvc1)
+	registry.addService(mockSvc2)
+	registry.addService(mockSvc3)
 
 	portForwards, err := api.ListForwards(context.Background())
 	if err != nil {
@@ -242,22 +264,28 @@ func TestListPortForwards(t *testing.T) {
 }
 
 func TestPortForwardInfo_Defaults(t *testing.T) {
-	registry := newMockRegistry()
-	api := NewPortForwardServiceAPI(registry)
+	// Setup mock registry
+	registry := newMockServiceRegistryHandler()
+	RegisterServiceRegistry(registry)
+	defer func() {
+		RegisterServiceRegistry(nil)
+	}()
+
+	api := NewPortForwardServiceAPI()
 
 	// Create a mock service with minimal data
-	mockSvc := &mockService{
-		label:       "minimal-pf",
-		serviceType: services.TypePortForward,
-		state:       services.StateRunning,
-		health:      services.HealthHealthy,
-		serviceData: map[string]interface{}{
+	mockSvc := &mockServiceInfo{
+		label:   "minimal-pf",
+		svcType: TypePortForward,
+		state:   StateRunning,
+		health:  HealthHealthy,
+		data: map[string]interface{}{
 			// Only required fields
 			"name": "minimal-pf",
 		},
 	}
 
-	registry.Register(mockSvc)
+	registry.addService(mockSvc)
 
 	info, err := api.GetForwardInfo(context.Background(), "minimal-pf")
 	if err != nil {

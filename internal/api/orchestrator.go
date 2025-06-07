@@ -2,9 +2,6 @@ package api
 
 import (
 	"context"
-	"envctl/internal/config"
-	"envctl/internal/orchestrator"
-	"envctl/internal/services"
 	"fmt"
 )
 
@@ -13,16 +10,7 @@ type ServiceOrchestrator interface {
 	StartService(label string) error
 	StopService(label string) error
 	RestartService(label string) error
-	SubscribeToStateChanges() <-chan orchestrator.ServiceStateChangedEvent
-}
-
-// ServiceStatus represents the status of a service
-type ServiceStatus struct {
-	Label       string                `json:"label"`
-	ServiceType string                `json:"serviceType"`
-	State       services.ServiceState `json:"state"`
-	Health      services.HealthStatus `json:"health"`
-	Error       string                `json:"error,omitempty"`
+	SubscribeToStateChanges() <-chan ServiceStateChangedEvent
 }
 
 // OrchestratorAPI defines the interface for orchestrating services
@@ -37,101 +25,150 @@ type OrchestratorAPI interface {
 	GetAllServices() []ServiceStatus
 
 	// State change events
-	SubscribeToStateChanges() <-chan orchestrator.ServiceStateChangedEvent
+	SubscribeToStateChanges() <-chan ServiceStateChangedEvent
 
 	// Cluster management
-	GetAvailableClusters(role config.ClusterRole) []config.ClusterDefinition
-	GetActiveCluster(role config.ClusterRole) (string, bool)
-	SwitchCluster(role config.ClusterRole, clusterName string) error
+	GetAvailableClusters(role ClusterRole) []ClusterDefinition
+	GetActiveCluster(role ClusterRole) (string, bool)
+	SwitchCluster(role ClusterRole, clusterName string) error
 }
 
 // orchestratorAPI wraps the orchestrator to implement OrchestratorAPI
 type orchestratorAPI struct {
-	orch     *orchestrator.Orchestrator
-	registry services.ServiceRegistry
+	// No fields - uses handlers from registry
 }
 
 // NewOrchestratorAPI creates a new API wrapper for the orchestrator
-func NewOrchestratorAPI(orch *orchestrator.Orchestrator, registry services.ServiceRegistry) OrchestratorAPI {
-	api := &orchestratorAPI{
-		orch:     orch,
-		registry: registry,
-	}
-
-	// The global registry is used by other packages to access APIs
-	return api
+func NewOrchestratorAPI() OrchestratorAPI {
+	return &orchestratorAPI{}
 }
 
 // StartService starts a specific service
 func (a *orchestratorAPI) StartService(label string) error {
-	return a.orch.StartService(label)
+	handler := GetOrchestrator()
+	if handler == nil {
+		return fmt.Errorf("orchestrator not registered")
+	}
+	return handler.StartService(label)
 }
 
 // StopService stops a specific service
 func (a *orchestratorAPI) StopService(label string) error {
-	return a.orch.StopService(label)
+	handler := GetOrchestrator()
+	if handler == nil {
+		return fmt.Errorf("orchestrator not registered")
+	}
+	return handler.StopService(label)
 }
 
 // RestartService restarts a specific service
 func (a *orchestratorAPI) RestartService(label string) error {
-	return a.orch.RestartService(label)
+	handler := GetOrchestrator()
+	if handler == nil {
+		return fmt.Errorf("orchestrator not registered")
+	}
+	return handler.RestartService(label)
 }
 
 // SubscribeToStateChanges returns a channel for receiving service state change events
-func (a *orchestratorAPI) SubscribeToStateChanges() <-chan orchestrator.ServiceStateChangedEvent {
-	return a.orch.SubscribeToStateChanges()
+func (a *orchestratorAPI) SubscribeToStateChanges() <-chan ServiceStateChangedEvent {
+	handler := GetOrchestrator()
+	if handler == nil {
+		// Return a closed channel if no handler is registered
+		ch := make(chan ServiceStateChangedEvent)
+		close(ch)
+		return ch
+	}
+	return handler.SubscribeToStateChanges()
 }
 
 // GetAvailableClusters returns all clusters configured for a specific role
-func (a *orchestratorAPI) GetAvailableClusters(role config.ClusterRole) []config.ClusterDefinition {
-	return a.orch.GetAvailableClusters(role)
+func (a *orchestratorAPI) GetAvailableClusters(role ClusterRole) []ClusterDefinition {
+	handler := GetOrchestrator()
+	if handler == nil {
+		return nil
+	}
+	return handler.GetAvailableClusters(role)
 }
 
 // GetActiveCluster returns the currently active cluster for a role
-func (a *orchestratorAPI) GetActiveCluster(role config.ClusterRole) (string, bool) {
-	return a.orch.GetActiveCluster(role)
+func (a *orchestratorAPI) GetActiveCluster(role ClusterRole) (string, bool) {
+	handler := GetOrchestrator()
+	if handler == nil {
+		return "", false
+	}
+	return handler.GetActiveCluster(role)
 }
 
 // SwitchCluster changes the active cluster for a role and restarts affected services
-func (a *orchestratorAPI) SwitchCluster(role config.ClusterRole, clusterName string) error {
-	return a.orch.SwitchCluster(role, clusterName)
+func (a *orchestratorAPI) SwitchCluster(role ClusterRole, clusterName string) error {
+	handler := GetOrchestrator()
+	if handler == nil {
+		return fmt.Errorf("orchestrator not registered")
+	}
+	return handler.SwitchCluster(role, clusterName)
 }
 
 // GetServiceStatus returns the status of a specific service
-func (api *orchestratorAPI) GetServiceStatus(label string) (*ServiceStatus, error) {
-	service, exists := api.registry.Get(label)
+func (a *orchestratorAPI) GetServiceStatus(label string) (*ServiceStatus, error) {
+	registry := GetServiceRegistry()
+	if registry == nil {
+		return nil, fmt.Errorf("service registry not registered")
+	}
+
+	service, exists := registry.Get(label)
 	if !exists {
 		return nil, fmt.Errorf("service %s not found", label)
 	}
 
-	status := ServiceStatus{
+	status := &ServiceStatus{
 		Label:       service.GetLabel(),
 		ServiceType: string(service.GetType()),
 		State:       service.GetState(),
 		Health:      service.GetHealth(),
 	}
 
-	// Add error if service is in error state
-	if service.GetState() == services.StateFailed || service.GetHealth() == services.HealthUnhealthy {
-		if err := service.GetLastError(); err != nil {
-			status.Error = err.Error()
-		}
+	// Add error if present
+	if err := service.GetLastError(); err != nil {
+		status.Error = err.Error()
 	}
 
-	return &status, nil
+	// Add metadata if available
+	if data := service.GetServiceData(); data != nil {
+		status.Metadata = data
+	}
+
+	return status, nil
 }
 
 // ListServices returns the status of all services
-func (api *orchestratorAPI) ListServices(ctx context.Context) ([]*ServiceStatus, error) {
-	allServices := api.registry.GetAll()
+func (a *orchestratorAPI) ListServices(ctx context.Context) ([]*ServiceStatus, error) {
+	registry := GetServiceRegistry()
+	if registry == nil {
+		return nil, fmt.Errorf("service registry not registered")
+	}
 
+	allServices := registry.GetAll()
 	statuses := make([]*ServiceStatus, 0, len(allServices))
+
 	for _, service := range allServices {
-		status, err := api.GetServiceStatus(service.GetLabel())
-		if err != nil {
-			// Skip services that error
-			continue
+		status := &ServiceStatus{
+			Label:       service.GetLabel(),
+			ServiceType: string(service.GetType()),
+			State:       service.GetState(),
+			Health:      service.GetHealth(),
 		}
+
+		// Add error if present
+		if err := service.GetLastError(); err != nil {
+			status.Error = err.Error()
+		}
+
+		// Add metadata if available
+		if data := service.GetServiceData(); data != nil {
+			status.Metadata = data
+		}
+
 		statuses = append(statuses, status)
 	}
 
@@ -139,10 +176,15 @@ func (api *orchestratorAPI) ListServices(ctx context.Context) ([]*ServiceStatus,
 }
 
 // GetAllServices returns the status of all services
-func (api *orchestratorAPI) GetAllServices() []ServiceStatus {
-	allServices := api.registry.GetAll()
+func (a *orchestratorAPI) GetAllServices() []ServiceStatus {
+	registry := GetServiceRegistry()
+	if registry == nil {
+		return nil
+	}
 
+	allServices := registry.GetAll()
 	statuses := make([]ServiceStatus, 0, len(allServices))
+
 	for _, service := range allServices {
 		status := ServiceStatus{
 			Label:       service.GetLabel(),
@@ -151,11 +193,14 @@ func (api *orchestratorAPI) GetAllServices() []ServiceStatus {
 			Health:      service.GetHealth(),
 		}
 
-		// Add error if service is in error state
-		if service.GetState() == services.StateFailed || service.GetHealth() == services.HealthUnhealthy {
-			if err := service.GetLastError(); err != nil {
-				status.Error = err.Error()
-			}
+		// Add error if present
+		if err := service.GetLastError(); err != nil {
+			status.Error = err.Error()
+		}
+
+		// Add metadata if available
+		if data := service.GetServiceData(); data != nil {
+			status.Metadata = data
 		}
 
 		statuses = append(statuses, status)

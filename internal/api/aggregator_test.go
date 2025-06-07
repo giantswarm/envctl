@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"envctl/internal/services"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,75 +10,92 @@ import (
 func TestGetAggregatorInfo(t *testing.T) {
 	tests := []struct {
 		name          string
-		setupMocks    func(*MockServiceRegistry, *MockServiceDataProvider)
+		setupRegistry func(*mockServiceRegistryHandler)
 		expectedInfo  *AggregatorInfo
 		expectedError string
 	}{
 		{
 			name: "successful aggregator info retrieval",
-			setupMocks: func(registry *MockServiceRegistry, service *MockServiceDataProvider) {
+			setupRegistry: func(registry *mockServiceRegistryHandler) {
 				// Setup aggregator service
-				registry.On("GetByType", services.ServiceType("Aggregator")).Return([]services.Service{service})
-				service.On("GetState").Return(services.StateRunning)
-				service.On("GetHealth").Return(services.HealthHealthy)
-				service.On("GetServiceData").Return(map[string]interface{}{
-					"endpoint":          "http://localhost:8080/sse",
-					"port":              8080,
-					"host":              "localhost",
-					"servers_total":     3,
-					"servers_connected": 2,
-					"tools":             15,
-					"resources":         10,
-					"prompts":           5,
-				})
+				aggService := &mockServiceInfo{
+					label:   "aggregator",
+					svcType: TypeAggregator,
+					state:   StateRunning,
+					health:  HealthHealthy,
+					data: map[string]interface{}{
+						"endpoint":          "http://localhost:8080/sse",
+						"port":              8080,
+						"host":              "localhost",
+						"servers_total":     3,
+						"servers_connected": 2,
+						"tools":             15,
+						"resources":         10,
+						"prompts":           5,
+						"blocked_tools":     3,
+						"yolo":              false,
+					},
+				}
+				registry.addService(aggService)
 			},
 			expectedInfo: &AggregatorInfo{
 				Endpoint:         "http://localhost:8080/sse",
 				Port:             8080,
 				Host:             "localhost",
-				State:            "Running",
-				Health:           "Healthy",
+				State:            "running",
+				Health:           "healthy",
 				ServersTotal:     3,
 				ServersConnected: 2,
 				ToolsCount:       15,
 				ResourcesCount:   10,
 				PromptsCount:     5,
+				BlockedTools:     3,
+				YoloMode:         false,
 			},
 		},
 		{
 			name: "no aggregator found",
-			setupMocks: func(registry *MockServiceRegistry, service *MockServiceDataProvider) {
-				registry.On("GetByType", services.ServiceType("Aggregator")).Return([]services.Service{})
+			setupRegistry: func(registry *mockServiceRegistryHandler) {
+				// Don't add any aggregator service
 			},
 			expectedError: "no MCP aggregator found",
 		},
 		{
 			name: "aggregator without service data",
-			setupMocks: func(registry *MockServiceRegistry, service *MockServiceDataProvider) {
-				// Create a mock service that doesn't implement ServiceDataProvider
-				basicService := new(MockService)
-				basicService.On("GetState").Return(services.StateRunning)
-				basicService.On("GetHealth").Return(services.HealthHealthy)
-				registry.On("GetByType", services.ServiceType("Aggregator")).Return([]services.Service{basicService})
+			setupRegistry: func(registry *mockServiceRegistryHandler) {
+				// Create a service with no data
+				aggService := &mockServiceInfo{
+					label:   "aggregator",
+					svcType: TypeAggregator,
+					state:   StateRunning,
+					health:  HealthHealthy,
+					data:    nil,
+				}
+				registry.addService(aggService)
 			},
 			expectedInfo: &AggregatorInfo{
-				State:  "Running",
-				Health: "Healthy",
+				State:  "running",
+				Health: "healthy",
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create mocks
-			mockRegistry := new(MockServiceRegistry)
-			mockService := new(MockServiceDataProvider)
+			// Create mock registry
+			mockRegistry := newMockServiceRegistryHandler()
 
-			// Setup mocks
-			tt.setupMocks(mockRegistry, mockService)
+			// Setup registry
+			tt.setupRegistry(mockRegistry)
+
+			// Register the mock handler
+			RegisterServiceRegistry(mockRegistry)
+			defer func() {
+				RegisterServiceRegistry(nil)
+			}()
 
 			// Create API
-			api := NewAggregatorAPI(mockRegistry)
+			api := NewAggregatorAPI()
 
 			// Call GetAggregatorInfo
 			ctx := context.Background()
@@ -93,10 +109,6 @@ func TestGetAggregatorInfo(t *testing.T) {
 				assert.NoError(t, err)
 				assert.Equal(t, tt.expectedInfo, info)
 			}
-
-			// Verify mocks
-			mockRegistry.AssertExpectations(t)
-			mockService.AssertExpectations(t)
 		})
 	}
 }
@@ -104,31 +116,41 @@ func TestGetAggregatorInfo(t *testing.T) {
 func TestGetAllTools(t *testing.T) {
 	tests := []struct {
 		name          string
-		setupMocks    func(*MockServiceRegistry, *MockServiceDataProvider)
+		setupRegistry func(*mockServiceRegistryHandler)
 		expectedError string
 		expectedTools []MCPTool
 	}{
 		{
 			name: "no aggregator found",
-			setupMocks: func(registry *MockServiceRegistry, service *MockServiceDataProvider) {
-				registry.On("GetByType", services.ServiceType("Aggregator")).Return([]services.Service{})
+			setupRegistry: func(registry *mockServiceRegistryHandler) {
+				// Don't add any aggregator service
 			},
 			expectedError: "no MCP aggregator found",
 		},
 		{
 			name: "aggregator not running",
-			setupMocks: func(registry *MockServiceRegistry, service *MockServiceDataProvider) {
-				registry.On("GetByType", services.ServiceType("Aggregator")).Return([]services.Service{service})
-				service.On("GetState").Return(services.StateStopped)
+			setupRegistry: func(registry *mockServiceRegistryHandler) {
+				aggService := &mockServiceInfo{
+					label:   "aggregator",
+					svcType: TypeAggregator,
+					state:   StateStopped,
+					health:  HealthUnknown,
+				}
+				registry.addService(aggService)
 			},
 			expectedError: "MCP aggregator is not running",
 		},
 		{
 			name: "aggregator without port",
-			setupMocks: func(registry *MockServiceRegistry, service *MockServiceDataProvider) {
-				registry.On("GetByType", services.ServiceType("Aggregator")).Return([]services.Service{service})
-				service.On("GetState").Return(services.StateRunning)
-				service.On("GetServiceData").Return(map[string]interface{}{})
+			setupRegistry: func(registry *mockServiceRegistryHandler) {
+				aggService := &mockServiceInfo{
+					label:   "aggregator",
+					svcType: TypeAggregator,
+					state:   StateRunning,
+					health:  HealthHealthy,
+					data:    map[string]interface{}{}, // No port in data
+				}
+				registry.addService(aggService)
 			},
 			expectedError: "MCP aggregator has no port configured",
 		},
@@ -136,15 +158,20 @@ func TestGetAllTools(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create mocks
-			mockRegistry := new(MockServiceRegistry)
-			mockService := new(MockServiceDataProvider)
+			// Create mock registry
+			mockRegistry := newMockServiceRegistryHandler()
 
-			// Setup mocks
-			tt.setupMocks(mockRegistry, mockService)
+			// Setup registry
+			tt.setupRegistry(mockRegistry)
+
+			// Register the mock handler
+			RegisterServiceRegistry(mockRegistry)
+			defer func() {
+				RegisterServiceRegistry(nil)
+			}()
 
 			// Create API
-			api := NewAggregatorAPI(mockRegistry)
+			api := NewAggregatorAPI()
 
 			// Call GetAllTools
 			ctx := context.Background()
@@ -158,10 +185,6 @@ func TestGetAllTools(t *testing.T) {
 				assert.NoError(t, err)
 				assert.Equal(t, tt.expectedTools, tools)
 			}
-
-			// Verify mocks
-			mockRegistry.AssertExpectations(t)
-			mockService.AssertExpectations(t)
 		})
 	}
 }

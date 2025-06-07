@@ -2,33 +2,46 @@ package aggregator
 
 import (
 	"context"
+	"envctl/internal/api"
 	"fmt"
 	"sync"
 	"testing"
 	"time"
 )
 
-// mockStateEventProvider implements StateEventProvider for testing
-type mockStateEventProvider struct {
-	eventChan chan ServiceStateEvent
+// mockOrchestratorAPI implements api.OrchestratorAPI for testing
+type mockOrchestratorAPI struct {
+	eventChan chan api.ServiceStateChangedEvent
 }
 
-func newMockStateEventProvider() *mockStateEventProvider {
-	return &mockStateEventProvider{
-		eventChan: make(chan ServiceStateEvent, 10),
+func newMockOrchestratorAPI() *mockOrchestratorAPI {
+	return &mockOrchestratorAPI{
+		eventChan: make(chan api.ServiceStateChangedEvent, 10),
 	}
 }
 
-func (m *mockStateEventProvider) SubscribeToStateChanges() <-chan ServiceStateEvent {
+// Implement required methods for api.OrchestratorAPI
+func (m *mockOrchestratorAPI) StartService(label string) error   { return nil }
+func (m *mockOrchestratorAPI) StopService(label string) error    { return nil }
+func (m *mockOrchestratorAPI) RestartService(label string) error { return nil }
+func (m *mockOrchestratorAPI) GetServiceStatus(label string) (*api.ServiceStatus, error) {
+	return nil, nil
+}
+func (m *mockOrchestratorAPI) GetAllServices() []api.ServiceStatus { return nil }
+func (m *mockOrchestratorAPI) GetAvailableClusters(role api.ClusterRole) []api.ClusterDefinition {
+	return nil
+}
+func (m *mockOrchestratorAPI) GetActiveCluster(role api.ClusterRole) (string, bool) { return "", false }
+func (m *mockOrchestratorAPI) SwitchCluster(role api.ClusterRole, clusterName string) error {
+	return nil
+}
+
+func (m *mockOrchestratorAPI) SubscribeToStateChanges() <-chan api.ServiceStateChangedEvent {
 	return m.eventChan
 }
 
-func (m *mockStateEventProvider) sendEvent(event ServiceStateEvent) {
+func (m *mockOrchestratorAPI) sendEvent(event api.ServiceStateChangedEvent) {
 	m.eventChan <- event
-}
-
-func (m *mockStateEventProvider) close() {
-	close(m.eventChan)
 }
 
 // mockCallbacks tracks calls to register/deregister functions
@@ -104,7 +117,7 @@ func (m *mockCallbacks) setDeregisterError(err error) {
 }
 
 func TestEventHandler_NewEventHandler(t *testing.T) {
-	provider := newMockStateEventProvider()
+	provider := newMockOrchestratorAPI()
 	callbacks := newMockCallbacks()
 
 	handler := NewEventHandler(provider, callbacks.register, callbacks.deregister)
@@ -113,8 +126,8 @@ func TestEventHandler_NewEventHandler(t *testing.T) {
 		t.Fatal("NewEventHandler returned nil")
 	}
 
-	if handler.stateProvider != provider {
-		t.Error("StateProvider not set correctly")
+	if handler.orchestratorAPI != provider {
+		t.Error("OrchestratorAPI not set correctly")
 	}
 
 	if handler.IsRunning() {
@@ -123,7 +136,7 @@ func TestEventHandler_NewEventHandler(t *testing.T) {
 }
 
 func TestEventHandler_StartStop(t *testing.T) {
-	provider := newMockStateEventProvider()
+	provider := newMockOrchestratorAPI()
 	callbacks := newMockCallbacks()
 	handler := NewEventHandler(provider, callbacks.register, callbacks.deregister)
 
@@ -164,7 +177,7 @@ func TestEventHandler_StartStop(t *testing.T) {
 }
 
 func TestEventHandler_FiltersMCPEvents(t *testing.T) {
-	provider := newMockStateEventProvider()
+	provider := newMockOrchestratorAPI()
 	callbacks := newMockCallbacks()
 	handler := NewEventHandler(provider, callbacks.register, callbacks.deregister)
 
@@ -178,7 +191,7 @@ func TestEventHandler_FiltersMCPEvents(t *testing.T) {
 	defer handler.Stop()
 
 	// Send non-MCP event (should NOT trigger any callbacks)
-	provider.sendEvent(ServiceStateEvent{
+	provider.sendEvent(api.ServiceStateChangedEvent{
 		Label:       "k8s-mc-test",
 		ServiceType: "KubeConnection",
 		OldState:    "Stopped",
@@ -187,7 +200,7 @@ func TestEventHandler_FiltersMCPEvents(t *testing.T) {
 	})
 
 	// Send MCP event with healthy state (should trigger register)
-	provider.sendEvent(ServiceStateEvent{
+	provider.sendEvent(api.ServiceStateChangedEvent{
 		Label:       "kubernetes",
 		ServiceType: "MCPServer",
 		OldState:    "Stopped",
@@ -196,7 +209,7 @@ func TestEventHandler_FiltersMCPEvents(t *testing.T) {
 	})
 
 	// Send aggregator event (should NOT trigger any callbacks)
-	provider.sendEvent(ServiceStateEvent{
+	provider.sendEvent(api.ServiceStateChangedEvent{
 		Label:       "mcp-aggregator",
 		ServiceType: "Aggregator",
 		OldState:    "Stopped",
@@ -205,7 +218,7 @@ func TestEventHandler_FiltersMCPEvents(t *testing.T) {
 	})
 
 	// Send port forward event (should NOT trigger any callbacks)
-	provider.sendEvent(ServiceStateEvent{
+	provider.sendEvent(api.ServiceStateChangedEvent{
 		Label:       "pf:mc-prometheus",
 		ServiceType: "PortForward",
 		OldState:    "Stopped",
@@ -316,7 +329,7 @@ func TestEventHandler_HealthBasedRegistration(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			provider := newMockStateEventProvider()
+			provider := newMockOrchestratorAPI()
 			callbacks := newMockCallbacks()
 			handler := NewEventHandler(provider, callbacks.register, callbacks.deregister)
 
@@ -330,7 +343,7 @@ func TestEventHandler_HealthBasedRegistration(t *testing.T) {
 			defer handler.Stop()
 
 			// Send event
-			provider.sendEvent(ServiceStateEvent{
+			provider.sendEvent(api.ServiceStateChangedEvent{
 				Label:       "kubernetes",
 				ServiceType: "MCPServer",
 				OldState:    tc.oldState,
@@ -363,7 +376,7 @@ func TestEventHandler_HealthBasedRegistration(t *testing.T) {
 }
 
 func TestEventHandler_HandlesErrors(t *testing.T) {
-	provider := newMockStateEventProvider()
+	provider := newMockOrchestratorAPI()
 	callbacks := newMockCallbacks()
 	handler := NewEventHandler(provider, callbacks.register, callbacks.deregister)
 
@@ -381,7 +394,7 @@ func TestEventHandler_HandlesErrors(t *testing.T) {
 	defer handler.Stop()
 
 	// Send event that should trigger register (but will fail)
-	provider.sendEvent(ServiceStateEvent{
+	provider.sendEvent(api.ServiceStateChangedEvent{
 		Label:       "kubernetes",
 		ServiceType: "MCPServer",
 		OldState:    "Stopped",
@@ -390,7 +403,7 @@ func TestEventHandler_HandlesErrors(t *testing.T) {
 	})
 
 	// Send event that should trigger deregister (but will fail)
-	provider.sendEvent(ServiceStateEvent{
+	provider.sendEvent(api.ServiceStateChangedEvent{
 		Label:       "envctl",
 		ServiceType: "MCPServer",
 		OldState:    "Running",
@@ -417,7 +430,7 @@ func TestEventHandler_HandlesErrors(t *testing.T) {
 }
 
 func TestEventHandler_HandlesChannelClose(t *testing.T) {
-	provider := newMockStateEventProvider()
+	provider := newMockOrchestratorAPI()
 	callbacks := newMockCallbacks()
 	handler := NewEventHandler(provider, callbacks.register, callbacks.deregister)
 
@@ -430,7 +443,7 @@ func TestEventHandler_HandlesChannelClose(t *testing.T) {
 	}
 
 	// Close the event channel
-	provider.close()
+	close(provider.eventChan)
 
 	// Give time for handler to detect channel close and stop
 	time.Sleep(100 * time.Millisecond)
@@ -442,7 +455,7 @@ func TestEventHandler_HandlesChannelClose(t *testing.T) {
 }
 
 func TestEventHandler_HandlesContextCancellation(t *testing.T) {
-	provider := newMockStateEventProvider()
+	provider := newMockOrchestratorAPI()
 	callbacks := newMockCallbacks()
 	handler := NewEventHandler(provider, callbacks.register, callbacks.deregister)
 

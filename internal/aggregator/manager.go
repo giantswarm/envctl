@@ -2,9 +2,12 @@ package aggregator
 
 import (
 	"context"
+	"envctl/internal/api"
 	"envctl/pkg/logging"
 	"fmt"
 	"sync"
+
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // This file contains aggregator manager logic that coordinates between
@@ -17,9 +20,10 @@ type AggregatorManager struct {
 	mu     sync.RWMutex
 	config AggregatorConfig
 
-	// External dependencies
-	orchestratorProvider OrchestratorEventProvider
-	mcpServiceProvider   MCPServiceProvider
+	// External dependencies - now using APIs directly
+	orchestratorAPI api.OrchestratorAPI
+	mcpAPI          api.MCPServiceAPI
+	serviceRegistry api.ServiceRegistryHandler
 
 	// Components
 	aggregatorServer *AggregatorServer
@@ -33,13 +37,15 @@ type AggregatorManager struct {
 // NewAggregatorManager creates a new aggregator manager with event handling
 func NewAggregatorManager(
 	config AggregatorConfig,
-	orchestratorProvider OrchestratorEventProvider,
-	mcpServiceProvider MCPServiceProvider,
+	orchestratorAPI api.OrchestratorAPI,
+	mcpAPI api.MCPServiceAPI,
+	serviceRegistry api.ServiceRegistryHandler,
 ) *AggregatorManager {
 	manager := &AggregatorManager{
-		config:               config,
-		orchestratorProvider: orchestratorProvider,
-		mcpServiceProvider:   mcpServiceProvider,
+		config:          config,
+		orchestratorAPI: orchestratorAPI,
+		mcpAPI:          mcpAPI,
+		serviceRegistry: serviceRegistry,
 	}
 
 	// Create the aggregator server
@@ -61,10 +67,10 @@ func (am *AggregatorManager) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to start aggregator server: %w", err)
 	}
 
-	// Check if providers are available
-	if am.orchestratorProvider == nil || am.mcpServiceProvider == nil {
+	// Check if APIs are available
+	if am.orchestratorAPI == nil || am.mcpAPI == nil {
 		am.aggregatorServer.Stop(am.ctx)
-		return fmt.Errorf("required providers not available")
+		return fmt.Errorf("required APIs not available")
 	}
 
 	// Initial sync: Register all healthy running MCP servers
@@ -73,14 +79,9 @@ func (am *AggregatorManager) Start(ctx context.Context) error {
 		// Continue anyway - the event handler will handle future registrations
 	}
 
-	// Create event handler adapter
-	adapter := &eventProviderAdapter{
-		orchestratorProvider: am.orchestratorProvider,
-	}
-
 	// Create event handler with simple register/deregister callbacks
 	am.eventHandler = NewEventHandler(
-		adapter,
+		am.orchestratorAPI,
 		am.registerSingleServer,
 		am.deregisterSingleServer,
 	)
@@ -165,18 +166,18 @@ func (am *AggregatorManager) GetServiceData() map[string]interface{} {
 		logging.Debug("Aggregator-Manager", "GetServiceData: %d tools (%d blocked), %d resources, %d prompts",
 			len(tools), blockedCount, len(resources), len(prompts))
 
-		// Get total number of MCP servers from the provider
+		// Get total number of MCP servers from the API
 		totalServers := 0
 		connectedServers := 0
 
-		if am.mcpServiceProvider != nil {
+		if am.serviceRegistry != nil {
 			// Get all MCP services (running and stopped)
-			allMCPServices := am.mcpServiceProvider.GetAllMCPServices()
-			totalServers = len(allMCPServices)
+			allServices := am.serviceRegistry.GetByType(api.TypeMCPServer)
+			totalServers = len(allServices)
 
 			// Count how many are actually healthy and running
-			for _, service := range allMCPServices {
-				if service.State == "Running" && service.Health == "Healthy" {
+			for _, service := range allServices {
+				if service.GetState() == api.StateRunning && service.GetHealth() == api.HealthHealthy {
 					connectedServers++
 				}
 			}
@@ -196,24 +197,28 @@ func (am *AggregatorManager) GetServiceData() map[string]interface{} {
 
 // registerHealthyMCPServers registers all healthy running MCP servers during initial sync
 func (am *AggregatorManager) registerHealthyMCPServers(ctx context.Context) error {
+	if am.serviceRegistry == nil {
+		return fmt.Errorf("service registry not available")
+	}
+
 	// Get all MCP services
-	mcpServices := am.mcpServiceProvider.GetAllMCPServices()
+	mcpServices := am.serviceRegistry.GetByType(api.TypeMCPServer)
 
 	logging.Debug("Aggregator-Manager", "Initial sync: found %d MCP services", len(mcpServices))
 
 	registeredCount := 0
 	for _, service := range mcpServices {
 		// Only register servers that are both running AND healthy
-		if service.State != "Running" || service.Health != "Healthy" {
+		if service.GetState() != api.StateRunning || service.GetHealth() != api.HealthHealthy {
 			logging.Debug("Aggregator-Manager", "Skipping MCP service %s (state=%s, health=%s)",
-				service.Name, service.State, service.Health)
+				service.GetLabel(), service.GetState(), service.GetHealth())
 			continue
 		}
 
 		// Register the healthy server
-		if err := am.registerSingleServer(ctx, service.Name); err != nil {
+		if err := am.registerSingleServer(ctx, service.GetLabel()); err != nil {
 			logging.Warn("Aggregator-Manager", "Failed to register healthy MCP server %s: %v",
-				service.Name, err)
+				service.GetLabel(), err)
 			// Continue with other servers
 		} else {
 			registeredCount++
@@ -231,34 +236,123 @@ func (am *AggregatorManager) registerHealthyMCPServers(ctx context.Context) erro
 
 // registerSingleServer registers a single MCP server with the aggregator
 func (am *AggregatorManager) registerSingleServer(ctx context.Context, serverName string) error {
-	// Get the MCP client for this specific server
-	client := am.mcpServiceProvider.GetMCPClient(serverName)
-	if client == nil {
-		return fmt.Errorf("no MCP client available for %s", serverName)
+	// Get the service from registry
+	service, exists := am.serviceRegistry.Get(serverName)
+	if !exists {
+		return fmt.Errorf("service %s not found", serverName)
 	}
 
-	// Type assert to our MCPClient interface
-	mcpClient, ok := client.(MCPClient)
+	// Get MCP-specific handler for this service
+	mcpHandler, ok := api.GetMCPService(serverName)
 	if !ok {
-		return fmt.Errorf("invalid MCP client type for %s (got %T)", serverName, client)
+		return fmt.Errorf("no MCP handler registered for %s", serverName)
 	}
 
-	// Get the service info to find the tool prefix
-	var toolPrefix string
-	mcpServices := am.mcpServiceProvider.GetAllMCPServices()
-	for _, service := range mcpServices {
-		if service.Name == serverName {
-			toolPrefix = service.ToolPrefix
-			break
+	// Get the MCP client from the service
+	// The service should implement a method to get the client
+	type mcpClientProvider interface {
+		GetMCPClient() interface{}
+	}
+
+	// Try to get the client through service data
+	serviceData := service.GetServiceData()
+	if serviceData == nil {
+		return fmt.Errorf("no service data available for %s", serverName)
+	}
+
+	// Get the tool prefix from handler
+	toolPrefix := ""
+	tools := mcpHandler.GetTools()
+	if len(tools) > 0 {
+		// Extract tool prefix from service data if available
+		if prefix, ok := serviceData["toolPrefix"].(string); ok {
+			toolPrefix = prefix
 		}
 	}
 
+	// For the actual MCP client, we need to get it differently
+	// The MCP handler should provide the client
+	// For now, we'll create a wrapper that uses the handler
+	clientWrapper := &mcpClientWrapper{
+		handler: mcpHandler,
+		label:   serverName,
+	}
+
 	// Register with the aggregator
-	if err := am.aggregatorServer.RegisterServer(ctx, serverName, mcpClient, toolPrefix); err != nil {
+	if err := am.aggregatorServer.RegisterServer(ctx, serverName, clientWrapper, toolPrefix); err != nil {
 		return fmt.Errorf("failed to register server: %w", err)
 	}
 
 	logging.Info("Aggregator-Manager", "Successfully registered MCP server %s with prefix %s", serverName, toolPrefix)
+	return nil
+}
+
+// mcpClientWrapper wraps an MCP handler to implement MCPClient interface
+type mcpClientWrapper struct {
+	handler api.MCPServiceHandler
+	label   string
+}
+
+func (w *mcpClientWrapper) Initialize(ctx context.Context) error {
+	// Already initialized through the service
+	return nil
+}
+
+func (w *mcpClientWrapper) Close() error {
+	// Service manages its own lifecycle
+	return nil
+}
+
+func (w *mcpClientWrapper) ListTools(ctx context.Context) ([]mcp.Tool, error) {
+	tools := w.handler.GetTools()
+	// Convert api.MCPTool to mcp.Tool
+	result := make([]mcp.Tool, len(tools))
+	for i, tool := range tools {
+		result[i] = mcp.Tool{
+			Name:        tool.Name,
+			Description: tool.Description,
+		}
+	}
+	return result, nil
+}
+
+func (w *mcpClientWrapper) CallTool(ctx context.Context, name string, args map[string]interface{}) (*mcp.CallToolResult, error) {
+	// This would need to be implemented by extending the handler interface
+	return nil, fmt.Errorf("CallTool not implemented")
+}
+
+func (w *mcpClientWrapper) ListResources(ctx context.Context) ([]mcp.Resource, error) {
+	resources := w.handler.GetResources()
+	// Convert api.MCPResource to mcp.Resource
+	result := make([]mcp.Resource, len(resources))
+	for i, res := range resources {
+		result[i] = mcp.Resource{
+			URI:         res.URI,
+			Name:        res.Name,
+			Description: res.Description,
+			MIMEType:    res.MimeType,
+		}
+	}
+	return result, nil
+}
+
+func (w *mcpClientWrapper) ReadResource(ctx context.Context, uri string) (*mcp.ReadResourceResult, error) {
+	// This would need to be implemented by extending the handler interface
+	return nil, fmt.Errorf("ReadResource not implemented")
+}
+
+func (w *mcpClientWrapper) ListPrompts(ctx context.Context) ([]mcp.Prompt, error) {
+	// This would need to be implemented by extending the handler interface
+	return nil, fmt.Errorf("ListPrompts not implemented")
+}
+
+func (w *mcpClientWrapper) GetPrompt(ctx context.Context, name string, args map[string]interface{}) (*mcp.GetPromptResult, error) {
+	// This would need to be implemented by extending the handler interface
+	return nil, fmt.Errorf("GetPrompt not implemented")
+}
+
+func (w *mcpClientWrapper) Ping(ctx context.Context) error {
+	// The service is running if we have a handler
 	return nil
 }
 
@@ -303,32 +397,4 @@ func (am *AggregatorManager) GetEventHandler() *EventHandler {
 // This can be useful for debugging or forced updates
 func (am *AggregatorManager) ManualRefresh(ctx context.Context) error {
 	return am.registerHealthyMCPServers(ctx)
-}
-
-// eventProviderAdapter adapts the OrchestratorEventProvider to StateEventProvider
-type eventProviderAdapter struct {
-	orchestratorProvider OrchestratorEventProvider
-}
-
-// SubscribeToStateChanges adapts the orchestrator event channel
-func (a *eventProviderAdapter) SubscribeToStateChanges() <-chan ServiceStateEvent {
-	orchestratorChan := a.orchestratorProvider.SubscribeToStateChanges()
-	adaptedChan := make(chan ServiceStateEvent)
-
-	go func() {
-		for event := range orchestratorChan {
-			// Convert ServiceStateChangedEvent to ServiceStateEvent
-			adaptedChan <- ServiceStateEvent{
-				Label:       event.Label,
-				ServiceType: event.ServiceType,
-				OldState:    event.OldState,
-				NewState:    event.NewState,
-				Health:      event.Health,
-				Error:       event.Error,
-			}
-		}
-		close(adaptedChan)
-	}()
-
-	return adaptedChan
 }

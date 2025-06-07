@@ -113,38 +113,6 @@ const (
 	EventDeregister
 )
 
-// ServiceStateChangedEvent represents a service state change event from the orchestrator
-type ServiceStateChangedEvent struct {
-	Label       string
-	ServiceType string
-	OldState    string
-	NewState    string
-	Health      string
-	Error       error
-}
-
-// OrchestratorEventProvider provides access to orchestrator state change events
-type OrchestratorEventProvider interface {
-	SubscribeToStateChanges() <-chan ServiceStateChangedEvent
-}
-
-// MCPServiceInfo contains information about an MCP service
-type MCPServiceInfo struct {
-	Name       string
-	State      string
-	Health     string
-	ToolPrefix string // Tool prefix for this service
-}
-
-// MCPServiceProvider provides access to MCP services and clients
-type MCPServiceProvider interface {
-	// GetAllMCPServices returns all MCP services
-	GetAllMCPServices() []MCPServiceInfo
-
-	// GetMCPClient returns the MCP client for a specific service
-	GetMCPClient(name string) interface{}
-}
-
 // ToolWithStatus represents a tool with its blocked status
 type ToolWithStatus struct {
 	Tool    mcp.Tool

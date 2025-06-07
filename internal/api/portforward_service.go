@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"envctl/internal/services"
 	"fmt"
 )
 
@@ -37,24 +36,27 @@ type PortForwardServiceAPI interface {
 
 // portForwardServiceAPI implements PortForwardServiceAPI
 type portForwardServiceAPI struct {
-	registry services.ServiceRegistry
+	// No fields - uses handlers from registry
 }
 
 // NewPortForwardServiceAPI creates a new port forward service API
-func NewPortForwardServiceAPI(registry services.ServiceRegistry) PortForwardServiceAPI {
-	return &portForwardServiceAPI{
-		registry: registry,
-	}
+func NewPortForwardServiceAPI() PortForwardServiceAPI {
+	return &portForwardServiceAPI{}
 }
 
 // GetForwardInfo returns information about a specific port forward
 func (api *portForwardServiceAPI) GetForwardInfo(ctx context.Context, label string) (*PortForwardServiceInfo, error) {
-	service, exists := api.registry.Get(label)
+	registry := GetServiceRegistry()
+	if registry == nil {
+		return nil, fmt.Errorf("service registry not registered")
+	}
+
+	service, exists := registry.Get(label)
 	if !exists {
 		return nil, fmt.Errorf("port forward %s not found", label)
 	}
 
-	if service.GetType() != services.TypePortForward {
+	if service.GetType() != TypePortForward {
 		return nil, fmt.Errorf("service %s is not a port forward", label)
 	}
 
@@ -70,9 +72,7 @@ func (api *portForwardServiceAPI) GetForwardInfo(ctx context.Context, label stri
 	}
 
 	// Get service-specific data if available
-	if provider, ok := service.(services.ServiceDataProvider); ok {
-		data := provider.GetServiceData()
-
+	if data := service.GetServiceData(); data != nil {
 		if name, ok := data["name"].(string); ok {
 			info.Name = name
 		}
@@ -116,7 +116,12 @@ func (api *portForwardServiceAPI) GetForwardInfo(ctx context.Context, label stri
 
 // ListForwards returns information about all port forwards
 func (api *portForwardServiceAPI) ListForwards(ctx context.Context) ([]*PortForwardServiceInfo, error) {
-	allServices := api.registry.GetByType(services.TypePortForward)
+	registry := GetServiceRegistry()
+	if registry == nil {
+		return nil, fmt.Errorf("service registry not registered")
+	}
+
+	allServices := registry.GetByType(TypePortForward)
 
 	forwards := make([]*PortForwardServiceInfo, 0, len(allServices))
 	for _, service := range allServices {

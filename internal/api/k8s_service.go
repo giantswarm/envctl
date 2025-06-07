@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"envctl/internal/services"
 	"fmt"
 	"time"
 )
@@ -35,24 +34,27 @@ type K8sServiceAPI interface {
 
 // k8sServiceAPI implements K8sServiceAPI
 type k8sServiceAPI struct {
-	registry services.ServiceRegistry
+	// No fields - uses handlers from registry
 }
 
 // NewK8sServiceAPI creates a new K8s service API
-func NewK8sServiceAPI(registry services.ServiceRegistry) K8sServiceAPI {
-	return &k8sServiceAPI{
-		registry: registry,
-	}
+func NewK8sServiceAPI() K8sServiceAPI {
+	return &k8sServiceAPI{}
 }
 
 // GetConnectionInfo returns information about a specific K8s connection
 func (api *k8sServiceAPI) GetConnectionInfo(ctx context.Context, label string) (*K8sConnectionInfo, error) {
-	service, exists := api.registry.Get(label)
+	registry := GetServiceRegistry()
+	if registry == nil {
+		return nil, fmt.Errorf("service registry not registered")
+	}
+
+	service, exists := registry.Get(label)
 	if !exists {
 		return nil, fmt.Errorf("K8s connection %s not found", label)
 	}
 
-	if service.GetType() != services.TypeKubeConnection {
+	if service.GetType() != TypeKubeConnection {
 		return nil, fmt.Errorf("service %s is not a K8s connection", label)
 	}
 
@@ -68,9 +70,7 @@ func (api *k8sServiceAPI) GetConnectionInfo(ctx context.Context, label string) (
 	}
 
 	// Get service-specific data if available
-	if provider, ok := service.(services.ServiceDataProvider); ok {
-		data := provider.GetServiceData()
-
+	if data := service.GetServiceData(); data != nil {
 		if context, ok := data["context"].(string); ok {
 			info.Context = context
 		}
@@ -96,7 +96,12 @@ func (api *k8sServiceAPI) GetConnectionInfo(ctx context.Context, label string) (
 
 // ListConnections returns information about all K8s connections
 func (api *k8sServiceAPI) ListConnections(ctx context.Context) ([]*K8sConnectionInfo, error) {
-	allServices := api.registry.GetByType(services.TypeKubeConnection)
+	registry := GetServiceRegistry()
+	if registry == nil {
+		return nil, fmt.Errorf("service registry not registered")
+	}
+
+	allServices := registry.GetByType(TypeKubeConnection)
 
 	connections := make([]*K8sConnectionInfo, 0, len(allServices))
 	for _, service := range allServices {
@@ -113,11 +118,15 @@ func (api *k8sServiceAPI) ListConnections(ctx context.Context) ([]*K8sConnection
 
 // GetConnectionByContext returns connection info by context name
 func (api *k8sServiceAPI) GetConnectionByContext(ctx context.Context, contextName string) (*K8sConnectionInfo, error) {
-	allServices := api.registry.GetByType(services.TypeKubeConnection)
+	registry := GetServiceRegistry()
+	if registry == nil {
+		return nil, fmt.Errorf("service registry not registered")
+	}
+
+	allServices := registry.GetByType(TypeKubeConnection)
 
 	for _, service := range allServices {
-		if provider, ok := service.(services.ServiceDataProvider); ok {
-			data := provider.GetServiceData()
+		if data := service.GetServiceData(); data != nil {
 			if context, ok := data["context"].(string); ok && context == contextName {
 				return api.GetConnectionInfo(ctx, service.GetLabel())
 			}

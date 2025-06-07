@@ -7,14 +7,14 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestNameTracker_SmartPrefixing(t *testing.T) {
+func TestNameTracker_AlwaysPrefixing(t *testing.T) {
 	tests := []struct {
 		name     string
 		servers  map[string]*ServerInfo
 		expected map[string]string // tool/prompt name -> expected exposed name
 	}{
 		{
-			name: "No conflicts - tools keep original names",
+			name: "All tools get prefixed",
 			servers: map[string]*ServerInfo{
 				"serverA": {
 					Name:      "serverA",
@@ -34,37 +34,37 @@ func TestNameTracker_SmartPrefixing(t *testing.T) {
 				},
 			},
 			expected: map[string]string{
-				"serverA.read_file":  "read_file",
-				"serverA.write_file": "write_file",
-				"serverB.search":     "search",
-				"serverB.analyze":    "analyze",
+				"serverA.read_file":  "x_serverA_read_file",
+				"serverA.write_file": "x_serverA_write_file",
+				"serverB.search":     "x_serverB_search",
+				"serverB.analyze":    "x_serverB_analyze",
 			},
 		},
 		{
-			name: "With conflicts - only conflicting tools get prefixed",
+			name: "Tools with same names get prefixed",
 			servers: map[string]*ServerInfo{
 				"serverA": {
 					Name:      "serverA",
 					Connected: true,
 					Tools: []mcp.Tool{
 						{Name: "read_file"},
-						{Name: "search"}, // conflicts with serverB
+						{Name: "search"}, // same as serverB
 					},
 				},
 				"serverB": {
 					Name:      "serverB",
 					Connected: true,
 					Tools: []mcp.Tool{
-						{Name: "search"}, // conflicts with serverA
+						{Name: "search"}, // same as serverA
 						{Name: "analyze"},
 					},
 				},
 			},
 			expected: map[string]string{
-				"serverA.read_file": "read_file",      // no conflict
-				"serverA.search":    "serverA.search", // conflict
-				"serverB.search":    "serverB.search", // conflict
-				"serverB.analyze":   "analyze",        // no conflict
+				"serverA.read_file": "x_serverA_read_file",
+				"serverA.search":    "x_serverA_search",
+				"serverB.search":    "x_serverB_search",
+				"serverB.analyze":   "x_serverB_analyze",
 			},
 		},
 		{
@@ -94,10 +94,10 @@ func TestNameTracker_SmartPrefixing(t *testing.T) {
 				},
 			},
 			expected: map[string]string{
-				"serverA.common_tool": "serverA.common_tool",
-				"serverB.common_tool": "serverB.common_tool",
-				"serverC.common_tool": "serverC.common_tool",
-				"serverC.unique_tool": "unique_tool",
+				"serverA.common_tool": "x_serverA_common_tool",
+				"serverB.common_tool": "x_serverB_common_tool",
+				"serverC.common_tool": "x_serverC_common_tool",
+				"serverC.unique_tool": "x_serverC_unique_tool",
 			},
 		},
 	}
@@ -105,7 +105,11 @@ func TestNameTracker_SmartPrefixing(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tracker := NewNameTracker("x")
-			tracker.RebuildMappings(tt.servers)
+
+			// Set server prefixes
+			for serverName := range tt.servers {
+				tracker.SetServerPrefix(serverName, serverName)
+			}
 
 			for key, expectedName := range tt.expected {
 				parts := splitKey(key)
@@ -122,39 +126,23 @@ func TestNameTracker_SmartPrefixing(t *testing.T) {
 }
 
 func TestNameTracker_ResolveName(t *testing.T) {
-	servers := map[string]*ServerInfo{
-		"serverA": {
-			Name:      "serverA",
-			Connected: true,
-			Tools: []mcp.Tool{
-				{Name: "unique_tool"},
-				{Name: "shared_tool"},
-			},
-			Prompts: []mcp.Prompt{
-				{Name: "unique_prompt"},
-			},
-		},
-		"serverB": {
-			Name:      "serverB",
-			Connected: true,
-			Tools: []mcp.Tool{
-				{Name: "shared_tool"},
-			},
-			Prompts: []mcp.Prompt{
-				{Name: "shared_prompt"},
-			},
-		},
-		"serverC": {
-			Name:      "serverC",
-			Connected: true,
-			Prompts: []mcp.Prompt{
-				{Name: "shared_prompt"},
-			},
-		},
-	}
-
 	tracker := NewNameTracker("x")
-	tracker.RebuildMappings(servers)
+
+	// Set up server prefixes
+	tracker.SetServerPrefix("serverA", "serverA")
+	tracker.SetServerPrefix("serverB", "serverB")
+	tracker.SetServerPrefix("serverC", "serverC")
+
+	// Register some names to test resolution
+	// Tools
+	tracker.GetExposedToolName("serverA", "unique_tool")
+	tracker.GetExposedToolName("serverA", "shared_tool")
+	tracker.GetExposedToolName("serverB", "shared_tool")
+
+	// Prompts
+	tracker.GetExposedPromptName("serverA", "unique_prompt")
+	tracker.GetExposedPromptName("serverB", "shared_prompt")
+	tracker.GetExposedPromptName("serverC", "shared_prompt")
 
 	tests := []struct {
 		exposedName      string
@@ -163,16 +151,14 @@ func TestNameTracker_ResolveName(t *testing.T) {
 		expectedItemType string
 		expectError      bool
 	}{
-		// Unique tool - no prefix
-		{"unique_tool", "serverA", "unique_tool", "tool", false},
-		// Shared tool - prefixed
-		{"serverA.shared_tool", "serverA", "shared_tool", "tool", false},
-		{"serverB.shared_tool", "serverB", "shared_tool", "tool", false},
-		// Unique prompt - no prefix
-		{"unique_prompt", "serverA", "unique_prompt", "prompt", false},
-		// Shared prompt - prefixed
-		{"serverB.shared_prompt", "serverB", "shared_prompt", "prompt", false},
-		{"serverC.shared_prompt", "serverC", "shared_prompt", "prompt", false},
+		// Tools - all prefixed
+		{"x_serverA_unique_tool", "serverA", "unique_tool", "tool", false},
+		{"x_serverA_shared_tool", "serverA", "shared_tool", "tool", false},
+		{"x_serverB_shared_tool", "serverB", "shared_tool", "tool", false},
+		// Prompts - all prefixed
+		{"x_serverA_unique_prompt", "serverA", "unique_prompt", "prompt", false},
+		{"x_serverB_shared_prompt", "serverB", "shared_prompt", "prompt", false},
+		{"x_serverC_shared_prompt", "serverC", "shared_prompt", "prompt", false},
 		// Non-existent name
 		{"non_existent", "", "", "", true},
 	}

@@ -1,15 +1,9 @@
 package app
 
 import (
-	"envctl/internal/adapters"
-	"envctl/internal/aggregator"
 	"envctl/internal/api"
-	"envctl/internal/config"
 	"envctl/internal/orchestrator"
 	"envctl/internal/services"
-	agg "envctl/internal/services/aggregator"
-	"envctl/pkg/logging"
-	"fmt"
 )
 
 // Services holds all the initialized services and APIs
@@ -31,6 +25,8 @@ func InitializeServices(cfg *Config) (*Services, error) {
 		WCName:       cfg.WorkloadCluster,
 		PortForwards: cfg.EnvctlConfig.PortForwards,
 		MCPServers:   cfg.EnvctlConfig.MCPServers,
+		Aggregator:   cfg.EnvctlConfig.Aggregator,
+		Yolo:         cfg.Yolo,
 	}
 
 	// Use new config if clusters are defined
@@ -44,20 +40,26 @@ func InitializeServices(cfg *Config) (*Services, error) {
 	// Get the service registry
 	registry := orch.GetServiceRegistry()
 
-	// Create APIs
-	orchestratorAPI := api.NewOrchestratorAPI(orch, registry)
-	mcpAPI := api.NewMCPServiceAPI(registry)
-	portForwardAPI := api.NewPortForwardServiceAPI(registry)
-	k8sAPI := api.NewK8sServiceAPI(registry)
-	aggregatorAPI := api.NewAggregatorAPI(registry)
+	// Step 1: Create and register adapters BEFORE creating APIs
+	// This is critical - APIs need handlers to be registered first
 
-	// Register all APIs in the global registry
+	// Register service registry adapter
+	registryAdapter := services.NewRegistryAdapter(registry)
+	registryAdapter.Register()
+
+	// Register orchestrator adapter
+	orchAdapter := orchestrator.NewAPIAdapter(orch)
+	orchAdapter.Register()
+
+	// Step 2: Create APIs that use the registered handlers
+	orchestratorAPI := api.NewOrchestratorAPI()
+	mcpAPI := api.NewMCPServiceAPI()
+	portForwardAPI := api.NewPortForwardServiceAPI()
+	k8sAPI := api.NewK8sServiceAPI()
+	aggregatorAPI := api.NewAggregatorAPI()
+
+	// Register all APIs in the global registry (for backward compatibility)
 	api.SetAll(orchestratorAPI, mcpAPI, portForwardAPI, k8sAPI)
-
-	// Initialize aggregator if enabled - pass the Yolo config
-	if err := initializeAggregator(cfg.EnvctlConfig, cfg.Yolo, orchestratorAPI, mcpAPI, registry); err != nil {
-		return nil, fmt.Errorf("failed to initialize aggregator: %w", err)
-	}
 
 	return &Services{
 		Orchestrator:    orch,
@@ -68,53 +70,4 @@ func InitializeServices(cfg *Config) (*Services, error) {
 		AggregatorAPI:   aggregatorAPI,
 		AggregatorPort:  cfg.EnvctlConfig.Aggregator.Port,
 	}, nil
-}
-
-// initializeAggregator creates and registers the aggregator service
-func initializeAggregator(
-	cfg *config.EnvctlConfig,
-	yolo bool,
-	orchestratorAPI api.OrchestratorAPI,
-	mcpAPI api.MCPServiceAPI,
-	registry services.ServiceRegistry,
-) error {
-	// Set default port if not configured
-	aggPort := cfg.Aggregator.Port
-	if aggPort == 0 {
-		aggPort = 8080
-	}
-
-	// Get config directory for workflows
-	configDir, err := config.GetUserConfigDir()
-	if err != nil {
-		// Fall back to a default if we can't get the user config dir
-		logging.Warn("Services", "Failed to get user config directory, using default: %v", err)
-		configDir = ".config/envctl"
-	}
-
-	// Create aggregator configuration
-	aggConfig := aggregator.AggregatorConfig{
-		Host:      cfg.Aggregator.Host,
-		Port:      aggPort,
-		Yolo:      yolo,
-		ConfigDir: configDir,
-	}
-	if aggConfig.Host == "" {
-		aggConfig.Host = "localhost"
-	}
-
-	// Create adapters for the aggregator
-	orchestratorEventAdapter := adapters.NewOrchestratorEventAdapter(orchestratorAPI)
-	mcpServiceAdapter := adapters.NewMCPServiceAdapter(mcpAPI, registry)
-
-	// Create aggregator service
-	aggService := agg.NewAggregatorService(aggConfig, orchestratorEventAdapter, mcpServiceAdapter)
-
-	// Register the aggregator service
-	if err := registry.Register(aggService); err != nil {
-		return fmt.Errorf("failed to register aggregator service: %w", err)
-	}
-
-	logging.Info("Services", "Registered MCP aggregator service on port %d", aggPort)
-	return nil
 }

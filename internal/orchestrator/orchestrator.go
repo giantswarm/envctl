@@ -2,10 +2,13 @@ package orchestrator
 
 import (
 	"context"
+	"envctl/internal/aggregator"
+	"envctl/internal/api"
 	"envctl/internal/config"
 	"envctl/internal/dependency"
 	"envctl/internal/kube"
 	"envctl/internal/services"
+	agg "envctl/internal/services/aggregator"
 	"envctl/internal/services/k8s"
 	"envctl/internal/services/mcpserver"
 	"envctl/internal/services/portforward"
@@ -39,6 +42,8 @@ type Orchestrator struct {
 	wcName       string
 	portForwards []config.PortForwardDefinition
 	mcpServers   []config.MCPServerDefinition
+	aggregator   config.AggregatorConfig
+	yolo         bool
 
 	// Cluster management
 	clusterState *ClusterState
@@ -62,9 +67,8 @@ type Orchestrator struct {
 	mu sync.RWMutex // Protects concurrent access to service tracking maps
 }
 
-// Config holds configuration for the new orchestrator.
-// This structure is passed during orchestrator creation to define
-// which services should be managed and their configurations.
+// Config holds the configuration for the orchestrator.
+// It includes both legacy fields (MCName, WCName) and new cluster-based configuration.
 type Config struct {
 	MCName         string                         // Management cluster name (DEPRECATED: use Clusters)
 	WCName         string                         // Workload cluster name (DEPRECATED: use Clusters)
@@ -72,6 +76,8 @@ type Config struct {
 	ActiveClusters map[config.ClusterRole]string  // Initial active cluster for each role
 	PortForwards   []config.PortForwardDefinition // Port forward configurations
 	MCPServers     []config.MCPServerDefinition   // MCP server configurations
+	Aggregator     config.AggregatorConfig        // Aggregator configuration
+	Yolo           bool                           // Yolo mode for aggregator
 }
 
 // New creates a new orchestrator using the service registry.
@@ -110,6 +116,8 @@ func New(cfg Config) *Orchestrator {
 		clusterState:           clusterState,
 		portForwards:           cfg.PortForwards,
 		mcpServers:             cfg.MCPServers,
+		aggregator:             cfg.Aggregator,
+		yolo:                   cfg.Yolo,
 		stopReasons:            make(map[string]StopReason),
 		pendingRestarts:        make(map[string]bool),
 		healthCheckers:         make(map[string]bool),
@@ -302,6 +310,7 @@ func (o *Orchestrator) handleServiceStateChange(label string, oldState, newState
 // 1. K8s connections (foundation services)
 // 2. Port forwards (depend on K8s connections)
 // 3. MCP servers (may depend on port forwards)
+// 4. Aggregator (depends on MCP servers)
 //
 // Registration does not start services, it only makes them available
 // in the registry for later management.
@@ -319,6 +328,11 @@ func (o *Orchestrator) registerServices() error {
 	// Register MCP server services which may depend on port forwards
 	if err := o.registerMCPServices(); err != nil {
 		return fmt.Errorf("failed to register MCP services: %w", err)
+	}
+
+	// Register aggregator service which depends on MCP servers
+	if err := o.registerAggregatorService(); err != nil {
+		return fmt.Errorf("failed to register aggregator service: %w", err)
 	}
 
 	return nil
@@ -345,6 +359,10 @@ func (o *Orchestrator) registerK8sServices() error {
 		o.mu.RUnlock()
 
 		o.registry.Register(k8sService)
+
+		// Register the API adapter for this service
+		k8sAdapter := k8s.NewAPIAdapter(k8sService)
+		k8sAdapter.Register()
 
 		logging.Debug("Orchestrator", "Registered K8s service: %s (role: %s, context: %s)",
 			cluster.Name, cluster.Role, cluster.Context)
@@ -406,6 +424,10 @@ func (o *Orchestrator) registerPortForwardServices() error {
 
 		o.registry.Register(pfService)
 
+		// Register the API adapter for this service
+		pfAdapter := portforward.NewAPIAdapter(pfService)
+		pfAdapter.Register()
+
 		// If we couldn't resolve the cluster, mark it as stopped due to dependency
 		if resolveError != nil {
 			o.mu.Lock()
@@ -442,6 +464,10 @@ func (o *Orchestrator) registerMCPServices() error {
 
 		o.registry.Register(mcpService)
 
+		// Register the API adapter for this service
+		mcpAdapter := mcpserver.NewAPIAdapter(mcpService)
+		mcpAdapter.Register()
+
 		// Check if this MCP server requires a cluster role that might not be available
 		if mcp.RequiresClusterRole != "" {
 			_, err := o.clusterState.GetActiveClusterContext(mcp.RequiresClusterRole)
@@ -459,6 +485,65 @@ func (o *Orchestrator) registerMCPServices() error {
 		}
 	}
 
+	return nil
+}
+
+// registerAggregatorService registers the aggregator service.
+// The aggregator service aggregates data from MCP servers and provides
+// a unified view of service health and status.
+func (o *Orchestrator) registerAggregatorService() error {
+	// Only register if aggregator is enabled
+	if !o.aggregator.Enabled {
+		logging.Debug("Orchestrator", "Aggregator service is disabled, skipping registration")
+		return nil
+	}
+
+	// Get APIs that the aggregator needs
+	orchestratorAPI := api.NewOrchestratorAPI()
+	mcpAPI := api.NewMCPServiceAPI()
+	registryHandler := api.GetServiceRegistry()
+
+	// Get config directory for workflows
+	configDir, err := config.GetUserConfigDir()
+	if err != nil {
+		// Fall back to a default if we can't get the user config dir
+		logging.Warn("Orchestrator", "Failed to get user config directory, using default: %v", err)
+		configDir = ".config/envctl"
+	}
+
+	// Create aggregator configuration
+	aggConfig := aggregator.AggregatorConfig{
+		Host:      o.aggregator.Host,
+		Port:      o.aggregator.Port,
+		Yolo:      o.yolo,
+		ConfigDir: configDir,
+	}
+
+	// Set defaults if not configured
+	if aggConfig.Host == "" {
+		aggConfig.Host = "localhost"
+	}
+	if aggConfig.Port == 0 {
+		aggConfig.Port = 8080
+	}
+
+	// Create aggregator service
+	aggService := agg.NewAggregatorService(aggConfig, orchestratorAPI, mcpAPI, registryHandler)
+
+	// Set the global state change callback if configured
+	o.mu.RLock()
+	if o.globalStateChangeCallback != nil {
+		aggService.SetStateChangeCallback(o.globalStateChangeCallback)
+	}
+	o.mu.RUnlock()
+
+	o.registry.Register(aggService)
+
+	// Register the API adapter for this service
+	aggAdapter := agg.NewAPIAdapter(aggService)
+	aggAdapter.Register()
+
+	logging.Debug("Orchestrator", "Registered aggregator service on port %d", o.aggregator.Port)
 	return nil
 }
 

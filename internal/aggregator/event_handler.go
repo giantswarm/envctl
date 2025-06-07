@@ -2,48 +2,33 @@ package aggregator
 
 import (
 	"context"
+	"envctl/internal/api"
 	"envctl/pkg/logging"
 	"sync"
 )
 
-// ServiceStateEvent represents a service state change event
-// This is a minimal interface to avoid import cycles while maintaining compatibility
-type ServiceStateEvent struct {
-	Label       string
-	ServiceType string
-	OldState    string
-	NewState    string
-	Health      string
-	Error       error
-}
-
-// StateEventProvider defines the interface for subscribing to service state changes
-type StateEventProvider interface {
-	SubscribeToStateChanges() <-chan ServiceStateEvent
-}
-
 // EventHandler handles orchestrator events and updates the aggregator accordingly
 type EventHandler struct {
-	stateProvider  StateEventProvider
-	registerFunc   func(context.Context, string) error
-	deregisterFunc func(string) error
-	ctx            context.Context
-	cancelFunc     context.CancelFunc
-	wg             sync.WaitGroup
-	mu             sync.RWMutex
-	running        bool
+	orchestratorAPI api.OrchestratorAPI
+	registerFunc    func(context.Context, string) error
+	deregisterFunc  func(string) error
+	ctx             context.Context
+	cancelFunc      context.CancelFunc
+	wg              sync.WaitGroup
+	mu              sync.RWMutex
+	running         bool
 }
 
 // NewEventHandler creates a new event handler with simplified callbacks
 func NewEventHandler(
-	stateProvider StateEventProvider,
+	orchestratorAPI api.OrchestratorAPI,
 	registerFunc func(context.Context, string) error,
 	deregisterFunc func(string) error,
 ) *EventHandler {
 	return &EventHandler{
-		stateProvider:  stateProvider,
-		registerFunc:   registerFunc,
-		deregisterFunc: deregisterFunc,
+		orchestratorAPI: orchestratorAPI,
+		registerFunc:    registerFunc,
+		deregisterFunc:  deregisterFunc,
 	}
 }
 
@@ -60,7 +45,7 @@ func (eh *EventHandler) Start(ctx context.Context) error {
 	eh.running = true
 
 	// Subscribe to state changes from the orchestrator
-	eventChan := eh.stateProvider.SubscribeToStateChanges()
+	eventChan := eh.orchestratorAPI.SubscribeToStateChanges()
 
 	eh.wg.Add(1)
 	go eh.handleEvents(eventChan)
@@ -100,7 +85,7 @@ func (eh *EventHandler) IsRunning() bool {
 }
 
 // handleEvents processes orchestrator events in a background goroutine
-func (eh *EventHandler) handleEvents(eventChan <-chan ServiceStateEvent) {
+func (eh *EventHandler) handleEvents(eventChan <-chan api.ServiceStateChangedEvent) {
 	defer eh.wg.Done()
 	defer func() {
 		// Mark as not running when goroutine exits
@@ -127,7 +112,7 @@ func (eh *EventHandler) handleEvents(eventChan <-chan ServiceStateEvent) {
 }
 
 // processEvent handles a single orchestrator event
-func (eh *EventHandler) processEvent(event ServiceStateEvent) {
+func (eh *EventHandler) processEvent(event api.ServiceStateChangedEvent) {
 	// Filter for MCP service events only
 	if !eh.isMCPServiceEvent(event) {
 		return
@@ -160,6 +145,6 @@ func (eh *EventHandler) processEvent(event ServiceStateEvent) {
 }
 
 // isMCPServiceEvent checks if the event is related to an MCP service
-func (eh *EventHandler) isMCPServiceEvent(event ServiceStateEvent) bool {
+func (eh *EventHandler) isMCPServiceEvent(event api.ServiceStateChangedEvent) bool {
 	return event.ServiceType == "MCPServer"
 }

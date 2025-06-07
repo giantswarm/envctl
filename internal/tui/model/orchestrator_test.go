@@ -4,6 +4,7 @@ import (
 	"envctl/internal/api"
 	"envctl/internal/config"
 	"envctl/internal/orchestrator"
+	"envctl/internal/services"
 	"envctl/pkg/logging"
 	"testing"
 )
@@ -41,11 +42,24 @@ func TestStartOrchestrator(t *testing.T) {
 			orch := orchestrator.New(orchConfig)
 			registry := orch.GetServiceRegistry()
 
+			// Register adapters
+			registryAdapter := services.NewRegistryAdapter(registry)
+			api.RegisterServiceRegistry(registryAdapter)
+
+			orchAdapter := orchestrator.NewAPIAdapter(orch)
+			api.RegisterOrchestrator(orchAdapter)
+
 			// Create APIs
-			orchestratorAPI := api.NewOrchestratorAPI(orch, registry)
-			mcpAPI := api.NewMCPServiceAPI(registry)
-			portForwardAPI := api.NewPortForwardServiceAPI(registry)
-			k8sAPI := api.NewK8sServiceAPI(registry)
+			orchestratorAPI := api.NewOrchestratorAPI()
+			mcpAPI := api.NewMCPServiceAPI()
+			portForwardAPI := api.NewPortForwardServiceAPI()
+			k8sAPI := api.NewK8sServiceAPI()
+
+			// Clean up handlers after test
+			defer func() {
+				api.RegisterServiceRegistry(nil)
+				api.RegisterOrchestrator(nil)
+			}()
 
 			// Create model
 			m := &Model{

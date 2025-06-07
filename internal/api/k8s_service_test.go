@@ -2,84 +2,13 @@ package api
 
 import (
 	"context"
-	"envctl/internal/services"
 	"errors"
 	"testing"
 	"time"
 )
 
-// mockService implements the Service interface for testing
-type mockService struct {
-	label        string
-	serviceType  services.ServiceType
-	state        services.ServiceState
-	health       services.HealthStatus
-	lastError    error
-	dependencies []string
-	serviceData  map[string]interface{}
-}
-
-func (m *mockService) Start(ctx context.Context) error { return nil }
-func (m *mockService) Stop(ctx context.Context) error  { return nil }
-func (m *mockService) Restart(ctx context.Context) error {
-	return nil
-}
-func (m *mockService) GetState() services.ServiceState                              { return m.state }
-func (m *mockService) GetHealth() services.HealthStatus                             { return m.health }
-func (m *mockService) GetLastError() error                                          { return m.lastError }
-func (m *mockService) GetLabel() string                                             { return m.label }
-func (m *mockService) GetType() services.ServiceType                                { return m.serviceType }
-func (m *mockService) GetDependencies() []string                                    { return m.dependencies }
-func (m *mockService) SetStateChangeCallback(callback services.StateChangeCallback) {}
-func (m *mockService) GetServiceData() map[string]interface{}                       { return m.serviceData }
-
-// mockRegistry implements ServiceRegistry for testing
-type mockRegistry struct {
-	services map[string]services.Service
-}
-
-func newMockRegistry() *mockRegistry {
-	return &mockRegistry{
-		services: make(map[string]services.Service),
-	}
-}
-
-func (r *mockRegistry) Register(service services.Service) error {
-	r.services[service.GetLabel()] = service
-	return nil
-}
-
-func (r *mockRegistry) Unregister(label string) error {
-	delete(r.services, label)
-	return nil
-}
-
-func (r *mockRegistry) Get(label string) (services.Service, bool) {
-	service, exists := r.services[label]
-	return service, exists
-}
-
-func (r *mockRegistry) GetAll() []services.Service {
-	var result []services.Service
-	for _, service := range r.services {
-		result = append(result, service)
-	}
-	return result
-}
-
-func (r *mockRegistry) GetByType(serviceType services.ServiceType) []services.Service {
-	var result []services.Service
-	for _, service := range r.services {
-		if service.GetType() == serviceType {
-			result = append(result, service)
-		}
-	}
-	return result
-}
-
 func TestNewK8sServiceAPI(t *testing.T) {
-	registry := newMockRegistry()
-	api := NewK8sServiceAPI(registry)
+	api := NewK8sServiceAPI()
 
 	if api == nil {
 		t.Error("Expected NewK8sServiceAPI to return non-nil API")
@@ -87,10 +16,17 @@ func TestNewK8sServiceAPI(t *testing.T) {
 }
 
 func TestGetConnectionInfo(t *testing.T) {
-	registry := newMockRegistry()
-	api := NewK8sServiceAPI(registry)
+	// Setup mock registry
+	registry := newMockServiceRegistryHandler()
 
 	// Test service not found
+	RegisterServiceRegistry(registry)
+	defer func() {
+		RegisterServiceRegistry(nil)
+	}()
+
+	api := NewK8sServiceAPI()
+
 	_, err := api.GetConnectionInfo(context.Background(), "nonexistent")
 	if err == nil {
 		t.Error("Expected error for nonexistent service")
@@ -98,12 +34,12 @@ func TestGetConnectionInfo(t *testing.T) {
 
 	// Create a mock K8s service
 	testTime := time.Now()
-	mockSvc := &mockService{
-		label:       "test-k8s",
-		serviceType: services.TypeKubeConnection,
-		state:       services.StateRunning,
-		health:      services.HealthHealthy,
-		serviceData: map[string]interface{}{
+	mockSvc := &mockServiceInfo{
+		label:   "test-k8s",
+		svcType: TypeKubeConnection,
+		state:   StateRunning,
+		health:  HealthHealthy,
+		data: map[string]interface{}{
 			"context":    "test-context",
 			"isMC":       true,
 			"readyNodes": 3,
@@ -112,7 +48,7 @@ func TestGetConnectionInfo(t *testing.T) {
 		},
 	}
 
-	registry.Register(mockSvc)
+	registry.addService(mockSvc)
 
 	// Test successful retrieval
 	info, err := api.GetConnectionInfo(context.Background(), "test-k8s")
@@ -124,12 +60,12 @@ func TestGetConnectionInfo(t *testing.T) {
 		t.Errorf("Expected label 'test-k8s', got %s", info.Label)
 	}
 
-	if info.State != "Running" {
-		t.Errorf("Expected state 'Running', got %s", info.State)
+	if info.State != "running" {
+		t.Errorf("Expected state 'running', got %s", info.State)
 	}
 
-	if info.Health != "Healthy" {
-		t.Errorf("Expected health 'Healthy', got %s", info.Health)
+	if info.Health != "healthy" {
+		t.Errorf("Expected health 'healthy', got %s", info.Health)
 	}
 
 	if info.Context != "test-context" {
@@ -154,20 +90,26 @@ func TestGetConnectionInfo(t *testing.T) {
 }
 
 func TestGetConnectionInfoWithError(t *testing.T) {
-	registry := newMockRegistry()
-	api := NewK8sServiceAPI(registry)
+	// Setup mock registry
+	registry := newMockServiceRegistryHandler()
+	RegisterServiceRegistry(registry)
+	defer func() {
+		RegisterServiceRegistry(nil)
+	}()
+
+	api := NewK8sServiceAPI()
 
 	// Create a mock service with error
 	testErr := errors.New("test service error")
-	mockSvc := &mockService{
-		label:       "error-k8s",
-		serviceType: services.TypeKubeConnection,
-		state:       services.StateFailed,
-		health:      services.HealthUnhealthy,
-		lastError:   testErr,
+	mockSvc := &mockServiceInfo{
+		label:   "error-k8s",
+		svcType: TypeKubeConnection,
+		state:   StateError,
+		health:  HealthUnhealthy,
+		lastErr: testErr,
 	}
 
-	registry.Register(mockSvc)
+	registry.addService(mockSvc)
 
 	info, err := api.GetConnectionInfo(context.Background(), "error-k8s")
 	if err != nil {
@@ -180,18 +122,24 @@ func TestGetConnectionInfoWithError(t *testing.T) {
 }
 
 func TestGetConnectionInfoWrongType(t *testing.T) {
-	registry := newMockRegistry()
-	api := NewK8sServiceAPI(registry)
+	// Setup mock registry
+	registry := newMockServiceRegistryHandler()
+	RegisterServiceRegistry(registry)
+	defer func() {
+		RegisterServiceRegistry(nil)
+	}()
+
+	api := NewK8sServiceAPI()
 
 	// Create a mock service of wrong type
-	mockSvc := &mockService{
-		label:       "wrong-type",
-		serviceType: services.TypePortForward,
-		state:       services.StateRunning,
-		health:      services.HealthHealthy,
+	mockSvc := &mockServiceInfo{
+		label:   "wrong-type",
+		svcType: TypePortForward,
+		state:   StateRunning,
+		health:  HealthHealthy,
 	}
 
-	registry.Register(mockSvc)
+	registry.addService(mockSvc)
 
 	_, err := api.GetConnectionInfo(context.Background(), "wrong-type")
 	if err == nil {
@@ -204,43 +152,49 @@ func TestGetConnectionInfoWrongType(t *testing.T) {
 }
 
 func TestListConnections(t *testing.T) {
-	registry := newMockRegistry()
-	api := NewK8sServiceAPI(registry)
+	// Setup mock registry
+	registry := newMockServiceRegistryHandler()
+	RegisterServiceRegistry(registry)
+	defer func() {
+		RegisterServiceRegistry(nil)
+	}()
+
+	api := NewK8sServiceAPI()
 
 	// Create multiple mock K8s services
-	mockSvc1 := &mockService{
-		label:       "k8s-1",
-		serviceType: services.TypeKubeConnection,
-		state:       services.StateRunning,
-		health:      services.HealthHealthy,
-		serviceData: map[string]interface{}{
+	mockSvc1 := &mockServiceInfo{
+		label:   "k8s-1",
+		svcType: TypeKubeConnection,
+		state:   StateRunning,
+		health:  HealthHealthy,
+		data: map[string]interface{}{
 			"context": "context-1",
 			"isMC":    true,
 		},
 	}
 
-	mockSvc2 := &mockService{
-		label:       "k8s-2",
-		serviceType: services.TypeKubeConnection,
-		state:       services.StateStarting,
-		health:      services.HealthChecking,
-		serviceData: map[string]interface{}{
+	mockSvc2 := &mockServiceInfo{
+		label:   "k8s-2",
+		svcType: TypeKubeConnection,
+		state:   StateStarting,
+		health:  HealthUnknown,
+		data: map[string]interface{}{
 			"context": "context-2",
 			"isMC":    false,
 		},
 	}
 
 	// Add a non-K8s service (should be filtered out)
-	mockSvc3 := &mockService{
-		label:       "port-forward",
-		serviceType: services.TypePortForward,
-		state:       services.StateRunning,
-		health:      services.HealthHealthy,
+	mockSvc3 := &mockServiceInfo{
+		label:   "port-forward",
+		svcType: TypePortForward,
+		state:   StateRunning,
+		health:  HealthHealthy,
 	}
 
-	registry.Register(mockSvc1)
-	registry.Register(mockSvc2)
-	registry.Register(mockSvc3)
+	registry.addService(mockSvc1)
+	registry.addService(mockSvc2)
+	registry.addService(mockSvc3)
 
 	connections, err := api.ListConnections(context.Background())
 	if err != nil {
@@ -271,34 +225,40 @@ func TestListConnections(t *testing.T) {
 }
 
 func TestGetConnectionByContext(t *testing.T) {
-	registry := newMockRegistry()
-	api := NewK8sServiceAPI(registry)
+	// Setup mock registry
+	registry := newMockServiceRegistryHandler()
+	RegisterServiceRegistry(registry)
+	defer func() {
+		RegisterServiceRegistry(nil)
+	}()
+
+	api := NewK8sServiceAPI()
 
 	// Create mock K8s services with different contexts
-	mockSvc1 := &mockService{
-		label:       "k8s-1",
-		serviceType: services.TypeKubeConnection,
-		state:       services.StateRunning,
-		health:      services.HealthHealthy,
-		serviceData: map[string]interface{}{
+	mockSvc1 := &mockServiceInfo{
+		label:   "k8s-1",
+		svcType: TypeKubeConnection,
+		state:   StateRunning,
+		health:  HealthHealthy,
+		data: map[string]interface{}{
 			"context": "target-context",
 			"isMC":    true,
 		},
 	}
 
-	mockSvc2 := &mockService{
-		label:       "k8s-2",
-		serviceType: services.TypeKubeConnection,
-		state:       services.StateRunning,
-		health:      services.HealthHealthy,
-		serviceData: map[string]interface{}{
+	mockSvc2 := &mockServiceInfo{
+		label:   "k8s-2",
+		svcType: TypeKubeConnection,
+		state:   StateRunning,
+		health:  HealthHealthy,
+		data: map[string]interface{}{
 			"context": "other-context",
 			"isMC":    false,
 		},
 	}
 
-	registry.Register(mockSvc1)
-	registry.Register(mockSvc2)
+	registry.addService(mockSvc1)
+	registry.addService(mockSvc2)
 
 	// Test finding by context
 	info, err := api.GetConnectionByContext(context.Background(), "target-context")

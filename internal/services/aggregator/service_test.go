@@ -13,7 +13,7 @@ func TestNewAggregatorService(t *testing.T) {
 		Port: 8080,
 	}
 
-	service := NewAggregatorService(config, nil, nil)
+	service := NewAggregatorService(config, nil, nil, nil)
 
 	assert.NotNil(t, service)
 	assert.Equal(t, "mcp-aggregator", service.GetLabel())

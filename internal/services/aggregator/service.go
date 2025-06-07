@@ -3,6 +3,7 @@ package aggregator
 import (
 	"context"
 	"envctl/internal/aggregator"
+	"envctl/internal/api"
 	"envctl/internal/services"
 	"envctl/pkg/logging"
 	"fmt"
@@ -15,24 +16,27 @@ import (
 type AggregatorService struct {
 	*services.BaseService
 
-	mu                   sync.RWMutex
-	config               aggregator.AggregatorConfig
-	orchestratorProvider aggregator.OrchestratorEventProvider
-	mcpServiceProvider   aggregator.MCPServiceProvider
-	manager              *aggregator.AggregatorManager
+	mu              sync.RWMutex
+	config          aggregator.AggregatorConfig
+	orchestratorAPI api.OrchestratorAPI
+	mcpAPI          api.MCPServiceAPI
+	serviceRegistry api.ServiceRegistryHandler
+	manager         *aggregator.AggregatorManager
 }
 
 // NewAggregatorService creates a new aggregator service
 func NewAggregatorService(
 	config aggregator.AggregatorConfig,
-	orchestratorProvider aggregator.OrchestratorEventProvider,
-	mcpServiceProvider aggregator.MCPServiceProvider,
+	orchestratorAPI api.OrchestratorAPI,
+	mcpAPI api.MCPServiceAPI,
+	serviceRegistry api.ServiceRegistryHandler,
 ) *AggregatorService {
 	return &AggregatorService{
-		BaseService:          services.NewBaseService("mcp-aggregator", services.ServiceType("Aggregator"), []string{}),
-		config:               config,
-		orchestratorProvider: orchestratorProvider,
-		mcpServiceProvider:   mcpServiceProvider,
+		BaseService:     services.NewBaseService("mcp-aggregator", services.ServiceType("Aggregator"), []string{}),
+		config:          config,
+		orchestratorAPI: orchestratorAPI,
+		mcpAPI:          mcpAPI,
+		serviceRegistry: serviceRegistry,
 	}
 }
 
@@ -47,14 +51,14 @@ func (s *AggregatorService) Start(ctx context.Context) error {
 
 	s.UpdateState(services.StateStarting, services.HealthUnknown, nil)
 
-	// Check if providers are set
-	if s.orchestratorProvider == nil || s.mcpServiceProvider == nil {
-		s.UpdateState(services.StateFailed, services.HealthUnhealthy, fmt.Errorf("providers not set"))
-		return fmt.Errorf("aggregator providers not set")
+	// Check if APIs are set
+	if s.orchestratorAPI == nil || s.mcpAPI == nil {
+		s.UpdateState(services.StateFailed, services.HealthUnhealthy, fmt.Errorf("APIs not set"))
+		return fmt.Errorf("aggregator APIs not set")
 	}
 
-	// Create the manager with providers
-	s.manager = aggregator.NewAggregatorManager(s.config, s.orchestratorProvider, s.mcpServiceProvider)
+	// Create the manager with APIs
+	s.manager = aggregator.NewAggregatorManager(s.config, s.orchestratorAPI, s.mcpAPI, s.serviceRegistry)
 
 	// Start the manager
 	if err := s.manager.Start(ctx); err != nil {

@@ -1,122 +1,92 @@
-// Package api provides the API layer for envctl's service management.
+// Package api provides public interfaces for interacting with envctl services.
 //
-// This package defines the interfaces and types used for communication between
-// the orchestrator, services, and external consumers (TUI, CLI). It provides
-// a clean abstraction layer that allows different components to interact without
-// tight coupling.
+// This package contains the API layer that exposes controlled access to service
+// functionality without exposing internal implementation details. It serves as
+// the primary interface for external consumers like the TUI, HTTP endpoints,
+// or other components that need to interact with services.
 //
-// # Core Interfaces
+// Architecture:
 //
-// The package defines several key interfaces that components must implement:
+// The API package follows a handler-based architecture that maintains clean
+// separation between interfaces and implementations:
 //
-// OrchestratorAPI: Provides methods for managing service lifecycle
-//   - StartService: Start a specific service by label
-//   - StopService: Stop a specific service by label
-//   - RestartService: Restart a specific service
-//   - GetServiceStatus: Get current status of a service
-//   - ListServices: List all registered services
+//  1. **API Interfaces** - Define the contracts for each service type
+//     (OrchestratorAPI, MCPServiceAPI, etc.)
 //
-// K8sServiceAPI: Provides Kubernetes connection information
-//   - ListConnections: Get all K8s connections
-//   - GetConnectionInfo: Get details for a specific connection
-//   - GetConnectionByContext: Find connection by context name
+//  2. **Handler Interfaces** - Define what capabilities the implementations
+//     must provide (ServiceRegistryHandler, OrchestratorHandler, etc.)
 //
-// PortForwardServiceAPI: Manages port forward services
-//   - ListForwards: Get all port forwards
-//   - GetForwardInfo: Get details for a specific forward
+//  3. **Handler Registry** - Manages registration of handler implementations
+//     at runtime
 //
-// MCPServiceAPI: Manages MCP server services
-//   - ListServers: Get all MCP servers
-//   - GetServerInfo: Get details for a specific server
-//   - GetTools: Get available tools for an MCP server
+//  4. **API Implementations** - Thin wrappers that delegate to registered
+//     handlers
 //
-// AggregatorAPI: Provides MCP aggregator statistics and aggregated data
-//   - GetAggregatorInfo: Get comprehensive aggregator statistics
-//   - GetAllTools: Get tools from all connected MCP servers
-//   - GetAllResources: Get resources from all connected MCP servers
+// This design ensures:
+// - No circular dependencies (API doesn't import internal packages)
+// - Clean separation of concerns
+// - Easy testing through handler mocking
+// - Runtime flexibility in handler registration
 //
-// # Data Types
+// Service Types:
 //
-// The package provides data transfer objects for service information:
+//   - OrchestratorAPI: Manages service lifecycle and cluster switching
+//   - MCPServiceAPI: Provides MCP server information and tool access
+//   - PortForwardServiceAPI: Manages kubectl port-forward tunnels
+//   - K8sServiceAPI: Handles Kubernetes cluster connections
+//   - AggregatorAPI: Aggregates MCP servers into a single endpoint
 //
-// ServiceStatus: Current state and health of any service
-//   - Label: Unique identifier
-//   - Type: Service type (K8s, PortForward, MCP)
-//   - State: Current state (stopped, starting, running, etc.)
-//   - Health: Health status (unknown, healthy, unhealthy)
-//   - Error: Any error information
+// Example Usage:
 //
-// K8sConnectionInfo: Kubernetes connection details
-//   - Context: Kubernetes context name
-//   - Cluster: Cluster name
-//   - IsManagement: Whether it's a management cluster
-//   - ReadyNodes: Number of ready nodes
-//   - TotalNodes: Total number of nodes
+//	// At startup, services register their handlers
+//	registryAdapter := services.NewRegistryAdapter(registry)
+//	registryAdapter.Register()
 //
-// PortForwardServiceInfo: Port forward details
-//   - Name: Service name
-//   - Namespace: Kubernetes namespace
-//   - Service: Kubernetes service name
-//   - LocalPort: Local port number
-//   - RemotePort: Remote port number
-//   - Context: Target Kubernetes context
+//	orchAdapter := orchestrator.NewAPIAdapter(orch)
+//	orchAdapter.Register()
 //
-// MCPServerInfo: MCP server details
-//   - Name: Server name
-//   - Type: Server type (localCommand, container)
-//   - ProxyPort: Local proxy port
-//   - Command: Command or image used
-//   - Dependencies: Required services
+//	// Create API instances
+//	orchestratorAPI := api.NewOrchestratorAPI()
+//	mcpAPI := api.NewMCPServiceAPI()
 //
-// AggregatorInfo: MCP aggregator statistics
-//   - Endpoint: SSE endpoint URL
-//   - Port: Aggregator port number
-//   - Host: Aggregator host
-//   - Health: Current health status
-//   - ServersTotal: Total number of registered servers
-//   - ServersConnected: Number of connected servers
-//   - ToolsCount: Total number of available tools
-//   - ResourcesCount: Total number of available resources
-//   - PromptsCount: Total number of available prompts
+//	// Use the APIs
+//	err := orchestratorAPI.StartService("my-service")
+//	status, err := orchestratorAPI.GetServiceStatus("my-service")
 //
-// # Event System
+// Handler Registration:
 //
-// The package includes an event system for state changes:
+// Services must register their handlers before APIs can be used:
 //
-// ServiceStateChangedEvent: Emitted when a service changes state
-//   - Label: Service that changed
-//   - OldState: Previous state
-//   - NewState: Current state
-//   - Error: Any associated error
-//   - Timestamp: When the change occurred
-//
-// # Usage Example
-//
-//	// Using the orchestrator API
-//	var orch api.OrchestratorAPI = orchestrator.New(config)
-//
-//	// Start a service
-//	if err := orch.StartService(ctx, "mc-prometheus"); err != nil {
-//	    log.Fatal(err)
+//	// Service adapters implement handler interfaces
+//	type RegistryAdapter struct {
+//	    registry ServiceRegistry
 //	}
 //
-//	// Get service status
-//	status, err := orch.GetServiceStatus(ctx, "mc-prometheus")
-//	if err != nil {
-//	    log.Fatal(err)
-//	}
-//	fmt.Printf("Service state: %s, health: %s\n", status.State, status.Health)
-//
-//	// Subscribe to state changes
-//	events := orch.SubscribeToStateChanges()
-//	for event := range events {
-//	    fmt.Printf("Service %s: %s -> %s\n",
-//	        event.Label, event.OldState, event.NewState)
+//	func (r *RegistryAdapter) Get(label string) (api.ServiceInfo, bool) {
+//	    // Implementation
 //	}
 //
-// # Thread Safety
+//	func (r *RegistryAdapter) Register() {
+//	    api.RegisterServiceRegistry(r)
+//	}
 //
-// All interfaces in this package must be implemented in a thread-safe manner
-// as they may be called concurrently from multiple goroutines (TUI updates,
-// health checkers, user actions, etc.).
+// Testing:
+//
+// APIs can be easily tested by registering mock handlers:
+//
+//	mockRegistry := &mockServiceRegistryHandler{
+//	    services: make(map[string]ServiceInfo),
+//	}
+//	api.RegisterServiceRegistry(mockRegistry)
+//	defer api.RegisterServiceRegistry(nil)
+//
+//	// Test API calls
+//	api := api.NewOrchestratorAPI()
+//	status, err := api.GetServiceStatus("test")
+//
+// Thread Safety:
+//
+// All API methods are thread-safe and can be called concurrently from
+// multiple goroutines. The handler registry uses mutex protection for
+// safe concurrent access.
 package api
