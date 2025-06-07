@@ -60,7 +60,7 @@ func GetDefaultConfigWithRoles(mcName, wcName string) EnvctlConfig {
 		Aggregator: AggregatorConfig{
 			Port:    8090,
 			Host:    "localhost",
-			Enabled: false, // Disabled by default when no MCP servers
+			Enabled: true, // Aggregator is enabled by default
 		},
 		Workflows: []WorkflowDefinition{},
 	}

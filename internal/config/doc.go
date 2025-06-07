@@ -11,6 +11,7 @@
 //
 //  1. Default Configuration (embedded in binary)
 //     - Provides minimal defaults (no k8s connections, no MCP servers, no port forwarding)
+//     - Aggregator service is enabled by default on port 8090
 //     - Users must configure what they need via YAML files
 //
 //  2. User Configuration (~/.config/envctl/config.yaml)

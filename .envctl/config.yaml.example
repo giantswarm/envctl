@@ -77,7 +77,7 @@ mcpServers: []
   #   enabledByDefault: true
   #   icon: "🔌"
   #   category: "Core"
-  #   command: ["node", "/home/teemow/projects/giantswarm/teleport-mcp/dist/index.js"]
+  #   command: ["node", "/path/to/teleport-mcp/dist/index.js"]
 
   # Example Kubernetes MCP server:
   # - name: k8s
@@ -123,7 +123,7 @@ mcpServers: []
   #   enabledByDefault: true
   #   icon: "🔥"
   #   category: "Monitoring"
-  #   command: ["uv", "--directory", "/home/teemow/projects/prometheus-mcp-server", "run", "src/prometheus_mcp_server/main.py"]
+  #   command: ["uv", "--directory", "/path/to/prometheus-mcp-server", "run", "src/prometheus_mcp_server/main.py"]
   #   env:
   #     PROMETHEUS_URL: "http://localhost:8080/prometheus"
   #     ORG_ID: "giantswarm"
@@ -148,7 +148,7 @@ globalSettings:
 aggregator:
   port: 8090
   host: localhost
-  enabled: false  # Disabled by default when no MCP servers
+  enabled: true
   # envctlPrefix: "x"
 
 # Workflows (if any)
