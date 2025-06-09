@@ -22,21 +22,21 @@ const (
 type Capability struct {
 	ID          string                 `json:"id"`
 	Type        CapabilityType         `json:"type"`
-	Provider    string                 `json:"provider"`    // MCP server name
-	Name        string                 `json:"name"`        // Human-readable name
+	Provider    string                 `json:"provider"` // MCP server name
+	Name        string                 `json:"name"`     // Human-readable name
 	Description string                 `json:"description"`
-	Features    []string               `json:"features"`    // List of supported features
-	Config      map[string]interface{} `json:"config"`      // Provider-specific config
+	Features    []string               `json:"features"` // List of supported features
+	Config      map[string]interface{} `json:"config"`   // Provider-specific config
 	Status      CapabilityStatus       `json:"status"`
 	Metadata    map[string]string      `json:"metadata"`
 }
 
 // CapabilityStatus represents the current status of a capability
 type CapabilityStatus struct {
-	State       CapabilityState `json:"state"`
-	LastCheck   time.Time       `json:"last_check"`
-	Error       string          `json:"error,omitempty"`
-	Health      HealthStatus    `json:"health"`
+	State     CapabilityState `json:"state"`
+	LastCheck time.Time       `json:"last_check"`
+	Error     string          `json:"error,omitempty"`
+	Health    HealthStatus    `json:"health"`
 }
 
 // CapabilityState represents the state of a capability
@@ -106,4 +106,4 @@ type CapabilityUpdate struct {
 	State        CapabilityState   `json:"state"`
 	Error        string            `json:"error,omitempty"`
 	Metadata     map[string]string `json:"metadata,omitempty"`
-} 
+}

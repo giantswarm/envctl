@@ -361,4 +361,4 @@ func TestConcurrency(t *testing.T) {
 	if len(all) == 0 {
 		t.Error("Expected some capabilities to be registered")
 	}
-} 
+}

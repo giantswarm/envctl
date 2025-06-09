@@ -41,4 +41,4 @@ type RegistryObserver interface {
 
 	// OnCapabilityUpdated is called when a capability is updated
 	OnCapabilityUpdated(cap *Capability)
-} 
+}

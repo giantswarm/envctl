@@ -10,7 +10,7 @@ import (
 // ExtendedOrchestrator adds capability management to the orchestrator
 type ExtendedOrchestrator struct {
 	*Orchestrator
-	
+
 	// Capability management
 	capabilityRegistry *capability.Registry
 	capabilityResolver *capability.Resolver
@@ -20,17 +20,17 @@ type ExtendedOrchestrator struct {
 func NewExtended(cfg Config) *ExtendedOrchestrator {
 	// Create base orchestrator
 	base := New(cfg)
-	
+
 	// Create capability registry and resolver
 	registry := capability.NewRegistry()
 	resolver := capability.NewResolver(registry)
-	
+
 	// Set up capability change monitoring
 	registry.OnRegister(func(cap *capability.Capability) {
-		logging.Info("Orchestrator", "Capability registered: %s (type: %s, provider: %s)", 
+		logging.Info("Orchestrator", "Capability registered: %s (type: %s, provider: %s)",
 			cap.Name, cap.Type, cap.Provider)
 	})
-	
+
 	registry.OnUnregister(func(capabilityID string) {
 		logging.Info("Orchestrator", "Capability unregistered: %s", capabilityID)
 		// Check if any services were using this capability
@@ -39,19 +39,19 @@ func NewExtended(cfg Config) *ExtendedOrchestrator {
 			logging.Warn("Orchestrator", "Services affected by capability removal: %v", services)
 		}
 	})
-	
+
 	registry.OnUpdate(func(cap *capability.Capability) {
 		logging.Debug("Orchestrator", "Capability updated: %s (state: %s)", cap.Name, cap.Status.State)
 		// Check if capability became unhealthy
 		if cap.Status.State == capability.CapabilityStateUnhealthy {
 			services := resolver.GetServicesUsingCapability(cap.ID)
 			if len(services) > 0 {
-				logging.Warn("Orchestrator", "Capability %s became unhealthy, affected services: %v", 
+				logging.Warn("Orchestrator", "Capability %s became unhealthy, affected services: %v",
 					cap.Name, services)
 			}
 		}
 	})
-	
+
 	return &ExtendedOrchestrator{
 		Orchestrator:       base,
 		capabilityRegistry: registry,
@@ -75,11 +75,11 @@ func (eo *ExtendedOrchestrator) StartServiceWithCapabilities(label string) error
 	if !exists {
 		return fmt.Errorf("service %s not found", label)
 	}
-	
+
 	// Check if service has capability requirements
 	if consumer, ok := service.(capability.CapabilityConsumer); ok {
 		requirements := consumer.GetRequiredCapabilities()
-		
+
 		// Resolve each requirement
 		for _, req := range requirements {
 			cap, err := eo.capabilityResolver.ResolveRequirement(req)
@@ -87,11 +87,11 @@ func (eo *ExtendedOrchestrator) StartServiceWithCapabilities(label string) error
 				if !req.Optional {
 					return fmt.Errorf("failed to resolve required capability %s: %w", req.Type, err)
 				}
-				logging.Warn("Orchestrator", "Optional capability %s not available for service %s", 
+				logging.Warn("Orchestrator", "Optional capability %s not available for service %s",
 					req.Type, label)
 				continue
 			}
-			
+
 			if cap != nil {
 				// Request the capability for this service
 				request := capability.CapabilityRequest{
@@ -99,32 +99,32 @@ func (eo *ExtendedOrchestrator) StartServiceWithCapabilities(label string) error
 					Features: req.Features,
 					Config:   req.Config,
 				}
-				
+
 				handle, err := eo.capabilityResolver.RequestCapability(label, request)
 				if err != nil {
 					if !req.Optional {
 						return fmt.Errorf("failed to request capability %s: %w", req.Type, err)
 					}
-					logging.Warn("Orchestrator", "Failed to request optional capability %s for service %s: %v", 
+					logging.Warn("Orchestrator", "Failed to request optional capability %s for service %s: %v",
 						req.Type, label, err)
 					continue
 				}
-				
+
 				// Notify the service about the capability
 				if err := consumer.OnCapabilityProvided(*handle); err != nil {
 					// Release the capability if the service can't use it
 					eo.capabilityResolver.ReleaseCapability(label, handle.ID)
 					if !req.Optional {
-						return fmt.Errorf("service %s failed to accept capability %s: %w", 
+						return fmt.Errorf("service %s failed to accept capability %s: %w",
 							label, req.Type, err)
 					}
-					logging.Warn("Orchestrator", "Service %s failed to accept optional capability %s: %v", 
+					logging.Warn("Orchestrator", "Service %s failed to accept optional capability %s: %v",
 						label, req.Type, err)
 				}
 			}
 		}
 	}
-	
+
 	// Now start the service normally
 	return eo.StartService(label)
 }
@@ -133,7 +133,7 @@ func (eo *ExtendedOrchestrator) StartServiceWithCapabilities(label string) error
 func (eo *ExtendedOrchestrator) StopServiceWithCapabilities(label string) error {
 	// Release all capabilities for this service
 	eo.capabilityResolver.ReleaseAllForService(label)
-	
+
 	// Check if service implements capability consumer
 	if service, exists := eo.registry.Get(label); exists {
 		if consumer, ok := service.(capability.CapabilityConsumer); ok {
@@ -145,7 +145,7 @@ func (eo *ExtendedOrchestrator) StopServiceWithCapabilities(label string) error 
 			}
 		}
 	}
-	
+
 	// Now stop the service normally
 	return eo.StopService(label)
 }
@@ -159,7 +159,7 @@ func (eo *ExtendedOrchestrator) RegisterCapabilityProvider(label string, provide
 		Name:     fmt.Sprintf("%s Provider", provider.GetCapabilityType()),
 		Features: provider.GetCapabilityFeatures(),
 	}
-	
+
 	// Register the capability
 	return eo.capabilityRegistry.Register(cap)
 }
@@ -167,7 +167,7 @@ func (eo *ExtendedOrchestrator) RegisterCapabilityProvider(label string, provide
 // checkCapabilityHealth checks the health of all capabilities
 func (eo *ExtendedOrchestrator) checkCapabilityHealth() {
 	capabilities := eo.capabilityRegistry.ListAll()
-	
+
 	for _, cap := range capabilities {
 		// Get the service that provides this capability
 		service, exists := eo.registry.Get(cap.Provider)
@@ -181,15 +181,15 @@ func (eo *ExtendedOrchestrator) checkCapabilityHealth() {
 			eo.capabilityRegistry.Update(cap.ID, status)
 			continue
 		}
-		
+
 		// Check service state
 		state := service.GetState()
 		health := service.GetHealth()
-		
+
 		var capState capability.CapabilityState
 		var capHealth capability.HealthStatus
 		var errorMsg string
-		
+
 		switch state {
 		case services.StateRunning:
 			if health == services.HealthHealthy {
@@ -213,7 +213,7 @@ func (eo *ExtendedOrchestrator) checkCapabilityHealth() {
 			capHealth = capability.HealthStatusUnknown
 			errorMsg = fmt.Sprintf("Provider service in %s state", state)
 		}
-		
+
 		// Update capability status
 		status := capability.CapabilityStatus{
 			State:  capState,
@@ -228,20 +228,20 @@ func (eo *ExtendedOrchestrator) checkCapabilityHealth() {
 func (eo *ExtendedOrchestrator) MonitorCapabilities() {
 	// Run initial health check
 	eo.checkCapabilityHealth()
-	
+
 	// Set up monitoring for service state changes
 	eo.setGlobalStateChangeCallback(func(label string, oldState, newState services.ServiceState, health services.HealthStatus, err error) {
 		// Check if this service provides any capabilities
 		capabilities := eo.capabilityRegistry.ListByProvider(label)
 		if len(capabilities) > 0 {
-			logging.Debug("Orchestrator", "Service %s state changed, updating %d capabilities", 
+			logging.Debug("Orchestrator", "Service %s state changed, updating %d capabilities",
 				label, len(capabilities))
 			eo.checkCapabilityHealth()
 		}
-		
+
 		// Call the original callback if it exists
 		if eo.globalStateChangeCallback != nil {
 			eo.globalStateChangeCallback(label, oldState, newState, health, err)
 		}
 	})
-} 
+}

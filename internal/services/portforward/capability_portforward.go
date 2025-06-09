@@ -14,7 +14,7 @@ import (
 // that uses capabilities instead of hard dependencies
 type CapabilityPortForwardService struct {
 	*services.CapabilityService
-	
+
 	config   config.PortForwardDefinition
 	stopChan chan struct{}
 }
@@ -49,7 +49,7 @@ func NewCapabilityPortForwardService(pfConfig config.PortForwardDefinition) *Cap
 			Optional: false,
 		},
 	}
-	
+
 	// Create the service with no hard dependencies
 	service := &CapabilityPortForwardService{
 		CapabilityService: services.NewCapabilityService(
@@ -60,13 +60,13 @@ func NewCapabilityPortForwardService(pfConfig config.PortForwardDefinition) *Cap
 		),
 		config: pfConfig,
 	}
-	
+
 	// Set capability callbacks
 	service.SetCapabilityCallbacks(
 		service.onCapabilityProvided,
 		service.onCapabilityLost,
 	)
-	
+
 	return service
 }
 
@@ -74,13 +74,13 @@ func NewCapabilityPortForwardService(pfConfig config.PortForwardDefinition) *Cap
 func (s *CapabilityPortForwardService) Start(ctx context.Context) error {
 	// Update state to starting
 	s.UpdateState(services.StateStarting, services.HealthUnknown, nil)
-	
+
 	// Wait for all required capabilities
 	if err := s.WaitForCapabilities(ctx); err != nil {
 		s.UpdateState(services.StateFailed, services.HealthUnhealthy, err)
 		return fmt.Errorf("failed to acquire capabilities: %w", err)
 	}
-	
+
 	// Get auth capability handle
 	authHandle, ok := s.GetCapabilityHandleByType(capability.CapabilityTypeAuth)
 	if !ok {
@@ -88,7 +88,7 @@ func (s *CapabilityPortForwardService) Start(ctx context.Context) error {
 		s.UpdateState(services.StateFailed, services.HealthUnhealthy, err)
 		return err
 	}
-	
+
 	// Get discovery capability handle
 	discoveryHandle, ok := s.GetCapabilityHandleByType(capability.CapabilityTypeDiscovery)
 	if !ok {
@@ -96,7 +96,7 @@ func (s *CapabilityPortForwardService) Start(ctx context.Context) error {
 		s.UpdateState(services.StateFailed, services.HealthUnhealthy, err)
 		return err
 	}
-	
+
 	// Get port forward capability handle
 	pfHandle, ok := s.GetCapabilityHandleByType(capability.CapabilityTypePortForward)
 	if !ok {
@@ -104,22 +104,22 @@ func (s *CapabilityPortForwardService) Start(ctx context.Context) error {
 		s.UpdateState(services.StateFailed, services.HealthUnhealthy, err)
 		return err
 	}
-	
+
 	logging.Info(s.GetLabel(), "Starting port forward using capabilities: auth=%s, discovery=%s, pf=%s",
 		authHandle.Provider, discoveryHandle.Provider, pfHandle.Provider)
-	
+
 	// The actual port forwarding would be handled by the capability provider
 	// This is just a placeholder showing how to use capabilities
-	
+
 	// Update state to running
 	s.UpdateState(services.StateRunning, services.HealthHealthy, nil)
-	
+
 	// Create stop channel
 	s.stopChan = make(chan struct{})
-	
+
 	// Wait for stop signal
 	<-s.stopChan
-	
+
 	return nil
 }
 
@@ -128,7 +128,7 @@ func (s *CapabilityPortForwardService) Stop(ctx context.Context) error {
 	if s.stopChan != nil {
 		close(s.stopChan)
 	}
-	
+
 	s.UpdateState(services.StateStopped, services.HealthUnknown, nil)
 	return nil
 }
@@ -147,29 +147,29 @@ func (s *CapabilityPortForwardService) CheckHealth(ctx context.Context) error {
 	if !s.HasRequiredCapabilities() {
 		return fmt.Errorf("missing required capabilities")
 	}
-	
+
 	// Additional health checks would go here
-	
+
 	return nil
 }
 
 // onCapabilityProvided handles when a capability is provided
 func (s *CapabilityPortForwardService) onCapabilityProvided(handle capability.CapabilityHandle) error {
 	logging.Info(s.GetLabel(), "Capability provided: %s from %s", handle.Type, handle.Provider)
-	
+
 	// If we're already running and a capability was updated, we might need to restart
 	if s.GetState() == services.StateRunning {
 		// In a real implementation, we would check if this affects our operation
 		// and potentially trigger a restart
 	}
-	
+
 	return nil
 }
 
 // onCapabilityLost handles when a capability is lost
 func (s *CapabilityPortForwardService) onCapabilityLost(handleID string) error {
 	logging.Warn(s.GetLabel(), "Capability lost: %s", handleID)
-	
+
 	// If we're running and lost a required capability, we need to stop
 	if s.GetState() == services.StateRunning {
 		// Check if this was a required capability
@@ -185,7 +185,7 @@ func (s *CapabilityPortForwardService) onCapabilityLost(handleID string) error {
 			}
 		}
 	}
-	
+
 	return nil
 }
 
@@ -209,7 +209,7 @@ func (p *KubectlPortForwardProvider) ValidateCapabilityRequest(req capability.Ca
 	if req.Type != capability.CapabilityTypePortForward {
 		return fmt.Errorf("unsupported capability type: %s", req.Type)
 	}
-	
+
 	// Check if all required features are supported
 	for _, feature := range req.Features {
 		supported := false
@@ -223,7 +223,7 @@ func (p *KubectlPortForwardProvider) ValidateCapabilityRequest(req capability.Ca
 			return fmt.Errorf("unsupported feature: %s", feature)
 		}
 	}
-	
+
 	// Validate config
 	if req.Config != nil {
 		if _, ok := req.Config["local_port"]; !ok {
@@ -233,7 +233,7 @@ func (p *KubectlPortForwardProvider) ValidateCapabilityRequest(req capability.Ca
 			return fmt.Errorf("missing required config: remote_port")
 		}
 	}
-	
+
 	return nil
 }
 
@@ -243,14 +243,14 @@ func (p *KubectlPortForwardProvider) ProvideCapability(ctx context.Context, req 
 	if err := p.ValidateCapabilityRequest(req); err != nil {
 		return capability.CapabilityHandle{}, err
 	}
-	
+
 	// Extract config
 	localPort := req.Config["local_port"].(string)
 	remotePort := req.Config["remote_port"].(string)
-	
+
 	// In a real implementation, this would create the actual port forward
 	// using kubectl or the Kubernetes API
-	
+
 	// Create handle
 	handle := capability.CapabilityHandle{
 		ID:       fmt.Sprintf("kubectl-pf-%s-%s", localPort, remotePort),
@@ -262,6 +262,6 @@ func (p *KubectlPortForwardProvider) ProvideCapability(ctx context.Context, req 
 			"command":     fmt.Sprintf("kubectl port-forward ... %s:%s", localPort, remotePort),
 		},
 	}
-	
+
 	return handle, nil
-} 
+}

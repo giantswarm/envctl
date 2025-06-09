@@ -289,14 +289,11 @@ func (ct *CapabilityTools) HandleCapabilityRegister(ctx context.Context, req mcp
 
 	// Return result
 	return &mcp.CallToolResult{
-		Content: []interface{}{
+		Content: []mcp.Content{
 			mcp.TextContent{
 				Type: "text",
 				Text: fmt.Sprintf("Successfully registered capability '%s' with ID: %s", name, cap.ID),
 			},
-		},
-		Meta: map[string]interface{}{
-			"capability_id": cap.ID,
 		},
 	}, nil
 }
@@ -316,7 +313,7 @@ func (ct *CapabilityTools) HandleCapabilityUnregister(ctx context.Context, req m
 	logging.Info("CapabilityTools", "Unregistered capability: %s", capabilityID)
 
 	return &mcp.CallToolResult{
-		Content: []interface{}{
+		Content: []mcp.Content{
 			mcp.TextContent{
 				Type: "text",
 				Text: fmt.Sprintf("Successfully unregistered capability with ID: %s", capabilityID),
@@ -381,7 +378,7 @@ func (ct *CapabilityTools) HandleCapabilityUpdate(ctx context.Context, req mcp.C
 	logging.Info("CapabilityTools", "Updated capability %s to state: %s", capabilityID, state)
 
 	return &mcp.CallToolResult{
-		Content: []interface{}{
+		Content: []mcp.Content{
 			mcp.TextContent{
 				Type: "text",
 				Text: fmt.Sprintf("Successfully updated capability %s to state: %s", capabilityID, state),
@@ -420,31 +417,24 @@ func (ct *CapabilityTools) HandleCapabilityList(ctx context.Context, req mcp.Cal
 		capabilities = filtered
 	}
 
-	// Format response
-	result := make([]map[string]interface{}, len(capabilities))
-	for i, cap := range capabilities {
-		result[i] = map[string]interface{}{
-			"id":          cap.ID,
-			"type":        cap.Type,
-			"provider":    cap.Provider,
-			"name":        cap.Name,
-			"description": cap.Description,
-			"features":    cap.Features,
-			"state":       cap.Status.State,
-			"health":      cap.Status.Health,
-			"error":       cap.Status.Error,
+	// Format response as text
+	var responseText string
+	if len(capabilities) == 0 {
+		responseText = "No capabilities found"
+	} else {
+		responseText = fmt.Sprintf("Found %d capabilities:\n\n", len(capabilities))
+		for _, cap := range capabilities {
+			responseText += fmt.Sprintf("ID: %s\nType: %s\nProvider: %s\nName: %s\nState: %s\nHealth: %s\n\n",
+				cap.ID, cap.Type, cap.Provider, cap.Name, cap.Status.State, cap.Status.Health)
 		}
 	}
 
 	return &mcp.CallToolResult{
-		Content: []interface{}{
+		Content: []mcp.Content{
 			mcp.TextContent{
 				Type: "text",
-				Text: fmt.Sprintf("Found %d capabilities", len(capabilities)),
+				Text: responseText,
 			},
-		},
-		Meta: map[string]interface{}{
-			"capabilities": result,
 		},
 	}, nil
 }
@@ -461,32 +451,28 @@ func (ct *CapabilityTools) HandleCapabilityGet(ctx context.Context, req mcp.Call
 		return nil, fmt.Errorf("capability not found: %s", capabilityID)
 	}
 
-	result := map[string]interface{}{
-		"id":          cap.ID,
-		"type":        cap.Type,
-		"provider":    cap.Provider,
-		"name":        cap.Name,
-		"description": cap.Description,
-		"features":    cap.Features,
-		"config":      cap.Config,
-		"metadata":    cap.Metadata,
-		"status": map[string]interface{}{
-			"state":      cap.Status.State,
-			"health":     cap.Status.Health,
-			"error":      cap.Status.Error,
-			"last_check": cap.Status.LastCheck,
-		},
-	}
+	// Format capability details as text
+	responseText := fmt.Sprintf(`Capability Details:
+ID: %s
+Type: %s
+Provider: %s
+Name: %s
+Description: %s
+Features: %v
+State: %s
+Health: %s
+Error: %s
+Last Check: %s`,
+		cap.ID, cap.Type, cap.Provider, cap.Name, cap.Description,
+		cap.Features, cap.Status.State, cap.Status.Health,
+		cap.Status.Error, cap.Status.LastCheck.Format(time.RFC3339))
 
 	return &mcp.CallToolResult{
-		Content: []interface{}{
+		Content: []mcp.Content{
 			mcp.TextContent{
 				Type: "text",
-				Text: fmt.Sprintf("Capability: %s", cap.Name),
+				Text: responseText,
 			},
-		},
-		Meta: map[string]interface{}{
-			"capability": result,
 		},
 	}, nil
 }
@@ -520,29 +506,24 @@ func (ct *CapabilityTools) HandleCapabilityFindMatching(ctx context.Context, req
 	// Find matching capabilities
 	matching := ct.registry.FindMatching(request)
 
-	// Format response
-	result := make([]map[string]interface{}, len(matching))
-	for i, cap := range matching {
-		result[i] = map[string]interface{}{
-			"id":          cap.ID,
-			"type":        cap.Type,
-			"provider":    cap.Provider,
-			"name":        cap.Name,
-			"description": cap.Description,
-			"features":    cap.Features,
-			"state":       cap.Status.State,
+	// Format response as text
+	var responseText string
+	if len(matching) == 0 {
+		responseText = fmt.Sprintf("No capabilities found matching type '%s'", typeStr)
+	} else {
+		responseText = fmt.Sprintf("Found %d matching capabilities:\n\n", len(matching))
+		for _, cap := range matching {
+			responseText += fmt.Sprintf("ID: %s\nProvider: %s\nName: %s\nFeatures: %v\nState: %s\n\n",
+				cap.ID, cap.Provider, cap.Name, cap.Features, cap.Status.State)
 		}
 	}
 
 	return &mcp.CallToolResult{
-		Content: []interface{}{
+		Content: []mcp.Content{
 			mcp.TextContent{
 				Type: "text",
-				Text: fmt.Sprintf("Found %d matching capabilities", len(matching)),
+				Text: responseText,
 			},
-		},
-		Meta: map[string]interface{}{
-			"matching_capabilities": result,
 		},
 	}, nil
 }
@@ -591,19 +572,16 @@ func (ct *CapabilityTools) HandleCapabilityRequest(ctx context.Context, req mcp.
 
 	logging.Info("CapabilityTools", "Service %s requested capability %s, handle: %s", service, typeStr, handle.ID)
 
+	responseText := fmt.Sprintf(`Successfully requested %s capability for service %s
+Handle ID: %s
+Provider: %s
+Type: %s`, typeStr, service, handle.ID, handle.Provider, handle.Type)
+
 	return &mcp.CallToolResult{
-		Content: []interface{}{
+		Content: []mcp.Content{
 			mcp.TextContent{
 				Type: "text",
-				Text: fmt.Sprintf("Successfully requested %s capability for service %s", typeStr, service),
-			},
-		},
-		Meta: map[string]interface{}{
-			"handle": map[string]interface{}{
-				"id":       handle.ID,
-				"provider": handle.Provider,
-				"type":     handle.Type,
-				"config":   handle.Config,
+				Text: responseText,
 			},
 		},
 	}, nil
@@ -631,11 +609,11 @@ func (ct *CapabilityTools) HandleCapabilityRelease(ctx context.Context, req mcp.
 	logging.Info("CapabilityTools", "Service %s released capability handle: %s", service, handleID)
 
 	return &mcp.CallToolResult{
-		Content: []interface{}{
+		Content: []mcp.Content{
 			mcp.TextContent{
 				Type: "text",
 				Text: fmt.Sprintf("Successfully released capability handle %s for service %s", handleID, service),
 			},
 		},
 	}, nil
-} 
+}

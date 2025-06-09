@@ -66,7 +66,7 @@ func (r *Registry) Register(cap *Capability) error {
 	cap.Status.State = CapabilityStateActive
 	cap.Status.Health = HealthStatusHealthy
 
-	logging.Info("Registry", "Registered capability %s (type: %s, provider: %s)", 
+	logging.Info("Registry", "Registered capability %s (type: %s, provider: %s)",
 		cap.Name, cap.Type, cap.Provider)
 
 	// Notify observers
@@ -247,4 +247,4 @@ func (r *Registry) removeCapabilityFromSlice(slice []*Capability, cap *Capabilit
 		}
 	}
 	return slice
-} 
+}
