@@ -22,7 +22,7 @@ func TestGetAPITools(t *testing.T) {
 	tools := at.GetAPITools()
 
 	// Count expected tools
-	expectedToolCount := 5 + 3 + 3 + 3 + 2 // service + cluster + mcp + k8s + portforward
+	expectedToolCount := 5 + 3 + 3 + 3 + 2 + 18 // service + cluster + mcp + k8s + portforward + config
 	assert.Len(t, tools, expectedToolCount)
 
 	// Check some specific tools exist
@@ -56,6 +56,26 @@ func TestGetAPITools(t *testing.T) {
 	// Port Forward Tools
 	assert.True(t, toolNames["portforward_list"])
 	assert.True(t, toolNames["portforward_info"])
+
+	// Configuration Tools
+	assert.True(t, toolNames["config_get"])
+	assert.True(t, toolNames["config_get_clusters"])
+	assert.True(t, toolNames["config_get_active_clusters"])
+	assert.True(t, toolNames["config_get_mcp_servers"])
+	assert.True(t, toolNames["config_get_port_forwards"])
+	assert.True(t, toolNames["config_get_workflows"])
+	assert.True(t, toolNames["config_get_aggregator"])
+	assert.True(t, toolNames["config_get_global_settings"])
+	assert.True(t, toolNames["config_update_mcp_server"])
+	assert.True(t, toolNames["config_update_port_forward"])
+	assert.True(t, toolNames["config_update_workflow"])
+	assert.True(t, toolNames["config_update_aggregator"])
+	assert.True(t, toolNames["config_update_global_settings"])
+	assert.True(t, toolNames["config_delete_mcp_server"])
+	assert.True(t, toolNames["config_delete_port_forward"])
+	assert.True(t, toolNames["config_delete_workflow"])
+	assert.True(t, toolNames["config_delete_cluster"])
+	assert.True(t, toolNames["config_save"])
 }
 
 func TestServiceListHandler(t *testing.T) {

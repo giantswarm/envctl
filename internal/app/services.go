@@ -14,6 +14,7 @@ type Services struct {
 	PortForwardAPI  api.PortForwardServiceAPI
 	K8sAPI          api.K8sServiceAPI
 	AggregatorAPI   api.AggregatorAPI
+	ConfigAPI       api.ConfigServiceAPI
 	AggregatorPort  int
 }
 
@@ -51,12 +52,17 @@ func InitializeServices(cfg *Config) (*Services, error) {
 	orchAdapter := orchestrator.NewAPIAdapter(orch)
 	orchAdapter.Register()
 
+	// Register configuration adapter
+	configAdapter := NewConfigAdapter(cfg.EnvctlConfig, "") // Empty path means auto-detect
+	configAdapter.Register()
+
 	// Step 2: Create APIs that use the registered handlers
 	orchestratorAPI := api.NewOrchestratorAPI()
 	mcpAPI := api.NewMCPServiceAPI()
 	portForwardAPI := api.NewPortForwardServiceAPI()
 	k8sAPI := api.NewK8sServiceAPI()
 	aggregatorAPI := api.NewAggregatorAPI()
+	configAPI := api.NewConfigServiceAPI()
 
 	// Register all APIs in the global registry (for backward compatibility)
 	api.SetAll(orchestratorAPI, mcpAPI, portForwardAPI, k8sAPI)
@@ -68,6 +74,7 @@ func InitializeServices(cfg *Config) (*Services, error) {
 		PortForwardAPI:  portForwardAPI,
 		K8sAPI:          k8sAPI,
 		AggregatorAPI:   aggregatorAPI,
+		ConfigAPI:       configAPI,
 		AggregatorPort:  cfg.EnvctlConfig.Aggregator.Port,
 	}, nil
 }

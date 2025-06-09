@@ -129,4 +129,18 @@
 //	            mcp.Name, mcp.Command)
 //	    }
 //	}
+//
+// # Active Clusters
+//
+// The active clusters mapping specifies which cluster is currently active for each role:
+//   - One cluster per role can be active at a time
+//   - Services will use the active cluster for their configured role
+//   - Active clusters can be changed at runtime through the TUI or API
+//
+// # Configuration API
+//
+// The configuration can be accessed and modified at runtime through the Configuration API.
+// The API adapter (ConfigAdapter) is located in the app package rather than here to avoid
+// circular import dependencies, as the adapter needs to import the api package for registration,
+// while the api package imports this package for type definitions.
 package config

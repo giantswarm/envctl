@@ -642,6 +642,46 @@ func (a *AggregatorServer) createAPIServerTool(tool mcp.Tool, at *tools.APITools
 				result, err = at.HandlePortForwardList(ctx, req)
 			case "portforward_info":
 				result, err = at.HandlePortForwardInfo(ctx, req)
+			// Configuration Tools - Get
+			case "config_get":
+				result, err = at.HandleConfigGet(ctx, req)
+			case "config_get_clusters":
+				result, err = at.HandleConfigGetClusters(ctx, req)
+			case "config_get_active_clusters":
+				result, err = at.HandleConfigGetActiveClusters(ctx, req)
+			case "config_get_mcp_servers":
+				result, err = at.HandleConfigGetMCPServers(ctx, req)
+			case "config_get_port_forwards":
+				result, err = at.HandleConfigGetPortForwards(ctx, req)
+			case "config_get_workflows":
+				result, err = at.HandleConfigGetWorkflows(ctx, req)
+			case "config_get_aggregator":
+				result, err = at.HandleConfigGetAggregator(ctx, req)
+			case "config_get_global_settings":
+				result, err = at.HandleConfigGetGlobalSettings(ctx, req)
+			// Configuration Tools - Update
+			case "config_update_mcp_server":
+				result, err = at.HandleConfigUpdateMCPServer(ctx, req)
+			case "config_update_port_forward":
+				result, err = at.HandleConfigUpdatePortForward(ctx, req)
+			case "config_update_workflow":
+				result, err = at.HandleConfigUpdateWorkflow(ctx, req)
+			case "config_update_aggregator":
+				result, err = at.HandleConfigUpdateAggregator(ctx, req)
+			case "config_update_global_settings":
+				result, err = at.HandleConfigUpdateGlobalSettings(ctx, req)
+			// Configuration Tools - Delete
+			case "config_delete_mcp_server":
+				result, err = at.HandleConfigDeleteMCPServer(ctx, req)
+			case "config_delete_port_forward":
+				result, err = at.HandleConfigDeletePortForward(ctx, req)
+			case "config_delete_workflow":
+				result, err = at.HandleConfigDeleteWorkflow(ctx, req)
+			case "config_delete_cluster":
+				result, err = at.HandleConfigDeleteCluster(ctx, req)
+			// Configuration Tools - Save
+			case "config_save":
+				result, err = at.HandleConfigSave(ctx, req)
 			default:
 				err = fmt.Errorf("unknown API tool: %s", actualToolName)
 			}

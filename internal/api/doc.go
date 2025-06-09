@@ -89,4 +89,31 @@
 // All API methods are thread-safe and can be called concurrently from
 // multiple goroutines. The handler registry uses mutex protection for
 // safe concurrent access.
+//
+// The api package defines the public API for envctl's runtime services.
+//
+// These APIs are exposed as MCP tools through the aggregator and provide programmatic
+// access to envctl's functionality.
+//
+// API Components:
+//
+// 1. OrchestratorAPI - Service lifecycle and cluster management
+// 2. MCPServiceAPI - MCP server information and tools
+// 3. K8sServiceAPI - Kubernetes connection management
+// 4. PortForwardServiceAPI - Port forwarding management
+// 5. ConfigServiceAPI - Configuration management
+//
+// # ConfigServiceAPI
+//
+// The ConfigServiceAPI provides runtime access to envctl's configuration. This API allows:
+//
+// - Reading the entire configuration or specific sections
+// - Updating configuration sections dynamically
+// - Deleting configuration items
+// - Persisting configuration changes to disk
+//
+// Configuration updates made through this API affect the running system immediately
+// for most settings. Some changes may require service restarts to take full effect.
+//
+// # Service Architecture
 package api

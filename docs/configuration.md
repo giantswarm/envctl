@@ -513,3 +513,109 @@ This flexible cluster configuration system allows you to:
 - Mix different cluster types (Giant Swarm, cloud providers, local)
 - Have services connect to specific clusters based on their needs
 - Override configurations for different contexts (dev vs prod)
+
+## Configuration API Tools
+
+Envctl exposes a comprehensive set of MCP tools for managing configuration dynamically at runtime. These tools are available through the aggregator when envctl is running, allowing AI agents and other MCP clients to interact with and modify the configuration programmatically.
+
+### Available Configuration Tools
+
+All configuration tools are prefixed with the envctl prefix (default: `x_`).
+
+#### Reading Configuration
+
+- **`x_config_get`**: Get the entire envctl configuration
+- **`x_config_get_clusters`**: Get all configured clusters
+- **`x_config_get_active_clusters`**: Get the active clusters mapping
+- **`x_config_get_mcp_servers`**: Get all MCP server definitions
+- **`x_config_get_port_forwards`**: Get all port forward definitions
+- **`x_config_get_workflows`**: Get all workflow definitions
+- **`x_config_get_aggregator`**: Get aggregator configuration
+- **`x_config_get_global_settings`**: Get global settings
+
+#### Updating Configuration
+
+- **`x_config_update_mcp_server`**: Update or add an MCP server definition
+  - Requires a `server` object parameter with the MCPServerDefinition structure
+- **`x_config_update_port_forward`**: Update or add a port forward definition
+  - Requires a `port_forward` object parameter with the PortForwardDefinition structure
+- **`x_config_update_workflow`**: Update or add a workflow definition
+  - Requires a `workflow` object parameter with the WorkflowDefinition structure
+- **`x_config_update_aggregator`**: Update aggregator configuration
+  - Requires an `aggregator` object parameter with the AggregatorConfig structure
+- **`x_config_update_global_settings`**: Update global settings
+  - Requires a `settings` object parameter with the GlobalSettings structure
+
+#### Deleting Configuration Items
+
+- **`x_config_delete_mcp_server`**: Delete an MCP server by name
+  - Requires a `name` string parameter
+- **`x_config_delete_port_forward`**: Delete a port forward by name
+  - Requires a `name` string parameter
+- **`x_config_delete_workflow`**: Delete a workflow by name
+  - Requires a `name` string parameter
+- **`x_config_delete_cluster`**: Delete a cluster by name
+  - Requires a `name` string parameter
+
+#### Persisting Changes
+
+- **`x_config_save`**: Save the current configuration to file
+  - No parameters required
+  - Writes the configuration to the appropriate file based on the config loading hierarchy
+
+### Example Usage
+
+Here are some examples of using the configuration API tools:
+
+```javascript
+// Get all MCP servers
+const servers = await callTool("x_config_get_mcp_servers");
+
+// Add a new MCP server
+await callTool("x_config_update_mcp_server", {
+  server: {
+    name: "custom-server",
+    type: "localCommand",
+    enabledByDefault: true,
+    command: ["npx", "my-custom-mcp-server"],
+    env: {
+      API_KEY: "secret"
+    },
+    requiresClusterRole: "target"
+  }
+});
+
+// Update port forward configuration
+await callTool("x_config_update_port_forward", {
+  port_forward: {
+    name: "database",
+    enabledByDefault: true,
+    clusterRole: "target",
+    namespace: "production",
+    targetType: "service",
+    targetName: "postgres",
+    localPort: "5432",
+    remotePort: "5432"
+  }
+});
+
+// Delete an MCP server
+await callTool("x_config_delete_mcp_server", {
+  name: "obsolete-server"
+});
+
+// Save configuration changes
+await callTool("x_config_save");
+```
+
+### Important Notes
+
+1. **Runtime Updates**: Configuration changes made through these tools take effect immediately for most settings. However, some changes may require restarting affected services to fully apply.
+
+2. **Validation**: The API validates all configuration updates to ensure they conform to the expected structure. Invalid configurations will be rejected with appropriate error messages.
+
+3. **Persistence**: Changes are only persisted when you explicitly call `x_config_save`. Until then, changes are only in memory and will be lost if envctl is restarted.
+
+4. **Layered Configuration**: When saving, the configuration is written to the appropriate layer based on where envctl was started (user or project configuration).
+
+5. **Service Dependencies**: When updating MCP servers or port forwards that have dependencies, ensure the required resources exist to avoid startup failures.

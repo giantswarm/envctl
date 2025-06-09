@@ -1,6 +1,7 @@
 package api
 
 import (
+	"envctl/internal/config"
 	"sync"
 )
 
@@ -66,11 +67,36 @@ type K8sServiceHandler interface {
 	GetMetadata() map[string]interface{}
 }
 
+// ConfigHandler provides configuration management functionality
+type ConfigHandler interface {
+	// Get configuration
+	GetConfig() (*config.EnvctlConfig, error)
+
+	// Update configuration sections
+	UpdateClusters(clusters []config.ClusterDefinition) error
+	UpdateActiveClusters(activeClusters map[config.ClusterRole]string) error
+	UpdateMCPServer(server config.MCPServerDefinition) error
+	UpdatePortForward(portForward config.PortForwardDefinition) error
+	UpdateWorkflow(workflow config.WorkflowDefinition) error
+	UpdateAggregatorConfig(aggregator config.AggregatorConfig) error
+	UpdateGlobalSettings(settings config.GlobalSettings) error
+
+	// Delete configuration items
+	DeleteMCPServer(name string) error
+	DeletePortForward(name string) error
+	DeleteWorkflow(name string) error
+	DeleteCluster(name string) error
+
+	// Save configuration
+	SaveConfig() error
+}
+
 // Handler registry
 var (
 	registryHandler     ServiceRegistryHandler
 	orchestratorHandler OrchestratorHandler
 	aggregatorHandler   AggregatorHandler
+	configHandler       ConfigHandler
 
 	// Maps for service-specific handlers
 	mcpHandlers         = make(map[string]MCPServiceHandler)
@@ -122,6 +148,13 @@ func RegisterK8sService(label string, h K8sServiceHandler) {
 	k8sHandlers[label] = h
 }
 
+// RegisterConfigHandler registers the configuration handler
+func RegisterConfigHandler(h ConfigHandler) {
+	handlerMutex.Lock()
+	defer handlerMutex.Unlock()
+	configHandler = h
+}
+
 // GetServiceRegistry returns the registered service registry handler
 func GetServiceRegistry() ServiceRegistryHandler {
 	handlerMutex.RLock()
@@ -141,6 +174,13 @@ func GetAggregator() AggregatorHandler {
 	handlerMutex.RLock()
 	defer handlerMutex.RUnlock()
 	return aggregatorHandler
+}
+
+// GetConfigHandler returns the registered configuration handler
+func GetConfigHandler() ConfigHandler {
+	handlerMutex.RLock()
+	defer handlerMutex.RUnlock()
+	return configHandler
 }
 
 // GetMCPService returns a registered MCP service handler
