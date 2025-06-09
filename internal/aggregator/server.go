@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"envctl/internal/api/tools"
+	"envctl/internal/capability"
 	"envctl/internal/workflow"
 	"envctl/pkg/logging"
 
@@ -44,6 +45,13 @@ type AggregatorServer struct {
 
 	// API tools
 	apiTools *tools.APITools
+
+	// Capability tools
+	capabilityTools *tools.CapabilityTools
+
+	// Capability management
+	capabilityRegistry *capability.Registry
+	capabilityResolver *capability.Resolver
 }
 
 // NewAggregatorServer creates a new aggregator server
@@ -115,6 +123,14 @@ func (a *AggregatorServer) Start(ctx context.Context) error {
 	// Initialize API tools
 	a.apiTools = tools.NewAPITools()
 	logging.Info("Aggregator", "Initialized API tools")
+
+	// Initialize capability management
+	a.capabilityRegistry = capability.NewRegistry()
+	a.capabilityResolver = capability.NewResolver(a.capabilityRegistry)
+
+	// Initialize capability tools
+	a.capabilityTools = tools.NewCapabilityTools(a.capabilityRegistry, a.capabilityResolver)
+	logging.Info("Aggregator", "Initialized capability tools")
 
 	// Start registry update monitor
 	a.wg.Add(1)
@@ -386,6 +402,20 @@ func (a *AggregatorServer) addNewItems(servers map[string]*ServerInfo) {
 		}
 	}
 
+	// Add capability tools
+	if a.capabilityTools != nil {
+		for _, tool := range a.capabilityTools.GetCapabilityTools() {
+			// Apply envctl prefix to capability tools
+			prefixedTool := tool
+			prefixedTool.Name = a.config.EnvctlPrefix + "_" + tool.Name
+
+			// Mark capability tool as active to prevent it from being removed
+			a.toolManager.setActive(prefixedTool.Name, true)
+
+			toolsToAdd = append(toolsToAdd, a.createCapabilityServerTool(prefixedTool, a.capabilityTools))
+		}
+	}
+
 	// Add all items in batches
 	if len(toolsToAdd) > 0 {
 		logging.Debug("Aggregator", "Adding %d tools in batch", len(toolsToAdd))
@@ -426,6 +456,16 @@ func (a *AggregatorServer) logCapabilitiesSummary(servers map[string]*ServerInfo
 // GetEndpoint returns the aggregator's SSE endpoint URL
 func (a *AggregatorServer) GetEndpoint() string {
 	return fmt.Sprintf("http://%s:%d/sse", a.config.Host, a.config.Port)
+}
+
+// GetCapabilityRegistry returns the capability registry
+func (a *AggregatorServer) GetCapabilityRegistry() *capability.Registry {
+	return a.capabilityRegistry
+}
+
+// GetCapabilityResolver returns the capability resolver
+func (a *AggregatorServer) GetCapabilityResolver() *capability.Resolver {
+	return a.capabilityResolver
 }
 
 // GetTools returns all available tools with smart prefixing (only prefixed when conflicts exist)
@@ -684,6 +724,53 @@ func (a *AggregatorServer) createAPIServerTool(tool mcp.Tool, at *tools.APITools
 				result, err = at.HandleConfigSave(ctx, req)
 			default:
 				err = fmt.Errorf("unknown API tool: %s", actualToolName)
+			}
+
+			if err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("Tool execution failed: %v", err)), nil
+			}
+
+			return result, nil
+		},
+	}
+}
+
+// createCapabilityServerTool creates a server tool handler for capability tools
+func (a *AggregatorServer) createCapabilityServerTool(tool mcp.Tool, ct *tools.CapabilityTools) server.ServerTool {
+	return server.ServerTool{
+		Tool: tool,
+		Handler: func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			// Route to appropriate handler based on tool name
+			// Remove envctl prefix to get the actual tool name
+			actualToolName := tool.Name
+			envctlPrefix := a.config.EnvctlPrefix + "_"
+			if strings.HasPrefix(tool.Name, envctlPrefix) {
+				actualToolName = tool.Name[len(envctlPrefix):]
+			}
+
+			var result *mcp.CallToolResult
+			var err error
+
+			switch actualToolName {
+			// Capability Management Tools
+			case "capability_register":
+				result, err = ct.HandleCapabilityRegister(ctx, req)
+			case "capability_unregister":
+				result, err = ct.HandleCapabilityUnregister(ctx, req)
+			case "capability_update":
+				result, err = ct.HandleCapabilityUpdate(ctx, req)
+			case "capability_list":
+				result, err = ct.HandleCapabilityList(ctx, req)
+			case "capability_get":
+				result, err = ct.HandleCapabilityGet(ctx, req)
+			case "capability_find_matching":
+				result, err = ct.HandleCapabilityFindMatching(ctx, req)
+			case "capability_request":
+				result, err = ct.HandleCapabilityRequest(ctx, req)
+			case "capability_release":
+				result, err = ct.HandleCapabilityRelease(ctx, req)
+			default:
+				err = fmt.Errorf("unknown capability tool: %s", actualToolName)
 			}
 
 			if err != nil {
