@@ -48,12 +48,12 @@ func (a *ServiceAdapter) ListForwards(ctx context.Context) ([]*api.PortForwardIn
 	if serviceAPI == nil {
 		return nil, fmt.Errorf("port forward service API not available")
 	}
-	
+
 	serviceInfos, err := serviceAPI.ListForwards(ctx)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Convert PortForwardServiceInfo to PortForwardInfo
 	infos := make([]*api.PortForwardInfo, 0, len(serviceInfos))
 	for _, si := range serviceInfos {
@@ -70,7 +70,7 @@ func (a *ServiceAdapter) ListForwards(ctx context.Context) ([]*api.PortForwardIn
 		}
 		infos = append(infos, info)
 	}
-	
+
 	return infos, nil
 }
 
@@ -80,12 +80,12 @@ func (a *ServiceAdapter) GetForwardInfo(ctx context.Context, label string) (*api
 	if serviceAPI == nil {
 		return nil, fmt.Errorf("port forward service API not available")
 	}
-	
+
 	si, err := serviceAPI.GetForwardInfo(ctx, label)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Convert PortForwardServiceInfo to PortForwardInfo
 	info := &api.PortForwardInfo{
 		Label:        si.Label,
@@ -98,7 +98,7 @@ func (a *ServiceAdapter) GetForwardInfo(ctx context.Context, label string) (*api
 		Health:       si.Health,
 		Error:        si.Error,
 	}
-	
+
 	return info, nil
 }
 
@@ -177,4 +177,4 @@ func (a *ServiceAdapter) handlePortForwardInfo(ctx context.Context, args map[str
 		Content: []interface{}{info},
 		IsError: false,
 	}, nil
-} 
+}

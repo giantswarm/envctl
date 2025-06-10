@@ -254,7 +254,7 @@ func (a *ServiceAdapter) handleK8sConnectionByContext(ctx context.Context, args 
 func (a *ServiceAdapter) handleK8sPortForward(ctx context.Context, args map[string]interface{}) (*api.CallToolResult, error) {
 	// For now, we'll return an informative message about how port forwards should be created
 	// In the future, this will integrate with the orchestrator to create dynamic port forwards
-	
+
 	// Validate required parameters
 	namespace, ok := args["namespace"].(string)
 	if !ok {
@@ -360,7 +360,7 @@ func (a *ServiceAdapter) handleK8sPortForwardStop(ctx context.Context, args map[
 				IsError: false,
 			}, nil
 		}
-		
+
 		return &api.CallToolResult{
 			Content: []interface{}{fmt.Sprintf("Failed to stop port forward: %v", err)},
 			IsError: true,
@@ -439,4 +439,4 @@ func (a *ServiceAdapter) handleK8sPortForwardInfo(ctx context.Context, args map[
 		Content: []interface{}{info},
 		IsError: false,
 	}, nil
-} 
+}

@@ -77,7 +77,7 @@ func (a *APIAdapter) ListConnections(ctx context.Context) ([]*api.K8sConnectionI
 	return nil, nil
 }
 
-// GetConnectionInfo is handled by the global adapter  
+// GetConnectionInfo is handled by the global adapter
 func (a *APIAdapter) GetConnectionInfo(ctx context.Context, label string) (*api.K8sConnectionInfo, error) {
 	// This should be handled by the global K8s service adapter
 	return nil, nil

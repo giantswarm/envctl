@@ -191,4 +191,4 @@ func (a *ServiceAdapter) handleMCPServerTools(ctx context.Context, args map[stri
 		Content: []interface{}{result},
 		IsError: false,
 	}, nil
-} 
+}

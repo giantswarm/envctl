@@ -178,6 +178,22 @@ func (a *Adapter) LoadDefinitions() error {
 	return a.loader.LoadDefinitions()
 }
 
+// ReloadDefinitions reloads capability definitions from disk
+func (a *Adapter) ReloadDefinitions() error {
+	// Get the singleton registry and clear it
+	registry := GetRegistry()
+
+	// Lock the registry while clearing
+	registry.mu.Lock()
+	registry.capabilities = make(map[string]*Capability)
+	registry.byType = make(map[CapabilityType][]*Capability)
+	registry.byProvider = make(map[string][]*Capability)
+	registry.mu.Unlock()
+
+	// Reload from disk
+	return a.loader.LoadDefinitions()
+}
+
 // GetTools returns all tools this provider offers
 func (a *Adapter) GetTools() []api.ToolMetadata {
 	tools := []api.ToolMetadata{

@@ -24,7 +24,7 @@ type toolCall struct {
 
 func (m *mockToolCaller) CallToolInternal(ctx context.Context, toolName string, args map[string]interface{}) (*mcp.CallToolResult, error) {
 	m.calls = append(m.calls, toolCall{toolName: toolName, args: args})
-	
+
 	// Return a successful result
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
@@ -160,11 +160,11 @@ operations:
 
 	// Test that tools are exposed correctly
 	tools := adapter.GetTools()
-	
+
 	// Should have management tools
 	hasCapabilityList := false
 	hasPortForwardCreate := false
-	
+
 	for _, tool := range tools {
 		if tool.Name == "capability_list" {
 			hasCapabilityList = true
@@ -173,7 +173,7 @@ operations:
 			hasPortForwardCreate = true
 		}
 	}
-	
+
 	assert.True(t, hasCapabilityList, "Should have capability_list tool")
 	assert.True(t, hasPortForwardCreate, "Should have portforward_provider_create tool")
 }

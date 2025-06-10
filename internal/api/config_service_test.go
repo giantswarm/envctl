@@ -14,6 +14,8 @@ type mockConfigHandler struct {
 	config         *config.EnvctlConfig
 	updateClusters []config.ClusterDefinition
 	saveCount      int
+	called         map[string]bool
+	saveConfigErr  error
 }
 
 // ToolProvider methods
@@ -179,7 +181,12 @@ func (m *mockConfigHandler) DeleteCluster(ctx context.Context, name string) erro
 }
 
 func (m *mockConfigHandler) SaveConfig(ctx context.Context) error {
-	m.saveCount++
+	m.called["SaveConfig"] = true
+	return m.saveConfigErr
+}
+
+func (m *mockConfigHandler) ReloadConfig(ctx context.Context) error {
+	m.called["ReloadConfig"] = true
 	return nil
 }
 
@@ -210,7 +217,10 @@ func TestConfigServiceAPI(t *testing.T) {
 	}
 
 	// Create mock handler
-	mockHandler := &mockConfigHandler{config: mockCfg}
+	mockHandler := &mockConfigHandler{
+		config: mockCfg,
+		called: make(map[string]bool),
+	}
 
 	// Register the mock handler
 	RegisterConfigHandler(mockHandler)
@@ -296,7 +306,13 @@ func TestConfigServiceAPI(t *testing.T) {
 	t.Run("SaveConfig", func(t *testing.T) {
 		err := api.SaveConfig(ctx)
 		assert.NoError(t, err)
-		assert.Equal(t, 1, mockHandler.saveCount)
+		assert.True(t, mockHandler.called["SaveConfig"])
+	})
+
+	t.Run("ReloadConfig", func(t *testing.T) {
+		err := api.ReloadConfig(ctx)
+		assert.NoError(t, err)
+		assert.True(t, mockHandler.called["ReloadConfig"])
 	})
 }
 

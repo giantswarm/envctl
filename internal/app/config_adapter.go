@@ -123,7 +123,7 @@ func (a *ConfigAdapter) UpdateMCPServer(ctx context.Context, server config.MCPSe
 	if a.config == nil {
 		return fmt.Errorf("configuration not loaded")
 	}
-	
+
 	// Find and update existing server or add new one
 	found := false
 	for i, existing := range a.config.MCPServers {
@@ -136,7 +136,7 @@ func (a *ConfigAdapter) UpdateMCPServer(ctx context.Context, server config.MCPSe
 	if !found {
 		a.config.MCPServers = append(a.config.MCPServers, server)
 	}
-	
+
 	return a.saveConfig()
 }
 
@@ -147,7 +147,7 @@ func (a *ConfigAdapter) UpdatePortForward(ctx context.Context, portForward confi
 	if a.config == nil {
 		return fmt.Errorf("configuration not loaded")
 	}
-	
+
 	// Find and update existing port forward or add new one
 	found := false
 	for i, existing := range a.config.PortForwards {
@@ -160,7 +160,7 @@ func (a *ConfigAdapter) UpdatePortForward(ctx context.Context, portForward confi
 	if !found {
 		a.config.PortForwards = append(a.config.PortForwards, portForward)
 	}
-	
+
 	return a.saveConfig()
 }
 
@@ -171,7 +171,7 @@ func (a *ConfigAdapter) UpdateWorkflow(ctx context.Context, workflow config.Work
 	if a.config == nil {
 		return fmt.Errorf("configuration not loaded")
 	}
-	
+
 	// Find and update existing workflow or add new one
 	found := false
 	for i, existing := range a.config.Workflows {
@@ -184,7 +184,7 @@ func (a *ConfigAdapter) UpdateWorkflow(ctx context.Context, workflow config.Work
 	if !found {
 		a.config.Workflows = append(a.config.Workflows, workflow)
 	}
-	
+
 	return a.saveConfig()
 }
 
@@ -195,7 +195,7 @@ func (a *ConfigAdapter) UpdateAggregatorConfig(ctx context.Context, aggregator c
 	if a.config == nil {
 		return fmt.Errorf("configuration not loaded")
 	}
-	
+
 	a.config.Aggregator = aggregator
 	return a.saveConfig()
 }
@@ -207,7 +207,7 @@ func (a *ConfigAdapter) UpdateGlobalSettings(ctx context.Context, settings confi
 	if a.config == nil {
 		return fmt.Errorf("configuration not loaded")
 	}
-	
+
 	a.config.GlobalSettings = settings
 	return a.saveConfig()
 }
@@ -220,7 +220,7 @@ func (a *ConfigAdapter) DeleteMCPServer(ctx context.Context, name string) error 
 	if a.config == nil {
 		return fmt.Errorf("configuration not loaded")
 	}
-	
+
 	// Find and remove the server
 	newServers := make([]config.MCPServerDefinition, 0, len(a.config.MCPServers))
 	for _, server := range a.config.MCPServers {
@@ -228,11 +228,11 @@ func (a *ConfigAdapter) DeleteMCPServer(ctx context.Context, name string) error 
 			newServers = append(newServers, server)
 		}
 	}
-	
+
 	if len(newServers) == len(a.config.MCPServers) {
 		return fmt.Errorf("MCP server %s not found", name)
 	}
-	
+
 	a.config.MCPServers = newServers
 	return a.saveConfig()
 }
@@ -244,7 +244,7 @@ func (a *ConfigAdapter) DeletePortForward(ctx context.Context, name string) erro
 	if a.config == nil {
 		return fmt.Errorf("configuration not loaded")
 	}
-	
+
 	// Find and remove the port forward
 	newPortForwards := make([]config.PortForwardDefinition, 0, len(a.config.PortForwards))
 	for _, pf := range a.config.PortForwards {
@@ -252,11 +252,11 @@ func (a *ConfigAdapter) DeletePortForward(ctx context.Context, name string) erro
 			newPortForwards = append(newPortForwards, pf)
 		}
 	}
-	
+
 	if len(newPortForwards) == len(a.config.PortForwards) {
 		return fmt.Errorf("port forward %s not found", name)
 	}
-	
+
 	a.config.PortForwards = newPortForwards
 	return a.saveConfig()
 }
@@ -268,7 +268,7 @@ func (a *ConfigAdapter) DeleteWorkflow(ctx context.Context, name string) error {
 	if a.config == nil {
 		return fmt.Errorf("configuration not loaded")
 	}
-	
+
 	// Find and remove the workflow
 	newWorkflows := make([]config.WorkflowDefinition, 0, len(a.config.Workflows))
 	for _, wf := range a.config.Workflows {
@@ -276,11 +276,11 @@ func (a *ConfigAdapter) DeleteWorkflow(ctx context.Context, name string) error {
 			newWorkflows = append(newWorkflows, wf)
 		}
 	}
-	
+
 	if len(newWorkflows) == len(a.config.Workflows) {
 		return fmt.Errorf("workflow %s not found", name)
 	}
-	
+
 	a.config.Workflows = newWorkflows
 	return a.saveConfig()
 }
@@ -292,7 +292,7 @@ func (a *ConfigAdapter) DeleteCluster(ctx context.Context, name string) error {
 	if a.config == nil {
 		return fmt.Errorf("configuration not loaded")
 	}
-	
+
 	// Find and remove the cluster
 	newClusters := make([]config.ClusterDefinition, 0, len(a.config.Clusters))
 	for _, cluster := range a.config.Clusters {
@@ -300,26 +300,56 @@ func (a *ConfigAdapter) DeleteCluster(ctx context.Context, name string) error {
 			newClusters = append(newClusters, cluster)
 		}
 	}
-	
+
 	if len(newClusters) == len(a.config.Clusters) {
 		return fmt.Errorf("cluster %s not found", name)
 	}
-	
+
 	a.config.Clusters = newClusters
-	
+
 	// Also remove from active clusters if it was active
 	for role, clusterName := range a.config.ActiveClusters {
 		if clusterName == name {
 			delete(a.config.ActiveClusters, role)
 		}
 	}
-	
+
 	return a.saveConfig()
 }
 
 // Save configuration
 func (a *ConfigAdapter) SaveConfig(ctx context.Context) error {
 	return a.saveConfig()
+}
+
+// ReloadConfig reloads the configuration from disk
+func (a *ConfigAdapter) ReloadConfig(ctx context.Context) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	// Reload configuration using the existing loader
+	// We'll get mcName and wcName from the current config if available
+	mcName := ""
+	wcName := ""
+
+	// Try to preserve the current MC/WC names if available
+	if a.config != nil && len(a.config.Clusters) > 0 {
+		for _, cluster := range a.config.Clusters {
+			if cluster.Role == config.ClusterRoleObservability {
+				mcName = cluster.Name
+			} else if cluster.Role == config.ClusterRoleTarget {
+				wcName = cluster.Name
+			}
+		}
+	}
+
+	newConfig, err := config.LoadConfig(mcName, wcName)
+	if err != nil {
+		return fmt.Errorf("failed to reload configuration: %w", err)
+	}
+
+	a.config = &newConfig
+	return nil
 }
 
 // GetTools returns all tools this provider offers
@@ -358,7 +388,7 @@ func (a *ConfigAdapter) GetTools() []api.ToolMetadata {
 			Name:        "config_get_global_settings",
 			Description: "Get global settings",
 		},
-		
+
 		// Update configuration tools
 		{
 			Name:        "config_update_mcp_server",
@@ -420,7 +450,7 @@ func (a *ConfigAdapter) GetTools() []api.ToolMetadata {
 				},
 			},
 		},
-		
+
 		// Delete configuration tools
 		{
 			Name:        "config_delete_mcp_server",
@@ -470,11 +500,17 @@ func (a *ConfigAdapter) GetTools() []api.ToolMetadata {
 				},
 			},
 		},
-		
+
 		// Save configuration
 		{
 			Name:        "config_save",
 			Description: "Save the current configuration to file",
+		},
+
+		// Reload configuration
+		{
+			Name:        "config_reload",
+			Description: "Reload configuration from disk including capability definitions",
 		},
 	}
 }
@@ -499,7 +535,7 @@ func (a *ConfigAdapter) ExecuteTool(ctx context.Context, toolName string, args m
 		return a.handleConfigGetAggregator(ctx)
 	case "config_get_global_settings":
 		return a.handleConfigGetGlobalSettings(ctx)
-		
+
 	// Update operations
 	case "config_update_mcp_server":
 		return a.handleConfigUpdateMCPServer(ctx, args)
@@ -511,7 +547,7 @@ func (a *ConfigAdapter) ExecuteTool(ctx context.Context, toolName string, args m
 		return a.handleConfigUpdateAggregator(ctx, args)
 	case "config_update_global_settings":
 		return a.handleConfigUpdateGlobalSettings(ctx, args)
-		
+
 	// Delete operations
 	case "config_delete_mcp_server":
 		return a.handleConfigDeleteMCPServer(ctx, args)
@@ -521,11 +557,15 @@ func (a *ConfigAdapter) ExecuteTool(ctx context.Context, toolName string, args m
 		return a.handleConfigDeleteWorkflow(ctx, args)
 	case "config_delete_cluster":
 		return a.handleConfigDeleteCluster(ctx, args)
-		
+
 	// Save operation
 	case "config_save":
 		return a.handleConfigSave(ctx)
-		
+
+	// Reload operation
+	case "config_reload":
+		return a.handleConfigReload(ctx)
+
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", toolName)
 	}
@@ -543,7 +583,7 @@ func (a *ConfigAdapter) saveConfig() error {
 				a.configPath = projectPath
 			}
 		}
-		
+
 		// If we still don't have a path, try user config
 		if a.configPath == "" {
 			userPath, err := getUserConfigPath()
@@ -555,23 +595,23 @@ func (a *ConfigAdapter) saveConfig() error {
 				}
 			}
 		}
-		
+
 		if a.configPath == "" {
 			return fmt.Errorf("unable to determine config file path")
 		}
 	}
-	
+
 	// Marshal config to YAML
 	data, err := yaml.Marshal(a.config)
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
-	
+
 	// Write to file
 	if err := os.WriteFile(a.configPath, data, 0644); err != nil {
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -601,7 +641,7 @@ func (a *ConfigAdapter) handleConfigGet(ctx context.Context) (*api.CallToolResul
 			IsError: true,
 		}, nil
 	}
-	
+
 	return &api.CallToolResult{
 		Content: []interface{}{cfg},
 		IsError: false,
@@ -616,12 +656,12 @@ func (a *ConfigAdapter) handleConfigGetClusters(ctx context.Context) (*api.CallT
 			IsError: true,
 		}, nil
 	}
-	
+
 	result := map[string]interface{}{
 		"clusters": clusters,
 		"total":    len(clusters),
 	}
-	
+
 	return &api.CallToolResult{
 		Content: []interface{}{result},
 		IsError: false,
@@ -636,7 +676,7 @@ func (a *ConfigAdapter) handleConfigGetActiveClusters(ctx context.Context) (*api
 			IsError: true,
 		}, nil
 	}
-	
+
 	return &api.CallToolResult{
 		Content: []interface{}{activeClusters},
 		IsError: false,
@@ -651,12 +691,12 @@ func (a *ConfigAdapter) handleConfigGetMCPServers(ctx context.Context) (*api.Cal
 			IsError: true,
 		}, nil
 	}
-	
+
 	result := map[string]interface{}{
 		"servers": servers,
 		"total":   len(servers),
 	}
-	
+
 	return &api.CallToolResult{
 		Content: []interface{}{result},
 		IsError: false,
@@ -671,12 +711,12 @@ func (a *ConfigAdapter) handleConfigGetPortForwards(ctx context.Context) (*api.C
 			IsError: true,
 		}, nil
 	}
-	
+
 	result := map[string]interface{}{
 		"port_forwards": portForwards,
 		"total":         len(portForwards),
 	}
-	
+
 	return &api.CallToolResult{
 		Content: []interface{}{result},
 		IsError: false,
@@ -691,12 +731,12 @@ func (a *ConfigAdapter) handleConfigGetWorkflows(ctx context.Context) (*api.Call
 			IsError: true,
 		}, nil
 	}
-	
+
 	result := map[string]interface{}{
 		"workflows": workflows,
 		"total":     len(workflows),
 	}
-	
+
 	return &api.CallToolResult{
 		Content: []interface{}{result},
 		IsError: false,
@@ -711,7 +751,7 @@ func (a *ConfigAdapter) handleConfigGetAggregator(ctx context.Context) (*api.Cal
 			IsError: true,
 		}, nil
 	}
-	
+
 	return &api.CallToolResult{
 		Content: []interface{}{aggregator},
 		IsError: false,
@@ -726,7 +766,7 @@ func (a *ConfigAdapter) handleConfigGetGlobalSettings(ctx context.Context) (*api
 			IsError: true,
 		}, nil
 	}
-	
+
 	return &api.CallToolResult{
 		Content: []interface{}{settings},
 		IsError: false,
@@ -742,7 +782,7 @@ func (a *ConfigAdapter) handleConfigUpdateMCPServer(ctx context.Context, args ma
 			IsError: true,
 		}, nil
 	}
-	
+
 	// Convert to config.MCPServerDefinition
 	var server config.MCPServerDefinition
 	if err := convertToStruct(serverData, &server); err != nil {
@@ -751,14 +791,14 @@ func (a *ConfigAdapter) handleConfigUpdateMCPServer(ctx context.Context, args ma
 			IsError: true,
 		}, nil
 	}
-	
+
 	if err := a.UpdateMCPServer(ctx, server); err != nil {
 		return &api.CallToolResult{
 			Content: []interface{}{fmt.Sprintf("Failed to update MCP server: %v", err)},
 			IsError: true,
 		}, nil
 	}
-	
+
 	return &api.CallToolResult{
 		Content: []interface{}{fmt.Sprintf("Successfully updated MCP server '%s'", server.Name)},
 		IsError: false,
@@ -773,7 +813,7 @@ func (a *ConfigAdapter) handleConfigUpdatePortForward(ctx context.Context, args 
 			IsError: true,
 		}, nil
 	}
-	
+
 	// Convert to config.PortForwardDefinition
 	var portForward config.PortForwardDefinition
 	if err := convertToStruct(portForwardData, &portForward); err != nil {
@@ -782,14 +822,14 @@ func (a *ConfigAdapter) handleConfigUpdatePortForward(ctx context.Context, args 
 			IsError: true,
 		}, nil
 	}
-	
+
 	if err := a.UpdatePortForward(ctx, portForward); err != nil {
 		return &api.CallToolResult{
 			Content: []interface{}{fmt.Sprintf("Failed to update port forward: %v", err)},
 			IsError: true,
 		}, nil
 	}
-	
+
 	return &api.CallToolResult{
 		Content: []interface{}{fmt.Sprintf("Successfully updated port forward '%s'", portForward.Name)},
 		IsError: false,
@@ -804,7 +844,7 @@ func (a *ConfigAdapter) handleConfigUpdateWorkflow(ctx context.Context, args map
 			IsError: true,
 		}, nil
 	}
-	
+
 	// Convert to config.WorkflowDefinition
 	var workflow config.WorkflowDefinition
 	if err := convertToStruct(workflowData, &workflow); err != nil {
@@ -813,14 +853,14 @@ func (a *ConfigAdapter) handleConfigUpdateWorkflow(ctx context.Context, args map
 			IsError: true,
 		}, nil
 	}
-	
+
 	if err := a.UpdateWorkflow(ctx, workflow); err != nil {
 		return &api.CallToolResult{
 			Content: []interface{}{fmt.Sprintf("Failed to update workflow: %v", err)},
 			IsError: true,
 		}, nil
 	}
-	
+
 	return &api.CallToolResult{
 		Content: []interface{}{fmt.Sprintf("Successfully updated workflow '%s'", workflow.Name)},
 		IsError: false,
@@ -835,7 +875,7 @@ func (a *ConfigAdapter) handleConfigUpdateAggregator(ctx context.Context, args m
 			IsError: true,
 		}, nil
 	}
-	
+
 	// Convert to config.AggregatorConfig
 	var aggregator config.AggregatorConfig
 	if err := convertToStruct(aggregatorData, &aggregator); err != nil {
@@ -844,14 +884,14 @@ func (a *ConfigAdapter) handleConfigUpdateAggregator(ctx context.Context, args m
 			IsError: true,
 		}, nil
 	}
-	
+
 	if err := a.UpdateAggregatorConfig(ctx, aggregator); err != nil {
 		return &api.CallToolResult{
 			Content: []interface{}{fmt.Sprintf("Failed to update aggregator config: %v", err)},
 			IsError: true,
 		}, nil
 	}
-	
+
 	return &api.CallToolResult{
 		Content: []interface{}{"Successfully updated aggregator configuration"},
 		IsError: false,
@@ -866,7 +906,7 @@ func (a *ConfigAdapter) handleConfigUpdateGlobalSettings(ctx context.Context, ar
 			IsError: true,
 		}, nil
 	}
-	
+
 	// Convert to config.GlobalSettings
 	var settings config.GlobalSettings
 	if err := convertToStruct(settingsData, &settings); err != nil {
@@ -875,14 +915,14 @@ func (a *ConfigAdapter) handleConfigUpdateGlobalSettings(ctx context.Context, ar
 			IsError: true,
 		}, nil
 	}
-	
+
 	if err := a.UpdateGlobalSettings(ctx, settings); err != nil {
 		return &api.CallToolResult{
 			Content: []interface{}{fmt.Sprintf("Failed to update global settings: %v", err)},
 			IsError: true,
 		}, nil
 	}
-	
+
 	return &api.CallToolResult{
 		Content: []interface{}{"Successfully updated global settings"},
 		IsError: false,
@@ -898,14 +938,14 @@ func (a *ConfigAdapter) handleConfigDeleteMCPServer(ctx context.Context, args ma
 			IsError: true,
 		}, nil
 	}
-	
+
 	if err := a.DeleteMCPServer(ctx, name); err != nil {
 		return &api.CallToolResult{
 			Content: []interface{}{fmt.Sprintf("Failed to delete MCP server: %v", err)},
 			IsError: true,
 		}, nil
 	}
-	
+
 	return &api.CallToolResult{
 		Content: []interface{}{fmt.Sprintf("Successfully deleted MCP server '%s'", name)},
 		IsError: false,
@@ -920,14 +960,14 @@ func (a *ConfigAdapter) handleConfigDeletePortForward(ctx context.Context, args 
 			IsError: true,
 		}, nil
 	}
-	
+
 	if err := a.DeletePortForward(ctx, name); err != nil {
 		return &api.CallToolResult{
 			Content: []interface{}{fmt.Sprintf("Failed to delete port forward: %v", err)},
 			IsError: true,
 		}, nil
 	}
-	
+
 	return &api.CallToolResult{
 		Content: []interface{}{fmt.Sprintf("Successfully deleted port forward '%s'", name)},
 		IsError: false,
@@ -942,14 +982,14 @@ func (a *ConfigAdapter) handleConfigDeleteWorkflow(ctx context.Context, args map
 			IsError: true,
 		}, nil
 	}
-	
+
 	if err := a.DeleteWorkflow(ctx, name); err != nil {
 		return &api.CallToolResult{
 			Content: []interface{}{fmt.Sprintf("Failed to delete workflow: %v", err)},
 			IsError: true,
 		}, nil
 	}
-	
+
 	return &api.CallToolResult{
 		Content: []interface{}{fmt.Sprintf("Successfully deleted workflow '%s'", name)},
 		IsError: false,
@@ -964,14 +1004,14 @@ func (a *ConfigAdapter) handleConfigDeleteCluster(ctx context.Context, args map[
 			IsError: true,
 		}, nil
 	}
-	
+
 	if err := a.DeleteCluster(ctx, name); err != nil {
 		return &api.CallToolResult{
 			Content: []interface{}{fmt.Sprintf("Failed to delete cluster: %v", err)},
 			IsError: true,
 		}, nil
 	}
-	
+
 	return &api.CallToolResult{
 		Content: []interface{}{fmt.Sprintf("Successfully deleted cluster '%s'", name)},
 		IsError: false,
@@ -979,16 +1019,46 @@ func (a *ConfigAdapter) handleConfigDeleteCluster(ctx context.Context, args map[
 }
 
 func (a *ConfigAdapter) handleConfigSave(ctx context.Context) (*api.CallToolResult, error) {
-	if err := a.SaveConfig(ctx); err != nil {
-		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Failed to save configuration: %v", err)},
-			IsError: true,
-		}, nil
+	err := a.SaveConfig(ctx)
+	if err != nil {
+		return nil, err
 	}
-	
+
 	return &api.CallToolResult{
-		Content: []interface{}{"Successfully saved configuration to file"},
-		IsError: false,
+		Content: []interface{}{
+			"Configuration saved successfully",
+		},
+	}, nil
+}
+
+func (a *ConfigAdapter) handleConfigReload(ctx context.Context) (*api.CallToolResult, error) {
+	// Reload main configuration
+	if err := a.ReloadConfig(ctx); err != nil {
+		return nil, err
+	}
+
+	// Trigger capability definitions reload if capability handler exists
+	if capHandler := api.GetCapability(); capHandler != nil {
+		if reloader, ok := capHandler.(interface{ ReloadDefinitions() error }); ok {
+			if err := reloader.ReloadDefinitions(); err != nil {
+				return nil, fmt.Errorf("failed to reload capability definitions: %w", err)
+			}
+		}
+	}
+
+	// Trigger workflow definitions reload if workflow handler exists
+	if wfHandler := api.GetWorkflow(); wfHandler != nil {
+		if reloader, ok := wfHandler.(interface{ ReloadWorkflows() error }); ok {
+			if err := reloader.ReloadWorkflows(); err != nil {
+				return nil, fmt.Errorf("failed to reload workflow definitions: %w", err)
+			}
+		}
+	}
+
+	return &api.CallToolResult{
+		Content: []interface{}{
+			"Configuration reloaded successfully",
+		},
 	}, nil
 }
 

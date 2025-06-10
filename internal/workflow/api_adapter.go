@@ -197,6 +197,16 @@ func (a *Adapter) Stop() {
 	}
 }
 
+// ReloadWorkflows reloads workflow definitions from disk
+func (a *Adapter) ReloadWorkflows() error {
+	if a.manager != nil {
+		// Get the storage and reload workflows
+		storage := a.manager.GetStorage()
+		return storage.LoadWorkflows()
+	}
+	return nil
+}
+
 // GetTools returns all tools this provider offers
 func (a *Adapter) GetTools() []api.ToolMetadata {
 	tools := []api.ToolMetadata{

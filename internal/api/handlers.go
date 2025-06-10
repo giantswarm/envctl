@@ -100,6 +100,10 @@ type ConfigHandler interface {
 
 	// Save configuration
 	SaveConfig(ctx context.Context) error
+
+	// Reload configuration from disk
+	ReloadConfig(ctx context.Context) error
+
 	ToolProvider
 }
 
@@ -156,7 +160,7 @@ type PortForwardServiceHandler interface {
 	GetServiceName() string
 	GetLocalPort() int
 	GetRemotePort() int
-	
+
 	// List all port forwards
 	ListForwards(ctx context.Context) ([]*PortForwardInfo, error)
 

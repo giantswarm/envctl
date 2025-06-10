@@ -38,6 +38,9 @@ type ConfigServiceAPI interface {
 
 	// Save configuration to file
 	SaveConfig(ctx context.Context) error
+
+	// Reload configuration from disk
+	ReloadConfig(ctx context.Context) error
 }
 
 // configServiceAPI implements the ConfigServiceAPI interface
@@ -244,4 +247,13 @@ func (c *configServiceAPI) SaveConfig(ctx context.Context) error {
 		return fmt.Errorf("config handler not registered")
 	}
 	return handler.SaveConfig(ctx)
+}
+
+// ReloadConfig reloads the configuration from disk
+func (c *configServiceAPI) ReloadConfig(ctx context.Context) error {
+	handler := GetConfigHandler()
+	if handler == nil {
+		return fmt.Errorf("config handler not registered")
+	}
+	return handler.ReloadConfig(ctx)
 }

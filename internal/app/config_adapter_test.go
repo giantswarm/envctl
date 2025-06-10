@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"envctl/internal/api"
 	"envctl/internal/config"
 
 	"github.com/stretchr/testify/assert"
@@ -14,7 +15,7 @@ import (
 
 func TestConfigAdapter(t *testing.T) {
 	ctx := context.Background()
-	
+
 	// Create a test configuration
 	testConfig := &config.EnvctlConfig{
 		Clusters: []config.ClusterDefinition{
@@ -126,7 +127,7 @@ func TestConfigAdapter(t *testing.T) {
 			config.ClusterRoleTarget:        "cluster1",
 			config.ClusterRoleObservability: "cluster2",
 		}
-		
+
 		err := adapter.DeleteCluster(ctx, "cluster1")
 		assert.NoError(t, err)
 
@@ -168,7 +169,7 @@ func TestConfigAdapter(t *testing.T) {
 	t.Run("GetTools", func(t *testing.T) {
 		tools := adapter.GetTools()
 		assert.Greater(t, len(tools), 0)
-		
+
 		// Check that all expected tools are present
 		expectedTools := []string{
 			"config_get",
@@ -177,12 +178,12 @@ func TestConfigAdapter(t *testing.T) {
 			"config_delete_mcp_server",
 			"config_save",
 		}
-		
+
 		toolNames := make(map[string]bool)
 		for _, tool := range tools {
 			toolNames[tool.Name] = true
 		}
-		
+
 		for _, expected := range expectedTools {
 			assert.True(t, toolNames[expected], "Expected tool %s not found", expected)
 		}
@@ -194,16 +195,54 @@ func TestConfigAdapter(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
-		
+
 		// Test unknown tool
 		result, err = adapter.ExecuteTool(ctx, "unknown_tool", nil)
 		assert.Error(t, err)
 		assert.Nil(t, result)
-		
+
 		// Test config_update_mcp_server with missing args
 		result, err = adapter.ExecuteTool(ctx, "config_update_mcp_server", nil)
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.True(t, result.IsError)
+	})
+
+	t.Run("ReloadConfig", func(t *testing.T) {
+		// Create adapter with test config
+		adapter := &ConfigAdapter{
+			config: &config.EnvctlConfig{
+				Clusters:       []config.ClusterDefinition{},
+				ActiveClusters: make(map[config.ClusterRole]string),
+			},
+		}
+		api.RegisterConfig(adapter)
+
+		// Mock the config reload to return success
+		ctx := context.Background()
+
+		// Call ReloadConfig
+		err := adapter.ReloadConfig(ctx)
+		assert.NoError(t, err, "ReloadConfig should not error when config is valid")
+	})
+
+	t.Run("ExecuteTool_config_reload", func(t *testing.T) {
+		// Create adapter
+		adapter := &ConfigAdapter{
+			config: &config.EnvctlConfig{
+				Clusters:       []config.ClusterDefinition{},
+				ActiveClusters: make(map[config.ClusterRole]string),
+			},
+		}
+		api.RegisterConfig(adapter)
+
+		// Execute config_reload tool
+		ctx := context.Background()
+		result, err := adapter.ExecuteTool(ctx, "config_reload", nil)
+
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.Equal(t, "Configuration reloaded successfully", result.Content[0])
+		assert.False(t, result.IsError)
 	})
 }

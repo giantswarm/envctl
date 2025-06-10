@@ -127,7 +127,7 @@ func (a *Adapter) GetAvailableClusters(role api.ClusterRole) []api.ClusterDefini
 	// Convert API role to config role
 	configRole := config.ClusterRole(role)
 	clusters := a.orchestrator.GetAvailableClusters(configRole)
-	
+
 	// Convert config clusters to API clusters
 	apiClusters := make([]api.ClusterDefinition, 0, len(clusters))
 	for _, cluster := range clusters {
@@ -139,7 +139,7 @@ func (a *Adapter) GetAvailableClusters(role api.ClusterRole) []api.ClusterDefini
 			Icon:        cluster.Icon,
 		})
 	}
-	
+
 	return apiClusters
 }
 

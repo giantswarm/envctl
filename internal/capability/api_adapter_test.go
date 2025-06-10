@@ -145,7 +145,7 @@ func TestAdapter_GetTools(t *testing.T) {
 		"auth_provider_logout": false,
 		"auth_provider_status": false,
 	}
-	
+
 	for _, tool := range tools {
 		if _, exists := authOps[tool.Name]; exists {
 			authOps[tool.Name] = true
@@ -217,7 +217,7 @@ func TestAdapter_ExecuteTool(t *testing.T) {
 		content := result.Content[0].(map[string]interface{})
 		assert.Contains(t, content, "capabilities")
 		assert.Contains(t, content, "total")
-		
+
 		capabilities := content["capabilities"].([]api.CapabilityInfo)
 		assert.Len(t, capabilities, 1)
 		assert.Equal(t, "auth_provider", capabilities[0].Type)
@@ -232,7 +232,7 @@ func TestAdapter_ExecuteTool(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.IsError)
-		
+
 		capInfo := result.Content[0].(api.CapabilityInfo)
 		assert.Equal(t, "auth_provider", capInfo.Type)
 		assert.Equal(t, "test_auth", capInfo.Name)
@@ -499,4 +499,4 @@ func TestAdapter_ExecuteCapability_EdgeCases(t *testing.T) {
 		assert.Nil(t, result)
 		assert.Contains(t, err.Error(), "workflow execution failed")
 	})
-} 
+}
