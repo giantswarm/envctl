@@ -12,6 +12,15 @@ import (
 )
 
 // PortForwardService implements the Service interface for port forwards
+//
+// DEPRECATED: This is legacy code that directly uses kubectl for port forwarding.
+// It will be replaced by capability-driven port forwarding that uses the
+// portforward_provider capability and workflows to orchestrate port forwarding
+// operations through MCP tools.
+//
+// TODO: Once the capability-driven implementation is complete, this service
+// should delegate to the capability system instead of using the portforwarding
+// package directly.
 type PortForwardService struct {
 	*services.BaseService
 

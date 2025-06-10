@@ -10,6 +10,16 @@ import (
 	"fmt"
 )
 
+// EXAMPLE/PROTOTYPE: This file demonstrates how port forwarding could work
+// with the capability system. It's not actively used in production.
+//
+// The actual capability-driven port forwarding is implemented through:
+// - Capability definition: internal/capability/definitions/portforward_provider.yaml
+// - MCP tools: k8s_port_forward, k8s_port_forward_stop, etc. in the K8s service adapter
+// - Workflows: Embedded in the capability definition
+//
+// This file can serve as a reference for future capability-based service implementations.
+
 // CapabilityPortForwardService is an example of a port forward service
 // that uses capabilities instead of hard dependencies
 type CapabilityPortForwardService struct {

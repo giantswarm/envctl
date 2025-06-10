@@ -288,3 +288,75 @@ type: auth_provider
 		})
 	}
 }
+
+func TestCapabilityLoaderWithPortForward(t *testing.T) {
+	// Create a temporary directory for test definitions
+	tmpDir := t.TempDir()
+
+	// Create a mock tool checker that has the required port forward tools
+	mockChecker := &mockToolChecker{
+		availableTools: map[string]bool{
+			"x_k8s_port_forward":      true,
+			"x_k8s_port_forward_stop": true,
+			"x_k8s_port_forward_list": true,
+			"x_k8s_port_forward_info": true,
+		},
+	}
+
+	registry := NewRegistry()
+	loader := NewCapabilityLoader(tmpDir, mockChecker, registry)
+
+	// Copy the port forward capability definition to the test directory
+	portForwardYAML := `name: portforward_provider
+type: portforward_provider
+version: "1.0.0"
+description: "Port forwarding capability for Kubernetes services and pods"
+metadata:
+  provider: "kubectl"
+  category: "networking"
+operations:
+  create:
+    description: "Create a new port forward to a Kubernetes resource"
+    parameters:
+      namespace:
+        type: string
+        required: true
+        description: "Kubernetes namespace"
+    requires:
+      - x_k8s_port_forward
+    workflow:
+      name: portforward_create
+      description: "Create a port forward"
+      steps:
+        - id: create_forward
+          tool: x_k8s_port_forward
+          args:
+            namespace: "{{ .input.namespace }}"
+`
+
+	// Write the definition to a file
+	err := os.WriteFile(filepath.Join(tmpDir, "portforward_provider.yaml"), []byte(portForwardYAML), 0644)
+	require.NoError(t, err)
+
+	// Load definitions
+	err = loader.LoadDefinitions()
+	assert.NoError(t, err)
+
+	// Check that the capability was loaded
+	def, exists := loader.GetCapabilityDefinition("portforward_provider")
+	assert.True(t, exists)
+	assert.NotNil(t, def)
+	assert.Equal(t, "portforward_provider", def.Name)
+	assert.Equal(t, "portforward_provider", def.Type)
+
+	// Check that the operation is available
+	availableTools := loader.GetAvailableCapabilityTools()
+	assert.Contains(t, availableTools, "x_portforward_provider_create")
+
+	// Verify we can get the operation for the tool
+	op, capDef, err := loader.GetOperationForTool("x_portforward_provider_create")
+	assert.NoError(t, err)
+	assert.NotNil(t, op)
+	assert.NotNil(t, capDef)
+	assert.Equal(t, "Create a new port forward to a Kubernetes resource", op.Description)
+}
