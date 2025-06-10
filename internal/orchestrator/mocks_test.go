@@ -243,3 +243,11 @@ func (m *mockKubeManager) CheckAPIHealth(ctx context.Context, kubeContextName st
 	// By default, return version and nil (healthy)
 	return "v1.28.0", nil
 }
+
+func (m *mockKubeManager) SetAuthProvider(provider kube.AuthProvider) {
+	// Mock implementation
+}
+
+func (m *mockKubeManager) GetAuthProvider() kube.AuthProvider {
+	return nil
+}

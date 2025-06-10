@@ -42,8 +42,8 @@ func (a *APIAdapter) GetClusterLabel() string {
 	return ""
 }
 
-// GetTools returns the list of tools exposed by the MCP server
-func (a *APIAdapter) GetTools() []api.MCPTool {
+// GetMCPTools returns the list of tools exposed by the MCP server
+func (a *APIAdapter) GetMCPTools() []api.MCPTool {
 	// Get the MCP client
 	client := a.service.GetMCPClient()
 	if client == nil {
@@ -111,4 +111,37 @@ func (a *APIAdapter) Register() {
 // Unregister removes this adapter from the API package
 func (a *APIAdapter) Unregister() {
 	api.UnregisterMCPService(a.service.GetLabel())
+}
+
+// ToolProvider interface implementation
+// These are no-ops since the global adapter handles tools
+
+// GetTools returns no tools - the global adapter handles MCP tools
+func (a *APIAdapter) GetTools() []api.ToolMetadata {
+	return nil
+}
+
+// ExecuteTool is not implemented at the instance level
+func (a *APIAdapter) ExecuteTool(ctx context.Context, toolName string, args map[string]interface{}) (*api.CallToolResult, error) {
+	return nil, nil
+}
+
+// MCPServiceHandler interface implementation (delegated to global adapter)
+
+// ListServers is handled by the global adapter
+func (a *APIAdapter) ListServers(ctx context.Context) ([]*api.MCPServerInfo, error) {
+	// This should be handled by the global MCP service adapter
+	return nil, nil
+}
+
+// GetServerInfo is handled by the global adapter
+func (a *APIAdapter) GetServerInfo(ctx context.Context, label string) (*api.MCPServerInfo, error) {
+	// This should be handled by the global MCP service adapter
+	return nil, nil
+}
+
+// GetServerTools is handled by the global adapter
+func (a *APIAdapter) GetServerTools(ctx context.Context, serverName string) ([]api.MCPTool, error) {
+	// This should be handled by the global MCP service adapter
+	return nil, nil
 }

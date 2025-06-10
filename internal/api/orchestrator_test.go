@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -195,6 +196,7 @@ type mockOrchestratorHandler struct {
 	eventChan  chan ServiceStateChangedEvent
 	clusters   []ClusterDefinition
 	activeMap  map[ClusterRole]string
+	services   []ServiceStatus
 }
 
 func newMockOrchestratorHandler() *mockOrchestratorHandler {
@@ -202,7 +204,25 @@ func newMockOrchestratorHandler() *mockOrchestratorHandler {
 		eventChan: make(chan ServiceStateChangedEvent, 100),
 		activeMap: make(map[ClusterRole]string),
 		clusters:  []ClusterDefinition{},
+		services:  []ServiceStatus{},
 	}
+}
+
+// ToolProvider methods
+func (m *mockOrchestratorHandler) GetTools() []ToolMetadata {
+	return []ToolMetadata{
+		{
+			Name:        "test_orchestrator_tool",
+			Description: "Test orchestrator tool for mock",
+			Parameters:  []ParameterMetadata{},
+		},
+	}
+}
+
+func (m *mockOrchestratorHandler) ExecuteTool(ctx context.Context, toolName string, args map[string]interface{}) (*CallToolResult, error) {
+	return &CallToolResult{
+		Content: []interface{}{"test orchestrator result"},
+	}, nil
 }
 
 func (m *mockOrchestratorHandler) StartService(label string) error {
@@ -251,6 +271,19 @@ func (m *mockOrchestratorHandler) GetActiveCluster(role ClusterRole) (string, bo
 func (m *mockOrchestratorHandler) SwitchCluster(role ClusterRole, clusterName string) error {
 	m.activeMap[role] = clusterName
 	return nil
+}
+
+func (m *mockOrchestratorHandler) GetServiceStatus(label string) (*ServiceStatus, error) {
+	for _, s := range m.services {
+		if s.Label == label {
+			return &s, nil
+		}
+	}
+	return nil, fmt.Errorf("service not found: %s", label)
+}
+
+func (m *mockOrchestratorHandler) GetAllServices() []ServiceStatus {
+	return m.services
 }
 
 func TestNewOrchestratorAPI(t *testing.T) {

@@ -1,11 +1,10 @@
 ---
 description: 
 globs: 
-alwaysApply: false
+alwaysApply: true
 ---
-# Debugging envctl via Agent MCP Server
+## Debugging envctl via Agent MCP Server
 
-## Overview
 The envctl-agent MCP server provides core debugging tools to test and explore the functionality implemented in the `envctl connect` command. This guide focuses on the agent's internal debugging capabilities, not the functionality from individual MCP servers (which can change).
 
 ## Core Agent Debugging Tools

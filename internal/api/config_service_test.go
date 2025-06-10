@@ -16,8 +16,53 @@ type mockConfigHandler struct {
 	saveCount      int
 }
 
-func (m *mockConfigHandler) GetConfig() (*config.EnvctlConfig, error) {
+// ToolProvider methods
+func (m *mockConfigHandler) GetTools() []ToolMetadata {
+	return []ToolMetadata{
+		{
+			Name:        "test_tool",
+			Description: "Test tool for mock",
+			Parameters:  []ParameterMetadata{},
+		},
+	}
+}
+
+func (m *mockConfigHandler) ExecuteTool(ctx context.Context, toolName string, args map[string]interface{}) (*CallToolResult, error) {
+	return &CallToolResult{
+		Content: []interface{}{"test result"},
+	}, nil
+}
+
+func (m *mockConfigHandler) GetConfig(ctx context.Context) (*config.EnvctlConfig, error) {
 	return m.config, nil
+}
+
+func (m *mockConfigHandler) GetClusters(ctx context.Context) ([]config.ClusterDefinition, error) {
+	return m.config.Clusters, nil
+}
+
+func (m *mockConfigHandler) GetActiveClusters(ctx context.Context) (map[config.ClusterRole]string, error) {
+	return m.config.ActiveClusters, nil
+}
+
+func (m *mockConfigHandler) GetMCPServers(ctx context.Context) ([]config.MCPServerDefinition, error) {
+	return m.config.MCPServers, nil
+}
+
+func (m *mockConfigHandler) GetPortForwards(ctx context.Context) ([]config.PortForwardDefinition, error) {
+	return m.config.PortForwards, nil
+}
+
+func (m *mockConfigHandler) GetWorkflows(ctx context.Context) ([]config.WorkflowDefinition, error) {
+	return m.config.Workflows, nil
+}
+
+func (m *mockConfigHandler) GetAggregatorConfig(ctx context.Context) (*config.AggregatorConfig, error) {
+	return &m.config.Aggregator, nil
+}
+
+func (m *mockConfigHandler) GetGlobalSettings(ctx context.Context) (*config.GlobalSettings, error) {
+	return &m.config.GlobalSettings, nil
 }
 
 func (m *mockConfigHandler) UpdateClusters(clusters []config.ClusterDefinition) error {
@@ -31,7 +76,7 @@ func (m *mockConfigHandler) UpdateActiveClusters(activeClusters map[config.Clust
 	return nil
 }
 
-func (m *mockConfigHandler) UpdateMCPServer(server config.MCPServerDefinition) error {
+func (m *mockConfigHandler) UpdateMCPServer(ctx context.Context, server config.MCPServerDefinition) error {
 	// Find and update or add
 	found := false
 	for i, s := range m.config.MCPServers {
@@ -47,7 +92,7 @@ func (m *mockConfigHandler) UpdateMCPServer(server config.MCPServerDefinition) e
 	return nil
 }
 
-func (m *mockConfigHandler) UpdatePortForward(portForward config.PortForwardDefinition) error {
+func (m *mockConfigHandler) UpdatePortForward(ctx context.Context, portForward config.PortForwardDefinition) error {
 	// Find and update or add
 	found := false
 	for i, pf := range m.config.PortForwards {
@@ -63,7 +108,7 @@ func (m *mockConfigHandler) UpdatePortForward(portForward config.PortForwardDefi
 	return nil
 }
 
-func (m *mockConfigHandler) UpdateWorkflow(workflow config.WorkflowDefinition) error {
+func (m *mockConfigHandler) UpdateWorkflow(ctx context.Context, workflow config.WorkflowDefinition) error {
 	// Find and update or add
 	found := false
 	for i, w := range m.config.Workflows {
@@ -79,17 +124,17 @@ func (m *mockConfigHandler) UpdateWorkflow(workflow config.WorkflowDefinition) e
 	return nil
 }
 
-func (m *mockConfigHandler) UpdateAggregatorConfig(aggregator config.AggregatorConfig) error {
+func (m *mockConfigHandler) UpdateAggregatorConfig(ctx context.Context, aggregator config.AggregatorConfig) error {
 	m.config.Aggregator = aggregator
 	return nil
 }
 
-func (m *mockConfigHandler) UpdateGlobalSettings(settings config.GlobalSettings) error {
+func (m *mockConfigHandler) UpdateGlobalSettings(ctx context.Context, settings config.GlobalSettings) error {
 	m.config.GlobalSettings = settings
 	return nil
 }
 
-func (m *mockConfigHandler) DeleteMCPServer(name string) error {
+func (m *mockConfigHandler) DeleteMCPServer(ctx context.Context, name string) error {
 	servers := []config.MCPServerDefinition{}
 	for _, s := range m.config.MCPServers {
 		if s.Name != name {
@@ -100,7 +145,7 @@ func (m *mockConfigHandler) DeleteMCPServer(name string) error {
 	return nil
 }
 
-func (m *mockConfigHandler) DeletePortForward(name string) error {
+func (m *mockConfigHandler) DeletePortForward(ctx context.Context, name string) error {
 	forwards := []config.PortForwardDefinition{}
 	for _, pf := range m.config.PortForwards {
 		if pf.Name != name {
@@ -111,7 +156,7 @@ func (m *mockConfigHandler) DeletePortForward(name string) error {
 	return nil
 }
 
-func (m *mockConfigHandler) DeleteWorkflow(name string) error {
+func (m *mockConfigHandler) DeleteWorkflow(ctx context.Context, name string) error {
 	workflows := []config.WorkflowDefinition{}
 	for _, w := range m.config.Workflows {
 		if w.Name != name {
@@ -122,7 +167,7 @@ func (m *mockConfigHandler) DeleteWorkflow(name string) error {
 	return nil
 }
 
-func (m *mockConfigHandler) DeleteCluster(name string) error {
+func (m *mockConfigHandler) DeleteCluster(ctx context.Context, name string) error {
 	clusters := []config.ClusterDefinition{}
 	for _, c := range m.config.Clusters {
 		if c.Name != name {
@@ -133,7 +178,7 @@ func (m *mockConfigHandler) DeleteCluster(name string) error {
 	return nil
 }
 
-func (m *mockConfigHandler) SaveConfig() error {
+func (m *mockConfigHandler) SaveConfig(ctx context.Context) error {
 	m.saveCount++
 	return nil
 }

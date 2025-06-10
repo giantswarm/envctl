@@ -1,6 +1,7 @@
 package portforward
 
 import (
+	"context"
 	"envctl/internal/api"
 )
 
@@ -48,4 +49,31 @@ func (a *APIAdapter) Register() {
 // Unregister removes this adapter from the API package
 func (a *APIAdapter) Unregister() {
 	api.UnregisterPortForward(a.service.GetLabel())
+}
+
+// ToolProvider interface implementation
+// These are no-ops since the global adapter handles tools
+
+// GetTools returns no tools - the global adapter handles port forward tools
+func (a *APIAdapter) GetTools() []api.ToolMetadata {
+	return nil
+}
+
+// ExecuteTool is not implemented at the instance level
+func (a *APIAdapter) ExecuteTool(ctx context.Context, toolName string, args map[string]interface{}) (*api.CallToolResult, error) {
+	return nil, nil
+}
+
+// PortForwardServiceHandler interface implementation (delegated to global adapter)
+
+// ListForwards is handled by the global adapter
+func (a *APIAdapter) ListForwards(ctx context.Context) ([]*api.PortForwardInfo, error) {
+	// This should be handled by the global port forward service adapter
+	return nil, nil
+}
+
+// GetForwardInfo is handled by the global adapter
+func (a *APIAdapter) GetForwardInfo(ctx context.Context, label string) (*api.PortForwardInfo, error) {
+	// This should be handled by the global port forward service adapter
+	return nil, nil
 }

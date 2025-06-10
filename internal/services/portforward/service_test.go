@@ -26,6 +26,7 @@ type mockKubeManager struct {
 	hasTeleportPrefixFunc        func(contextName string) bool
 	getClusterNodeHealthFunc     func(ctx context.Context, kubeContextName string) (kube.NodeHealth, error)
 	determineClusterProviderFunc func(ctx context.Context, kubeContextName string) (string, error)
+	authProvider                 kube.AuthProvider
 }
 
 func (m *mockKubeManager) Login(clusterName string) (string, string, error) {
@@ -108,6 +109,14 @@ func (m *mockKubeManager) DetermineClusterProvider(ctx context.Context, kubeCont
 func (m *mockKubeManager) CheckAPIHealth(ctx context.Context, kubeContextName string) (string, error) {
 	// By default, return version and nil (healthy)
 	return "v1.28.0", nil
+}
+
+func (m *mockKubeManager) SetAuthProvider(provider kube.AuthProvider) {
+	m.authProvider = provider
+}
+
+func (m *mockKubeManager) GetAuthProvider() kube.AuthProvider {
+	return m.authProvider
 }
 
 func TestNewPortForwardService(t *testing.T) {

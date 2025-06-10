@@ -4,13 +4,10 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
-	"envctl/internal/api/tools"
-	"envctl/internal/capability"
-	"envctl/internal/workflow"
+	"envctl/internal/api"
 	"envctl/pkg/logging"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -39,19 +36,6 @@ type AggregatorServer struct {
 	toolManager     *activeItemManager
 	promptManager   *activeItemManager
 	resourceManager *activeItemManager
-
-	// Workflow manager
-	workflowManager *workflow.WorkflowManager
-
-	// API tools
-	apiTools *tools.APITools
-
-	// Capability tools
-	capabilityTools *tools.CapabilityTools
-
-	// Capability management
-	capabilityRegistry *capability.Registry
-	capabilityResolver *capability.Resolver
 }
 
 // NewAggregatorServer creates a new aggregator server
@@ -108,39 +92,34 @@ func (a *AggregatorServer) Start(ctx context.Context) error {
 		server.WithKeepAliveInterval(30*time.Second),
 	)
 
-	// Initialize workflow manager if config directory is provided
+	// Initialize workflow adapter if config directory is provided
 	if a.config.ConfigDir != "" {
-		wm, err := workflow.NewWorkflowManager(a.config.ConfigDir, a)
-		if err != nil {
-			logging.Warn("Aggregator", "Failed to initialize workflow manager: %v", err)
-			// Continue without workflows - they're optional
-		} else {
-			a.workflowManager = wm
-			logging.Info("Aggregator", "Initialized workflow manager")
+		// Initialize workflow adapter in a separate method
+		workflowAdapter := a.createWorkflowAdapter()
+		if workflowAdapter != nil {
+			workflowAdapter.Register()
+			logging.Info("Aggregator", "Initialized workflow adapter")
 		}
 	}
 
-	// Initialize API tools
-	a.apiTools = tools.NewAPITools()
-	logging.Info("Aggregator", "Initialized API tools")
-
-	// Initialize capability management
-	a.capabilityRegistry = capability.NewRegistry()
-	a.capabilityResolver = capability.NewResolver(a.capabilityRegistry)
-
-	// Initialize capability tools
-	a.capabilityTools = tools.NewCapabilityTools(a.capabilityRegistry, a.capabilityResolver)
-	logging.Info("Aggregator", "Initialized capability tools")
+	// Initialize capability adapter if config directory is provided
+	if a.config.ConfigDir != "" {
+		// Import capability package locally to avoid circular dependencies
+		capabilityAdapter := a.createCapabilityAdapter()
+		if capabilityAdapter != nil {
+			capabilityAdapter.Register()
+			// Load capability definitions
+			if err := capabilityAdapter.LoadDefinitions(); err != nil {
+				logging.Warn("Aggregator", "Failed to load capability definitions: %v", err)
+			} else {
+				logging.Info("Aggregator", "Initialized capability adapter")
+			}
+		}
+	}
 
 	// Start registry update monitor
 	a.wg.Add(1)
 	go a.monitorRegistryUpdates()
-
-	// Start workflow update monitor if workflow manager exists
-	if a.workflowManager != nil {
-		a.wg.Add(1)
-		go a.monitorWorkflowUpdates()
-	}
 
 	// Release the lock before calling updateCapabilities to avoid deadlock
 	a.mu.Unlock()
@@ -197,11 +176,6 @@ func (a *AggregatorServer) Stop(ctx context.Context) error {
 	// Wait for background routines
 	a.wg.Wait()
 
-	// Stop workflow manager if it exists
-	if a.workflowManager != nil {
-		a.workflowManager.Stop()
-	}
-
 	// Deregister all servers
 	for name := range a.registry.GetAllServers() {
 		if err := a.registry.Deregister(name); err != nil {
@@ -213,7 +187,6 @@ func (a *AggregatorServer) Stop(ctx context.Context) error {
 	a.server = nil
 	a.sseServer = nil
 	a.httpServer = nil
-	a.workflowManager = nil
 	a.mu.Unlock()
 
 	return nil
@@ -248,28 +221,6 @@ func (a *AggregatorServer) monitorRegistryUpdates() {
 			return
 		case <-updateChan:
 			// Update server capabilities based on registered servers
-			a.updateCapabilities()
-		}
-	}
-}
-
-// monitorWorkflowUpdates monitors for changes in workflows and updates capabilities
-func (a *AggregatorServer) monitorWorkflowUpdates() {
-	defer a.wg.Done()
-
-	if a.workflowManager == nil {
-		return
-	}
-
-	changeChannel := a.workflowManager.GetStorage().GetChangeChannel()
-
-	for {
-		select {
-		case <-a.ctx.Done():
-			return
-		case <-changeChannel:
-			logging.Debug("Aggregator", "Workflow changes detected, updating capabilities")
-			// Update capabilities to refresh workflow tools
 			a.updateCapabilities()
 		}
 	}
@@ -360,61 +311,8 @@ func (a *AggregatorServer) addNewItems(servers map[string]*ServerInfo) {
 		resourcesToAdd = append(resourcesToAdd, processResourcesForServer(a, serverName, info)...)
 	}
 
-	// Add workflow tools if workflow manager exists
-	if a.workflowManager != nil {
-		workflowTools := a.workflowManager.GetWorkflows()
-		for _, tool := range workflowTools {
-			// Apply envctl prefix to workflow tools
-			prefixedTool := tool
-			prefixedTool.Name = a.config.EnvctlPrefix + "_" + tool.Name
-
-			// Mark workflow tool as active to prevent it from being removed
-			a.toolManager.setActive(prefixedTool.Name, true)
-
-			toolsToAdd = append(toolsToAdd, a.createWorkflowServerTool(prefixedTool))
-		}
-
-		// Add workflow management tools
-		managementTools := workflow.NewManagementTools(a.workflowManager.GetStorage())
-		for _, tool := range managementTools.GetManagementTools() {
-			// Apply envctl prefix to management tools
-			prefixedTool := tool
-			prefixedTool.Name = a.config.EnvctlPrefix + "_" + tool.Name
-
-			// Mark management tool as active to prevent it from being removed
-			a.toolManager.setActive(prefixedTool.Name, true)
-
-			toolsToAdd = append(toolsToAdd, a.createManagementServerTool(prefixedTool, managementTools))
-		}
-	}
-
-	// Add API tools
-	if a.apiTools != nil {
-		for _, tool := range a.apiTools.GetAPITools() {
-			// Apply envctl prefix to API tools
-			prefixedTool := tool
-			prefixedTool.Name = a.config.EnvctlPrefix + "_" + tool.Name
-
-			// Mark API tool as active to prevent it from being removed
-			a.toolManager.setActive(prefixedTool.Name, true)
-
-			toolsToAdd = append(toolsToAdd, a.createAPIServerTool(prefixedTool, a.apiTools))
-		}
-	}
-
-	// Add capability tools
-	if a.capabilityTools != nil {
-		for _, tool := range a.capabilityTools.GetCapabilityTools() {
-			// Apply envctl prefix to capability tools
-			prefixedTool := tool
-			prefixedTool.Name = a.config.EnvctlPrefix + "_" + tool.Name
-
-			// Mark capability tool as active to prevent it from being removed
-			a.toolManager.setActive(prefixedTool.Name, true)
-
-			toolsToAdd = append(toolsToAdd, a.createCapabilityServerTool(prefixedTool, a.capabilityTools))
-		}
-	}
+	// Add tools from workflow, capability, and service providers
+	toolsToAdd = append(toolsToAdd, a.createToolsFromProviders()...)
 
 	// Add all items in batches
 	if len(toolsToAdd) > 0 {
@@ -456,16 +354,6 @@ func (a *AggregatorServer) logCapabilitiesSummary(servers map[string]*ServerInfo
 // GetEndpoint returns the aggregator's SSE endpoint URL
 func (a *AggregatorServer) GetEndpoint() string {
 	return fmt.Sprintf("http://%s:%d/sse", a.config.Host, a.config.Port)
-}
-
-// GetCapabilityRegistry returns the capability registry
-func (a *AggregatorServer) GetCapabilityRegistry() *capability.Registry {
-	return a.capabilityRegistry
-}
-
-// GetCapabilityResolver returns the capability resolver
-func (a *AggregatorServer) GetCapabilityResolver() *capability.Resolver {
-	return a.capabilityResolver
 }
 
 // GetTools returns all available tools with smart prefixing (only prefixed when conflicts exist)
@@ -546,238 +434,59 @@ func (a *AggregatorServer) CallToolInternal(ctx context.Context, toolName string
 	return serverInfo.Client.CallTool(ctx, originalName, args)
 }
 
-// createWorkflowServerTool creates a server tool handler for a workflow
-func (a *AggregatorServer) createWorkflowServerTool(tool mcp.Tool) server.ServerTool {
-	return server.ServerTool{
-		Tool: tool,
-		Handler: func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			// Extract workflow name from tool name
-			// Remove envctl prefix first (e.g., "x_action_test" -> "action_test")
-			nameWithoutEnvctl := tool.Name
-			envctlPrefix := a.config.EnvctlPrefix + "_"
-			if strings.HasPrefix(tool.Name, envctlPrefix) {
-				nameWithoutEnvctl = tool.Name[len(envctlPrefix):]
-			}
-
-			// Then remove "action_" prefix
-			workflowName := nameWithoutEnvctl
-			if strings.HasPrefix(nameWithoutEnvctl, "action_") {
-				workflowName = nameWithoutEnvctl[7:] // len("action_") = 7
-			}
-
-			// Extract arguments
-			args := make(map[string]interface{})
-			if req.Params.Arguments != nil {
-				if argsMap, ok := req.Params.Arguments.(map[string]interface{}); ok {
-					args = argsMap
-				}
-			}
-
-			// Execute workflow
-			result, err := a.workflowManager.ExecuteWorkflow(ctx, workflowName, args)
-			if err != nil {
-				return mcp.NewToolResultError(fmt.Sprintf("Workflow execution failed: %v", err)), nil
-			}
-
-			return result, nil
-		},
+// createCapabilityAdapter creates a capability adapter
+func (a *AggregatorServer) createCapabilityAdapter() interface {
+	Register()
+	LoadDefinitions() error
+} {
+	// Use the API factory to create the adapter
+	// For capability adapter, we need a more complex interface
+	// This is a temporary solution - ideally we'd have a proper interface
+	type capabilityAdapter interface {
+		Register()
+		LoadDefinitions() error
 	}
+
+	adapter := api.CreateCapabilityAdapter(a.config.ConfigDir, a)
+	if adapter == nil {
+		logging.Warn("Aggregator", "No capability adapter factory registered")
+		return nil
+	}
+
+	// Type assert to the interface we need
+	if capAdapter, ok := adapter.(capabilityAdapter); ok {
+		return capAdapter
+	}
+
+	logging.Error("Aggregator", nil, "Capability adapter does not implement required interface")
+	return nil
 }
 
-// createManagementServerTool creates a server tool handler for workflow management
-func (a *AggregatorServer) createManagementServerTool(tool mcp.Tool, mt *workflow.ManagementTools) server.ServerTool {
-	return server.ServerTool{
-		Tool: tool,
-		Handler: func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			// Route to appropriate handler based on tool name
-			// Remove envctl prefix to get the actual tool name
-			actualToolName := tool.Name
-			envctlPrefix := a.config.EnvctlPrefix + "_"
-			if strings.HasPrefix(tool.Name, envctlPrefix) {
-				actualToolName = tool.Name[len(envctlPrefix):]
-			}
-
-			var result *mcp.CallToolResult
-			var err error
-
-			switch actualToolName {
-			case "workflow_list":
-				result, err = mt.HandleListWorkflows(ctx, req)
-			case "workflow_get":
-				result, err = mt.HandleGetWorkflow(ctx, req)
-			case "workflow_create":
-				result, err = mt.HandleCreateWorkflow(ctx, req)
-			case "workflow_update":
-				result, err = mt.HandleUpdateWorkflow(ctx, req)
-			case "workflow_delete":
-				result, err = mt.HandleDeleteWorkflow(ctx, req)
-			case "workflow_validate":
-				result, err = mt.HandleValidateWorkflow(ctx, req)
-			case "workflow_spec":
-				result, err = mt.HandleGetWorkflowSpec(ctx, req)
-			default:
-				err = fmt.Errorf("unknown workflow management tool: %s", actualToolName)
-			}
-
-			if err != nil {
-				return mcp.NewToolResultError(fmt.Sprintf("Tool execution failed: %v", err)), nil
-			}
-
-			return result, nil
-		},
+// createWorkflowAdapter creates a workflow adapter
+func (a *AggregatorServer) createWorkflowAdapter() interface {
+	Register()
+} {
+	// Use the API factory to create the adapter
+	adapter := api.CreateWorkflowAdapter(a.config.ConfigDir, a)
+	if adapter == nil {
+		logging.Warn("Aggregator", "No workflow adapter factory registered")
 	}
+	return adapter
 }
 
-// createAPIServerTool creates a server tool handler for API tools
-func (a *AggregatorServer) createAPIServerTool(tool mcp.Tool, at *tools.APITools) server.ServerTool {
-	return server.ServerTool{
-		Tool: tool,
-		Handler: func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			// Route to appropriate handler based on tool name
-			// Remove envctl prefix to get the actual tool name
-			actualToolName := tool.Name
-			envctlPrefix := a.config.EnvctlPrefix + "_"
-			if strings.HasPrefix(tool.Name, envctlPrefix) {
-				actualToolName = tool.Name[len(envctlPrefix):]
-			}
-
-			var result *mcp.CallToolResult
-			var err error
-
-			switch actualToolName {
-			// Service Management Tools
-			case "service_list":
-				result, err = at.HandleServiceList(ctx, req)
-			case "service_start":
-				result, err = at.HandleServiceStart(ctx, req)
-			case "service_stop":
-				result, err = at.HandleServiceStop(ctx, req)
-			case "service_restart":
-				result, err = at.HandleServiceRestart(ctx, req)
-			case "service_status":
-				result, err = at.HandleServiceStatus(ctx, req)
-			// Cluster Management Tools
-			case "cluster_list":
-				result, err = at.HandleClusterList(ctx, req)
-			case "cluster_switch":
-				result, err = at.HandleClusterSwitch(ctx, req)
-			case "cluster_active":
-				result, err = at.HandleClusterActive(ctx, req)
-			// MCP Server Tools
-			case "mcp_server_list":
-				result, err = at.HandleMCPServerList(ctx, req)
-			case "mcp_server_info":
-				result, err = at.HandleMCPServerInfo(ctx, req)
-			case "mcp_server_tools":
-				result, err = at.HandleMCPServerTools(ctx, req)
-			// K8s Connection Tools
-			case "k8s_connection_list":
-				result, err = at.HandleK8sConnectionList(ctx, req)
-			case "k8s_connection_info":
-				result, err = at.HandleK8sConnectionInfo(ctx, req)
-			case "k8s_connection_by_context":
-				result, err = at.HandleK8sConnectionByContext(ctx, req)
-			// Port Forward Tools
-			case "portforward_list":
-				result, err = at.HandlePortForwardList(ctx, req)
-			case "portforward_info":
-				result, err = at.HandlePortForwardInfo(ctx, req)
-			// Configuration Tools - Get
-			case "config_get":
-				result, err = at.HandleConfigGet(ctx, req)
-			case "config_get_clusters":
-				result, err = at.HandleConfigGetClusters(ctx, req)
-			case "config_get_active_clusters":
-				result, err = at.HandleConfigGetActiveClusters(ctx, req)
-			case "config_get_mcp_servers":
-				result, err = at.HandleConfigGetMCPServers(ctx, req)
-			case "config_get_port_forwards":
-				result, err = at.HandleConfigGetPortForwards(ctx, req)
-			case "config_get_workflows":
-				result, err = at.HandleConfigGetWorkflows(ctx, req)
-			case "config_get_aggregator":
-				result, err = at.HandleConfigGetAggregator(ctx, req)
-			case "config_get_global_settings":
-				result, err = at.HandleConfigGetGlobalSettings(ctx, req)
-			// Configuration Tools - Update
-			case "config_update_mcp_server":
-				result, err = at.HandleConfigUpdateMCPServer(ctx, req)
-			case "config_update_port_forward":
-				result, err = at.HandleConfigUpdatePortForward(ctx, req)
-			case "config_update_workflow":
-				result, err = at.HandleConfigUpdateWorkflow(ctx, req)
-			case "config_update_aggregator":
-				result, err = at.HandleConfigUpdateAggregator(ctx, req)
-			case "config_update_global_settings":
-				result, err = at.HandleConfigUpdateGlobalSettings(ctx, req)
-			// Configuration Tools - Delete
-			case "config_delete_mcp_server":
-				result, err = at.HandleConfigDeleteMCPServer(ctx, req)
-			case "config_delete_port_forward":
-				result, err = at.HandleConfigDeletePortForward(ctx, req)
-			case "config_delete_workflow":
-				result, err = at.HandleConfigDeleteWorkflow(ctx, req)
-			case "config_delete_cluster":
-				result, err = at.HandleConfigDeleteCluster(ctx, req)
-			// Configuration Tools - Save
-			case "config_save":
-				result, err = at.HandleConfigSave(ctx, req)
-			default:
-				err = fmt.Errorf("unknown API tool: %s", actualToolName)
-			}
-
-			if err != nil {
-				return mcp.NewToolResultError(fmt.Sprintf("Tool execution failed: %v", err)), nil
-			}
-
-			return result, nil
-		},
-	}
+// IsToolAvailable implements ToolAvailabilityChecker interface
+func (a *AggregatorServer) IsToolAvailable(toolName string) bool {
+	// Check if the tool exists in any registered server
+	_, _, err := a.registry.ResolveToolName(toolName)
+	return err == nil
 }
 
-// createCapabilityServerTool creates a server tool handler for capability tools
-func (a *AggregatorServer) createCapabilityServerTool(tool mcp.Tool, ct *tools.CapabilityTools) server.ServerTool {
-	return server.ServerTool{
-		Tool: tool,
-		Handler: func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			// Route to appropriate handler based on tool name
-			// Remove envctl prefix to get the actual tool name
-			actualToolName := tool.Name
-			envctlPrefix := a.config.EnvctlPrefix + "_"
-			if strings.HasPrefix(tool.Name, envctlPrefix) {
-				actualToolName = tool.Name[len(envctlPrefix):]
-			}
-
-			var result *mcp.CallToolResult
-			var err error
-
-			switch actualToolName {
-			// Capability Management Tools
-			case "capability_register":
-				result, err = ct.HandleCapabilityRegister(ctx, req)
-			case "capability_unregister":
-				result, err = ct.HandleCapabilityUnregister(ctx, req)
-			case "capability_update":
-				result, err = ct.HandleCapabilityUpdate(ctx, req)
-			case "capability_list":
-				result, err = ct.HandleCapabilityList(ctx, req)
-			case "capability_get":
-				result, err = ct.HandleCapabilityGet(ctx, req)
-			case "capability_find_matching":
-				result, err = ct.HandleCapabilityFindMatching(ctx, req)
-			case "capability_request":
-				result, err = ct.HandleCapabilityRequest(ctx, req)
-			case "capability_release":
-				result, err = ct.HandleCapabilityRelease(ctx, req)
-			default:
-				err = fmt.Errorf("unknown capability tool: %s", actualToolName)
-			}
-
-			if err != nil {
-				return mcp.NewToolResultError(fmt.Sprintf("Tool execution failed: %v", err)), nil
-			}
-
-			return result, nil
-		},
+// GetAvailableTools implements ToolAvailabilityChecker interface
+func (a *AggregatorServer) GetAvailableTools() []string {
+	tools := a.registry.GetAllTools()
+	toolNames := make([]string, 0, len(tools))
+	for _, tool := range tools {
+		toolNames = append(toolNames, tool.Name)
 	}
+	return toolNames
 }

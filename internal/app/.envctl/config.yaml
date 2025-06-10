@@ -1,0 +1,40 @@
+clusters:
+    - name: cluster2
+      context: context2
+      role: observability
+      displayName: ""
+      icon: ""
+activeClusters:
+    observability: cluster2
+mcpServers:
+    - name: test-server
+      type: container
+      enabledByDefault: false
+      image: test-image
+portForwards:
+    - name: test-forward
+      enabledByDefault: false
+      namespace: default
+      targetType: ""
+      targetName: ""
+      localPort: ""
+      remotePort: ""
+globalSettings:
+    defaultContainerRuntime: containerd
+aggregator:
+    port: 8080
+workflows:
+    - name: test-workflow
+      description: ""
+      agentModifiable: false
+      inputSchema:
+        type: ""
+        properties: {}
+      steps: []
+    - name: new-workflow
+      description: A new workflow
+      agentModifiable: false
+      inputSchema:
+        type: ""
+        properties: {}
+      steps: []

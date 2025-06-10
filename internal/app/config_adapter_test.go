@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -12,6 +13,8 @@ import (
 )
 
 func TestConfigAdapter(t *testing.T) {
+	ctx := context.Background()
+	
 	// Create a test configuration
 	testConfig := &config.EnvctlConfig{
 		Clusters: []config.ClusterDefinition{
@@ -41,7 +44,7 @@ func TestConfigAdapter(t *testing.T) {
 	adapter := NewConfigAdapter(testConfig, "")
 
 	t.Run("GetConfig", func(t *testing.T) {
-		cfg, err := adapter.GetConfig()
+		cfg, err := adapter.GetConfig(ctx)
 		assert.NoError(t, err)
 		assert.NotNil(t, cfg)
 		assert.Len(t, cfg.Clusters, 1)
@@ -53,10 +56,10 @@ func TestConfigAdapter(t *testing.T) {
 			Name: "new-server",
 			Type: config.MCPServerTypeContainer,
 		}
-		err := adapter.UpdateMCPServer(newServer)
+		err := adapter.UpdateMCPServer(ctx, newServer)
 		assert.NoError(t, err)
 
-		cfg, _ := adapter.GetConfig()
+		cfg, _ := adapter.GetConfig(ctx)
 		assert.Len(t, cfg.MCPServers, 2)
 
 		// Update existing
@@ -65,10 +68,10 @@ func TestConfigAdapter(t *testing.T) {
 			Type:  config.MCPServerTypeContainer,
 			Image: "test-image",
 		}
-		err = adapter.UpdateMCPServer(updatedServer)
+		err = adapter.UpdateMCPServer(ctx, updatedServer)
 		assert.NoError(t, err)
 
-		cfg, _ = adapter.GetConfig()
+		cfg, _ = adapter.GetConfig(ctx)
 		assert.Len(t, cfg.MCPServers, 2)
 		for _, s := range cfg.MCPServers {
 			if s.Name == "test-server" {
@@ -79,47 +82,55 @@ func TestConfigAdapter(t *testing.T) {
 	})
 
 	t.Run("DeleteMCPServer", func(t *testing.T) {
-		err := adapter.DeleteMCPServer("new-server")
+		err := adapter.DeleteMCPServer(ctx, "new-server")
 		assert.NoError(t, err)
 
-		cfg, _ := adapter.GetConfig()
+		cfg, _ := adapter.GetConfig(ctx)
 		assert.Len(t, cfg.MCPServers, 1)
 
 		// Delete non-existent
-		err = adapter.DeleteMCPServer("non-existent")
+		err = adapter.DeleteMCPServer(ctx, "non-existent")
 		assert.Error(t, err)
 	})
 
-	t.Run("UpdateClusters", func(t *testing.T) {
-		newClusters := []config.ClusterDefinition{
-			{Name: "cluster1", Context: "context1", Role: config.ClusterRoleTarget},
-			{Name: "cluster2", Context: "context2", Role: config.ClusterRoleObservability},
+	t.Run("UpdateWorkflow", func(t *testing.T) {
+		newWorkflow := config.WorkflowDefinition{
+			Name:        "new-workflow",
+			Description: "A new workflow",
 		}
-		err := adapter.UpdateClusters(newClusters)
+		err := adapter.UpdateWorkflow(ctx, newWorkflow)
 		assert.NoError(t, err)
 
-		cfg, _ := adapter.GetConfig()
-		assert.Len(t, cfg.Clusters, 2)
+		workflows, _ := adapter.GetWorkflows(ctx)
+		assert.Len(t, workflows, 2)
 	})
 
-	t.Run("UpdateActiveClusters", func(t *testing.T) {
-		activeClusters := map[config.ClusterRole]string{
-			config.ClusterRoleTarget:        "cluster1",
-			config.ClusterRoleObservability: "cluster2",
+	t.Run("UpdateGlobalSettings", func(t *testing.T) {
+		newSettings := config.GlobalSettings{
+			DefaultContainerRuntime: "containerd",
 		}
-		err := adapter.UpdateActiveClusters(activeClusters)
+		err := adapter.UpdateGlobalSettings(ctx, newSettings)
 		assert.NoError(t, err)
 
-		cfg, _ := adapter.GetConfig()
-		assert.Equal(t, "cluster1", cfg.ActiveClusters[config.ClusterRoleTarget])
-		assert.Equal(t, "cluster2", cfg.ActiveClusters[config.ClusterRoleObservability])
+		settings, _ := adapter.GetGlobalSettings(ctx)
+		assert.Equal(t, "containerd", settings.DefaultContainerRuntime)
 	})
 
 	t.Run("DeleteCluster", func(t *testing.T) {
-		err := adapter.DeleteCluster("cluster1")
+		// First add some clusters
+		testConfig.Clusters = []config.ClusterDefinition{
+			{Name: "cluster1", Context: "context1", Role: config.ClusterRoleTarget},
+			{Name: "cluster2", Context: "context2", Role: config.ClusterRoleObservability},
+		}
+		testConfig.ActiveClusters = map[config.ClusterRole]string{
+			config.ClusterRoleTarget:        "cluster1",
+			config.ClusterRoleObservability: "cluster2",
+		}
+		
+		err := adapter.DeleteCluster(ctx, "cluster1")
 		assert.NoError(t, err)
 
-		cfg, _ := adapter.GetConfig()
+		cfg, _ := adapter.GetConfig(ctx)
 		assert.Len(t, cfg.Clusters, 1)
 		// Should also remove from active clusters
 		_, exists := cfg.ActiveClusters[config.ClusterRoleTarget]
@@ -136,7 +147,7 @@ func TestConfigAdapter(t *testing.T) {
 		adapter.configPath = testPath
 
 		// Save configuration
-		err = adapter.SaveConfig()
+		err = adapter.SaveConfig(ctx)
 		assert.NoError(t, err)
 
 		// Verify file exists
@@ -152,5 +163,47 @@ func TestConfigAdapter(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Len(t, loadedConfig.Clusters, 1)
 		assert.Equal(t, "cluster2", loadedConfig.Clusters[0].Name)
+	})
+
+	t.Run("GetTools", func(t *testing.T) {
+		tools := adapter.GetTools()
+		assert.Greater(t, len(tools), 0)
+		
+		// Check that all expected tools are present
+		expectedTools := []string{
+			"config_get",
+			"config_get_clusters",
+			"config_update_mcp_server",
+			"config_delete_mcp_server",
+			"config_save",
+		}
+		
+		toolNames := make(map[string]bool)
+		for _, tool := range tools {
+			toolNames[tool.Name] = true
+		}
+		
+		for _, expected := range expectedTools {
+			assert.True(t, toolNames[expected], "Expected tool %s not found", expected)
+		}
+	})
+
+	t.Run("ExecuteTool", func(t *testing.T) {
+		// Test config_get tool
+		result, err := adapter.ExecuteTool(ctx, "config_get", nil)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.False(t, result.IsError)
+		
+		// Test unknown tool
+		result, err = adapter.ExecuteTool(ctx, "unknown_tool", nil)
+		assert.Error(t, err)
+		assert.Nil(t, result)
+		
+		// Test config_update_mcp_server with missing args
+		result, err = adapter.ExecuteTool(ctx, "config_update_mcp_server", nil)
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.True(t, result.IsError)
 	})
 }

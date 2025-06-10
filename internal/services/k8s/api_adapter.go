@@ -1,6 +1,7 @@
 package k8s
 
 import (
+	"context"
 	"envctl/internal/api"
 )
 
@@ -53,4 +54,37 @@ func (a *APIAdapter) Register() {
 // Unregister removes this adapter from the API package
 func (a *APIAdapter) Unregister() {
 	api.UnregisterK8sService(a.service.GetLabel())
+}
+
+// ToolProvider interface implementation
+// These are no-ops since the global adapter handles tools
+
+// GetTools returns no tools - the global adapter handles K8s tools
+func (a *APIAdapter) GetTools() []api.ToolMetadata {
+	return nil
+}
+
+// ExecuteTool is not implemented at the instance level
+func (a *APIAdapter) ExecuteTool(ctx context.Context, toolName string, args map[string]interface{}) (*api.CallToolResult, error) {
+	return nil, nil
+}
+
+// K8sServiceHandler interface implementation (delegated to global adapter)
+
+// ListConnections is handled by the global adapter
+func (a *APIAdapter) ListConnections(ctx context.Context) ([]*api.K8sConnectionInfo, error) {
+	// This should be handled by the global K8s service adapter
+	return nil, nil
+}
+
+// GetConnectionInfo is handled by the global adapter  
+func (a *APIAdapter) GetConnectionInfo(ctx context.Context, label string) (*api.K8sConnectionInfo, error) {
+	// This should be handled by the global K8s service adapter
+	return nil, nil
+}
+
+// GetConnectionByContext is handled by the global adapter
+func (a *APIAdapter) GetConnectionByContext(ctx context.Context, contextName string) (*api.K8sConnectionInfo, error) {
+	// This should be handled by the global K8s service adapter
+	return nil, nil
 }

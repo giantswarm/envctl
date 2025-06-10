@@ -4,6 +4,13 @@ import (
 	"envctl/internal/api"
 	"envctl/internal/orchestrator"
 	"envctl/internal/services"
+	"envctl/internal/services/k8s"
+	"envctl/internal/services/mcpserver"
+	"envctl/internal/services/portforward"
+
+	// Import to trigger init() functions that register adapter factories
+	_ "envctl/internal/capability"
+	_ "envctl/internal/workflow"
 )
 
 // Services holds all the initialized services and APIs
@@ -55,6 +62,16 @@ func InitializeServices(cfg *Config) (*Services, error) {
 	// Register configuration adapter
 	configAdapter := NewConfigAdapter(cfg.EnvctlConfig, "") // Empty path means auto-detect
 	configAdapter.Register()
+
+	// Register service adapters
+	mcpAdapter := mcpserver.NewServiceAdapter()
+	mcpAdapter.Register()
+
+	k8sAdapter := k8s.NewServiceAdapter()
+	k8sAdapter.Register()
+
+	portForwardAdapter := portforward.NewServiceAdapter()
+	portForwardAdapter.Register()
 
 	// Step 2: Create APIs that use the registered handlers
 	orchestratorAPI := api.NewOrchestratorAPI()

@@ -248,3 +248,17 @@ func (r *Registry) removeCapabilityFromSlice(slice []*Capability, cap *Capabilit
 	}
 	return slice
 }
+
+// GetProvider retrieves a capability by provider name
+func (r *Registry) GetProvider(providerName string) (*Capability, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	for _, cap := range r.capabilities {
+		if cap.Provider == providerName {
+			return cap, nil
+		}
+	}
+
+	return nil, fmt.Errorf("no capability found for provider %s", providerName)
+}

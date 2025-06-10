@@ -1,0 +1,263 @@
+package aggregator
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	"envctl/internal/api"
+
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
+)
+
+// createToolsFromProviders creates MCP tools from all registered tool providers
+func (a *AggregatorServer) createToolsFromProviders() []server.ServerTool {
+	var tools []server.ServerTool
+
+	// Get workflow handler and check if it's a ToolProvider
+	if workflowHandler := api.GetWorkflow(); workflowHandler != nil {
+		if provider, ok := workflowHandler.(api.ToolProvider); ok {
+			for _, toolMeta := range provider.GetTools() {
+				// Apply appropriate prefix
+				mcpToolName := a.prefixToolName("workflow", toolMeta.Name)
+				a.toolManager.setActive(mcpToolName, true)
+
+				tool := server.ServerTool{
+					Tool: mcp.Tool{
+						Name:        mcpToolName,
+						Description: toolMeta.Description,
+						InputSchema: convertToMCPSchema(toolMeta.Parameters),
+					},
+					Handler: a.createToolHandler(provider, toolMeta.Name),
+				}
+
+				tools = append(tools, tool)
+			}
+		}
+	}
+
+	// Get capability handler and check if it's a ToolProvider
+	if capabilityHandler := api.GetCapability(); capabilityHandler != nil {
+		if provider, ok := capabilityHandler.(api.ToolProvider); ok {
+			for _, toolMeta := range provider.GetTools() {
+				// Apply appropriate prefix
+				mcpToolName := a.prefixToolName("capability", toolMeta.Name)
+				a.toolManager.setActive(mcpToolName, true)
+
+				tool := server.ServerTool{
+					Tool: mcp.Tool{
+						Name:        mcpToolName,
+						Description: toolMeta.Description,
+						InputSchema: convertToMCPSchema(toolMeta.Parameters),
+					},
+					Handler: a.createToolHandler(provider, toolMeta.Name),
+				}
+
+				tools = append(tools, tool)
+			}
+		}
+	}
+
+	// Get orchestrator handler and check if it's a ToolProvider
+	if orchestratorHandler := api.GetOrchestrator(); orchestratorHandler != nil {
+		if provider, ok := orchestratorHandler.(api.ToolProvider); ok {
+			for _, toolMeta := range provider.GetTools() {
+				// Apply appropriate prefix
+				mcpToolName := a.prefixToolName("orchestrator", toolMeta.Name)
+				a.toolManager.setActive(mcpToolName, true)
+
+				tool := server.ServerTool{
+					Tool: mcp.Tool{
+						Name:        mcpToolName,
+						Description: toolMeta.Description,
+						InputSchema: convertToMCPSchema(toolMeta.Parameters),
+					},
+					Handler: a.createToolHandler(provider, toolMeta.Name),
+				}
+
+				tools = append(tools, tool)
+			}
+		}
+	}
+
+	// Get config handler and check if it's a ToolProvider
+	if configHandler := api.GetConfig(); configHandler != nil {
+		if provider, ok := configHandler.(api.ToolProvider); ok {
+			for _, toolMeta := range provider.GetTools() {
+				// Apply appropriate prefix
+				mcpToolName := a.prefixToolName("config", toolMeta.Name)
+				a.toolManager.setActive(mcpToolName, true)
+
+				tool := server.ServerTool{
+					Tool: mcp.Tool{
+						Name:        mcpToolName,
+						Description: toolMeta.Description,
+						InputSchema: convertToMCPSchema(toolMeta.Parameters),
+					},
+					Handler: a.createToolHandler(provider, toolMeta.Name),
+				}
+
+				tools = append(tools, tool)
+			}
+		}
+	}
+
+	// Get MCP service handler and check if it's a ToolProvider
+	if mcpServiceHandler := api.GetMCPServiceHandler(); mcpServiceHandler != nil {
+		if provider, ok := mcpServiceHandler.(api.ToolProvider); ok {
+			for _, toolMeta := range provider.GetTools() {
+				// Apply appropriate prefix
+				mcpToolName := a.prefixToolName("mcp", toolMeta.Name)
+				a.toolManager.setActive(mcpToolName, true)
+
+				tool := server.ServerTool{
+					Tool: mcp.Tool{
+						Name:        mcpToolName,
+						Description: toolMeta.Description,
+						InputSchema: convertToMCPSchema(toolMeta.Parameters),
+					},
+					Handler: a.createToolHandler(provider, toolMeta.Name),
+				}
+
+				tools = append(tools, tool)
+			}
+		}
+	}
+
+	// Get K8s service handler and check if it's a ToolProvider
+	if k8sServiceHandler := api.GetK8sServiceHandler(); k8sServiceHandler != nil {
+		if provider, ok := k8sServiceHandler.(api.ToolProvider); ok {
+			for _, toolMeta := range provider.GetTools() {
+				// Apply appropriate prefix
+				mcpToolName := a.prefixToolName("k8s", toolMeta.Name)
+				a.toolManager.setActive(mcpToolName, true)
+
+				tool := server.ServerTool{
+					Tool: mcp.Tool{
+						Name:        mcpToolName,
+						Description: toolMeta.Description,
+						InputSchema: convertToMCPSchema(toolMeta.Parameters),
+					},
+					Handler: a.createToolHandler(provider, toolMeta.Name),
+				}
+
+				tools = append(tools, tool)
+			}
+		}
+	}
+
+	// Get port forward service handler and check if it's a ToolProvider
+	if portForwardServiceHandler := api.GetPortForwardServiceHandler(); portForwardServiceHandler != nil {
+		if provider, ok := portForwardServiceHandler.(api.ToolProvider); ok {
+			for _, toolMeta := range provider.GetTools() {
+				// Apply appropriate prefix
+				mcpToolName := a.prefixToolName("portforward", toolMeta.Name)
+				a.toolManager.setActive(mcpToolName, true)
+
+				tool := server.ServerTool{
+					Tool: mcp.Tool{
+						Name:        mcpToolName,
+						Description: toolMeta.Description,
+						InputSchema: convertToMCPSchema(toolMeta.Parameters),
+					},
+					Handler: a.createToolHandler(provider, toolMeta.Name),
+				}
+
+				tools = append(tools, tool)
+			}
+		}
+	}
+
+	return tools
+}
+
+// prefixToolName applies the appropriate prefix based on tool patterns
+func (a *AggregatorServer) prefixToolName(provider, toolName string) string {
+	prefix := a.config.EnvctlPrefix + "_"
+
+	// Apply specific prefixes based on tool patterns
+	switch {
+	case strings.HasPrefix(toolName, "workflow_"):
+		return prefix + toolName // x_workflow_list
+	case strings.HasPrefix(toolName, "action_"):
+		return prefix + toolName // x_action_deploy
+	case strings.HasPrefix(toolName, "capability_"):
+		return prefix + toolName // x_capability_list
+	default:
+		// Capability operations get simple prefix
+		return prefix + toolName // x_auth_login
+	}
+}
+
+// createToolHandler creates an MCP handler for a tool
+func (a *AggregatorServer) createToolHandler(provider api.ToolProvider, toolName string) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		// Extract arguments from MCP request
+		args := make(map[string]interface{})
+		if req.Params.Arguments != nil {
+			if argsMap, ok := req.Params.Arguments.(map[string]interface{}); ok {
+				args = argsMap
+			}
+		}
+
+		// Execute through the provider
+		result, err := provider.ExecuteTool(ctx, toolName, args)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Tool execution failed: %v", err)), nil
+		}
+
+		// Convert API result to MCP result
+		return convertToMCPResult(result), nil
+	}
+}
+
+// convertToMCPSchema converts parameter metadata to MCP input schema
+func convertToMCPSchema(params []api.ParameterMetadata) mcp.ToolInputSchema {
+	properties := make(map[string]interface{})
+	required := []string{}
+
+	for _, param := range params {
+		propSchema := map[string]interface{}{
+			"type":        param.Type,
+			"description": param.Description,
+		}
+
+		if param.Default != nil {
+			propSchema["default"] = param.Default
+		}
+
+		properties[param.Name] = propSchema
+
+		if param.Required {
+			required = append(required, param.Name)
+		}
+	}
+
+	return mcp.ToolInputSchema{
+		Type:       "object",
+		Properties: properties,
+		Required:   required,
+	}
+}
+
+// convertToMCPResult converts an API CallToolResult to MCP CallToolResult
+func convertToMCPResult(result *api.CallToolResult) *mcp.CallToolResult {
+	mcpContent := make([]mcp.Content, len(result.Content))
+
+	for i, content := range result.Content {
+		if text, ok := content.(string); ok {
+			mcpContent[i] = mcp.NewTextContent(text)
+		} else {
+			// Marshal non-string content to JSON
+			jsonBytes, _ := json.Marshal(content)
+			mcpContent[i] = mcp.NewTextContent(string(jsonBytes))
+		}
+	}
+
+	return &mcp.CallToolResult{
+		Content: mcpContent,
+		IsError: result.IsError,
+	}
+}

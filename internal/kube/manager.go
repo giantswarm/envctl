@@ -16,6 +16,10 @@ type Manager interface {
 	Login(clusterName string) (stdout string, stderr string, err error)
 	ListClusters() (*ClusterInfo, error)
 
+	// Authentication Provider Management
+	SetAuthProvider(provider AuthProvider)
+	GetAuthProvider() AuthProvider
+
 	// Context Management
 	GetCurrentContext() (string, error)
 	SwitchContext(targetContextName string) error
@@ -35,18 +39,36 @@ type Manager interface {
 
 // manager implements the Manager interface
 type manager struct {
-	clientCache map[string]*kubernetes.Clientset
-	configCache map[string]*rest.Config
-	mu          sync.RWMutex
+	clientCache  map[string]*kubernetes.Clientset
+	configCache  map[string]*rest.Config
+	authProvider AuthProvider
+	mu           sync.RWMutex
 }
 
 // NewManager creates a new Kubernetes manager
 func NewManager(reporter interface{}) Manager {
 	// Reporter is no longer used
-	return &manager{
+	m := &manager{
 		clientCache: make(map[string]*kubernetes.Clientset),
 		configCache: make(map[string]*rest.Config),
 	}
+	// Initialize with legacy Teleport provider for backward compatibility
+	m.authProvider = NewLegacyTeleportAuthProvider()
+	return m
+}
+
+// SetAuthProvider sets the authentication provider
+func (m *manager) SetAuthProvider(provider AuthProvider) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.authProvider = provider
+}
+
+// GetAuthProvider returns the current authentication provider
+func (m *manager) GetAuthProvider() AuthProvider {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.authProvider
 }
 
 // Login performs a Kubernetes cluster login
@@ -54,14 +76,25 @@ func (m *manager) Login(clusterName string) (string, string, error) {
 	subsystem := fmt.Sprintf("KubeLogin-%s", clusterName)
 	logging.Debug(subsystem, "Attempting to login to cluster: %s", clusterName)
 
-	// Perform the actual login
-	stdout, stderr, err := LoginToKubeCluster(clusterName)
+	// Use authentication provider if available
+	if m.authProvider != nil {
+		logging.Debug(subsystem, "Using auth provider: %s", m.authProvider.GetProviderName())
+		return m.authProvider.Login(context.Background(), clusterName)
+	}
 
+	// Fallback to direct call (should not happen with default initialization)
+	stdout, stderr, err := LoginToKubeCluster(clusterName)
 	return stdout, stderr, err
 }
 
 // ListClusters returns structured information about available clusters
 func (m *manager) ListClusters() (*ClusterInfo, error) {
+	// Use authentication provider if available
+	if m.authProvider != nil {
+		return m.authProvider.ListClusters(context.Background())
+	}
+
+	// Fallback to direct call (should not happen with default initialization)
 	return GetClusterInfo()
 }
 

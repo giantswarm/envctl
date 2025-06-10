@@ -1,7 +1,10 @@
 package api
 
 import (
+	"context"
 	"time"
+
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // MCPTool represents an MCP tool
@@ -162,4 +165,83 @@ type AggregatorData struct {
 
 type ErrorResponse struct {
 	Error string `json:"error"`
+}
+
+// CallToolResult represents the result of a tool/capability call
+type CallToolResult struct {
+	Content []interface{} `json:"content"`
+	IsError bool          `json:"isError,omitempty"`
+}
+
+// CapabilityInfo provides information about a capability
+type CapabilityInfo struct {
+	Type        string          `json:"type"`
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	Version     string          `json:"version"`
+	Operations  []OperationInfo `json:"operations"`
+}
+
+// OperationInfo provides information about a capability operation
+type OperationInfo struct {
+	Name        string
+	Description string
+	Available   bool
+}
+
+// WorkflowInfo provides information about a workflow
+type WorkflowInfo struct {
+	Name        string
+	Description string
+	Version     string
+}
+
+// WorkflowDefinition represents a complete workflow definition
+type WorkflowDefinition struct {
+	Name         string                 `yaml:"name"`
+	Description  string                 `yaml:"description"`
+	Version      string                 `yaml:"version,omitempty"`
+	InputSchema  map[string]interface{} `yaml:"inputSchema,omitempty"`
+	Steps        []WorkflowStep         `yaml:"steps"`
+	OutputSchema map[string]interface{} `yaml:"outputSchema,omitempty"`
+}
+
+// WorkflowStep represents a step in a workflow
+type WorkflowStep struct {
+	ID          string                 `yaml:"id"`
+	Tool        string                 `yaml:"tool"`
+	Args        map[string]interface{} `yaml:"args,omitempty"`
+	Store       string                 `yaml:"store,omitempty"`
+	Condition   string                 `yaml:"condition,omitempty"`
+	Description string                 `yaml:"description,omitempty"`
+}
+
+// ToolCaller defines the interface for calling tools
+type ToolCaller interface {
+	CallToolInternal(ctx context.Context, toolName string, args map[string]interface{}) (*mcp.CallToolResult, error)
+}
+
+// ToolMetadata describes a tool that can be exposed
+type ToolMetadata struct {
+	Name        string // e.g., "workflow_list", "action_login", "auth_login"
+	Description string
+	Parameters  []ParameterMetadata
+}
+
+// ParameterMetadata describes a tool parameter
+type ParameterMetadata struct {
+	Name        string
+	Type        string // "string", "number", "boolean", "object"
+	Required    bool
+	Description string
+	Default     interface{}
+}
+
+// ToolProvider interface - implemented by workflow and capability packages
+type ToolProvider interface {
+	// Returns all tools this provider offers
+	GetTools() []ToolMetadata
+
+	// Executes a tool by name
+	ExecuteTool(ctx context.Context, toolName string, args map[string]interface{}) (*CallToolResult, error)
 }

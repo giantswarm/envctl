@@ -1,0 +1,125 @@
+# Teleport Authentication Capability Definition
+name: teleport_auth
+type: auth_provider
+version: "1.0.0"
+description: "Teleport authentication provider for cluster access"
+
+# Operations define the capability interface with embedded workflows
+operations:
+  login:
+    description: "Authenticate to a cluster using Teleport"
+    parameters:
+      cluster:
+        type: string
+        required: true
+        description: "Target cluster name"
+      user:
+        type: string
+        required: false
+        description: "Username (optional)"
+    requires:
+      - x_teleport_kube
+      - x_teleport_status
+    workflow:
+      name: teleport_auth_login
+      description: "Authenticate using Teleport"
+      agentModifiable: false
+      inputSchema:
+        type: object
+        properties:
+          cluster:
+            type: string
+            description: "Target cluster name"
+          user:
+            type: string
+            description: "Username (optional)"
+        required:
+          - cluster
+      steps:
+        - id: check_status
+          tool: x_teleport_status
+          args: {}
+          store: current_status
+          
+        - id: perform_login
+          tool: x_teleport_kube
+          args:
+            command: "login"
+            cluster: "{{ .cluster }}"
+            userParam: "{{ .user }}"
+          store: login_result
+  
+  status:
+    description: "Check authentication status"
+    requires:
+      - x_teleport_status
+    workflow:
+      name: teleport_auth_status
+      description: "Check Teleport authentication status"
+      agentModifiable: false
+      inputSchema:
+        type: object
+        properties: {}
+      steps:
+        - id: get_status
+          tool: x_teleport_status
+          args: {}
+          store: auth_status
+  
+  logout:
+    description: "Logout from cluster"
+    parameters:
+      cluster:
+        type: string
+        required: false
+        description: "Cluster to logout from (all if empty)"
+    requires:
+      - x_teleport_logout
+    workflow:
+      name: teleport_auth_logout
+      description: "Logout from Teleport"
+      agentModifiable: false
+      inputSchema:
+        type: object
+        properties:
+          cluster:
+            type: string
+            description: "Specific cluster to logout from (optional)"
+      steps:
+        - id: perform_logout
+          tool: x_teleport_logout
+          args:
+            cluster: "{{ .cluster }}"
+          store: logout_result
+  
+  list_clusters:
+    description: "List available clusters for authentication"
+    parameters:
+      role:
+        type: string
+        required: false
+        description: "Filter by cluster role (optional)"
+    requires:
+      - x_teleport_list_clusters
+    workflow:
+      name: teleport_auth_list_clusters
+      description: "List available Teleport clusters"
+      agentModifiable: false
+      inputSchema:
+        type: object
+        properties:
+          role:
+            type: string
+            description: "Filter by cluster role (optional)"
+      steps:
+        - id: list_clusters
+          tool: x_teleport_list_clusters
+          args:
+            role: "{{ .role }}"
+          store: clusters
+
+# Metadata for additional information
+metadata:
+  provider: "teleport"
+  category: "authentication"
+  icon: "🔐" 

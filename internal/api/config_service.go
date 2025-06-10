@@ -56,7 +56,7 @@ func (c *configServiceAPI) GetConfig(ctx context.Context) (*config.EnvctlConfig,
 	if handler == nil {
 		return nil, fmt.Errorf("config handler not registered")
 	}
-	return handler.GetConfig()
+	return handler.GetConfig(ctx)
 }
 
 // GetClusters returns all configured clusters
@@ -65,11 +65,7 @@ func (c *configServiceAPI) GetClusters(ctx context.Context) ([]config.ClusterDef
 	if handler == nil {
 		return nil, fmt.Errorf("config handler not registered")
 	}
-	cfg, err := handler.GetConfig()
-	if err != nil {
-		return nil, err
-	}
-	return cfg.Clusters, nil
+	return handler.GetClusters(ctx)
 }
 
 // GetActiveClusters returns the active clusters map
@@ -78,11 +74,7 @@ func (c *configServiceAPI) GetActiveClusters(ctx context.Context) (map[config.Cl
 	if handler == nil {
 		return nil, fmt.Errorf("config handler not registered")
 	}
-	cfg, err := handler.GetConfig()
-	if err != nil {
-		return nil, err
-	}
-	return cfg.ActiveClusters, nil
+	return handler.GetActiveClusters(ctx)
 }
 
 // GetMCPServers returns all MCP server definitions
@@ -91,11 +83,7 @@ func (c *configServiceAPI) GetMCPServers(ctx context.Context) ([]config.MCPServe
 	if handler == nil {
 		return nil, fmt.Errorf("config handler not registered")
 	}
-	cfg, err := handler.GetConfig()
-	if err != nil {
-		return nil, err
-	}
-	return cfg.MCPServers, nil
+	return handler.GetMCPServers(ctx)
 }
 
 // GetPortForwards returns all port forward definitions
@@ -104,11 +92,7 @@ func (c *configServiceAPI) GetPortForwards(ctx context.Context) ([]config.PortFo
 	if handler == nil {
 		return nil, fmt.Errorf("config handler not registered")
 	}
-	cfg, err := handler.GetConfig()
-	if err != nil {
-		return nil, err
-	}
-	return cfg.PortForwards, nil
+	return handler.GetPortForwards(ctx)
 }
 
 // GetWorkflows returns all workflow definitions
@@ -117,11 +101,7 @@ func (c *configServiceAPI) GetWorkflows(ctx context.Context) ([]config.WorkflowD
 	if handler == nil {
 		return nil, fmt.Errorf("config handler not registered")
 	}
-	cfg, err := handler.GetConfig()
-	if err != nil {
-		return nil, err
-	}
-	return cfg.Workflows, nil
+	return handler.GetWorkflows(ctx)
 }
 
 // GetAggregatorConfig returns the aggregator configuration
@@ -130,11 +110,7 @@ func (c *configServiceAPI) GetAggregatorConfig(ctx context.Context) (*config.Agg
 	if handler == nil {
 		return nil, fmt.Errorf("config handler not registered")
 	}
-	cfg, err := handler.GetConfig()
-	if err != nil {
-		return nil, err
-	}
-	return &cfg.Aggregator, nil
+	return handler.GetAggregatorConfig(ctx)
 }
 
 // GetGlobalSettings returns the global settings
@@ -143,11 +119,7 @@ func (c *configServiceAPI) GetGlobalSettings(ctx context.Context) (*config.Globa
 	if handler == nil {
 		return nil, fmt.Errorf("config handler not registered")
 	}
-	cfg, err := handler.GetConfig()
-	if err != nil {
-		return nil, err
-	}
-	return &cfg.GlobalSettings, nil
+	return handler.GetGlobalSettings(ctx)
 }
 
 // UpdateClusters updates the clusters configuration
@@ -156,7 +128,15 @@ func (c *configServiceAPI) UpdateClusters(ctx context.Context, clusters []config
 	if handler == nil {
 		return fmt.Errorf("config handler not registered")
 	}
-	return handler.UpdateClusters(clusters)
+	// Get current config
+	cfg, err := handler.GetConfig(ctx)
+	if err != nil {
+		return err
+	}
+	// Update clusters
+	cfg.Clusters = clusters
+	// Save config
+	return handler.SaveConfig(ctx)
 }
 
 // UpdateActiveClusters updates the active clusters mapping
@@ -165,7 +145,15 @@ func (c *configServiceAPI) UpdateActiveClusters(ctx context.Context, activeClust
 	if handler == nil {
 		return fmt.Errorf("config handler not registered")
 	}
-	return handler.UpdateActiveClusters(activeClusters)
+	// Get current config
+	cfg, err := handler.GetConfig(ctx)
+	if err != nil {
+		return err
+	}
+	// Update active clusters
+	cfg.ActiveClusters = activeClusters
+	// Save config
+	return handler.SaveConfig(ctx)
 }
 
 // UpdateMCPServer updates or adds an MCP server definition
@@ -174,7 +162,7 @@ func (c *configServiceAPI) UpdateMCPServer(ctx context.Context, server config.MC
 	if handler == nil {
 		return fmt.Errorf("config handler not registered")
 	}
-	return handler.UpdateMCPServer(server)
+	return handler.UpdateMCPServer(ctx, server)
 }
 
 // UpdatePortForward updates or adds a port forward definition
@@ -183,7 +171,7 @@ func (c *configServiceAPI) UpdatePortForward(ctx context.Context, portForward co
 	if handler == nil {
 		return fmt.Errorf("config handler not registered")
 	}
-	return handler.UpdatePortForward(portForward)
+	return handler.UpdatePortForward(ctx, portForward)
 }
 
 // UpdateWorkflow updates or adds a workflow definition
@@ -192,7 +180,7 @@ func (c *configServiceAPI) UpdateWorkflow(ctx context.Context, workflow config.W
 	if handler == nil {
 		return fmt.Errorf("config handler not registered")
 	}
-	return handler.UpdateWorkflow(workflow)
+	return handler.UpdateWorkflow(ctx, workflow)
 }
 
 // UpdateAggregatorConfig updates the aggregator configuration
@@ -201,7 +189,7 @@ func (c *configServiceAPI) UpdateAggregatorConfig(ctx context.Context, aggregato
 	if handler == nil {
 		return fmt.Errorf("config handler not registered")
 	}
-	return handler.UpdateAggregatorConfig(aggregator)
+	return handler.UpdateAggregatorConfig(ctx, aggregator)
 }
 
 // UpdateGlobalSettings updates the global settings
@@ -210,7 +198,7 @@ func (c *configServiceAPI) UpdateGlobalSettings(ctx context.Context, settings co
 	if handler == nil {
 		return fmt.Errorf("config handler not registered")
 	}
-	return handler.UpdateGlobalSettings(settings)
+	return handler.UpdateGlobalSettings(ctx, settings)
 }
 
 // DeleteMCPServer removes an MCP server by name
@@ -219,7 +207,7 @@ func (c *configServiceAPI) DeleteMCPServer(ctx context.Context, name string) err
 	if handler == nil {
 		return fmt.Errorf("config handler not registered")
 	}
-	return handler.DeleteMCPServer(name)
+	return handler.DeleteMCPServer(ctx, name)
 }
 
 // DeletePortForward removes a port forward by name
@@ -228,7 +216,7 @@ func (c *configServiceAPI) DeletePortForward(ctx context.Context, name string) e
 	if handler == nil {
 		return fmt.Errorf("config handler not registered")
 	}
-	return handler.DeletePortForward(name)
+	return handler.DeletePortForward(ctx, name)
 }
 
 // DeleteWorkflow removes a workflow by name
@@ -237,7 +225,7 @@ func (c *configServiceAPI) DeleteWorkflow(ctx context.Context, name string) erro
 	if handler == nil {
 		return fmt.Errorf("config handler not registered")
 	}
-	return handler.DeleteWorkflow(name)
+	return handler.DeleteWorkflow(ctx, name)
 }
 
 // DeleteCluster removes a cluster by name
@@ -246,7 +234,7 @@ func (c *configServiceAPI) DeleteCluster(ctx context.Context, name string) error
 	if handler == nil {
 		return fmt.Errorf("config handler not registered")
 	}
-	return handler.DeleteCluster(name)
+	return handler.DeleteCluster(ctx, name)
 }
 
 // SaveConfig persists the configuration to file
@@ -255,5 +243,5 @@ func (c *configServiceAPI) SaveConfig(ctx context.Context) error {
 	if handler == nil {
 		return fmt.Errorf("config handler not registered")
 	}
-	return handler.SaveConfig()
+	return handler.SaveConfig(ctx)
 }

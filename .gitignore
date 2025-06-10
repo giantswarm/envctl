@@ -1,6 +1,7 @@
 envctl
 dist/
 .envctl/config.yaml
+.cursor/mcp.json
 
 # Added by Task Master AI
 # Logs

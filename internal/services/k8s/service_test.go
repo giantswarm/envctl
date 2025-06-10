@@ -76,6 +76,15 @@ func (m *mockKubeManager) CheckAPIHealth(ctx context.Context, kubeContextName st
 	return "v1.28.0", nil
 }
 
+func (m *mockKubeManager) SetAuthProvider(provider kube.AuthProvider) {
+	// Mock implementation - does nothing
+}
+
+func (m *mockKubeManager) GetAuthProvider() kube.AuthProvider {
+	// Mock implementation - returns nil
+	return nil
+}
+
 func TestNewK8sConnectionService(t *testing.T) {
 	kubeMgr := &mockKubeManager{}
 

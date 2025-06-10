@@ -138,7 +138,7 @@ func (api *mcpServiceAPI) GetTools(ctx context.Context, serverName string) ([]MC
 	}
 
 	// Get tools from the handler
-	tools := mcpHandler.GetTools()
+	tools := mcpHandler.GetMCPTools()
 
 	return tools, nil
 }
