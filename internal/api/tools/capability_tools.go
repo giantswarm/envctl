@@ -31,7 +31,7 @@ func NewCapabilityTools(registry *capability.Registry, resolver *capability.Reso
 func (ct *CapabilityTools) GetCapabilityTools() []mcp.Tool {
 	return []mcp.Tool{
 		{
-			Name:        "x_capability_register",
+			Name:        "capability_register",
 			Description: "Register a capability that this MCP server provides",
 			InputSchema: mcp.ToolInputSchema{
 				Type: "object",
@@ -72,7 +72,7 @@ func (ct *CapabilityTools) GetCapabilityTools() []mcp.Tool {
 			},
 		},
 		{
-			Name:        "x_capability_unregister",
+			Name:        "capability_unregister",
 			Description: "Unregister a previously registered capability",
 			InputSchema: mcp.ToolInputSchema{
 				Type: "object",
@@ -86,7 +86,7 @@ func (ct *CapabilityTools) GetCapabilityTools() []mcp.Tool {
 			},
 		},
 		{
-			Name:        "x_capability_update",
+			Name:        "capability_update",
 			Description: "Update the status of a registered capability",
 			InputSchema: mcp.ToolInputSchema{
 				Type: "object",
@@ -113,7 +113,7 @@ func (ct *CapabilityTools) GetCapabilityTools() []mcp.Tool {
 			},
 		},
 		{
-			Name:        "x_capability_list",
+			Name:        "capability_list",
 			Description: "List all registered capabilities",
 			InputSchema: mcp.ToolInputSchema{
 				Type: "object",
@@ -134,7 +134,7 @@ func (ct *CapabilityTools) GetCapabilityTools() []mcp.Tool {
 			},
 		},
 		{
-			Name:        "x_capability_get",
+			Name:        "capability_get",
 			Description: "Get detailed information about a capability",
 			InputSchema: mcp.ToolInputSchema{
 				Type: "object",
@@ -148,7 +148,7 @@ func (ct *CapabilityTools) GetCapabilityTools() []mcp.Tool {
 			},
 		},
 		{
-			Name:        "x_capability_find_matching",
+			Name:        "capability_find_matching",
 			Description: "Find capabilities that match specific requirements",
 			InputSchema: mcp.ToolInputSchema{
 				Type: "object",
@@ -173,7 +173,7 @@ func (ct *CapabilityTools) GetCapabilityTools() []mcp.Tool {
 			},
 		},
 		{
-			Name:        "x_capability_request",
+			Name:        "capability_request",
 			Description: "Request a capability for a service",
 			InputSchema: mcp.ToolInputSchema{
 				Type: "object",
@@ -206,7 +206,7 @@ func (ct *CapabilityTools) GetCapabilityTools() []mcp.Tool {
 			},
 		},
 		{
-			Name:        "x_capability_release",
+			Name:        "capability_release",
 			Description: "Release a previously requested capability",
 			InputSchema: mcp.ToolInputSchema{
 				Type: "object",
