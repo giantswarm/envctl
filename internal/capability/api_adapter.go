@@ -3,7 +3,6 @@ package capability
 import (
 	"context"
 	"envctl/internal/api"
-	"envctl/internal/workflow"
 	"envctl/pkg/logging"
 	"fmt"
 	"strings"
@@ -12,11 +11,11 @@ import (
 // Adapter adapts the capability system to implement api.CapabilityHandler
 type Adapter struct {
 	loader           *CapabilityLoader
-	workflowExecutor workflow.ToolCaller
+	workflowExecutor api.ToolCaller
 }
 
 // NewAdapter creates a new capability adapter
-func NewAdapter(definitionsPath string, toolChecker ToolAvailabilityChecker, workflowExecutor workflow.ToolCaller) *Adapter {
+func NewAdapter(definitionsPath string, toolChecker ToolAvailabilityChecker, workflowExecutor api.ToolCaller) *Adapter {
 	registry := GetRegistry()
 	loader := NewCapabilityLoader(definitionsPath, toolChecker, registry)
 
