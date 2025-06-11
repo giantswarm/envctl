@@ -64,7 +64,7 @@ func New(cfg Config) *Orchestrator {
 // Start initializes and starts all services.
 func (o *Orchestrator) Start(ctx context.Context) error {
 	o.ctx, o.cancelFunc = context.WithCancel(ctx)
-	
+
 	services := o.registry.GetAll()
 	if len(services) == 0 {
 		logging.Info("Orchestrator", "Started orchestrator with core resource provider architecture (no services)")
@@ -79,7 +79,7 @@ func (o *Orchestrator) Start(ctx context.Context) error {
 	for _, service := range services {
 		go func(svc interface{}) {
 			// Use direct interface methods without type assertion
-			if service, ok := svc.(interface{
+			if service, ok := svc.(interface {
 				Start(context.Context) error
 				GetLabel() string
 			}); ok {
@@ -92,7 +92,7 @@ func (o *Orchestrator) Start(ctx context.Context) error {
 			}
 		}(service)
 	}
-	
+
 	logging.Info("Orchestrator", "Started orchestrator with core resource provider architecture")
 	return nil
 }

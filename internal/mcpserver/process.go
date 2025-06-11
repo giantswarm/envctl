@@ -61,12 +61,12 @@ func StartAndManageIndividualMcpServer(
 	if err := client.Initialize(initCtx); err != nil {
 		errMsg := fmt.Errorf("failed to initialize MCP client for %s: %w", label, err)
 		logging.Error(subsystem, errMsg, "Failed to initialize MCP protocol")
-		
+
 		// Ensure the client is closed to clean up any processes
 		if closeErr := client.Close(); closeErr != nil {
 			logging.Debug(subsystem, "Error closing failed client for %s: %v", label, closeErr)
 		}
-		
+
 		if updateFn != nil {
 			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "ProcessStartFailed", ProcessErr: errMsg})
 		}

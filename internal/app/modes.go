@@ -53,14 +53,14 @@ func runTUIMode(ctx context.Context, config *Config, services *Services) error {
 
 	// Create and configure the TUI program
 	p, err := controller.NewProgram(model.TUIConfig{
-		DebugMode:             config.Debug,
-		ColorMode:             "auto",
-		MCPServerConfig:       config.EnvctlConfig.MCPServers,
-		AggregatorConfig:      config.EnvctlConfig.Aggregator,
-		Orchestrator:          services.Orchestrator,
-		OrchestratorAPI:       services.OrchestratorAPI,
-		MCPServiceAPI:         services.MCPAPI,
-		AggregatorAPI:         services.AggregatorAPI,
+		DebugMode:        config.Debug,
+		ColorMode:        "auto",
+		MCPServerConfig:  config.EnvctlConfig.MCPServers,
+		AggregatorConfig: config.EnvctlConfig.Aggregator,
+		Orchestrator:     services.Orchestrator,
+		OrchestratorAPI:  services.OrchestratorAPI,
+		MCPServiceAPI:    services.MCPAPI,
+		AggregatorAPI:    services.AggregatorAPI,
 	}, logChan)
 	if err != nil {
 		logging.Error("TUI-Lifecycle", err, "Error creating TUI program")

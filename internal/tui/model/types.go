@@ -35,16 +35,16 @@ const (
 
 // TUI configuration struct
 type TUIConfig struct {
-	DebugMode             bool
-	ColorMode             string
-	MCPServerConfig       []config.MCPServerDefinition
-	AggregatorConfig      config.AggregatorConfig
-	Orchestrator          *orchestrator.Orchestrator
-	OrchestratorAPI       api.OrchestratorAPI
-	MCPServiceAPI         api.MCPServiceAPI
-	PortForwardAPI        api.PortForwardServiceAPI
-	K8sServiceAPI         api.K8sServiceAPI
-	AggregatorAPI         api.AggregatorAPI
+	DebugMode        bool
+	ColorMode        string
+	MCPServerConfig  []config.MCPServerDefinition
+	AggregatorConfig config.AggregatorConfig
+	Orchestrator     *orchestrator.Orchestrator
+	OrchestratorAPI  api.OrchestratorAPI
+	MCPServiceAPI    api.MCPServiceAPI
+	PortForwardAPI   api.PortForwardServiceAPI
+	K8sServiceAPI    api.K8sServiceAPI
+	AggregatorAPI    api.AggregatorAPI
 }
 
 // InputStep represents the current step in the new connection input flow
@@ -164,8 +164,8 @@ type Model struct {
 	ColorMode       string
 
 	// Connection Info
-	CurrentKubeContext    string
-	QuittingMessage       string
+	CurrentKubeContext string
+	QuittingMessage    string
 
 	// Service Architecture Components
 	Orchestrator    *orchestrator.Orchestrator

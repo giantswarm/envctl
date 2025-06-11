@@ -82,10 +82,10 @@ func TestNewProgram(t *testing.T) {
 
 			// Create TUIConfig
 			tuiConfig := model.TUIConfig{
-				DebugMode:             tt.debugMode,
-				ColorMode:             "auto",
-				MCPServerConfig:       tt.cfg.MCPServers,
-				AggregatorConfig:      tt.cfg.Aggregator,
+				DebugMode:        tt.debugMode,
+				ColorMode:        "auto",
+				MCPServerConfig:  tt.cfg.MCPServers,
+				AggregatorConfig: tt.cfg.Aggregator,
 			}
 
 			// Create the program
@@ -167,10 +167,10 @@ func TestNewProgram_ConfigValidation(t *testing.T) {
 
 			// Create TUIConfig
 			tuiConfig := model.TUIConfig{
-				DebugMode:             false,
-				ColorMode:             "auto",
-				MCPServerConfig:       tt.cfg.MCPServers,
-				AggregatorConfig:      tt.cfg.Aggregator,
+				DebugMode:        false,
+				ColorMode:        "auto",
+				MCPServerConfig:  tt.cfg.MCPServers,
+				AggregatorConfig: tt.cfg.Aggregator,
 			}
 
 			program, err := NewProgram(tuiConfig, logChannel)

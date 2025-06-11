@@ -62,10 +62,7 @@ type MCPServerDefinition struct {
 	Entrypoint       []string          `yaml:"entrypoint,omitempty"`       // Optional container entrypoint override
 	ContainerUser    string            `yaml:"containerUser,omitempty"`    // Optional user to run container as
 
-
 }
-
-
 
 // AggregatorConfig defines the configuration for the MCP aggregator service.
 type AggregatorConfig struct {

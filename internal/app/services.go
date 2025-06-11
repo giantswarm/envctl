@@ -81,7 +81,7 @@ func InitializeServices(cfg *Config) (*Services, error) {
 		// If aggregator config exists, respect the enabled flag
 		aggregatorEnabled = cfg.EnvctlConfig.Aggregator.Enabled
 	}
-	
+
 	if aggregatorEnabled {
 		// Need to get the service registry handler from the registry adapter
 		registryHandler := api.GetServiceRegistry()
@@ -101,7 +101,7 @@ func InitializeServices(cfg *Config) (*Services, error) {
 				Yolo:         cfg.Yolo,
 				ConfigDir:    configDir,
 			}
-			
+
 			// Set defaults if not specified
 			if aggConfig.Port == 0 {
 				aggConfig.Port = 8090
@@ -109,7 +109,7 @@ func InitializeServices(cfg *Config) (*Services, error) {
 			if aggConfig.Host == "" {
 				aggConfig.Host = "localhost"
 			}
-			
+
 			aggService := aggregatorService.NewAggregatorService(
 				aggConfig,
 				orchestratorAPI,

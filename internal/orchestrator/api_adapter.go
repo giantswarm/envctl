@@ -121,8 +121,6 @@ func (a *Adapter) GetAllServices() []api.ServiceStatus {
 	return statuses
 }
 
-
-
 // GetTools returns all tools this provider offers
 func (a *Adapter) GetTools() []api.ToolMetadata {
 	return []api.ToolMetadata{
@@ -179,7 +177,6 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 				},
 			},
 		},
-
 	}
 }
 
@@ -304,5 +301,3 @@ func (a *Adapter) handleServiceStatus(args map[string]interface{}) (*api.CallToo
 		IsError: false,
 	}, nil
 }
-
-

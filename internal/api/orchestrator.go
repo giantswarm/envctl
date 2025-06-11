@@ -77,8 +77,6 @@ func (a *orchestratorAPI) SubscribeToStateChanges() <-chan ServiceStateChangedEv
 	return handler.SubscribeToStateChanges()
 }
 
-
-
 // GetServiceStatus returns the status of a specific service
 func (a *orchestratorAPI) GetServiceStatus(label string) (*ServiceStatus, error) {
 	registry := GetServiceRegistry()

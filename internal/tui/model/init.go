@@ -32,7 +32,7 @@ func InitializeModel(cfg TUIConfig, logChannel <-chan logging.LogEntry) (*Model,
 		AggregatorAPI:   cfg.AggregatorAPI,
 
 		// Connection info
-		CurrentKubeContext:    currentContext,
+		CurrentKubeContext: currentContext,
 
 		// Configuration
 		MCPServerConfig:  cfg.MCPServerConfig,

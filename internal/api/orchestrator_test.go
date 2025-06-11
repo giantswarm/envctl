@@ -190,11 +190,11 @@ func (m *mockServiceRegistryHandler) addService(svc ServiceInfo) {
 
 // mockOrchestratorHandler implements OrchestratorHandler for testing
 type mockOrchestratorHandler struct {
-	startErr  error
-	stopErr   error
+	startErr   error
+	stopErr    error
 	restartErr error
-	eventChan chan ServiceStateChangedEvent
-	services  []ServiceStatus
+	eventChan  chan ServiceStateChangedEvent
+	services   []ServiceStatus
 }
 
 func newMockOrchestratorHandler() *mockOrchestratorHandler {
