@@ -14,8 +14,6 @@ const (
 	CapabilityTypeDiscovery CapabilityType = "discovery_provider"
 	// CapabilityTypePortForward creates and manages port forwards
 	CapabilityTypePortForward CapabilityType = "portforward_provider"
-	// CapabilityTypeCluster manages cluster lifecycle (future)
-	CapabilityTypeCluster CapabilityType = "cluster_provider"
 )
 
 // Capability represents a capability that can be provided by an MCP server
