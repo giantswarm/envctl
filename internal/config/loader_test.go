@@ -24,6 +24,24 @@ func createTempConfigFile(t *testing.T, dir string, filename string, content Env
 }
 
 func TestLoadConfig_DefaultOnly(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Mock paths to prevent loading any existing config files
+	originalGetUserConfigPath := getUserConfigPath
+	originalGetProjectConfigPath := getProjectConfigPath
+	defer func() {
+		getUserConfigPath = originalGetUserConfigPath
+		getProjectConfigPath = originalGetProjectConfigPath
+	}()
+
+	// Point to non-existent files in temp directory
+	getUserConfigPath = func() (string, error) {
+		return filepath.Join(tempDir, "non-existent-user-config.yaml"), nil
+	}
+	getProjectConfigPath = func() (string, error) {
+		return filepath.Join(tempDir, "non-existent-project-config.yaml"), nil
+	}
+
 	tc := GetDefaultConfigWithRoles("test-mc", "test-wc")
 
 	loadedConfig, err := LoadConfig("test-mc", "test-wc")

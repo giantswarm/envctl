@@ -152,7 +152,7 @@ var (
 	workflowHandler     WorkflowHandler
 
 	// Maps for service-specific handlers
-	mcpHandlers         = make(map[string]MCPServiceHandler)
+	mcpHandlers = make(map[string]MCPServiceHandler)
 
 	handlerMutex sync.RWMutex
 )

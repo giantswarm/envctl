@@ -13,7 +13,7 @@ import (
 type StopReason int
 
 const (
-	StopReasonManual     StopReason = iota
+	StopReasonManual StopReason = iota
 	StopReasonDependency
 )
 
@@ -229,4 +229,4 @@ type ServiceStatus struct {
 	State  string
 	Health string
 	Error  error
-} 
+}

@@ -92,4 +92,4 @@ func TestInit_ConnectCmd(t *testing.T) {
 	if !found {
 		t.Error("Expected connect command to be added to root command")
 	}
-} 
+}
