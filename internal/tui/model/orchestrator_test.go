@@ -34,10 +34,9 @@ func TestStartOrchestrator(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create a real orchestrator
 			orchConfig := orchestrator.Config{
-				MCName:       tt.mcName,
-				WCName:       tt.wcName,
-				PortForwards: []config.PortForwardDefinition{},
-				MCPServers:   []config.MCPServerDefinition{},
+				MCName:     tt.mcName,
+				WCName:     tt.wcName,
+				MCPServers: []config.MCPServerDefinition{},
 			}
 			orch := orchestrator.New(orchConfig)
 			registry := orch.GetServiceRegistry()

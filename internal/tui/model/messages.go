@@ -2,7 +2,6 @@ package model
 
 import (
 	"envctl/internal/api"
-	"envctl/internal/kube"
 	"envctl/pkg/logging"
 )
 
@@ -47,7 +46,7 @@ type KubeContextSwitchedMsg struct {
 }
 
 type ClusterListResultMsg struct {
-	Info *kube.ClusterInfo
+	Info interface{}
 	Err  error
 }
 

@@ -3,7 +3,6 @@ package model
 import (
 	"context"
 	"envctl/internal/api"
-	"envctl/internal/kube"
 	"envctl/pkg/logging"
 	"fmt"
 
@@ -19,7 +18,8 @@ import (
 func InitializeModel(cfg TUIConfig, logChannel <-chan logging.LogEntry) (*Model, error) {
 
 	// Get current kube context if not provided
-	currentContext, _ := kube.GetCurrentKubeContext()
+	// Note: K8s functionality has been removed as part of the generic orchestrator refactoring
+	currentContext := "kubernetes-context-unavailable"
 
 	// Create the model
 	m := &Model{

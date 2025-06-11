@@ -126,50 +126,6 @@ func (a *AggregatorServer) createToolsFromProviders() []server.ServerTool {
 		}
 	}
 
-	// Get K8s service handler and check if it's a ToolProvider
-	if k8sServiceHandler := api.GetK8sServiceHandler(); k8sServiceHandler != nil {
-		if provider, ok := k8sServiceHandler.(api.ToolProvider); ok {
-			for _, toolMeta := range provider.GetTools() {
-				// Apply appropriate prefix
-				mcpToolName := a.prefixToolName("k8s", toolMeta.Name)
-				a.toolManager.setActive(mcpToolName, true)
-
-				tool := server.ServerTool{
-					Tool: mcp.Tool{
-						Name:        mcpToolName,
-						Description: toolMeta.Description,
-						InputSchema: convertToMCPSchema(toolMeta.Parameters),
-					},
-					Handler: a.createToolHandler(provider, toolMeta.Name),
-				}
-
-				tools = append(tools, tool)
-			}
-		}
-	}
-
-	// Get port forward service handler and check if it's a ToolProvider
-	if portForwardServiceHandler := api.GetPortForwardServiceHandler(); portForwardServiceHandler != nil {
-		if provider, ok := portForwardServiceHandler.(api.ToolProvider); ok {
-			for _, toolMeta := range provider.GetTools() {
-				// Apply appropriate prefix
-				mcpToolName := a.prefixToolName("portforward", toolMeta.Name)
-				a.toolManager.setActive(mcpToolName, true)
-
-				tool := server.ServerTool{
-					Tool: mcp.Tool{
-						Name:        mcpToolName,
-						Description: toolMeta.Description,
-						InputSchema: convertToMCPSchema(toolMeta.Parameters),
-					},
-					Handler: a.createToolHandler(provider, toolMeta.Name),
-				}
-
-				tools = append(tools, tool)
-			}
-		}
-	}
-
 	return tools
 }
 

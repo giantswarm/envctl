@@ -3,9 +3,7 @@ package cmd
 import (
 	"context"
 	"envctl/internal/app"
-	"envctl/internal/kube"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 )
@@ -21,10 +19,6 @@ var debug bool
 // yolo disables the denylist for destructive tool calls.
 // When enabled, all MCP tools can be executed without restrictions.
 var yolo bool
-
-// kubeManagerFactory allows injection of custom kube.Manager for testing
-// In production, this uses the real kube.NewManager, but tests can override it
-var kubeManagerFactory func(interface{}) kube.Manager = kube.NewManager
 
 // connectCmdDef defines the connect command structure.
 // This is the main command of envctl that establishes connections to Giant Swarm clusters
@@ -60,18 +54,6 @@ Arguments:
   [workload-cluster-shortname]: (Optional) The *short* name of the workload cluster (e.g., "myworkloadcluster" for "myinstallation-myworkloadcluster", "customerprod" for "mycluster-customerprod").`,
 	Args: cobra.RangeArgs(1, 2), // Accepts 1 or 2 arguments
 	RunE: runConnect,
-	// ValidArgsFunction provides shell completion for cluster names
-	// This enhances user experience by suggesting valid cluster names during tab completion
-	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		// Create a temporary kube manager for completion
-		kubeMgr := kubeManagerFactory(nil)
-		candidates, directive, err := getCompletionCandidates(kubeMgr, args)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Completion error: %v\n", err)
-			return nil, cobra.ShellCompDirectiveError
-		}
-		return candidates, directive
-	},
 }
 
 // runConnect is the main entry point for the connect command
@@ -109,26 +91,4 @@ func init() {
 	connectCmdDef.Flags().BoolVar(&noTUI, "no-tui", false, "Disable TUI and run port forwarding in the background")
 	connectCmdDef.Flags().BoolVar(&debug, "debug", false, "Enable general debug logging")
 	connectCmdDef.Flags().BoolVar(&yolo, "yolo", false, "Disable denylist for destructive tool calls (use with caution)")
-}
-
-// getCompletionCandidates extracts the shell completion logic for testing.
-// It accepts a kube.Manager interface which can be mocked in tests.
-func getCompletionCandidates(kubeMgr kube.Manager, args []string) ([]string, cobra.ShellCompDirective, error) {
-	clusterInfo, err := kubeMgr.ListClusters()
-	if err != nil {
-		return nil, cobra.ShellCompDirectiveError, err
-	}
-
-	var candidates []string
-	if len(args) == 0 {
-		// First argument: suggest management cluster names
-		candidates = append(candidates, clusterInfo.ManagementClusters...)
-	} else if len(args) == 1 {
-		// Second argument: suggest workload cluster short names for the selected MC
-		managementClusterName := args[0]
-		if wcShortNames, ok := clusterInfo.WorkloadClusters[managementClusterName]; ok {
-			candidates = append(candidates, wcShortNames...)
-		}
-	}
-	return candidates, cobra.ShellCompDirectiveNoFileComp, nil
 }

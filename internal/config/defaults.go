@@ -1,7 +1,6 @@
 package config
 
 import (
-	"envctl/internal/kube"
 	"fmt"
 )
 
@@ -14,7 +13,7 @@ func GenerateGiantSwarmClusters(mcName, wcName string) []ClusterDefinition {
 	if mcName != "" {
 		clusters = append(clusters, ClusterDefinition{
 			Name:        fmt.Sprintf("mc-%s", mcName),
-			Context:     kube.BuildMcContext(mcName),
+			Context:     fmt.Sprintf("teleport.giantswarm.io-%s", mcName),
 			Role:        ClusterRoleObservability,
 			DisplayName: fmt.Sprintf("MC: %s", mcName),
 			Icon:        "🏢",
@@ -24,7 +23,7 @@ func GenerateGiantSwarmClusters(mcName, wcName string) []ClusterDefinition {
 		if wcName == "" {
 			clusters = append(clusters, ClusterDefinition{
 				Name:        fmt.Sprintf("mc-%s-target", mcName),
-				Context:     kube.BuildMcContext(mcName),
+				Context:     fmt.Sprintf("teleport.giantswarm.io-%s", mcName),
 				Role:        ClusterRoleTarget,
 				DisplayName: fmt.Sprintf("MC: %s (target)", mcName),
 				Icon:        "🎯",
@@ -36,7 +35,7 @@ func GenerateGiantSwarmClusters(mcName, wcName string) []ClusterDefinition {
 	if wcName != "" && mcName != "" {
 		clusters = append(clusters, ClusterDefinition{
 			Name:        fmt.Sprintf("wc-%s", wcName),
-			Context:     kube.BuildWcContext(mcName, wcName),
+			Context:     fmt.Sprintf("teleport.giantswarm.io-%s-%s", mcName, wcName),
 			Role:        ClusterRoleTarget,
 			DisplayName: fmt.Sprintf("WC: %s", wcName),
 			Icon:        "⚙️",

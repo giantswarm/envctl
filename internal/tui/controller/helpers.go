@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"envctl/internal/api"
 	"envctl/internal/config"
-	"envctl/internal/kube"
 	"envctl/internal/tui/model"
 	"envctl/internal/tui/view"
 	"fmt"
@@ -91,19 +90,12 @@ func PrepareLogContent(lines []string, maxWidth int) string {
 }
 
 // PerformSwitchKubeContextCmd returns a command to switch Kubernetes context
+// Note: K8s functionality has been removed as part of the generic orchestrator refactoring
 func PerformSwitchKubeContextCmd(targetContext string) tea.Cmd {
 	return func() tea.Msg {
-		kubeMgr := kube.NewManager(nil)
-		// Perform the context switch
-		if err := kubeMgr.SwitchContext(targetContext); err != nil {
-			return model.KubeContextSwitchedMsg{
-				TargetContext: targetContext,
-				Err:           err,
-			}
-		}
 		return model.KubeContextSwitchedMsg{
 			TargetContext: targetContext,
-			Err:           nil,
+			Err:           fmt.Errorf("K8s context switching functionality has been removed"),
 		}
 	}
 }

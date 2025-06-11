@@ -4,9 +4,7 @@ import (
 	"envctl/internal/api"
 	"envctl/internal/orchestrator"
 	"envctl/internal/services"
-	"envctl/internal/services/k8s"
 	"envctl/internal/services/mcpserver"
-	"envctl/internal/services/portforward"
 
 	// Import to trigger init() functions that register adapter factories
 	_ "envctl/internal/capability"
@@ -18,8 +16,6 @@ type Services struct {
 	Orchestrator    *orchestrator.Orchestrator
 	OrchestratorAPI api.OrchestratorAPI
 	MCPAPI          api.MCPServiceAPI
-	PortForwardAPI  api.PortForwardServiceAPI
-	K8sAPI          api.K8sServiceAPI
 	AggregatorAPI   api.AggregatorAPI
 	ConfigAPI       api.ConfigServiceAPI
 	AggregatorPort  int
@@ -29,12 +25,11 @@ type Services struct {
 func InitializeServices(cfg *Config) (*Services, error) {
 	// Create the orchestrator
 	orchConfig := orchestrator.Config{
-		MCName:       cfg.ManagementCluster,
-		WCName:       cfg.WorkloadCluster,
-		PortForwards: cfg.EnvctlConfig.PortForwards,
-		MCPServers:   cfg.EnvctlConfig.MCPServers,
-		Aggregator:   cfg.EnvctlConfig.Aggregator,
-		Yolo:         cfg.Yolo,
+		MCName:     cfg.ManagementCluster,
+		WCName:     cfg.WorkloadCluster,
+		MCPServers: cfg.EnvctlConfig.MCPServers,
+		Aggregator: cfg.EnvctlConfig.Aggregator,
+		Yolo:       cfg.Yolo,
 	}
 
 	// Use new config if clusters are defined
@@ -67,29 +62,16 @@ func InitializeServices(cfg *Config) (*Services, error) {
 	mcpAdapter := mcpserver.NewServiceAdapter()
 	mcpAdapter.Register()
 
-	k8sAdapter := k8s.NewServiceAdapter()
-	k8sAdapter.Register()
-
-	portForwardAdapter := portforward.NewServiceAdapter()
-	portForwardAdapter.Register()
-
 	// Step 2: Create APIs that use the registered handlers
 	orchestratorAPI := api.NewOrchestratorAPI()
 	mcpAPI := api.NewMCPServiceAPI()
-	portForwardAPI := api.NewPortForwardServiceAPI()
-	k8sAPI := api.NewK8sServiceAPI()
 	aggregatorAPI := api.NewAggregatorAPI()
 	configAPI := api.NewConfigServiceAPI()
-
-	// Register all APIs in the global registry (for backward compatibility)
-	api.SetAll(orchestratorAPI, mcpAPI, portForwardAPI, k8sAPI)
 
 	return &Services{
 		Orchestrator:    orch,
 		OrchestratorAPI: orchestratorAPI,
 		MCPAPI:          mcpAPI,
-		PortForwardAPI:  portForwardAPI,
-		K8sAPI:          k8sAPI,
 		AggregatorAPI:   aggregatorAPI,
 		ConfigAPI:       configAPI,
 		AggregatorPort:  cfg.EnvctlConfig.Aggregator.Port,

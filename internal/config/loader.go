@@ -1,7 +1,6 @@
 package config
 
 import (
-	"envctl/internal/kube"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -175,7 +174,7 @@ func resolveKubeContextPlaceholders(config *EnvctlConfig, mcName, wcName string)
 			if mcName == "" {
 				return fmt.Errorf("port-forward '%s' requires MC context, but mcName is not provided", pf.Name)
 			}
-			pf.KubeContextTarget = kube.BuildMcContext(mcName)
+			pf.KubeContextTarget = fmt.Sprintf("teleport.giantswarm.io-%s", mcName)
 		case kubeContextWC:
 			if wcName == "" {
 				return fmt.Errorf("port-forward '%s' requires WC context, but wcName is not provided (mcName: %s)", pf.Name, mcName)
@@ -183,7 +182,7 @@ func resolveKubeContextPlaceholders(config *EnvctlConfig, mcName, wcName string)
 			if mcName == "" { // Should not happen if wcName is set, but good practice
 				return fmt.Errorf("port-forward '%s' requires WC context, but mcName is not provided for building WC context name", pf.Name)
 			}
-			pf.KubeContextTarget = kube.BuildWcContext(mcName, wcName)
+			pf.KubeContextTarget = fmt.Sprintf("teleport.giantswarm.io-%s-%s", mcName, wcName)
 		default:
 			// If it's not "mc" or "wc", assume it's an explicit context name or already resolved.
 			// No action needed. Or, we could validate if it's a valid looking context.

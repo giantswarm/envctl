@@ -1,7 +1,6 @@
 package config
 
 import (
-	"envctl/internal/kube"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -210,8 +209,8 @@ func TestLoadConfig_ContextResolution(t *testing.T) {
 	// Case 1: mc and wc provided - successful resolution
 	loadedMcWc, errMcWc := LoadConfig("my-mc", "my-wc")
 	assert.NoError(t, errMcWc)
-	expectedMcContext := kube.BuildMcContext("my-mc")
-	expectedWcContext := kube.BuildWcContext("my-mc", "my-wc")
+	expectedMcContext := "teleport.giantswarm.io-my-mc"
+	expectedWcContext := "teleport.giantswarm.io-my-mc-my-wc"
 	resolvedPortForwards := make(map[string]string)
 	for _, pf := range loadedMcWc.PortForwards {
 		resolvedPortForwards[pf.Name] = pf.KubeContextTarget
@@ -268,7 +267,7 @@ func TestResolveKubeContextPlaceholders(t *testing.T) {
 			expectErr: false,
 			expected: EnvctlConfig{
 				PortForwards: []PortForwardDefinition{
-					{Name: "pf1", KubeContextTarget: kube.BuildMcContext("my-mc")},
+					{Name: "pf1", KubeContextTarget: "teleport.giantswarm.io-my-mc"},
 				},
 			},
 		},
@@ -284,7 +283,7 @@ func TestResolveKubeContextPlaceholders(t *testing.T) {
 			expectErr: false,
 			expected: EnvctlConfig{
 				PortForwards: []PortForwardDefinition{
-					{Name: "pf1", KubeContextTarget: kube.BuildWcContext("my-mc", "my-wc")},
+					{Name: "pf1", KubeContextTarget: "teleport.giantswarm.io-my-mc-my-wc"},
 				},
 			},
 		},

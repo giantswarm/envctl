@@ -5,6 +5,8 @@ import (
 	"envctl/internal/orchestrator"
 	"envctl/internal/services"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 // mockOrchestrator implements minimal orchestrator interface for testing
@@ -48,11 +50,11 @@ func TestInitializeServices(t *testing.T) {
 				if s.MCPAPI == nil {
 					t.Error("MCPAPI should not be nil")
 				}
-				if s.PortForwardAPI == nil {
-					t.Error("PortForwardAPI should not be nil")
+				if s.AggregatorAPI == nil {
+					t.Error("AggregatorAPI should not be nil")
 				}
-				if s.K8sAPI == nil {
-					t.Error("K8sAPI should not be nil")
+				if s.ConfigAPI == nil {
+					t.Error("ConfigAPI should not be nil")
 				}
 			},
 		},
@@ -145,10 +147,9 @@ func TestInitializeServices_OrchestratorConfig(t *testing.T) {
 	// We can't easily test the full initialization without mocking orchestrator.New
 	// But we can verify that the config is passed correctly
 	expectedConfig := orchestrator.Config{
-		MCName:       "test-mc",
-		WCName:       "test-wc",
-		PortForwards: cfg.EnvctlConfig.PortForwards,
-		MCPServers:   cfg.EnvctlConfig.MCPServers,
+		MCName:     "test-mc",
+		WCName:     "test-wc",
+		MCPServers: cfg.EnvctlConfig.MCPServers,
 	}
 
 	// Verify the expected config matches what we expect to be passed
@@ -158,10 +159,30 @@ func TestInitializeServices_OrchestratorConfig(t *testing.T) {
 	if expectedConfig.WCName != cfg.WorkloadCluster {
 		t.Errorf("Expected WCName = %s, got %s", cfg.WorkloadCluster, expectedConfig.WCName)
 	}
-	if len(expectedConfig.PortForwards) != len(cfg.EnvctlConfig.PortForwards) {
-		t.Errorf("Expected %d PortForwards, got %d", len(cfg.EnvctlConfig.PortForwards), len(expectedConfig.PortForwards))
-	}
 	if len(expectedConfig.MCPServers) != len(cfg.EnvctlConfig.MCPServers) {
 		t.Errorf("Expected %d MCPServers, got %d", len(cfg.EnvctlConfig.MCPServers), len(expectedConfig.MCPServers))
 	}
+}
+
+// Test that services are created
+func TestServices_Creation(t *testing.T) {
+	cfg := &Config{
+		ManagementCluster: "test-mc",
+		WorkloadCluster:   "test-wc",
+		EnvctlConfig: &config.EnvctlConfig{
+			PortForwards: []config.PortForwardDefinition{},
+			MCPServers:   []config.MCPServerDefinition{},
+			Aggregator:   config.AggregatorConfig{Enabled: false},
+		},
+	}
+
+	services, err := InitializeServices(cfg)
+	assert.NoError(t, err)
+
+	// Test that services are created
+	assert.NotNil(t, services.Orchestrator)
+	assert.NotNil(t, services.OrchestratorAPI)
+	assert.NotNil(t, services.MCPAPI)
+	assert.NotNil(t, services.AggregatorAPI)
+	assert.NotNil(t, services.ConfigAPI)
 }

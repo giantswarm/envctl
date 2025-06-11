@@ -63,8 +63,6 @@ func runTUIMode(ctx context.Context, config *Config, services *Services) error {
 		Orchestrator:          services.Orchestrator,
 		OrchestratorAPI:       services.OrchestratorAPI,
 		MCPServiceAPI:         services.MCPAPI,
-		PortForwardAPI:        services.PortForwardAPI,
-		K8sServiceAPI:         services.K8sAPI,
 		AggregatorAPI:         services.AggregatorAPI,
 	}, logChan)
 	if err != nil {

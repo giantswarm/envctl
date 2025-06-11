@@ -63,16 +63,6 @@ type MCPServiceHandler interface {
 	ToolProvider
 }
 
-// K8sServiceHandler provides Kubernetes service-specific functionality
-type K8sServiceHandler interface {
-	GetClusterLabel() string
-	GetMetadata() map[string]interface{}
-	ListConnections(ctx context.Context) ([]*K8sConnectionInfo, error)
-	GetConnectionInfo(ctx context.Context, label string) (*K8sConnectionInfo, error)
-	GetConnectionByContext(ctx context.Context, contextName string) (*K8sConnectionInfo, error)
-	ToolProvider
-}
-
 // ConfigHandler provides configuration management functionality
 type ConfigHandler interface {
 	// Get configuration
@@ -152,25 +142,6 @@ type WorkflowHandler interface {
 	ToolProvider
 }
 
-// PortForwardServiceHandler defines the interface for port forward operations
-type PortForwardServiceHandler interface {
-	// Service-specific functionality
-	GetClusterLabel() string
-	GetNamespace() string
-	GetServiceName() string
-	GetLocalPort() int
-	GetRemotePort() int
-
-	// List all port forwards
-	ListForwards(ctx context.Context) ([]*PortForwardInfo, error)
-
-	// Get info about a specific port forward
-	GetForwardInfo(ctx context.Context, label string) (*PortForwardInfo, error)
-
-	// Embed ToolProvider for tool generation
-	ToolProvider
-}
-
 // Handler registry
 var (
 	registryHandler     ServiceRegistryHandler
@@ -182,8 +153,6 @@ var (
 
 	// Maps for service-specific handlers
 	mcpHandlers         = make(map[string]MCPServiceHandler)
-	portForwardHandlers = make(map[string]PortForwardServiceHandler)
-	k8sHandlers         = make(map[string]K8sServiceHandler)
 
 	handlerMutex sync.RWMutex
 )
@@ -217,20 +186,6 @@ func RegisterMCPService(label string, h MCPServiceHandler) {
 	mcpHandlers[label] = h
 }
 
-// RegisterPortForward registers a port forward handler
-func RegisterPortForward(label string, h PortForwardServiceHandler) {
-	handlerMutex.Lock()
-	defer handlerMutex.Unlock()
-	portForwardHandlers[label] = h
-}
-
-// RegisterK8sService registers a K8s service handler
-func RegisterK8sService(label string, h K8sServiceHandler) {
-	handlerMutex.Lock()
-	defer handlerMutex.Unlock()
-	k8sHandlers[label] = h
-}
-
 // RegisterConfigHandler registers the configuration handler
 func RegisterConfigHandler(h ConfigHandler) {
 	handlerMutex.Lock()
@@ -250,24 +205,6 @@ func RegisterMCPServiceHandler(h MCPServiceHandler) {
 	logging.Debug("API", "Registering MCP service handler: %v", h != nil)
 	// Store it as a special global handler
 	mcpHandlers["__global__"] = h
-}
-
-// RegisterK8sServiceHandler registers a global K8s service handler
-func RegisterK8sServiceHandler(h K8sServiceHandler) {
-	handlerMutex.Lock()
-	defer handlerMutex.Unlock()
-	logging.Debug("API", "Registering K8s service handler: %v", h != nil)
-	// Store it as a special global handler
-	k8sHandlers["__global__"] = h
-}
-
-// RegisterPortForwardServiceHandler registers a global port forward service handler
-func RegisterPortForwardServiceHandler(h PortForwardServiceHandler) {
-	handlerMutex.Lock()
-	defer handlerMutex.Unlock()
-	logging.Debug("API", "Registering port forward service handler: %v", h != nil)
-	// Store it as a special global handler
-	portForwardHandlers["__global__"] = h
 }
 
 // GetServiceRegistry returns the registered service registry handler
@@ -311,25 +248,6 @@ func GetMCPServiceHandler() MCPServiceHandler {
 	return h
 }
 
-// GetK8sServiceHandler returns the global K8s service handler
-func GetK8sServiceHandler() K8sServiceHandler {
-	handlerMutex.RLock()
-	defer handlerMutex.RUnlock()
-	h, _ := k8sHandlers["__global__"]
-	return h
-}
-
-// GetPortForwardServiceHandler returns the global port forward service handler
-func GetPortForwardServiceHandler() PortForwardServiceHandler {
-	handlerMutex.RLock()
-	defer handlerMutex.RUnlock()
-	// First check for global handler
-	if h, ok := portForwardHandlers["__global__"]; ok {
-		return h
-	}
-	return nil
-}
-
 // GetMCPService returns a registered MCP service handler
 func GetMCPService(label string) (MCPServiceHandler, bool) {
 	handlerMutex.RLock()
@@ -338,41 +256,11 @@ func GetMCPService(label string) (MCPServiceHandler, bool) {
 	return h, ok
 }
 
-// GetPortForward returns a registered port forward handler
-func GetPortForward(label string) (PortForwardServiceHandler, bool) {
-	handlerMutex.RLock()
-	defer handlerMutex.RUnlock()
-	h, ok := portForwardHandlers[label]
-	return h, ok
-}
-
-// GetK8sService returns a registered K8s service handler
-func GetK8sService(label string) (K8sServiceHandler, bool) {
-	handlerMutex.RLock()
-	defer handlerMutex.RUnlock()
-	h, ok := k8sHandlers[label]
-	return h, ok
-}
-
 // UnregisterMCPService removes an MCP service handler
 func UnregisterMCPService(label string) {
 	handlerMutex.Lock()
 	defer handlerMutex.Unlock()
 	delete(mcpHandlers, label)
-}
-
-// UnregisterPortForward removes a port forward handler
-func UnregisterPortForward(label string) {
-	handlerMutex.Lock()
-	defer handlerMutex.Unlock()
-	delete(portForwardHandlers, label)
-}
-
-// UnregisterK8sService removes a K8s service handler
-func UnregisterK8sService(label string) {
-	handlerMutex.Lock()
-	defer handlerMutex.Unlock()
-	delete(k8sHandlers, label)
 }
 
 // RegisterCapability registers the capability handler
