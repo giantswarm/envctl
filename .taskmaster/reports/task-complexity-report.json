@@ -1,12 +1,12 @@
 {
   "meta": {
-    "generatedAt": "2025-06-11T10:19:51.007Z",
-    "tasksAnalyzed": 3,
+    "generatedAt": "2025-06-11T12:27:48.321Z",
+    "tasksAnalyzed": 4,
     "totalTasks": 40,
-    "analysisCount": 11,
-    "thresholdScore": 5,
+    "analysisCount": 14,
+    "thresholdScore": 7,
     "projectName": "Taskmaster",
-    "usedResearch": true
+    "usedResearch": false
   },
   "complexityAnalysis": [
     {
@@ -74,14 +74,6 @@
       "reasoning": "This phase requires significant refactoring of both backend and frontend components to ensure a consistent user experience and a single entry point for resource operations. The need to coordinate API changes, UI updates, and comprehensive testing increases the complexity and justifies multiple subtasks."
     },
     {
-      "taskId": 45,
-      "taskTitle": "Phase 1: Generic Orchestrator",
-      "complexityScore": 9,
-      "recommendedSubtasks": 8,
-      "expansionPrompt": "Break down the process of decoupling the orchestrator into a generic process manager by identifying all code areas with domain-specific logic, planning the augmentation of MCPServerDefinition, refactoring orchestrator functions, removing hardcoded dependencies, deleting obsolete packages and types, and updating CLI commands. Include steps for code cleanup, regression testing, and documentation updates.",
-      "reasoning": "This task involves major architectural refactoring, significant code removal, and the introduction of a new workflow-based orchestration mechanism. It touches multiple core modules, requires careful dependency analysis, and impacts both internal APIs and user-facing commands. The risk of regressions is high, and the scope is broad, warranting a high complexity score and further subtask decomposition beyond the current list."
-    },
-    {
       "taskId": 46,
       "taskTitle": "Phase 2: Implement Default Capabilities",
       "complexityScore": 7,
@@ -96,6 +88,38 @@
       "recommendedSubtasks": 4,
       "expansionPrompt": "Decompose the final unification phase into updating the TUI to use the new capability API, rewriting documentation, performing user acceptance testing, and gathering feedback for further improvements.",
       "reasoning": "This phase is primarily focused on updating interfaces and documentation to match the new architecture. While important for usability, it is less technically complex than the previous phases, but still requires coordination between UI, documentation, and QA, meriting a moderate complexity score and several subtasks."
+    },
+    {
+      "taskId": 42,
+      "taskTitle": "Phase 1: Implement Core Resource Provider & Naming Convention",
+      "complexityScore": 6,
+      "recommendedSubtasks": 7,
+      "expansionPrompt": "Break down the tool naming convention updates into specific implementation steps for each tool category, including code changes, testing, and validation of the new naming structure.",
+      "reasoning": "Medium-high complexity due to systematic refactoring across multiple tool categories. Already well-decomposed with 7 subtasks covering all naming convention updates. Each subtask is focused and manageable."
+    },
+    {
+      "taskId": 43,
+      "taskTitle": "Phase 2: Refine Capability System & Naming",
+      "complexityScore": 5,
+      "recommendedSubtasks": 5,
+      "expansionPrompt": "Expand the capability system refactoring to include detailed implementation steps for package renaming, tool generation updates, workflow integration, testing, and validation of the new api_ prefix system.",
+      "reasoning": "Medium complexity involving package restructuring and API changes. Currently has 3 subtasks but needs expansion to cover testing, validation, and potential integration issues with the new core_service_* tools."
+    },
+    {
+      "taskId": 44,
+      "taskTitle": "Phase 3: Final Unification & TUI Update",
+      "complexityScore": 4,
+      "recommendedSubtasks": 4,
+      "expansionPrompt": "Break down the TUI and cluster capability updates into specific tasks covering configuration file updates, TUI interface modifications, user experience testing, and end-to-end validation of the new namespaced API.",
+      "reasoning": "Medium-low complexity as it's primarily integration work building on previous phases. Currently has no subtasks but needs decomposition to cover cluster capability updates, TUI modifications, and user acceptance testing."
+    },
+    {
+      "taskId": 45,
+      "taskTitle": "Phase 1: Generic Orchestrator",
+      "complexityScore": 9,
+      "recommendedSubtasks": 8,
+      "expansionPrompt": "Further decompose the generic orchestrator implementation by breaking down complex subtasks like 'Refactor Orchestrator Functions' and 'Remove Hardcoded Dependencies' into more granular, actionable steps with clear deliverables.",
+      "reasoning": "Very high complexity involving major architectural changes, code removal, and system decoupling. Already has 8 well-structured subtasks, but some are still quite large and could benefit from further breakdown, especially the refactoring and dependency removal tasks."
     }
   ]
 }

@@ -12,8 +12,9 @@ The key enabling mechanism for this decoupling is the introduction of **Precondi
 ## 1. The Generic Core Orchestrator
 The `Orchestrator` will be refactored to be completely domain-agnostic.
 - Its only responsibility is to manage a list of generic `Service` definitions. The `Service` implementations are the aggregator and the mcp-servers.
-- All hardcoded dependency logic related to clusters and port-forwards will be **removed**.
-- Please also remove the capability service, this is old and unused code.
+  - All hardcoded dependency logic related to clusters and port-forwards will be **removed**.
+  - Please also remove the capability service, this is old and unused code.
+  - The K8s service and portforward service tools/APIs will also be removed as part of the generic orchestrator refactoring.
 - Instead, a `Service` definition can now include a `preconditionWorkflow`. Before starting the service, the orchestrator executes this workflow. If it fails, the service is not started.
 - The orchestrator will expose its service management actions through clearly namespaced MCP tools (using the `core_*` prefix).
 
@@ -56,6 +57,8 @@ To provide clarity and avoid conflicts, envctl will use the following tool namin
 - `core_service_*` - Orchestrator service management (e.g., `core_service_start`, `core_service_stop`)
 - `core_workflow_*` - Workflow management API (e.g., `core_workflow_list`, `core_workflow_create`)
 - `core_capability_*` - Capability management API (e.g., `core_capability_list`, `core_capability_info`)
+- `core_config_*` - Configuration management API (e.g., `core_config_get`, `core_config_update_mcp_server`)
+- `core_mcp_*` - MCP server management API (e.g., `core_mcp_server_list`, `core_mcp_server_info`)
 
 **Execution Tools (User-facing operations):**
 - `workflow_*` - Actual workflow executions (e.g., `workflow_deploy_app`, `workflow_backup_db`)
@@ -74,19 +77,45 @@ This creates a clear separation between the management layer (core_*) and the ex
     - **Delete** the hardcoded dependency graph logic (`internal/orchestrator/orchestrator_deps.go`).
     - **Delete** the `internal/kube` and `internal/portforwarding` packages entirely.
     - **Delete** `ClusterDefinition` and `PortForwardDefinition` from `internal/config/types.go`.
+    - **Delete** the K8s service and portforward service tools and APIs from the codebase.
     - Modify the `envctl connect` command to remove its cluster-specific parameters.
 
-## Phase 2: The Default Capabilities
-- **Goal**: Re-implement the lost functionality as user-space capabilities.
+## Phase 2: Dynamic Service Creation for Runtime Management
+- **Goal**: Create dynamic services that replicate the old runtime behavior (health checking, lifecycle management, state tracking).
+- **Key Distinction**: **Services ≠ Capabilities**
+  - **Services**: Runtime management, health monitoring, lifecycle, state tracking
+  - **Capabilities**: API abstractions (handled in Phase 3)
+- **Critical Examples**:
+  - When `api_portforward_create` is called → Create a **port forward service** that continuously health checks the connection, handles reconnections, monitors status
+  - When `api_cluster_connect` is called → Create a **cluster connection service** that monitors authentication, handles token renewal, tracks connection health
+- **Approach**: Build dynamic service creation system that instantiates services based on requests/configuration.
 - **Tasks**:
-    - Create a new, minimal `mcp-server-kubectl` that provides basic tools for `kubectl context`, `kubectl port-forward`, etc.
-    - Create the default `cluster.capability.yaml` file.
-    - Create the default `portforward.capability.yaml` file.
-    - Ensure these capabilities expose the `api_cluster_*` and `api_portforward_*` execution tools.
+    - **Design Dynamic Service Architecture**: Define service creation, lifecycle management, and destruction patterns
+    - **Implement Port Forward Service Type**: Dynamic service that manages port forwarding connections with health checking (replaces `internal/portforwarding` runtime behavior)
+    - **Implement Cluster Connection Service Type**: Dynamic service that manages Kubernetes connections with auth renewal (replaces `internal/kube` runtime behavior)
+    - **Service Registry and Management**: Track active services, provide `core_service_*` management tools, handle service lifecycle
+    - **Integration with External MCP Servers**: Services use external MCP servers (kubernetes-mcp) for actual operations but manage the runtime state
 
-## Phase 3: Unification and TUI
-- **Goal**: Ensure the user experience is seamless.
+## Phase 3: API Abstraction Layer via Capabilities
+- **Goal**: Create user-facing API abstractions that wrap external MCP server tools into standardized `api_*` operations.
+- **Key Distinction**: This is about **API interface**, not runtime management (that's Phase 2 services).
+- **Approach**: Capability YAML files define how to transform user-friendly `api_*` calls into external MCP server tool calls.
+- **Examples**:
+  - `api_portforward_create` (user calls this) → transforms to → `x_kubernetes_port_forward` (external MCP server tool) + creates dynamic service (Phase 2)
+  - `api_cluster_connect` (user calls this) → transforms to → `x_kubernetes_context_switch` (external MCP server tool) + creates dynamic service (Phase 2)
 - **Tasks**:
+    - **Create Capability Definition Schema**: YAML format for defining API transformations
+    - **Implement Capability Loader**: Read and parse capability YAML files
+    - **Create Example Capability Definitions**:
+      - `cluster.capability.yaml` - Defines `api_cluster_*` tools that wrap kubernetes-mcp tools
+      - `portforward.capability.yaml` - Defines `api_portforward_*` tools that wrap kubernetes-mcp tools
+    - **Dynamic Tool Registration**: Generate `api_*` tools from capability definitions
+    - **Integration with Services**: Capabilities can trigger service creation (Phase 2) as part of their operations
+
+## Phase 4: TUI
+- **Goal**: remove the tui from envctl connect and add it to the agent command as a client
+- **Tasks**:
+    - the TUI becomes an mcp client to the aggregated mcp server instead of running in process.
     - Update the TUI to use the new execution tools (`api_*` for capability operations, `workflow_*` for workflow executions) for all its operations.
     - Provide default `envctl.yaml` examples that show users how to compose precondition workflows.
 

@@ -173,21 +173,40 @@ func (a *AggregatorServer) createToolsFromProviders() []server.ServerTool {
 	return tools
 }
 
-// prefixToolName applies the appropriate prefix based on tool patterns
+// prefixToolName applies the appropriate prefix based on tool patterns and provider type
 func (a *AggregatorServer) prefixToolName(provider, toolName string) string {
-	prefix := a.config.EnvctlPrefix + "_"
+	// Define management tool patterns that should get core_ prefix
+	managementPatterns := []string{
+		"service_",     // orchestrator service management
+		"workflow_",    // workflow management (not execution)
+		"capability_",  // capability management
+		"config_",      // configuration management
+		"mcp_",         // MCP server management
+		"cluster_",     // cluster management
+		"portforward_", // port forward management (legacy)
+		"k8s_",         // K8s management (legacy)
+	}
 
-	// Apply specific prefixes based on tool patterns
+	// Check if this is a management tool that should get core_ prefix
+	for _, pattern := range managementPatterns {
+		if strings.HasPrefix(toolName, pattern) {
+			return "core_" + toolName
+		}
+	}
+
+	// Handle execution tools that need prefix transformation
 	switch {
-	case strings.HasPrefix(toolName, "workflow_"):
-		return prefix + toolName // x_workflow_list
 	case strings.HasPrefix(toolName, "action_"):
-		return prefix + toolName // x_action_deploy
-	case strings.HasPrefix(toolName, "capability_"):
-		return prefix + toolName // x_capability_list
+		// Transform action_* to workflow_* for execution tools
+		workflowName := strings.Replace(toolName, "action_", "workflow_", 1)
+		return workflowName
+	case strings.HasPrefix(toolName, "api_"):
+		// Keep api_* tools unchanged (they're already correct for capability operations)
+		return toolName
 	default:
-		// Capability operations get simple prefix
-		return prefix + toolName // x_auth_login
+		// For other tools (external MCP servers, capability operations), use the configurable prefix
+		prefix := a.config.EnvctlPrefix + "_"
+		return prefix + toolName
 	}
 }
 
