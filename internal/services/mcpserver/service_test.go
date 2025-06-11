@@ -27,12 +27,21 @@ func TestNewMCPServerService(t *testing.T) {
 			wantOk: true,
 		},
 		{
-			name: "server with dependencies",
+			name: "server with enabled flag",
 			cfg: config.MCPServerDefinition{
-				Name:                 "test-server",
-				Type:                 config.MCPServerTypeLocalCommand,
-				Command:              []string{"test-command"},
-				RequiresPortForwards: []string{"pf1", "pf2"},
+				Name:    "test-server",
+				Type:    config.MCPServerTypeLocalCommand,
+				Command: []string{"test-command"},
+				Enabled: true,
+			},
+			wantOk: true,
+		},
+		{
+			name: "basic server creation",
+			cfg: config.MCPServerDefinition{
+				Name:    "test",
+				Type:    config.MCPServerTypeLocalCommand,
+				Command: []string{"test"},
 			},
 			wantOk: true,
 		},
@@ -45,13 +54,7 @@ func TestNewMCPServerService(t *testing.T) {
 				assert.NotNil(t, service)
 				assert.Equal(t, tt.cfg.Name, service.GetLabel())
 				assert.Equal(t, services.TypeMCPServer, service.GetType())
-
-				// Check dependencies - handle nil as empty slice
-				expectedDeps := tt.cfg.RequiresPortForwards
-				if expectedDeps == nil {
-					expectedDeps = []string{}
-				}
-				assert.Equal(t, expectedDeps, service.GetDependencies())
+				assert.Equal(t, []string{}, service.GetDependencies())
 			} else {
 				assert.Nil(t, service)
 			}

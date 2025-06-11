@@ -11,11 +11,10 @@ import (
 
 // mockConfigHandler implements ConfigHandler for testing
 type mockConfigHandler struct {
-	config         *config.EnvctlConfig
-	updateClusters []config.ClusterDefinition
-	saveCount      int
-	called         map[string]bool
-	saveConfigErr  error
+	config        *config.EnvctlConfig
+	saveCount     int
+	called        map[string]bool
+	saveConfigErr error
 }
 
 // ToolProvider methods
@@ -39,20 +38,8 @@ func (m *mockConfigHandler) GetConfig(ctx context.Context) (*config.EnvctlConfig
 	return m.config, nil
 }
 
-func (m *mockConfigHandler) GetClusters(ctx context.Context) ([]config.ClusterDefinition, error) {
-	return m.config.Clusters, nil
-}
-
-func (m *mockConfigHandler) GetActiveClusters(ctx context.Context) (map[config.ClusterRole]string, error) {
-	return m.config.ActiveClusters, nil
-}
-
 func (m *mockConfigHandler) GetMCPServers(ctx context.Context) ([]config.MCPServerDefinition, error) {
 	return m.config.MCPServers, nil
-}
-
-func (m *mockConfigHandler) GetPortForwards(ctx context.Context) ([]config.PortForwardDefinition, error) {
-	return m.config.PortForwards, nil
 }
 
 func (m *mockConfigHandler) GetWorkflows(ctx context.Context) ([]config.WorkflowDefinition, error) {
@@ -67,17 +54,6 @@ func (m *mockConfigHandler) GetGlobalSettings(ctx context.Context) (*config.Glob
 	return &m.config.GlobalSettings, nil
 }
 
-func (m *mockConfigHandler) UpdateClusters(clusters []config.ClusterDefinition) error {
-	m.updateClusters = clusters
-	m.config.Clusters = clusters
-	return nil
-}
-
-func (m *mockConfigHandler) UpdateActiveClusters(activeClusters map[config.ClusterRole]string) error {
-	m.config.ActiveClusters = activeClusters
-	return nil
-}
-
 func (m *mockConfigHandler) UpdateMCPServer(ctx context.Context, server config.MCPServerDefinition) error {
 	// Find and update or add
 	found := false
@@ -90,22 +66,6 @@ func (m *mockConfigHandler) UpdateMCPServer(ctx context.Context, server config.M
 	}
 	if !found {
 		m.config.MCPServers = append(m.config.MCPServers, server)
-	}
-	return nil
-}
-
-func (m *mockConfigHandler) UpdatePortForward(ctx context.Context, portForward config.PortForwardDefinition) error {
-	// Find and update or add
-	found := false
-	for i, pf := range m.config.PortForwards {
-		if pf.Name == portForward.Name {
-			m.config.PortForwards[i] = portForward
-			found = true
-			break
-		}
-	}
-	if !found {
-		m.config.PortForwards = append(m.config.PortForwards, portForward)
 	}
 	return nil
 }
@@ -147,17 +107,6 @@ func (m *mockConfigHandler) DeleteMCPServer(ctx context.Context, name string) er
 	return nil
 }
 
-func (m *mockConfigHandler) DeletePortForward(ctx context.Context, name string) error {
-	forwards := []config.PortForwardDefinition{}
-	for _, pf := range m.config.PortForwards {
-		if pf.Name != name {
-			forwards = append(forwards, pf)
-		}
-	}
-	m.config.PortForwards = forwards
-	return nil
-}
-
 func (m *mockConfigHandler) DeleteWorkflow(ctx context.Context, name string) error {
 	workflows := []config.WorkflowDefinition{}
 	for _, w := range m.config.Workflows {
@@ -166,17 +115,6 @@ func (m *mockConfigHandler) DeleteWorkflow(ctx context.Context, name string) err
 		}
 	}
 	m.config.Workflows = workflows
-	return nil
-}
-
-func (m *mockConfigHandler) DeleteCluster(ctx context.Context, name string) error {
-	clusters := []config.ClusterDefinition{}
-	for _, c := range m.config.Clusters {
-		if c.Name != name {
-			clusters = append(clusters, c)
-		}
-	}
-	m.config.Clusters = clusters
 	return nil
 }
 
@@ -193,17 +131,8 @@ func (m *mockConfigHandler) ReloadConfig(ctx context.Context) error {
 func TestConfigServiceAPI(t *testing.T) {
 	// Create a mock config
 	mockCfg := &config.EnvctlConfig{
-		Clusters: []config.ClusterDefinition{
-			{Name: "test-cluster", Context: "test-context", Role: config.ClusterRoleTarget},
-		},
-		ActiveClusters: map[config.ClusterRole]string{
-			config.ClusterRoleTarget: "test-cluster",
-		},
 		MCPServers: []config.MCPServerDefinition{
 			{Name: "test-server", Type: config.MCPServerTypeLocalCommand},
-		},
-		PortForwards: []config.PortForwardDefinition{
-			{Name: "test-forward", Namespace: "default"},
 		},
 		Workflows: []config.WorkflowDefinition{
 			{Name: "test-workflow"},
@@ -233,20 +162,6 @@ func TestConfigServiceAPI(t *testing.T) {
 		cfg, err := api.GetConfig(ctx)
 		assert.NoError(t, err)
 		assert.NotNil(t, cfg)
-		assert.Len(t, cfg.Clusters, 1)
-	})
-
-	t.Run("GetClusters", func(t *testing.T) {
-		clusters, err := api.GetClusters(ctx)
-		assert.NoError(t, err)
-		assert.Len(t, clusters, 1)
-		assert.Equal(t, "test-cluster", clusters[0].Name)
-	})
-
-	t.Run("GetActiveClusters", func(t *testing.T) {
-		active, err := api.GetActiveClusters(ctx)
-		assert.NoError(t, err)
-		assert.Equal(t, "test-cluster", active[config.ClusterRoleTarget])
 	})
 
 	t.Run("GetMCPServers", func(t *testing.T) {
@@ -254,13 +169,6 @@ func TestConfigServiceAPI(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Len(t, servers, 1)
 		assert.Equal(t, "test-server", servers[0].Name)
-	})
-
-	t.Run("GetPortForwards", func(t *testing.T) {
-		forwards, err := api.GetPortForwards(ctx)
-		assert.NoError(t, err)
-		assert.Len(t, forwards, 1)
-		assert.Equal(t, "test-forward", forwards[0].Name)
 	})
 
 	t.Run("GetWorkflows", func(t *testing.T) {

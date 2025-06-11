@@ -160,10 +160,6 @@ func (am *AggregatorManager) GetServiceData() map[string]interface{} {
 		}
 		data["blocked_tools"] = blockedCount
 
-		// Debug logging for tool counts
-		logging.Debug("Aggregator-Manager", "GetServiceData: %d tools (%d blocked), %d resources, %d prompts",
-			len(tools), blockedCount, len(resources), len(prompts))
-
 		// Get total number of MCP servers from the API
 		totalServers := 0
 		connectedServers := 0
@@ -202,14 +198,11 @@ func (am *AggregatorManager) registerHealthyMCPServers(ctx context.Context) erro
 	// Get all MCP services
 	mcpServices := am.serviceRegistry.GetByType(api.TypeMCPServer)
 
-	logging.Debug("Aggregator-Manager", "Initial sync: found %d MCP services", len(mcpServices))
-
 	registeredCount := 0
 	for _, service := range mcpServices {
 		// Only register servers that are both running AND healthy
-		if service.GetState() != api.StateRunning || service.GetHealth() != api.HealthHealthy {
-			logging.Debug("Aggregator-Manager", "Skipping MCP service %s (state=%s, health=%s)",
-				service.GetLabel(), service.GetState(), service.GetHealth())
+		// Compare string values to handle case mismatch between services and API types
+		if string(service.GetState()) != "Running" || string(service.GetHealth()) != "Healthy" {
 			continue
 		}
 
@@ -223,9 +216,7 @@ func (am *AggregatorManager) registerHealthyMCPServers(ctx context.Context) erro
 		}
 	}
 
-	if registeredCount == 0 {
-		logging.Info("Aggregator-Manager", "No healthy MCP servers found during initial sync")
-	} else {
+	if registeredCount > 0 {
 		logging.Info("Aggregator-Manager", "Initial sync completed: registered %d healthy MCP servers", registeredCount)
 	}
 
@@ -253,7 +244,6 @@ func (am *AggregatorManager) registerSingleServer(ctx context.Context, serverNam
 	}
 
 	// Get the actual MCP client from the service
-	// The service should provide a GetMCPClient method
 	var mcpClient MCPClient
 
 	// Check if we can get the client directly from service data
@@ -265,7 +255,6 @@ func (am *AggregatorManager) registerSingleServer(ctx context.Context, serverNam
 
 	// If we didn't get the client from service data, try to get it through type assertion
 	if mcpClient == nil {
-		// Try to access the service as a type that has GetMCPClient method
 		type mcpClientProvider interface {
 			GetMCPClient() interface{}
 		}
@@ -274,8 +263,6 @@ func (am *AggregatorManager) registerSingleServer(ctx context.Context, serverNam
 			if clientInterface := provider.GetMCPClient(); clientInterface != nil {
 				if client, ok := clientInterface.(MCPClient); ok {
 					mcpClient = client
-				} else {
-					return fmt.Errorf("MCP client for %s is not of type MCPClient", serverName)
 				}
 			}
 		}

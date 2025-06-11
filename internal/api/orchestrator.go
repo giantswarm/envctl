@@ -26,11 +26,6 @@ type OrchestratorAPI interface {
 
 	// State change events
 	SubscribeToStateChanges() <-chan ServiceStateChangedEvent
-
-	// Cluster management
-	GetAvailableClusters(role ClusterRole) []ClusterDefinition
-	GetActiveCluster(role ClusterRole) (string, bool)
-	SwitchCluster(role ClusterRole, clusterName string) error
 }
 
 // orchestratorAPI wraps the orchestrator to implement OrchestratorAPI
@@ -82,32 +77,7 @@ func (a *orchestratorAPI) SubscribeToStateChanges() <-chan ServiceStateChangedEv
 	return handler.SubscribeToStateChanges()
 }
 
-// GetAvailableClusters returns all clusters configured for a specific role
-func (a *orchestratorAPI) GetAvailableClusters(role ClusterRole) []ClusterDefinition {
-	handler := GetOrchestrator()
-	if handler == nil {
-		return nil
-	}
-	return handler.GetAvailableClusters(role)
-}
 
-// GetActiveCluster returns the currently active cluster for a role
-func (a *orchestratorAPI) GetActiveCluster(role ClusterRole) (string, bool) {
-	handler := GetOrchestrator()
-	if handler == nil {
-		return "", false
-	}
-	return handler.GetActiveCluster(role)
-}
-
-// SwitchCluster changes the active cluster for a role and restarts affected services
-func (a *orchestratorAPI) SwitchCluster(role ClusterRole, clusterName string) error {
-	handler := GetOrchestrator()
-	if handler == nil {
-		return fmt.Errorf("orchestrator not registered")
-	}
-	return handler.SwitchCluster(role, clusterName)
-}
 
 // GetServiceStatus returns the status of a specific service
 func (a *orchestratorAPI) GetServiceStatus(label string) (*ServiceStatus, error) {

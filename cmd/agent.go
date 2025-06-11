@@ -94,7 +94,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	endpoint := agentEndpoint
 	if endpoint == "" {
 		// Load configuration to get aggregator settings
-		cfg, err := config.LoadConfig("", "")
+		cfg, err := config.LoadConfig()
 		if err != nil {
 			// Use default if config cannot be loaded
 			endpoint = "http://localhost:8080/sse"

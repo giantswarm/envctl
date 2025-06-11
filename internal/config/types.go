@@ -4,33 +4,12 @@ import (
 	"time"
 )
 
-// ClusterRole defines the purpose of a cluster in the debugging setup
-type ClusterRole string
-
-const (
-	ClusterRoleTarget        ClusterRole = "target"        // The cluster being debugged
-	ClusterRoleObservability ClusterRole = "observability" // Where metrics/logs are stored
-	ClusterRoleCustom        ClusterRole = "custom"        // User-defined roles
-)
-
-// ClusterDefinition defines a Kubernetes cluster that can be connected to
-type ClusterDefinition struct {
-	Name        string      `yaml:"name"`        // Unique identifier
-	Context     string      `yaml:"context"`     // Kubernetes context name
-	Role        ClusterRole `yaml:"role"`        // What this cluster is used for
-	DisplayName string      `yaml:"displayName"` // Name shown in TUI
-	Icon        string      `yaml:"icon"`        // Optional icon for TUI
-}
-
 // EnvctlConfig is the top-level configuration structure for envctl.
 type EnvctlConfig struct {
-	Clusters       []ClusterDefinition     `yaml:"clusters"`       // Available clusters
-	ActiveClusters map[ClusterRole]string  `yaml:"activeClusters"` // Currently active cluster for each role
-	MCPServers     []MCPServerDefinition   `yaml:"mcpServers"`
-	PortForwards   []PortForwardDefinition `yaml:"portForwards"`
-	GlobalSettings GlobalSettings          `yaml:"globalSettings"`
-	Aggregator     AggregatorConfig        `yaml:"aggregator"`
-	Workflows      []WorkflowDefinition    `yaml:"workflows"`
+	MCPServers     []MCPServerDefinition `yaml:"mcpServers"`
+	GlobalSettings GlobalSettings        `yaml:"globalSettings"`
+	Aggregator     AggregatorConfig      `yaml:"aggregator"`
+	Workflows      []WorkflowDefinition  `yaml:"workflows"`
 }
 
 // GlobalSettings might include things like default log levels, container runtime preferences, etc.
@@ -83,32 +62,10 @@ type MCPServerDefinition struct {
 	Entrypoint       []string          `yaml:"entrypoint,omitempty"`       // Optional container entrypoint override
 	ContainerUser    string            `yaml:"containerUser,omitempty"`    // Optional user to run container as
 
-	// Dependencies
-	RequiresPortForwards []string    `yaml:"requiresPortForwards,omitempty"` // Names of PortForwardDefinition(s) needed by this server
-	RequiresClusterRole  ClusterRole `yaml:"requiresClusterRole,omitempty"`  // Cluster role dependency (e.g., "target", "observability")
-	RequiresClusterName  string      `yaml:"requiresClusterName,omitempty"`  // Specific cluster dependency (overrides role)
+
 }
 
-// PortForwardDefinition defines a Kubernetes port-forwarding configuration.
-type PortForwardDefinition struct {
-	Name     string `yaml:"name"`               // Unique name, e.g., "mc-prometheus", "wc-alloy"
-	Enabled  bool   `yaml:"enabledByDefault"`   // Whether this port-forward is started by default
-	Icon     string `yaml:"icon,omitempty"`     // Optional: an icon/emoji for display in TUI
-	Category string `yaml:"category,omitempty"` // Optional: for grouping
 
-	// Cluster selection - use either ClusterRole or ClusterName
-	ClusterRole         ClusterRole   `yaml:"clusterRole,omitempty"`       // Which role's active cluster to use
-	ClusterName         string        `yaml:"clusterName,omitempty"`       // Specific cluster (overrides role)
-	KubeContextTarget   string        `yaml:"kubeContextTarget,omitempty"` // DEPRECATED: use ClusterRole or ClusterName
-	Namespace           string        `yaml:"namespace"`
-	TargetType          string        `yaml:"targetType"`                    // "service", "pod", "deployment", "statefulset"
-	TargetName          string        `yaml:"targetName"`                    // Name of the service, pod, etc.
-	TargetLabelSelector string        `yaml:"targetLabelSelector,omitempty"` // e.g., "app=prometheus,component=server" (used if TargetName is not specific enough or for pods)
-	LocalPort           string        `yaml:"localPort"`
-	RemotePort          string        `yaml:"remotePort"`
-	BindAddress         string        `yaml:"bindAddress,omitempty"`         // Default "127.0.0.1"
-	HealthCheckInterval time.Duration `yaml:"healthCheckInterval,omitempty"` // Optional: custom health check interval
-}
 
 // AggregatorConfig defines the configuration for the MCP aggregator service.
 type AggregatorConfig struct {
@@ -122,7 +79,7 @@ type AggregatorConfig struct {
 // mcName and wcName are the canonical names provided by the user.
 func GetDefaultConfig(mcName, wcName string) EnvctlConfig {
 	// Return minimal defaults - no k8s connection, no MCP servers, no port forwarding
-	return GetDefaultConfigWithRoles(mcName, wcName)
+	return GetDefaultConfigWithRoles()
 }
 
 // WorkflowDefinition defines a sequence of MCP tool calls

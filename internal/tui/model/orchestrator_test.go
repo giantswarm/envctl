@@ -34,8 +34,6 @@ func TestStartOrchestrator(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create a real orchestrator
 			orchConfig := orchestrator.Config{
-				MCName:     tt.mcName,
-				WCName:     tt.wcName,
 				MCPServers: []config.MCPServerDefinition{},
 			}
 			orch := orchestrator.New(orchConfig)
@@ -51,7 +49,6 @@ func TestStartOrchestrator(t *testing.T) {
 			// Create APIs
 			orchestratorAPI := api.NewOrchestratorAPI()
 			mcpAPI := api.NewMCPServiceAPI()
-			portForwardAPI := api.NewPortForwardServiceAPI()
 			k8sAPI := api.NewK8sServiceAPI()
 
 			// Clean up handlers after test
@@ -65,13 +62,10 @@ func TestStartOrchestrator(t *testing.T) {
 				Orchestrator:       orch,
 				OrchestratorAPI:    orchestratorAPI,
 				K8sServiceAPI:      k8sAPI,
-				PortForwardAPI:     portForwardAPI,
 				MCPServiceAPI:      mcpAPI,
 				K8sConnections:     make(map[string]*api.K8sConnectionInfo),
-				PortForwards:       make(map[string]*api.PortForwardServiceInfo),
 				MCPServers:         make(map[string]*api.MCPServerInfo),
 				K8sConnectionOrder: []string{},
-				PortForwardOrder:   []string{},
 				MCPServerOrder:     []string{},
 			}
 
@@ -103,19 +97,15 @@ func TestStartOrchestratorIntegration(t *testing.T) {
 
 	// Test with minimal configuration
 	cfg := config.EnvctlConfig{
-		PortForwards: []config.PortForwardDefinition{},
-		MCPServers:   []config.MCPServerDefinition{},
+		MCPServers: []config.MCPServerDefinition{},
 	}
 
 	// Create TUIConfig
 	tuiConfig := TUIConfig{
-		ManagementClusterName: "",
-		WorkloadClusterName:   "",
-		DebugMode:             false,
-		ColorMode:             "auto",
-		PortForwardingConfig:  cfg.PortForwards,
-		MCPServerConfig:       cfg.MCPServers,
-		AggregatorConfig:      cfg.Aggregator,
+		DebugMode:        false,
+		ColorMode:        "auto",
+		MCPServerConfig:  cfg.MCPServers,
+		AggregatorConfig: cfg.Aggregator,
 	}
 
 	m, err := InitializeModel(tuiConfig, logChan)

@@ -31,8 +31,6 @@ func StartAndManageIndividualMcpServer(
 	subsystem := "MCPServer-" + label
 
 	logging.Info(subsystem, "Starting MCP server %s: %s", label, strings.Join(serverConfig.Command, " "))
-	if updateFn != nil {
-	}
 
 	if len(serverConfig.Command) == 0 {
 		errMsg := fmt.Errorf("command not defined for MCP server %s", label)
@@ -50,14 +48,25 @@ func StartAndManageIndividualMcpServer(
 	// Create the stdio client with environment variables
 	client := NewStdioClientWithEnv(cmdName, cmdArgs, serverConfig.Env)
 
-	// Initialize the MCP protocol
-	ctx := context.Background()
-	initCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-	defer cancel()
+	// Initialize the MCP protocol with a shorter timeout to fail fast for authentication issues
+	// Use a separate context just for initialization
+	initCtx, initCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer initCancel()
+
+	// Send initializing status
+	if updateFn != nil {
+		updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "ProcessInitializing"})
+	}
 
 	if err := client.Initialize(initCtx); err != nil {
 		errMsg := fmt.Errorf("failed to initialize MCP client for %s: %w", label, err)
 		logging.Error(subsystem, errMsg, "Failed to initialize MCP protocol")
+		
+		// Ensure the client is closed to clean up any processes
+		if closeErr := client.Close(); closeErr != nil {
+			logging.Debug(subsystem, "Error closing failed client for %s: %v", label, closeErr)
+		}
+		
 		if updateFn != nil {
 			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "ProcessStartFailed", ProcessErr: errMsg})
 		}
@@ -100,14 +109,13 @@ func StartAndManageIndividualMcpServer(
 			}()
 		}
 
-		// Wait for stop signal
+		// Wait for stop signal only - don't use the initialization context
 		<-stopChan
-
 		logging.Debug(subsystem, "Received stop signal for MCP server %s", label)
 
 		// Close the client (this should gracefully shut down the process)
 		if err := client.Close(); err != nil {
-			logging.Error(subsystem, err, "Error closing MCP client")
+			logging.Error(subsystem, err, "Error closing MCP client for %s", label)
 		}
 
 		if updateFn != nil {

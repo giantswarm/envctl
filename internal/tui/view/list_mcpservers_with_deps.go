@@ -72,41 +72,7 @@ func BuildMCPServersWithDependenciesList(m *model.Model, width, height int, focu
 	// Map port forwards to their dependent MCP servers
 	pfByMCP := make(map[string][]PortForwardListItem)
 
-	// First, organize port forwards by their MCP dependencies
-	for _, config := range m.PortForwardingConfig {
-		pfItem := PortForwardListItem{}
-
-		if pf, exists := m.PortForwards[config.Name]; exists {
-			pfItem = ConvertPortForwardToListItem(pf)
-		} else {
-			// Create placeholder item
-			pfItem = PortForwardListItem{
-				BaseListItem: BaseListItem{
-					ID:          config.Name,
-					Name:        config.Name,
-					Status:      StatusStopped,
-					Health:      HealthUnknown,
-					Icon:        design.SafeIcon(config.Icon),
-					Description: fmt.Sprintf("%s/%s", config.TargetType, config.TargetName),
-					Details:     fmt.Sprintf("Port: %s:%s (Not Started)", config.LocalPort, config.RemotePort),
-				},
-				LocalPort:  0,
-				RemotePort: 0,
-				TargetType: config.TargetType,
-				TargetName: config.TargetName,
-			}
-		}
-
-		// Find which MCP servers depend on this port forward
-		for _, mcpConfig := range m.MCPServerConfig {
-			for _, requiredPF := range mcpConfig.RequiresPortForwards {
-				if requiredPF == config.Name {
-					pfByMCP[mcpConfig.Name] = append(pfByMCP[mcpConfig.Name], pfItem)
-					break
-				}
-			}
-		}
-	}
+	// Port forward dependencies have been removed as part of the generic orchestrator refactoring
 
 	// Now build the hierarchical list
 	for _, config := range m.MCPServerConfig {

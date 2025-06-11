@@ -7,6 +7,7 @@ import (
 	"envctl/pkg/logging"
 	"fmt"
 	"sync"
+	"time"
 )
 
 // StopReason tracks why a service was stopped.
@@ -22,15 +23,9 @@ type Orchestrator struct {
 	registry services.ServiceRegistry
 
 	// Configuration
-	mcName     string
-	wcName     string
 	mcpServers []config.MCPServerDefinition
 	aggregator config.AggregatorConfig
 	yolo       bool
-
-	// Cluster management
-	clusterState *ClusterState
-	clusters     []config.ClusterDefinition
 
 	// Service tracking
 	stopReasons map[string]StopReason
@@ -47,39 +42,17 @@ type Orchestrator struct {
 
 // Config holds the configuration for the orchestrator.
 type Config struct {
-	MCName         string
-	WCName         string
-	Clusters       []config.ClusterDefinition
-	ActiveClusters map[config.ClusterRole]string
-	MCPServers     []config.MCPServerDefinition
-	Aggregator     config.AggregatorConfig
-	Yolo           bool
+	MCPServers []config.MCPServerDefinition
+	Aggregator config.AggregatorConfig
+	Yolo       bool
 }
 
 // New creates a new orchestrator.
 func New(cfg Config) *Orchestrator {
 	registry := services.NewRegistry()
 
-	clusters := cfg.Clusters
-	activeClusters := cfg.ActiveClusters
-	if len(clusters) == 0 && (cfg.MCName != "" || cfg.WCName != "") {
-		clusters = config.GenerateGiantSwarmClusters(cfg.MCName, cfg.WCName)
-		activeClusters = make(map[config.ClusterRole]string)
-		for _, c := range clusters {
-			if _, exists := activeClusters[c.Role]; !exists {
-				activeClusters[c.Role] = c.Name
-			}
-		}
-	}
-
-	clusterState := NewClusterState(clusters, activeClusters)
-
 	return &Orchestrator{
 		registry:               registry,
-		mcName:                 cfg.MCName,
-		wcName:                 cfg.WCName,
-		clusters:               clusters,
-		clusterState:           clusterState,
 		mcpServers:             cfg.MCPServers,
 		aggregator:             cfg.Aggregator,
 		yolo:                   cfg.Yolo,
@@ -91,8 +64,89 @@ func New(cfg Config) *Orchestrator {
 // Start initializes and starts all services.
 func (o *Orchestrator) Start(ctx context.Context) error {
 	o.ctx, o.cancelFunc = context.WithCancel(ctx)
-	logging.Info("Orchestrator", "Started orchestrator (K8s/PortForward services removed)")
+	
+	services := o.registry.GetAll()
+	if len(services) == 0 {
+		logging.Info("Orchestrator", "Started orchestrator with core resource provider architecture (no services)")
+		return nil
+	}
+
+	// Set up state change callbacks on all services so we can publish events
+	o.setupStateChangeNotifications(services)
+
+	// Start all registered services asynchronously
+	// This prevents individual service failures from blocking other services
+	for _, service := range services {
+		go func(svc interface{}) {
+			// Use direct interface methods without type assertion
+			if service, ok := svc.(interface{
+				Start(context.Context) error
+				GetLabel() string
+			}); ok {
+				if err := service.Start(o.ctx); err != nil {
+					logging.Error("Orchestrator", err, "Failed to start service: %s", service.GetLabel())
+					// Individual service failures don't stop the orchestrator
+				} else {
+					logging.Info("Orchestrator", "Started service: %s", service.GetLabel())
+				}
+			}
+		}(service)
+	}
+	
+	logging.Info("Orchestrator", "Started orchestrator with core resource provider architecture")
 	return nil
+}
+
+// setupStateChangeNotifications configures services to notify the orchestrator of state changes
+func (o *Orchestrator) setupStateChangeNotifications(services []services.Service) {
+	for _, service := range services {
+		service.SetStateChangeCallback(o.createStateChangeCallback())
+		logging.Debug("Orchestrator", "Set up state change notifications for service: %s", service.GetLabel())
+	}
+}
+
+// createStateChangeCallback creates a state change callback that publishes events
+func (o *Orchestrator) createStateChangeCallback() services.StateChangeCallback {
+	return func(label string, oldState, newState services.ServiceState, health services.HealthStatus, err error) {
+		o.publishStateChangeEvent(label, oldState, newState, health, err)
+	}
+}
+
+// publishStateChangeEvent publishes a state change event to all subscribers
+func (o *Orchestrator) publishStateChangeEvent(label string, oldState, newState services.ServiceState, health services.HealthStatus, err error) {
+	// Get service to determine its type
+	service, exists := o.registry.Get(label)
+	if !exists {
+		return
+	}
+
+	logging.Debug("Orchestrator", "Service %s state changed: %s -> %s (health: %s)", label, oldState, newState, health)
+
+	// Create the event
+	event := ServiceStateChangedEvent{
+		Label:       label,
+		ServiceType: string(service.GetType()),
+		OldState:    string(oldState),
+		NewState:    string(newState),
+		Health:      string(health),
+		Error:       err,
+		Timestamp:   time.Now().Unix(),
+	}
+
+	// Publish to all subscribers
+	o.mu.RLock()
+	subscribers := make([]chan<- ServiceStateChangedEvent, len(o.stateChangeSubscribers))
+	copy(subscribers, o.stateChangeSubscribers)
+	o.mu.RUnlock()
+
+	for _, subscriber := range subscribers {
+		select {
+		case subscriber <- event:
+		default:
+			// Don't block if subscriber can't receive immediately
+			logging.Debug("Orchestrator", "Subscriber blocked, skipping event for service %s", label)
+		}
+	}
 }
 
 // Stop gracefully stops all services.
@@ -171,21 +225,6 @@ type ServiceStateChangedEvent struct {
 	Health      string
 	Error       error
 	Timestamp   int64
-}
-
-// GetAvailableClusters returns available clusters for a role.
-func (o *Orchestrator) GetAvailableClusters(role config.ClusterRole) []config.ClusterDefinition {
-	return o.clusterState.GetAvailableClusters(role)
-}
-
-// GetActiveCluster returns the active cluster for a role.
-func (o *Orchestrator) GetActiveCluster(role config.ClusterRole) (string, bool) {
-	return o.clusterState.GetActiveCluster(role)
-}
-
-// SwitchCluster switches the active cluster for a role.
-func (o *Orchestrator) SwitchCluster(role config.ClusterRole, clusterName string) error {
-	return o.clusterState.SetActiveCluster(role, clusterName)
 }
 
 // GetServiceStatus returns the status of a specific service.

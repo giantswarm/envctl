@@ -261,13 +261,6 @@ func buildClustersContent(m *model.Model, innerWidth int) string {
 			// Add cluster icon and name
 			line += fmt.Sprintf("%s %s", design.SafeIcon(design.IconKubernetes), conn.Label)
 
-			// Add cluster type indicator
-			if conn.Label == m.ManagementClusterName || strings.Contains(conn.Label, "(MC)") {
-				line += " " + design.TextSecondaryStyle.Render("(MC)")
-			} else if conn.Label == m.WorkloadClusterName || strings.Contains(conn.Label, "(WC)") {
-				line += " " + design.TextSecondaryStyle.Render("(WC)")
-			}
-
 			// Add status
 			statusIndicator := components.NewStatusIndicator(
 				components.StatusFromString(conn.State),
@@ -361,9 +354,9 @@ func buildMCPServersContent(m *model.Model, innerWidth int) string {
 
 		lines = append(lines, line)
 
-		// Show dependencies if selected
-		if selected && len(config.RequiresPortForwards) > 0 {
-			for _, pfName := range config.RequiresPortForwards {
+		// Port forward dependencies have been removed
+		if false {
+			for _, pfName := range []string{} {
 				pfLine := fmt.Sprintf("    └─ %s %s", design.SafeIcon(design.IconLink), pfName)
 
 				if pf, exists := m.PortForwards[pfName]; exists {
@@ -396,8 +389,7 @@ func renderDashboardStatusBar(m *model.Model, width int) string {
 	} else {
 		// Default status
 		leftText := design.TextSuccessStyle.Render("✓ Up")
-		rightText := components.FormatClusterInfo(m.ManagementClusterName, m.WorkloadClusterName)
-		statusBar = statusBar.WithLeftText(leftText).WithRightText(rightText)
+		statusBar = statusBar.WithLeftText(leftText)
 	}
 
 	return statusBar.Render()

@@ -240,8 +240,8 @@ func (a *AggregatorServer) updateCapabilities() {
 	// Get all servers
 	servers := a.registry.GetAllServers()
 
-	// Collect all items from connected servers
-	collected := collectItemsFromServers(servers, a.registry)
+	// Collect all items from connected servers AND core providers
+	collected := collectItemsFromServersAndProviders(servers, a.registry, a)
 
 	// Remove obsolete items
 	a.removeObsoleteItems(collected)

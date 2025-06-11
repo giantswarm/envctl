@@ -82,35 +82,11 @@ func ConvertPortForwardToListItem(pf *api.PortForwardServiceInfo) PortForwardLis
 	}
 }
 
-// BuildPortForwardsList creates a list model for port forwards
+// BuildPortForwardsList creates a list model for port forwards (deprecated - removed functionality)
 func BuildPortForwardsList(m *model.Model, width, height int, focused bool) *ServiceListModel {
+	// Port forwarding has been removed as part of the generic orchestrator refactoring
 	items := []list.Item{}
-
-	// Add port forwards from config order
-	for _, name := range m.PortForwardingConfig {
-		if pf, exists := m.PortForwards[name.Name]; exists {
-			items = append(items, ConvertPortForwardToListItem(pf))
-		} else {
-			// Create placeholder item for configured but not running port forward
-			items = append(items, PortForwardListItem{
-				BaseListItem: BaseListItem{
-					ID:          name.Name,
-					Name:        name.Name,
-					Status:      StatusStopped,
-					Health:      HealthUnknown,
-					Icon:        design.SafeIcon(name.Icon),
-					Description: fmt.Sprintf("%s/%s", name.TargetType, name.TargetName),
-					Details:     fmt.Sprintf("Port: %s:%s (Not Started)", name.LocalPort, name.RemotePort),
-				},
-				LocalPort:  0, // Will be populated when started
-				RemotePort: 0,
-				TargetType: name.TargetType,
-				TargetName: name.TargetName,
-			})
-		}
-	}
-
-	l := CreateStyledList("Port Forwards", items, width, height, focused)
+	l := CreateStyledList("Port Forwards (Deprecated)", items, width, height, focused)
 
 	return &ServiceListModel{
 		List:     l,

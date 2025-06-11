@@ -38,10 +38,6 @@ type MCPServerService struct {
 // NewMCPServerService creates a new MCP server service
 func NewMCPServerService(cfg config.MCPServerDefinition) *MCPServerService {
 	deps := []string{}
-	// Add dependencies based on configuration
-	if cfg.RequiresPortForwards != nil {
-		deps = append(deps, cfg.RequiresPortForwards...)
-	}
 
 	return &MCPServerService{
 		BaseService: services.NewBaseService(cfg.Name, services.TypeMCPServer, deps),

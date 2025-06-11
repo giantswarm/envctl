@@ -25,13 +25,6 @@ func TestNewProgram(t *testing.T) {
 			wcName:    "test-wc",
 			debugMode: false,
 			cfg: config.EnvctlConfig{
-				PortForwards: []config.PortForwardDefinition{
-					{
-						Name:       "test-forward",
-						LocalPort:  "8080",
-						RemotePort: "80",
-					},
-				},
 				MCPServers: []config.MCPServerDefinition{
 					{
 						Name:    "test-mcp",
@@ -59,23 +52,11 @@ func TestNewProgram(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name:      "with MCP servers and port forwards",
+			name:      "with MCP servers",
 			mcName:    "test-mc",
 			wcName:    "test-wc",
 			debugMode: false,
 			cfg: config.EnvctlConfig{
-				PortForwards: []config.PortForwardDefinition{
-					{
-						Name:       "forward1",
-						LocalPort:  "8080",
-						RemotePort: "80",
-					},
-					{
-						Name:       "forward2",
-						LocalPort:  "9090",
-						RemotePort: "90",
-					},
-				},
 				MCPServers: []config.MCPServerDefinition{
 					{
 						Name:    "mcp1",
@@ -101,11 +82,8 @@ func TestNewProgram(t *testing.T) {
 
 			// Create TUIConfig
 			tuiConfig := model.TUIConfig{
-				ManagementClusterName: tt.mcName,
-				WorkloadClusterName:   tt.wcName,
 				DebugMode:             tt.debugMode,
 				ColorMode:             "auto",
-				PortForwardingConfig:  tt.cfg.PortForwards,
 				MCPServerConfig:       tt.cfg.MCPServers,
 				AggregatorConfig:      tt.cfg.Aggregator,
 			}
@@ -128,13 +106,8 @@ func TestNewProgram(t *testing.T) {
 
 func TestNewProgram_Parameters(t *testing.T) {
 	// Test that parameters are properly passed through
-	mcName := "test-mc"
-	wcName := "test-wc"
 	debugMode := true
 	cfg := config.EnvctlConfig{
-		PortForwards: []config.PortForwardDefinition{
-			{Name: "test-pf"},
-		},
 		MCPServers: []config.MCPServerDefinition{
 			{Name: "test-mcp"},
 		},
@@ -146,13 +119,10 @@ func TestNewProgram_Parameters(t *testing.T) {
 
 	// Create TUIConfig
 	tuiConfig := model.TUIConfig{
-		ManagementClusterName: mcName,
-		WorkloadClusterName:   wcName,
-		DebugMode:             debugMode,
-		ColorMode:             "auto",
-		PortForwardingConfig:  cfg.PortForwards,
-		MCPServerConfig:       cfg.MCPServers,
-		AggregatorConfig:      cfg.Aggregator,
+		DebugMode:        debugMode,
+		ColorMode:        "auto",
+		MCPServerConfig:  cfg.MCPServers,
+		AggregatorConfig: cfg.Aggregator,
 	}
 
 	// Create the program
@@ -176,18 +146,6 @@ func TestNewProgram_ConfigValidation(t *testing.T) {
 			cfg:  config.EnvctlConfig{},
 		},
 		{
-			name: "config with invalid port forward",
-			cfg: config.EnvctlConfig{
-				PortForwards: []config.PortForwardDefinition{
-					{
-						Name:       "invalid",
-						LocalPort:  "0", // Invalid port
-						RemotePort: "80",
-					},
-				},
-			},
-		},
-		{
 			name: "config with disabled MCP servers",
 			cfg: config.EnvctlConfig{
 				MCPServers: []config.MCPServerDefinition{
@@ -209,11 +167,8 @@ func TestNewProgram_ConfigValidation(t *testing.T) {
 
 			// Create TUIConfig
 			tuiConfig := model.TUIConfig{
-				ManagementClusterName: "test-mc",
-				WorkloadClusterName:   "test-wc",
 				DebugMode:             false,
 				ColorMode:             "auto",
-				PortForwardingConfig:  tt.cfg.PortForwards,
 				MCPServerConfig:       tt.cfg.MCPServers,
 				AggregatorConfig:      tt.cfg.Aggregator,
 			}

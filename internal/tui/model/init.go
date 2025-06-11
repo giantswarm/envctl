@@ -31,15 +31,12 @@ func InitializeModel(cfg TUIConfig, logChannel <-chan logging.LogEntry) (*Model,
 		K8sServiceAPI:   cfg.K8sServiceAPI,
 		AggregatorAPI:   cfg.AggregatorAPI,
 
-		// Cluster info
-		ManagementClusterName: cfg.ManagementClusterName,
-		WorkloadClusterName:   cfg.WorkloadClusterName,
+		// Connection info
 		CurrentKubeContext:    currentContext,
 
 		// Configuration
-		PortForwardingConfig: cfg.PortForwardingConfig,
-		MCPServerConfig:      cfg.MCPServerConfig,
-		AggregatorConfig:     cfg.AggregatorConfig,
+		MCPServerConfig:  cfg.MCPServerConfig,
+		AggregatorConfig: cfg.AggregatorConfig,
 
 		// UI State
 		CurrentAppMode: ModeInitializing,

@@ -16,19 +16,15 @@ import (
 func TestConfigAdapter(t *testing.T) {
 	ctx := context.Background()
 
+	// Create a temporary directory for testing
+	tmpDir, err := os.MkdirTemp("", "envctl-config-test")
+	assert.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
 	// Create a test configuration
 	testConfig := &config.EnvctlConfig{
-		Clusters: []config.ClusterDefinition{
-			{Name: "test-cluster", Context: "test-context", Role: config.ClusterRoleTarget},
-		},
-		ActiveClusters: map[config.ClusterRole]string{
-			config.ClusterRoleTarget: "test-cluster",
-		},
 		MCPServers: []config.MCPServerDefinition{
 			{Name: "test-server", Type: config.MCPServerTypeLocalCommand},
-		},
-		PortForwards: []config.PortForwardDefinition{
-			{Name: "test-forward", Namespace: "default"},
 		},
 		Workflows: []config.WorkflowDefinition{
 			{Name: "test-workflow"},
@@ -41,15 +37,16 @@ func TestConfigAdapter(t *testing.T) {
 		},
 	}
 
-	// Create adapter
-	adapter := NewConfigAdapter(testConfig, "")
+	// Create adapter with temporary config path to avoid creating files in working directory
+	testConfigPath := filepath.Join(tmpDir, "config.yaml")
+	adapter := NewConfigAdapter(testConfig, testConfigPath)
 
 	t.Run("GetConfig", func(t *testing.T) {
 		cfg, err := adapter.GetConfig(ctx)
 		assert.NoError(t, err)
 		assert.NotNil(t, cfg)
-		assert.Len(t, cfg.Clusters, 1)
-		assert.Equal(t, "test-cluster", cfg.Clusters[0].Name)
+		assert.Len(t, cfg.MCPServers, 1)
+		assert.Equal(t, "test-server", cfg.MCPServers[0].Name)
 	})
 
 	t.Run("UpdateMCPServer", func(t *testing.T) {
@@ -117,34 +114,13 @@ func TestConfigAdapter(t *testing.T) {
 		assert.Equal(t, "containerd", settings.DefaultContainerRuntime)
 	})
 
-	t.Run("DeleteCluster", func(t *testing.T) {
-		// First add some clusters
-		testConfig.Clusters = []config.ClusterDefinition{
-			{Name: "cluster1", Context: "context1", Role: config.ClusterRoleTarget},
-			{Name: "cluster2", Context: "context2", Role: config.ClusterRoleObservability},
-		}
-		testConfig.ActiveClusters = map[config.ClusterRole]string{
-			config.ClusterRoleTarget:        "cluster1",
-			config.ClusterRoleObservability: "cluster2",
-		}
-
-		err := adapter.DeleteCluster(ctx, "cluster1")
-		assert.NoError(t, err)
-
-		cfg, _ := adapter.GetConfig(ctx)
-		assert.Len(t, cfg.Clusters, 1)
-		// Should also remove from active clusters
-		_, exists := cfg.ActiveClusters[config.ClusterRoleTarget]
-		assert.False(t, exists)
-	})
-
 	t.Run("SaveConfig", func(t *testing.T) {
-		// Create a temporary directory for testing
-		tmpDir, err := os.MkdirTemp("", "envctl-config-test")
+		// Create a separate temporary directory for this test
+		saveTestTmpDir, err := os.MkdirTemp("", "envctl-config-save-test")
 		assert.NoError(t, err)
-		defer os.RemoveAll(tmpDir)
+		defer os.RemoveAll(saveTestTmpDir)
 
-		testPath := filepath.Join(tmpDir, "test-config.yaml")
+		testPath := filepath.Join(saveTestTmpDir, "test-config.yaml")
 		adapter.configPath = testPath
 
 		// Save configuration
@@ -162,8 +138,8 @@ func TestConfigAdapter(t *testing.T) {
 		var loadedConfig config.EnvctlConfig
 		err = yaml.Unmarshal(data, &loadedConfig)
 		assert.NoError(t, err)
-		assert.Len(t, loadedConfig.Clusters, 1)
-		assert.Equal(t, "cluster2", loadedConfig.Clusters[0].Name)
+		assert.Len(t, loadedConfig.MCPServers, 1)
+		assert.Equal(t, "test-server", loadedConfig.MCPServers[0].Name)
 	})
 
 	t.Run("GetTools", func(t *testing.T) {
@@ -173,7 +149,6 @@ func TestConfigAdapter(t *testing.T) {
 		// Check that all expected tools are present
 		expectedTools := []string{
 			"config_get",
-			"config_get_clusters",
 			"config_update_mcp_server",
 			"config_delete_mcp_server",
 			"config_save",
@@ -209,12 +184,17 @@ func TestConfigAdapter(t *testing.T) {
 	})
 
 	t.Run("ReloadConfig", func(t *testing.T) {
-		// Create adapter with test config
+		// Create adapter with test config and temporary path for this subtest
+		reloadTestTmpDir, err := os.MkdirTemp("", "envctl-config-reload-test")
+		assert.NoError(t, err)
+		defer os.RemoveAll(reloadTestTmpDir)
+
+		reloadTestConfigPath := filepath.Join(reloadTestTmpDir, "config.yaml")
 		adapter := &ConfigAdapter{
 			config: &config.EnvctlConfig{
-				Clusters:       []config.ClusterDefinition{},
-				ActiveClusters: make(map[config.ClusterRole]string),
+				MCPServers: []config.MCPServerDefinition{},
 			},
+			configPath: reloadTestConfigPath,
 		}
 		api.RegisterConfig(adapter)
 
@@ -222,17 +202,22 @@ func TestConfigAdapter(t *testing.T) {
 		ctx := context.Background()
 
 		// Call ReloadConfig
-		err := adapter.ReloadConfig(ctx)
+		err = adapter.ReloadConfig(ctx)
 		assert.NoError(t, err, "ReloadConfig should not error when config is valid")
 	})
 
 	t.Run("ExecuteTool_config_reload", func(t *testing.T) {
-		// Create adapter
+		// Create adapter with temporary path for this subtest
+		reloadToolTestTmpDir, err := os.MkdirTemp("", "envctl-config-reload-tool-test")
+		assert.NoError(t, err)
+		defer os.RemoveAll(reloadToolTestTmpDir)
+
+		reloadToolTestConfigPath := filepath.Join(reloadToolTestTmpDir, "config.yaml")
 		adapter := &ConfigAdapter{
 			config: &config.EnvctlConfig{
-				Clusters:       []config.ClusterDefinition{},
-				ActiveClusters: make(map[config.ClusterRole]string),
+				MCPServers: []config.MCPServerDefinition{},
 			},
+			configPath: reloadToolTestConfigPath,
 		}
 		api.RegisterConfig(adapter)
 

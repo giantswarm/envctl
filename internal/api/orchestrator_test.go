@@ -190,20 +190,16 @@ func (m *mockServiceRegistryHandler) addService(svc ServiceInfo) {
 
 // mockOrchestratorHandler implements OrchestratorHandler for testing
 type mockOrchestratorHandler struct {
-	startErr   error
-	stopErr    error
+	startErr  error
+	stopErr   error
 	restartErr error
-	eventChan  chan ServiceStateChangedEvent
-	clusters   []ClusterDefinition
-	activeMap  map[ClusterRole]string
-	services   []ServiceStatus
+	eventChan chan ServiceStateChangedEvent
+	services  []ServiceStatus
 }
 
 func newMockOrchestratorHandler() *mockOrchestratorHandler {
 	return &mockOrchestratorHandler{
 		eventChan: make(chan ServiceStateChangedEvent, 100),
-		activeMap: make(map[ClusterRole]string),
-		clusters:  []ClusterDefinition{},
 		services:  []ServiceStatus{},
 	}
 }
@@ -251,26 +247,6 @@ func (m *mockOrchestratorHandler) RestartService(label string) error {
 
 func (m *mockOrchestratorHandler) SubscribeToStateChanges() <-chan ServiceStateChangedEvent {
 	return m.eventChan
-}
-
-func (m *mockOrchestratorHandler) GetAvailableClusters(role ClusterRole) []ClusterDefinition {
-	var result []ClusterDefinition
-	for _, c := range m.clusters {
-		if c.Role == role {
-			result = append(result, c)
-		}
-	}
-	return result
-}
-
-func (m *mockOrchestratorHandler) GetActiveCluster(role ClusterRole) (string, bool) {
-	name, ok := m.activeMap[role]
-	return name, ok
-}
-
-func (m *mockOrchestratorHandler) SwitchCluster(role ClusterRole, clusterName string) error {
-	m.activeMap[role] = clusterName
-	return nil
 }
 
 func (m *mockOrchestratorHandler) GetServiceStatus(label string) (*ServiceStatus, error) {
@@ -620,54 +596,5 @@ func TestOrchestratorAPI_GetAllServices(t *testing.T) {
 		if !foundLabels[svc.GetLabel()] {
 			t.Errorf("Service %s not found in results", svc.GetLabel())
 		}
-	}
-}
-
-func TestOrchestratorAPI_ClusterManagement(t *testing.T) {
-	// Setup mock handlers
-	mockOrch := newMockOrchestratorHandler()
-	mockOrch.clusters = []ClusterDefinition{
-		{Name: "mc-test", Role: ClusterRoleManagement, DisplayName: "Test MC", Icon: "🎯"},
-		{Name: "wc-test", Role: ClusterRoleWorkload, DisplayName: "Test WC", Icon: "🔧"},
-		{Name: "wc-test2", Role: ClusterRoleWorkload, DisplayName: "Test WC 2", Icon: "🔨"},
-	}
-	mockOrch.activeMap[ClusterRoleManagement] = "mc-test"
-	mockOrch.activeMap[ClusterRoleWorkload] = "wc-test"
-
-	RegisterOrchestrator(mockOrch)
-	defer func() {
-		RegisterOrchestrator(nil)
-	}()
-
-	api := NewOrchestratorAPI()
-
-	// Test GetAvailableClusters
-	clusters := api.GetAvailableClusters(ClusterRoleWorkload)
-	if len(clusters) != 2 {
-		t.Errorf("Expected 2 workload clusters, got %d", len(clusters))
-	}
-
-	// Test GetActiveCluster
-	active, ok := api.GetActiveCluster(ClusterRoleWorkload)
-	if !ok {
-		t.Error("Expected active cluster to be found")
-	}
-	if active != "wc-test" {
-		t.Errorf("Expected active cluster 'wc-test', got %s", active)
-	}
-
-	// Test SwitchCluster
-	err := api.SwitchCluster(ClusterRoleWorkload, "wc-test2")
-	if err != nil {
-		t.Errorf("Unexpected error switching cluster: %v", err)
-	}
-
-	// Verify switch
-	active, ok = api.GetActiveCluster(ClusterRoleWorkload)
-	if !ok {
-		t.Error("Expected active cluster to be found after switch")
-	}
-	if active != "wc-test2" {
-		t.Errorf("Expected active cluster 'wc-test2' after switch, got %s", active)
 	}
 }

@@ -120,12 +120,10 @@ func TestAppModel_Update_OtherMessages(t *testing.T) {
 func TestAppModel_View(t *testing.T) {
 	// Create a test model with some state
 	m := &model.Model{
-		Width:                 80,
-		Height:                24,
-		CurrentAppMode:        model.ModeMainDashboard,
-		ManagementClusterName: "test-mc",
-		WorkloadClusterName:   "test-wc",
-		CurrentKubeContext:    "test-context",
+		Width:              80,
+		Height:             24,
+		CurrentAppMode:     model.ModeMainDashboard,
+		CurrentKubeContext: "test-context",
 	}
 	app := NewAppModel(m)
 

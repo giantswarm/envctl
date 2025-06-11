@@ -118,6 +118,21 @@ func collectItemsFromServers(servers map[string]*ServerInfo, registry *ServerReg
 	return result
 }
 
+// collectItemsFromServersAndProviders collects all items from connected servers AND core providers
+func collectItemsFromServersAndProviders(servers map[string]*ServerInfo, registry *ServerRegistry, a *AggregatorServer) *collectResult {
+	// Start with regular server items
+	result := collectItemsFromServers(servers, registry)
+
+	// Add core tools from providers (workflow, capability, orchestrator, config, mcp)
+	// These are the tools that get added by createToolsFromProviders()
+	coreTools := a.createToolsFromProviders()
+	for _, tool := range coreTools {
+		result.newTools[tool.Tool.Name] = struct{}{}
+	}
+
+	return result
+}
+
 // removeObsoleteItems is a generic function to remove items that no longer exist
 func removeObsoleteItems(
 	manager *activeItemManager,

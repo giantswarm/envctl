@@ -17,7 +17,7 @@ func TestConnectCmd_Flags(t *testing.T) {
 		if noTUIFlag.DefValue != "false" {
 			t.Errorf("Expected no-tui default value to be false, got %s", noTUIFlag.DefValue)
 		}
-		if noTUIFlag.Usage != "Disable TUI and run port forwarding in the background" {
+		if noTUIFlag.Usage != "Disable TUI and run services in the background" {
 			t.Errorf("Unexpected no-tui usage text: %s", noTUIFlag.Usage)
 		}
 	}
@@ -53,13 +53,13 @@ func TestConnectCmd_Usage(t *testing.T) {
 	cmd := connectCmdDef
 
 	// Test Use string
-	expectedUse := "connect <management-cluster> [workload-cluster-shortname]"
+	expectedUse := "connect"
 	if cmd.Use != expectedUse {
 		t.Errorf("Expected Use %q, got %q", expectedUse, cmd.Use)
 	}
 
 	// Test Short description
-	expectedShort := "Connect to Giant Swarm K8s and managed services with an interactive TUI or CLI mode."
+	expectedShort := "Connect to Giant Swarm managed services with an interactive TUI or CLI mode."
 	if cmd.Short != expectedShort {
 		t.Errorf("Expected Short %q, got %q", expectedShort, cmd.Short)
 	}

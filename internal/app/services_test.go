@@ -28,11 +28,10 @@ func TestInitializeServices(t *testing.T) {
 		{
 			name: "basic initialization without aggregator",
 			config: &Config{
-				ManagementCluster: "test-mc",
-				WorkloadCluster:   "test-wc",
+				NoTUI: false,
+				Debug: true,
 				EnvctlConfig: &config.EnvctlConfig{
-					PortForwards: []config.PortForwardDefinition{},
-					MCPServers:   []config.MCPServerDefinition{},
+					MCPServers: []config.MCPServerDefinition{},
 					Aggregator: config.AggregatorConfig{
 						Enabled: false,
 						Port:    0,
@@ -61,10 +60,9 @@ func TestInitializeServices(t *testing.T) {
 		{
 			name: "initialization with aggregator",
 			config: &Config{
-				ManagementCluster: "test-mc",
-				WorkloadCluster:   "",
+				NoTUI: true,
+				Debug: false,
 				EnvctlConfig: &config.EnvctlConfig{
-					PortForwards: []config.PortForwardDefinition{},
 					MCPServers: []config.MCPServerDefinition{
 						{Name: "test-mcp-server"},
 					},
@@ -85,9 +83,9 @@ func TestInitializeServices(t *testing.T) {
 		{
 			name: "initialization with default aggregator port",
 			config: &Config{
-				ManagementCluster: "test-mc",
+				NoTUI: true,
+				Debug: false,
 				EnvctlConfig: &config.EnvctlConfig{
-					PortForwards: []config.PortForwardDefinition{},
 					MCPServers: []config.MCPServerDefinition{
 						{Name: "test-mcp-server"},
 					},
@@ -129,12 +127,9 @@ func TestInitializeServices(t *testing.T) {
 
 func TestInitializeServices_OrchestratorConfig(t *testing.T) {
 	cfg := &Config{
-		ManagementCluster: "test-mc",
-		WorkloadCluster:   "test-wc",
+		NoTUI: true,
+		Debug: false,
 		EnvctlConfig: &config.EnvctlConfig{
-			PortForwards: []config.PortForwardDefinition{
-				{Name: "test-pf"},
-			},
 			MCPServers: []config.MCPServerDefinition{
 				{Name: "test-mcp"},
 			},
@@ -147,18 +142,10 @@ func TestInitializeServices_OrchestratorConfig(t *testing.T) {
 	// We can't easily test the full initialization without mocking orchestrator.New
 	// But we can verify that the config is passed correctly
 	expectedConfig := orchestrator.Config{
-		MCName:     "test-mc",
-		WCName:     "test-wc",
 		MCPServers: cfg.EnvctlConfig.MCPServers,
 	}
 
 	// Verify the expected config matches what we expect to be passed
-	if expectedConfig.MCName != cfg.ManagementCluster {
-		t.Errorf("Expected MCName = %s, got %s", cfg.ManagementCluster, expectedConfig.MCName)
-	}
-	if expectedConfig.WCName != cfg.WorkloadCluster {
-		t.Errorf("Expected WCName = %s, got %s", cfg.WorkloadCluster, expectedConfig.WCName)
-	}
 	if len(expectedConfig.MCPServers) != len(cfg.EnvctlConfig.MCPServers) {
 		t.Errorf("Expected %d MCPServers, got %d", len(cfg.EnvctlConfig.MCPServers), len(expectedConfig.MCPServers))
 	}
@@ -167,12 +154,11 @@ func TestInitializeServices_OrchestratorConfig(t *testing.T) {
 // Test that services are created
 func TestServices_Creation(t *testing.T) {
 	cfg := &Config{
-		ManagementCluster: "test-mc",
-		WorkloadCluster:   "test-wc",
+		NoTUI: true,
+		Debug: false,
 		EnvctlConfig: &config.EnvctlConfig{
-			PortForwards: []config.PortForwardDefinition{},
-			MCPServers:   []config.MCPServerDefinition{},
-			Aggregator:   config.AggregatorConfig{Enabled: false},
+			MCPServers: []config.MCPServerDefinition{},
+			Aggregator: config.AggregatorConfig{Enabled: false},
 		},
 	}
 

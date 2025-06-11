@@ -53,11 +53,8 @@ func runTUIMode(ctx context.Context, config *Config, services *Services) error {
 
 	// Create and configure the TUI program
 	p, err := controller.NewProgram(model.TUIConfig{
-		ManagementClusterName: config.ManagementCluster,
-		WorkloadClusterName:   config.WorkloadCluster,
 		DebugMode:             config.Debug,
 		ColorMode:             "auto",
-		PortForwardingConfig:  config.EnvctlConfig.PortForwards,
 		MCPServerConfig:       config.EnvctlConfig.MCPServers,
 		AggregatorConfig:      config.EnvctlConfig.Aggregator,
 		Orchestrator:          services.Orchestrator,

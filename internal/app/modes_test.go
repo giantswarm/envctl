@@ -30,13 +30,11 @@ func TestModeSelection(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &Config{
-				ManagementCluster: "test-mc",
-				NoTUI:             tt.noTUI,
-				Debug:             false,
+				NoTUI: tt.noTUI,
+				Debug: false,
 				EnvctlConfig: &config.EnvctlConfig{
-					PortForwards: []config.PortForwardDefinition{},
-					MCPServers:   []config.MCPServerDefinition{},
-					Aggregator:   config.AggregatorConfig{},
+					MCPServers: []config.MCPServerDefinition{},
+					Aggregator: config.AggregatorConfig{},
 				},
 			}
 
@@ -68,31 +66,23 @@ func TestConfigValidation(t *testing.T) {
 		wantError bool
 	}{
 		{
-			name: "valid config with MC only",
+			name: "valid config with basic settings",
 			cfg: &Config{
-				ManagementCluster: "test-mc",
-				WorkloadCluster:   "",
-				NoTUI:             true,
-				Debug:             false,
+				NoTUI: true,
+				Debug: false,
 				EnvctlConfig: &config.EnvctlConfig{
-					PortForwards: []config.PortForwardDefinition{},
-					MCPServers:   []config.MCPServerDefinition{},
-					Aggregator:   config.AggregatorConfig{},
+					MCPServers: []config.MCPServerDefinition{},
+					Aggregator: config.AggregatorConfig{},
 				},
 			},
 			wantError: false,
 		},
 		{
-			name: "valid config with MC and WC",
+			name: "valid config with debug enabled",
 			cfg: &Config{
-				ManagementCluster: "test-mc",
-				WorkloadCluster:   "test-wc",
-				NoTUI:             false,
-				Debug:             true,
+				NoTUI: false,
+				Debug: true,
 				EnvctlConfig: &config.EnvctlConfig{
-					PortForwards: []config.PortForwardDefinition{
-						{Name: "test-pf", Enabled: true},
-					},
 					MCPServers: []config.MCPServerDefinition{
 						{Name: "test-mcp", Enabled: true},
 					},
@@ -113,16 +103,8 @@ func TestConfigValidation(t *testing.T) {
 				t.Error("EnvctlConfig should not be nil for valid configs")
 			}
 
-			// Validate management cluster is set for non-error cases
-			if tt.cfg.ManagementCluster == "" && !tt.wantError {
-				t.Error("ManagementCluster should not be empty for valid configs")
-			}
-
 			// Validate that the config has the expected structure
 			if tt.cfg.EnvctlConfig != nil {
-				if tt.cfg.EnvctlConfig.PortForwards == nil {
-					t.Error("PortForwards slice should not be nil")
-				}
 				if tt.cfg.EnvctlConfig.MCPServers == nil {
 					t.Error("MCPServers slice should not be nil")
 				}
@@ -153,12 +135,10 @@ func TestModeHandlerSelection(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &Config{
-				ManagementCluster: "test-mc",
-				NoTUI:             tt.noTUI,
+				NoTUI: tt.noTUI,
 				EnvctlConfig: &config.EnvctlConfig{
-					PortForwards: []config.PortForwardDefinition{},
-					MCPServers:   []config.MCPServerDefinition{},
-					Aggregator:   config.AggregatorConfig{},
+					MCPServers: []config.MCPServerDefinition{},
+					Aggregator: config.AggregatorConfig{},
 				},
 			}
 
@@ -180,13 +160,10 @@ func TestModeHandlerSelection(t *testing.T) {
 func TestConfigDefaults(t *testing.T) {
 	// Test that configs have sensible defaults and validation
 	cfg := &Config{
-		ManagementCluster: "test-mc",
-		WorkloadCluster:   "test-wc",
-		NoTUI:             false,
-		Debug:             true,
+		NoTUI: false,
+		Debug: true,
 		EnvctlConfig: &config.EnvctlConfig{
-			PortForwards: []config.PortForwardDefinition{},
-			MCPServers:   []config.MCPServerDefinition{},
+			MCPServers: []config.MCPServerDefinition{},
 			Aggregator: config.AggregatorConfig{
 				Port:    0, // Should get default
 				Host:    "",
@@ -196,16 +173,8 @@ func TestConfigDefaults(t *testing.T) {
 	}
 
 	// Verify the config structure is valid
-	if cfg.ManagementCluster == "" {
-		t.Error("ManagementCluster should not be empty")
-	}
-
 	if cfg.EnvctlConfig == nil {
 		t.Error("EnvctlConfig should not be nil")
-	}
-
-	if cfg.EnvctlConfig.PortForwards == nil {
-		t.Error("PortForwards should not be nil")
 	}
 
 	if cfg.EnvctlConfig.MCPServers == nil {

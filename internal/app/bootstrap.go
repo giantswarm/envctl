@@ -26,7 +26,7 @@ func NewApplication(cfg *Config) (*Application, error) {
 	logging.InitForCLI(appLogLevel, os.Stdout)
 
 	// Load environment configuration
-	envctlCfg, err := config.LoadConfig(cfg.ManagementCluster, cfg.WorkloadCluster)
+	envctlCfg, err := config.LoadConfig()
 	if err != nil {
 		logging.Error("Bootstrap", err, "Failed to load envctl configuration")
 		return nil, fmt.Errorf("failed to load envctl configuration: %w", err)

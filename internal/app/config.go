@@ -6,10 +6,6 @@ import (
 
 // Config holds the application configuration
 type Config struct {
-	// Cluster configuration
-	ManagementCluster string
-	WorkloadCluster   string
-
 	// UI mode
 	NoTUI bool
 
@@ -24,12 +20,10 @@ type Config struct {
 }
 
 // NewConfig creates a new application configuration
-func NewConfig(managementCluster, workloadCluster string, noTUI, debug, yolo bool) *Config {
+func NewConfig(noTUI, debug, yolo bool) *Config {
 	return &Config{
-		ManagementCluster: managementCluster,
-		WorkloadCluster:   workloadCluster,
-		NoTUI:             noTUI,
-		Debug:             debug,
-		Yolo:              yolo,
+		NoTUI: noTUI,
+		Debug: debug,
+		Yolo:  yolo,
 	}
 }

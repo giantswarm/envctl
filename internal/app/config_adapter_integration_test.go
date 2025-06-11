@@ -29,12 +29,6 @@ func TestConfigReloadIntegration(t *testing.T) {
 
 	// Create initial configuration
 	initialConfig := &config.EnvctlConfig{
-		Clusters: []config.ClusterDefinition{
-			{Name: "test-cluster", Context: "test-context", Role: config.ClusterRoleTarget},
-		},
-		ActiveClusters: map[config.ClusterRole]string{
-			config.ClusterRoleTarget: "test-cluster",
-		},
 		MCPServers: []config.MCPServerDefinition{
 			{Name: "test-server", Type: config.MCPServerTypeLocalCommand},
 		},
@@ -60,20 +54,9 @@ func TestConfigReloadIntegration(t *testing.T) {
 
 	// Modify the config file directly
 	modifiedConfig := &config.EnvctlConfig{
-		Clusters: []config.ClusterDefinition{
-			{Name: "test-cluster", Context: "test-context", Role: config.ClusterRoleTarget},
-			{Name: "new-cluster", Context: "new-context", Role: config.ClusterRoleObservability},
-		},
-		ActiveClusters: map[config.ClusterRole]string{
-			config.ClusterRoleTarget:        "test-cluster",
-			config.ClusterRoleObservability: "new-cluster",
-		},
 		MCPServers: []config.MCPServerDefinition{
 			{Name: "test-server", Type: config.MCPServerTypeLocalCommand},
 			{Name: "new-server", Type: config.MCPServerTypeContainer},
-		},
-		PortForwards: []config.PortForwardDefinition{
-			{Name: "new-forward", Namespace: "test"},
 		},
 	}
 
@@ -93,12 +76,8 @@ func TestConfigReloadIntegration(t *testing.T) {
 	// Verify config has been reloaded
 	cfg, err = adapter.GetConfig(ctx)
 	assert.NoError(t, err)
-	assert.Len(t, cfg.Clusters, 2)
 	assert.Len(t, cfg.MCPServers, 2)
-	assert.Len(t, cfg.PortForwards, 1)
-	assert.Equal(t, "new-cluster", cfg.Clusters[1].Name)
 	assert.Equal(t, "new-server", cfg.MCPServers[1].Name)
-	assert.Equal(t, "new-forward", cfg.PortForwards[0].Name)
 }
 
 func TestConfigReloadTool(t *testing.T) {
@@ -111,8 +90,7 @@ func TestConfigReloadTool(t *testing.T) {
 
 	// Create initial configuration
 	initialConfig := &config.EnvctlConfig{
-		Clusters:       []config.ClusterDefinition{},
-		ActiveClusters: make(map[config.ClusterRole]string),
+		MCPServers: []config.MCPServerDefinition{},
 	}
 
 	// Write initial config
@@ -131,7 +109,7 @@ func TestConfigReloadTool(t *testing.T) {
 	for _, tool := range tools {
 		if tool.Name == "config_reload" {
 			found = true
-			assert.Equal(t, "Reload configuration from disk including capability definitions", tool.Description)
+			assert.Equal(t, "Reload configuration from file", tool.Description)
 			break
 		}
 	}

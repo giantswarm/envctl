@@ -65,10 +65,14 @@ func (c *StdioClient) Initialize(ctx context.Context) error {
 
 	logging.Debug("StdioClient", "Stdio client created, initializing MCP protocol for %s", c.command)
 
-	// Initialize the MCP protocol with a longer timeout for first-time npx downloads
-	// Use a 2-minute timeout to allow for package downloads
-	initCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-	defer cancel()
+	// Initialize the MCP protocol with timeout from context
+	// If no timeout in context, add a reasonable default
+	initCtx := ctx
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		initCtx, cancel = context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+	}
 
 	initResult, err := mcpClient.Initialize(initCtx, mcp.InitializeRequest{
 		Params: struct {
@@ -88,7 +92,11 @@ func (c *StdioClient) Initialize(ctx context.Context) error {
 	})
 	if err != nil {
 		logging.Error("StdioClient", err, "Failed to initialize MCP protocol for %s", c.command)
-		mcpClient.Close()
+		// Ensure we close the client to clean up any processes
+		closeErr := mcpClient.Close()
+		if closeErr != nil {
+			logging.Debug("StdioClient", "Error closing failed client for %s: %v", c.command, closeErr)
+		}
 		return fmt.Errorf("failed to initialize MCP protocol: %w", err)
 	}
 

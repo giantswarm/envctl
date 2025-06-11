@@ -28,15 +28,12 @@ type ServiceRegistryHandler interface {
 	GetByType(serviceType ServiceType) []ServiceInfo
 }
 
-// OrchestratorHandler manages service lifecycle and clusters
+// OrchestratorHandler manages service lifecycle
 type OrchestratorHandler interface {
 	StartService(label string) error
 	StopService(label string) error
 	RestartService(label string) error
 	SubscribeToStateChanges() <-chan ServiceStateChangedEvent
-	GetAvailableClusters(role ClusterRole) []ClusterDefinition
-	GetActiveCluster(role ClusterRole) (string, bool)
-	SwitchCluster(role ClusterRole, clusterName string) error
 	GetServiceStatus(label string) (*ServiceStatus, error)
 	GetAllServices() []ServiceStatus
 	ToolProvider
@@ -67,26 +64,20 @@ type MCPServiceHandler interface {
 type ConfigHandler interface {
 	// Get configuration
 	GetConfig(ctx context.Context) (*config.EnvctlConfig, error)
-	GetClusters(ctx context.Context) ([]config.ClusterDefinition, error)
-	GetActiveClusters(ctx context.Context) (map[config.ClusterRole]string, error)
 	GetMCPServers(ctx context.Context) ([]config.MCPServerDefinition, error)
-	GetPortForwards(ctx context.Context) ([]config.PortForwardDefinition, error)
 	GetWorkflows(ctx context.Context) ([]config.WorkflowDefinition, error)
 	GetAggregatorConfig(ctx context.Context) (*config.AggregatorConfig, error)
 	GetGlobalSettings(ctx context.Context) (*config.GlobalSettings, error)
 
 	// Update configuration
 	UpdateMCPServer(ctx context.Context, server config.MCPServerDefinition) error
-	UpdatePortForward(ctx context.Context, portForward config.PortForwardDefinition) error
 	UpdateWorkflow(ctx context.Context, workflow config.WorkflowDefinition) error
 	UpdateAggregatorConfig(ctx context.Context, aggregator config.AggregatorConfig) error
 	UpdateGlobalSettings(ctx context.Context, settings config.GlobalSettings) error
 
 	// Delete configuration
 	DeleteMCPServer(ctx context.Context, name string) error
-	DeletePortForward(ctx context.Context, name string) error
 	DeleteWorkflow(ctx context.Context, name string) error
-	DeleteCluster(ctx context.Context, name string) error
 
 	// Save configuration
 	SaveConfig(ctx context.Context) error

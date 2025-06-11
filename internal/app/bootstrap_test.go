@@ -20,32 +20,53 @@ func TestNewApplication_ConfigValidation(t *testing.T) {
 		{
 			name: "valid config structure",
 			cfg: &Config{
-				ManagementCluster: "test-mc",
-				WorkloadCluster:   "test-wc",
-				NoTUI:             false,
-				Debug:             true,
+				NoTUI: false,
+				Debug: true,
+				// Pre-populate EnvctlConfig to avoid LoadConfig call
+				EnvctlConfig: &config.EnvctlConfig{
+					MCPServers: []config.MCPServerDefinition{},
+					Aggregator: config.AggregatorConfig{
+						Port:    8090,
+						Host:    "localhost",
+						Enabled: false,
+					},
+				},
 			},
 			expectError: false,
 			errorReason: "valid config should succeed",
 		},
 		{
-			name: "empty management cluster",
+			name: "no-tui config",
 			cfg: &Config{
-				ManagementCluster: "",
-				WorkloadCluster:   "test-wc",
-				NoTUI:             true,
-				Debug:             false,
+				NoTUI: true,
+				Debug: false,
+				// Pre-populate EnvctlConfig to avoid LoadConfig call
+				EnvctlConfig: &config.EnvctlConfig{
+					MCPServers: []config.MCPServerDefinition{},
+					Aggregator: config.AggregatorConfig{
+						Port:    8090,
+						Host:    "localhost",
+						Enabled: false,
+					},
+				},
 			},
 			expectError: false,
-			errorReason: "empty MC is allowed",
+			errorReason: "no-tui config should work",
 		},
 		{
 			name: "minimal config",
 			cfg: &Config{
-				ManagementCluster: "test-mc",
-				WorkloadCluster:   "",
-				NoTUI:             true,
-				Debug:             false,
+				NoTUI: true,
+				Debug: false,
+				// Pre-populate EnvctlConfig to avoid LoadConfig call
+				EnvctlConfig: &config.EnvctlConfig{
+					MCPServers: []config.MCPServerDefinition{},
+					Aggregator: config.AggregatorConfig{
+						Port:    8090,
+						Host:    "localhost",
+						Enabled: false,
+					},
+				},
 			},
 			expectError: false,
 			errorReason: "minimal config should work",
@@ -73,9 +94,6 @@ func TestNewApplication_ConfigValidation(t *testing.T) {
 
 			// Verify the config is properly set if app was created
 			if app != nil {
-				if app.config.ManagementCluster != tt.cfg.ManagementCluster {
-					t.Errorf("ManagementCluster = %s, want %s", app.config.ManagementCluster, tt.cfg.ManagementCluster)
-				}
 				if app.config.NoTUI != tt.cfg.NoTUI {
 					t.Errorf("NoTUI = %v, want %v", app.config.NoTUI, tt.cfg.NoTUI)
 				}
@@ -90,13 +108,10 @@ func TestNewApplication_ConfigValidation(t *testing.T) {
 func TestApplication_Structure(t *testing.T) {
 	// Test that the application structure is properly set up
 	cfg := &Config{
-		ManagementCluster: "test-mc",
-		WorkloadCluster:   "test-wc",
-		NoTUI:             false,
-		Debug:             true,
+		NoTUI: false,
+		Debug: true,
 		EnvctlConfig: &config.EnvctlConfig{
-			PortForwards: []config.PortForwardDefinition{},
-			MCPServers:   []config.MCPServerDefinition{},
+			MCPServers: []config.MCPServerDefinition{},
 			Aggregator: config.AggregatorConfig{
 				Port:    8090,
 				Host:    "localhost",
@@ -144,11 +159,9 @@ func TestApplication_ModeSelection(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &Config{
-				ManagementCluster: "test-mc",
-				NoTUI:             tt.noTUI,
+				NoTUI: tt.noTUI,
 				EnvctlConfig: &config.EnvctlConfig{
-					PortForwards: []config.PortForwardDefinition{},
-					MCPServers:   []config.MCPServerDefinition{},
+					MCPServers: []config.MCPServerDefinition{},
 					Aggregator: config.AggregatorConfig{
 						Port:    8090,
 						Host:    "localhost",
@@ -185,26 +198,15 @@ func TestApplication_ModeSelection(t *testing.T) {
 func TestConfig_WithEnvctlConfig(t *testing.T) {
 	// Test configuration with envctl config
 	cfg := &Config{
-		ManagementCluster: "test-mc",
-		WorkloadCluster:   "test-wc",
-		NoTUI:             true,
-		Debug:             false,
+		NoTUI: true,
+		Debug: false,
 		EnvctlConfig: &config.EnvctlConfig{
-			PortForwards: []config.PortForwardDefinition{
-				{
-					Name:       "test-pf",
-					Enabled:    true,
-					Namespace:  "default",
-					LocalPort:  "8080",
-					RemotePort: "80",
-				},
-			},
 			MCPServers: []config.MCPServerDefinition{
 				{
-					Name:    "test-mcp",
-					Enabled: true,
+					Name:    "test-server",
 					Type:    config.MCPServerTypeLocalCommand,
-					Command: []string{"test-command"},
+					Command: []string{"echo", "test"},
+					Enabled: true,
 				},
 			},
 			Aggregator: config.AggregatorConfig{
@@ -216,9 +218,6 @@ func TestConfig_WithEnvctlConfig(t *testing.T) {
 	}
 
 	// Verify configuration is accessible
-	if len(cfg.EnvctlConfig.PortForwards) != 1 {
-		t.Errorf("Expected 1 port forward, got %d", len(cfg.EnvctlConfig.PortForwards))
-	}
 	if len(cfg.EnvctlConfig.MCPServers) != 1 {
 		t.Errorf("Expected 1 MCP server, got %d", len(cfg.EnvctlConfig.MCPServers))
 	}
@@ -246,8 +245,16 @@ func TestConfigureLogging(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &Config{
-				ManagementCluster: "test-mc",
-				Debug:             tt.debug,
+				Debug: tt.debug,
+				// Pre-populate EnvctlConfig to avoid LoadConfig call
+				EnvctlConfig: &config.EnvctlConfig{
+					MCPServers: []config.MCPServerDefinition{},
+					Aggregator: config.AggregatorConfig{
+						Port:    8090,
+						Host:    "localhost",
+						Enabled: false,
+					},
+				},
 			}
 
 			// Verify debug flag is set correctly

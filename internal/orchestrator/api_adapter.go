@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"envctl/internal/api"
-	"envctl/internal/config"
 	"envctl/internal/services"
 )
 
@@ -122,36 +121,7 @@ func (a *Adapter) GetAllServices() []api.ServiceStatus {
 	return statuses
 }
 
-// Cluster management
-func (a *Adapter) GetAvailableClusters(role api.ClusterRole) []api.ClusterDefinition {
-	// Convert API role to config role
-	configRole := config.ClusterRole(role)
-	clusters := a.orchestrator.GetAvailableClusters(configRole)
 
-	// Convert config clusters to API clusters
-	apiClusters := make([]api.ClusterDefinition, 0, len(clusters))
-	for _, cluster := range clusters {
-		apiClusters = append(apiClusters, api.ClusterDefinition{
-			Name:        cluster.Name,
-			Context:     cluster.Context,
-			Role:        api.ClusterRole(cluster.Role),
-			DisplayName: cluster.DisplayName,
-			Icon:        cluster.Icon,
-		})
-	}
-
-	return apiClusters
-}
-
-func (a *Adapter) GetActiveCluster(role api.ClusterRole) (string, bool) {
-	configRole := config.ClusterRole(role)
-	return a.orchestrator.GetActiveCluster(configRole)
-}
-
-func (a *Adapter) SwitchCluster(role api.ClusterRole, clusterName string) error {
-	configRole := config.ClusterRole(role)
-	return a.orchestrator.SwitchCluster(configRole, clusterName)
-}
 
 // GetTools returns all tools this provider offers
 func (a *Adapter) GetTools() []api.ToolMetadata {
@@ -209,49 +179,7 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 				},
 			},
 		},
-		// Cluster management tools
-		{
-			Name:        "cluster_list",
-			Description: "List available clusters by role",
-			Parameters: []api.ParameterMetadata{
-				{
-					Name:        "role",
-					Type:        "string",
-					Required:    true,
-					Description: "Cluster role: talos, management, workload, or observability",
-				},
-			},
-		},
-		{
-			Name:        "cluster_switch",
-			Description: "Switch active cluster for a role",
-			Parameters: []api.ParameterMetadata{
-				{
-					Name:        "role",
-					Type:        "string",
-					Required:    true,
-					Description: "Cluster role: talos, management, workload, or observability",
-				},
-				{
-					Name:        "cluster_name",
-					Type:        "string",
-					Required:    true,
-					Description: "Name of the cluster to switch to",
-				},
-			},
-		},
-		{
-			Name:        "cluster_active",
-			Description: "Get currently active cluster for a role",
-			Parameters: []api.ParameterMetadata{
-				{
-					Name:        "role",
-					Type:        "string",
-					Required:    true,
-					Description: "Cluster role: talos, management, workload, or observability",
-				},
-			},
-		},
+
 	}
 }
 
@@ -268,12 +196,6 @@ func (a *Adapter) ExecuteTool(ctx context.Context, toolName string, args map[str
 		return a.handleServiceRestart(args)
 	case "service_status":
 		return a.handleServiceStatus(args)
-	case "cluster_list":
-		return a.handleClusterList(args)
-	case "cluster_switch":
-		return a.handleClusterSwitch(args)
-	case "cluster_active":
-		return a.handleClusterActive(args)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", toolName)
 	}
@@ -383,85 +305,4 @@ func (a *Adapter) handleServiceStatus(args map[string]interface{}) (*api.CallToo
 	}, nil
 }
 
-// Cluster management handlers
-func (a *Adapter) handleClusterList(args map[string]interface{}) (*api.CallToolResult, error) {
-	roleStr, ok := args["role"].(string)
-	if !ok {
-		return &api.CallToolResult{
-			Content: []interface{}{"role is required"},
-			IsError: true,
-		}, nil
-	}
 
-	role := api.ClusterRole(roleStr)
-	clusters := a.GetAvailableClusters(role)
-
-	// Get active cluster
-	activeName, _ := a.GetActiveCluster(role)
-
-	result := map[string]interface{}{
-		"clusters": clusters,
-		"active":   activeName,
-		"total":    len(clusters),
-	}
-
-	return &api.CallToolResult{
-		Content: []interface{}{result},
-		IsError: false,
-	}, nil
-}
-
-func (a *Adapter) handleClusterSwitch(args map[string]interface{}) (*api.CallToolResult, error) {
-	roleStr, ok := args["role"].(string)
-	if !ok {
-		return &api.CallToolResult{
-			Content: []interface{}{"role is required"},
-			IsError: true,
-		}, nil
-	}
-
-	clusterName, ok := args["cluster_name"].(string)
-	if !ok {
-		return &api.CallToolResult{
-			Content: []interface{}{"cluster_name is required"},
-			IsError: true,
-		}, nil
-	}
-
-	role := api.ClusterRole(roleStr)
-	if err := a.SwitchCluster(role, clusterName); err != nil {
-		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Failed to switch cluster: %v", err)},
-			IsError: true,
-		}, nil
-	}
-
-	return &api.CallToolResult{
-		Content: []interface{}{fmt.Sprintf("Successfully switched %s cluster to '%s'", roleStr, clusterName)},
-		IsError: false,
-	}, nil
-}
-
-func (a *Adapter) handleClusterActive(args map[string]interface{}) (*api.CallToolResult, error) {
-	roleStr, ok := args["role"].(string)
-	if !ok {
-		return &api.CallToolResult{
-			Content: []interface{}{"role is required"},
-			IsError: true,
-		}, nil
-	}
-
-	role := api.ClusterRole(roleStr)
-	activeName, exists := a.GetActiveCluster(role)
-
-	result := map[string]interface{}{
-		"role":   roleStr,
-		"active": activeName,
-		"exists": exists,
-	}
-
-	return &api.CallToolResult{
-		Content: []interface{}{result},
-		IsError: false,
-	}, nil
-}

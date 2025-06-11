@@ -35,11 +35,8 @@ const (
 
 // TUI configuration struct
 type TUIConfig struct {
-	ManagementClusterName string
-	WorkloadClusterName   string
 	DebugMode             bool
 	ColorMode             string
-	PortForwardingConfig  []config.PortForwardDefinition
 	MCPServerConfig       []config.MCPServerDefinition
 	AggregatorConfig      config.AggregatorConfig
 	Orchestrator          *orchestrator.Orchestrator
@@ -166,9 +163,7 @@ type Model struct {
 	DebugMode       bool
 	ColorMode       string
 
-	// Cluster and Connection Info
-	ManagementClusterName string
-	WorkloadClusterName   string
+	// Connection Info
 	CurrentKubeContext    string
 	QuittingMessage       string
 
@@ -198,9 +193,8 @@ type Model struct {
 	MCPServerOrder     []string
 
 	// Configuration
-	PortForwardingConfig []config.PortForwardDefinition
-	MCPServerConfig      []config.MCPServerDefinition
-	AggregatorConfig     config.AggregatorConfig
+	MCPServerConfig  []config.MCPServerDefinition
+	AggregatorConfig config.AggregatorConfig
 
 	// UI State & Output
 	ActivityLog              []string
