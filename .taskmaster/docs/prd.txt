@@ -1,486 +1,84 @@
-# PRD: Decoupling envctl from Giant Swarm-specific dependencies
+# PRD: The `envctl` Generic Orchestration Platform
 
 <context>
-envctl is currently hardcoded to use Teleport (Giant Swarm's authentication) and specific kubectl patterns. This limits its usefulness for users outside Giant Swarm who may use different authentication methods (cloud providers, kubeconfig files, etc.) or have different port forwarding needs.
+This document outlines the final architecture for `envctl`, transforming it from a Kubernetes-centric tool into a truly generic orchestration platform. The core principle is the complete removal of hardcoded concepts like "clusters" and "port-forwards" from the `envctl` core. These will be reimplemented as user-defined **Capabilities**.
 
-This PRD describes how to transform envctl into a flexible, capability-based system that works for any Kubernetes user while maintaining full backwards compatibility for Giant Swarm users.
-
-# Product Requirements
-## Capability Registry
-- Central registry for capability definitions (auth_provider, discovery_provider, portforward_provider, cluster_provider)
-- Thread-safe implementation with observer pattern for capability changes
-- Dynamic capability availability based on MCP server tool availability
-- Capability metadata including features, configuration, and health status
-
-## MCP Tools for Capability Access
-- x_auth_login - Authenticate to a cluster
-- x_auth_status - Check authentication status
-- x_auth_logout - Logout from cluster
-- x_portforward_create - Create a port forward
-- x_portforward_stop - Stop a port forward
-- x_portforward_list - List active port forwards
-- x_discovery_list_contexts - List available contexts
-- x_discovery_get_resources - Discover resources
-
-## Capability Definition System
-- Capabilities defined independently in YAML files (like workflows)
-- Each operation implemented as a workflow
-- Operations reference tools from MCP servers
-- Dynamic exposure based on tool availability
-- Parameter schemas and validation
-
-## Aggregator API for Internal Access
-- ExecuteCapability method for internal services
-- IsCapabilityAvailable for checking capability status
-- ListCapabilities for discovering available capabilities
-- Same execution path as MCP tools
-
-## Dynamic Service Lifecycle
-- Services use aggregator API instead of direct tool calls
-- No hardcoded dependencies on specific tools
-- Graceful handling when capabilities are unavailable
-- Hot-reload configuration with automatic capability updates
-
-# User Experience
-## For Giant Swarm Users
-- Seamless transition from current experience
-- Existing configurations continue to work
-- Teleport MCP provides auth capability by default
-- All current functionality remains available
-
-## For Non-Giant Swarm Users
-- Use any authentication method (kubeconfig, cloud providers, custom)
-- Bring your own MCP servers for auth, discovery, and port forwarding
-- Mix and match capability providers based on needs
-- Simple configuration without vendor lock-in
-
-## For MCP Server Developers
-- Just provide tools - no capability awareness needed
-- Tools automatically available for capability implementations
-- Well-documented tool conventions
-- Community-driven ecosystem
+The key enabling mechanism for this decoupling is the introduction of **Precondition Workflows** for `envctl`'s managed services.
 
 </context>
 <PRD>
-# Technical Architecture
+# Core Architecture: Generic Orchestrator + Capabilities
 
-## System Components
+## 1. The Generic Core Orchestrator
+The `Orchestrator` will be refactored to be completely domain-agnostic.
+- Its only responsibility is to manage a list of generic `Service` definitions from `envctl.yaml`. A `Service` is just a process to run (local command or container).
+- All hardcoded dependency logic related to clusters and port-forwards will be **removed**.
+- Instead, a `Service` definition can now include a `preconditionWorkflow`. Before starting the service, the orchestrator executes this workflow. If it fails, the service is not started.
+- The orchestrator will expose its service management actions through clearly namespaced MCP tools (using the `core_*` prefix).
 
-### envctl Core (Coordination Platform)
-- **Capability Registry**: Loads and manages capability definitions from YAML files
-- **Workflow Integration**: Capabilities implemented as workflows for maximum flexibility
-- **Tool Availability Checker**: Validates required tools exist before exposing capabilities
-- **Aggregator**: Exposes unified MCP interface with capability tools (x_auth_login, etc.)
-- **Aggregator API**: Internal API for services to execute capabilities
-- **Service Manager**: Handles service lifecycle using capability interfaces
+## 2. The User-Defined Capability Layer
+- Concepts like `cluster` and `portforward` are no longer native to `envctl`. They are implemented as default `*.capability.yaml` files that ship with the application.
+- These capability files define the high-level API (e.g., `api_cluster_connect`, `api_portforward_create`).
+- These capabilities are fulfilled by backend MCP servers (e.g., a minimal `mcp-server-kubectl`).
 
-### Capability System
-- **Definition Files**: YAML files defining capability interfaces and operations
-- **Workflow-based Operations**: Each operation implemented as a workflow
-- **Tool Requirements**: List of required tools for each operation
-- **Parameter Schemas**: Input validation for capability operations
-- **Dynamic Exposure**: Only expose capabilities when required tools are available
-
-### MCP Servers (Tool Providers)
-- **Teleport MCP**: External server providing x_teleport_* tools
-- **Kubernetes MCP**: External server providing x_k8s_* tools
-- **Custom MCPs**: Any MCP server providing tools
-- **No Capability Awareness**: MCP servers just provide tools, not capabilities
-
-### Data Models
-
-#### Capability Definition
+## 3. The New Decoupled Flow
+A service like a Prometheus MCP server that needs a connection is now defined like this in `envctl.yaml`:
 ```yaml
-# capabilities/teleport_auth.yaml
-name: teleport_auth
-type: auth_provider
-description: "Teleport authentication provider"
-operations:
-  login:
-    description: "Authenticate to a cluster using Teleport"
-    parameters:
-      cluster:
-        type: string
-        required: true
-        description: "Target cluster name"
-      user:
-        type: string
-        required: false
-        description: "Username (optional)"
-    requires:
-      - x_teleport_kube
-      - x_teleport_status
-    workflow:
-      name: teleport_auth_login
-      description: "Authenticate using Teleport"
-      inputSchema:
-        type: object
-        properties:
-          cluster:
-            type: string
-          user:
-            type: string
-      steps:
-        - id: check_status
-          tool: x_teleport_status
-          args: {}
-          store: current_status
-          
-        - id: perform_login
-          tool: x_teleport_kube
-          args:
-            command: "login"
-            cluster: "{{ .cluster }}"
-            userParam: "{{ .user }}"
-          store: login_result
-  
-  status:
-    description: "Check authentication status"
-    requires:
-      - x_teleport_status
-    workflow:
-      name: teleport_auth_status
-      description: "Check Teleport auth status"
-      inputSchema:
-        type: object
-        properties: {}
-      steps:
-        - id: get_status
-          tool: x_teleport_status
-          args: {}
-          store: auth_status
-  
-  logout:
-    description: "Logout from cluster"
-    parameters:
-      cluster:
-        type: string
-        required: false
-        description: "Cluster to logout from (all if empty)"
-    requires:
-      - x_teleport_logout
-    workflow:
-      name: teleport_auth_logout
-      description: "Logout from Teleport"
-      inputSchema:
-        type: object
-        properties:
-          cluster:
-            type: string
-      steps:
-        - id: do_logout
-          tool: x_teleport_logout
-          args:
-            cluster: "{{ .cluster }}"
-          store: logout_result
-```
-
-#### Service Configuration
-```yaml
-# config.yaml - MCP servers just provide tools
 mcpServers:
-  - name: teleport
-    type: localCommand
-    command: ["teleport-mcp"]
-    icon: "🔐"
-    category: "Authentication"
-    # No capability declarations needed!
-    # The server provides tools like x_teleport_kube, x_teleport_status
-    
-  - name: k8s
-    type: localCommand
-    command: ["mcp-server-kubernetes"]
-    icon: "☸️"
-    category: "Kubernetes"
-    requiresClusterRole: target
-    
   - name: prometheus
-    type: localCommand
-    command: ["prometheus-mcp"]
-    icon: "📊"
-    category: "Monitoring"
-    requiresClusterRole: workload
-    requiresPortForwards:
-      - prometheus-pf
-
-# Capability definitions loaded from a directory
-capabilityDefinitionsPath: "internal/capability/definitions/"
+    type: container
+    image: "prom/prometheus"
+    # This workflow runs BEFORE the container is started.
+    preconditionWorkflow:
+      steps:
+        - id: connect_to_cluster
+          tool: api_cluster_connect
+          args: { name: "my-obs-cluster" }
+        - id: forward_prometheus_port
+          tool: api_portforward_create
+          args:
+            cluster_uri: "{{ steps.connect_to_cluster.result.uri }}"
+            namespace: "monitoring"
+            service: "prometheus-k8s"
+            port: "9090"
+          store: prometheus_endpoint
+    # The result of the workflow can be injected into the service.
+    env:
+      PROMETHEUS_ENDPOINT: "{{ workflow.result.prometheus_endpoint }}"
 ```
 
-### APIs and Integrations
+# Tool Naming Convention
 
-#### API Architecture Pattern
-The codebase follows a strict API pattern for decoupling:
-1. **Handler Interfaces** defined in `internal/api/handlers.go`
-2. **Adapters** implement interfaces and call `Register()` 
-3. **API layer** accesses handlers via `api.GetXXX()`
-4. **No direct coupling** between packages
-
-#### Capability API (Internal)
-```go
-// Handler interface in internal/api/handlers.go
-type CapabilityHandler interface {
-    // Execute a capability operation
-    ExecuteCapability(ctx context.Context, capabilityType, operation string, params map[string]interface{}) (*mcp.CallToolResult, error)
-    
-    // Check if a capability is available
-    IsCapabilityAvailable(capabilityType, operation string) bool
-    
-    // List available capabilities
-    ListCapabilities() []CapabilityInfo
-}
-
-// Adapter in internal/capability/api_adapter.go
-type CapabilityAdapter struct {
-    loader *CapabilityLoader
-}
-
-func (c *CapabilityAdapter) Register() {
-    api.RegisterCapability(c)
-}
-
-// Service usage via API
-func (s *Service) Authenticate(cluster string) error {
-    handler := api.GetCapability()
-    if handler == nil {
-        return errors.New("capability API not available")
-    }
-    
-    result, err := handler.ExecuteCapability(ctx, "auth", "login", map[string]interface{}{
-        "cluster": cluster,
-    })
-    return err
-}
-```
-
-#### MCP Tool Interface (External)
-```yaml
-# Exposed as MCP tools when required tools are available
-x_auth_login:
-  description: "Authenticate to a cluster"
-  parameters:
-    cluster: string (required)
-    user: string (optional)
-    
-x_auth_status:
-  description: "Check authentication status"
-  
-x_portforward_create:
-  description: "Create a port forward"
-  parameters:
-    resourceType: string
-    resourceName: string
-    localPort: integer
-    targetPort: integer
-    namespace: string (optional)
-```
-
-### Capability Loading and Validation
-
-#### Loading Process
-1. **Load Definitions**: Read capability YAML files from configured paths
-2. **Validate Workflows**: Ensure referenced workflows exist
-3. **Check Tools**: Query aggregator for required tool availability
-4. **Register Tools**: Create MCP tools for available operations
-5. **Monitor Changes**: Watch for tool availability changes
-
-#### Example Flow
-```
-1. Load auth.yaml → Parse operations and requirements
-2. Check if x_teleport_kube exists in aggregator
-3. If yes → Register x_auth_login tool
-4. If no → Skip registration, capability not available
-5. Service calls aggregator.IsCapabilityAvailable("auth", "login")
-6. Returns false if tools missing, true if available
-```
-
-### Infrastructure Requirements
-- Go 1.24+ for envctl core
-- YAML parsing for capability definitions
-- Integration with existing workflow system
-- No changes required to MCP servers
+To provide clarity and avoid conflicts, envctl will use the following tool naming prefixes:
+- `core_*` - Core orchestrator tools for service management (e.g., `core_service_start`, `core_service_status`)
+- `workflow_*` - Workflow management tools (e.g., `workflow_list`, `workflow_execute`)
+- `api_*` - High-level capability operations (e.g., `api_cluster_connect`, `api_portforward_create`)
+- Configurable prefix (default `x_`) - For external MCP server tools to avoid conflicts
 
 # Development Roadmap
 
-## Phase 1: Core Capability Framework (COMPLETED) ✅
-- Implemented basic capability registry
-- Created capability types and interfaces
-- Added initial MCP tools for capability management
+## Phase 1: Generic Orchestrator & Tool Naming
+- **Goal**: Decouple the orchestrator from Kubernetes and port-forwarding, establish clear tool naming conventions.
+- **Tasks**:
+    - Implement the `preconditionWorkflow` feature in the `Service` definition and the orchestrator.
+    - Update the aggregator to use the new tool naming convention (`core_*`, `workflow_*`, `api_*`).
+    - **Delete** the hardcoded dependency graph logic (`internal/orchestrator/orchestrator_deps.go`).
+    - **Delete** the `internal/kube` and `internal/portforwarding` packages entirely.
+    - **Delete** `ClusterDefinition` and `PortForwardDefinition` from `internal/config/types.go`.
+    - Modify the `envctl connect` command to remove its cluster-specific parameters.
 
-## Phase 2: Capability Definition System (IN PROGRESS)
-- Implement YAML-based capability definitions
-- Integrate with workflow system for operations
-- Add tool availability checking
-- Create aggregator API for internal access
-- Implement dynamic tool generation
+## Phase 2: The Default Capabilities
+- **Goal**: Re-implement the lost functionality as user-space capabilities.
+- **Tasks**:
+    - Create a new, minimal `mcp-server-kubectl` that provides basic tools for `kubectl context`, `kubectl port-forward`, etc.
+    - Create the default `cluster.capability.yaml` file.
+    - Create the default `portforward.capability.yaml` file.
+    - Ensure these capabilities expose the `api_cluster_*` and `api_portforward_*` tools.
 
-## Phase 3: Remove Hardcoded Dependencies
-- Extract Teleport authentication to capability
-- Extract port forwarding to capability
-- Update services to use aggregator API
-- Ensure backward compatibility
+## Phase 3: Unification and TUI
+- **Goal**: Ensure the user experience is seamless.
+- **Tasks**:
+    - Update the TUI to use the new `api_*` tools for all its operations.
+    - Provide default `envctl.yaml` examples that show users how to compose precondition workflows.
 
-## Phase 4: Dynamic Service Management
-- Implement capability-aware service lifecycle
-- Add configuration hot-reload with capability updates
-- Create service templates using capabilities
-- Enable auto-discovery based on capabilities
-
-## Phase 5: Documentation and Examples
-- Architecture documentation
-- Capability definition guide
-- Migration guide for existing users
-- Example configurations
-- Troubleshooting guide
-
-# Logical Dependency Chain
-
-## Foundation (Must be built first)
-1. **Capability Definition Loader** - Parse YAML files and validate structure
-2. **Workflow Integration** - Connect operations to workflows
-3. **Tool Availability Checker** - Query aggregator for required tools
-
-## Core Implementation
-4. **Dynamic Tool Generator** - Create x_auth_login style tools
-5. **Aggregator API** - Internal capability execution interface
-6. **Capability Registry Refactor** - Simplify to focus on definitions
-
-## Service Integration
-7. **Remove Hardcoded Auth** - Replace with capability calls
-8. **Remove Hardcoded Port Forward** - Replace with capability calls
-9. **Service Capability Consumer** - Standard interface for services
-
-## Advanced Features
-10. **Hot Reload** - Update capabilities without restart
-11. **Service Templates** - Reusable patterns
-12. **Auto-Discovery** - Find services needing capabilities
-
-# Risks and Mitigations
-
-## Technical Challenges
-
-### Risk: Workflow Execution Overhead
-**Mitigation:**
-- Optimize workflow engine for simple operations
-- Cache workflow definitions
-- Consider direct tool calls for single-step operations
-
-### Risk: Tool Availability Changes
-**Mitigation:**
-- Monitor tool availability continuously
-- Graceful degradation when tools disappear
-- Clear status reporting for unavailable capabilities
-
-### Risk: Complex Capability Definitions
-**Mitigation:**
-- Start with simple operations
-- Provide templates and examples
-- Validation tooling for capability authors
-
-## MVP Definition
-The MVP must include:
-1. Capability definition system with YAML loading
-2. Workflow-based operation execution
-3. Dynamic tool generation (x_auth_login, etc.)
-4. Aggregator API for internal access
-5. At least auth capability working end-to-end
-
-# Appendix
-
-## Key Design Decisions
-
-### Capabilities as Interfaces
-- Defined independently from MCP servers
-- Operations implemented as workflows
-- Clean separation of interface and implementation
-
-### Simple Tool Names
-- Use x_auth_login instead of x_capability_auth_login
-- Consistent with workflow naming (x_action_*)
-- Easier for users to understand and use
-
-### Workflow-based Operations
-- Reuse existing workflow system
-- Support complex multi-step operations
-- Easy to extend and customize
-
-### Dynamic Availability
-- Only expose capabilities when tools exist
-- Prevents errors from missing dependencies
-- Clear feedback on what's available
-
-## Example Configurations
-
-### Minimal Setup (Kubeconfig Auth)
-```yaml
-mcpServers:
-  - name: kubectl
-    type: localCommand
-    command: ["kubectl-mcp"]
-
-capabilities:
-  - file: capabilities/kubectl_auth.yaml
-  - file: capabilities/kubectl_portforward.yaml
-```
-
-### Giant Swarm Setup
-```yaml
-mcpServers:
-  - name: teleport
-    type: localCommand
-    command: ["teleport-mcp"]
-    
-  - name: k8s
-    type: localCommand
-    command: ["mcp-server-kubernetes"]
-
-capabilities:
-  - file: capabilities/auth.yaml
-  - file: capabilities/portforward.yaml
-  - file: capabilities/discovery.yaml
-```
-
-### Multi-Provider Setup
-```yaml
-mcpServers:
-  - name: aws
-    type: localCommand
-    command: ["aws-mcp"]
-    
-  - name: teleport
-    type: localCommand
-    command: ["teleport-mcp"]
-    
-  - name: kubectl
-    type: localCommand
-    command: ["kubectl-mcp"]
-
-capabilities:
-  # Use AWS auth for some clusters
-  - file: capabilities/aws_auth.yaml
-  # Use Teleport for others
-  - file: capabilities/teleport_auth.yaml
-  # Kubectl for local
-  - file: capabilities/kubectl_auth.yaml
-```
-
-## Implementation Notes
-- Capability definitions similar to workflow definitions but embed workflows
-- Leverage existing workflow execution engine
-- No changes needed to MCP servers - they just provide tools
-- Aggregator becomes the central execution point
-- Services access capabilities via API layer, never direct coupling
-- Clear separation between interface (capability) and implementation (workflow)
-- Tool availability drives capability exposure
-- Both MCP and internal API access to capabilities
-
-### Critical Architecture Rules
-1. **No Direct Package Coupling**: All inter-package communication via API interfaces
-2. **API Pattern**: Handler interfaces → Adapters → Register() → api.GetXXX()
-3. **Capability Definitions**: Self-contained YAML with embedded workflows
-4. **MCP Servers**: Defined in config.yaml, not separate YAML files
-5. **Tool Names**: Simple names like x_auth_login (not x_capability_auth_login)
-6. **Registry**: Single capability registry, not "global" or "local"
-7. **Testing**: All changes must include tests and pass `make test`
-8. **Documentation**: Update docs/ when implementing features
-</PRD> 
+</PRD>
