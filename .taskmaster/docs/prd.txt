@@ -11,23 +11,24 @@ The key enabling mechanism for this decoupling is the introduction of **Precondi
 
 ## 1. The Generic Core Orchestrator
 The `Orchestrator` will be refactored to be completely domain-agnostic.
-- Its only responsibility is to manage a list of generic `Service` definitions from `envctl.yaml`. A `Service` is just a process to run (local command or container).
+- Its only responsibility is to manage a list of generic `Service` definitions. The `Service` implementations are the aggregator and the mcp-servers.
 - All hardcoded dependency logic related to clusters and port-forwards will be **removed**.
+- Please also remove the capability service, this is old and unused code.
 - Instead, a `Service` definition can now include a `preconditionWorkflow`. Before starting the service, the orchestrator executes this workflow. If it fails, the service is not started.
 - The orchestrator will expose its service management actions through clearly namespaced MCP tools (using the `core_*` prefix).
 
 ## 2. The User-Defined Capability Layer
 - Concepts like `cluster` and `portforward` are no longer native to `envctl`. They are implemented as default `*.capability.yaml` files that ship with the application.
 - These capability files define the high-level API (e.g., `api_cluster_connect`, `api_portforward_create`).
-- These capabilities are fulfilled by backend MCP servers (e.g., a minimal `mcp-server-kubectl`).
+- These capabilities are fulfilled by backend MCP servers (e.g., 'kubernetes-mcp', 'teleport-mcp).
 
 ## 3. The New Decoupled Flow
-A service like a Prometheus MCP server that needs a connection is now defined like this in `envctl.yaml`:
+A service like a Prometheus MCP server that needs a connection is now defined like this in the configuration:
 ```yaml
 mcpServers:
   - name: prometheus
     type: container
-    image: "prom/prometheus"
+    image: "giantswarm/mcp-prometheus"
     # This workflow runs BEFORE the container is started.
     preconditionWorkflow:
       steps:
@@ -50,10 +51,18 @@ mcpServers:
 # Tool Naming Convention
 
 To provide clarity and avoid conflicts, envctl will use the following tool naming prefixes:
-- `core_*` - Core orchestrator tools for service management (e.g., `core_service_start`, `core_service_status`)
-- `workflow_*` - Workflow management tools (e.g., `workflow_list`, `workflow_execute`)
-- `api_*` - High-level capability operations (e.g., `api_cluster_connect`, `api_portforward_create`)
+
+**Management APIs (Core envctl functions):**
+- `core_service_*` - Orchestrator service management (e.g., `core_service_start`, `core_service_stop`)
+- `core_workflow_*` - Workflow management API (e.g., `core_workflow_list`, `core_workflow_create`)
+- `core_capability_*` - Capability management API (e.g., `core_capability_list`, `core_capability_info`)
+
+**Execution Tools (User-facing operations):**
+- `workflow_*` - Actual workflow executions (e.g., `workflow_deploy_app`, `workflow_backup_db`)
+- `api_*` - Actual capability operations (e.g., `api_auth_login`, `api_cluster_connect`, `api_portforward_create`)
 - Configurable prefix (default `x_`) - For external MCP server tools to avoid conflicts
+
+This creates a clear separation between the management layer (core_*) and the execution layer (workflow_*, api_*).
 
 # Development Roadmap
 
@@ -61,7 +70,7 @@ To provide clarity and avoid conflicts, envctl will use the following tool namin
 - **Goal**: Decouple the orchestrator from Kubernetes and port-forwarding, establish clear tool naming conventions.
 - **Tasks**:
     - Implement the `preconditionWorkflow` feature in the `Service` definition and the orchestrator.
-    - Update the aggregator to use the new tool naming convention (`core_*`, `workflow_*`, `api_*`).
+    - Update the aggregator to use the new tool naming convention (`core_service_*`, `core_workflow_*`, `core_capability_*` for management APIs; `workflow_*`, `api_*` for execution tools).
     - **Delete** the hardcoded dependency graph logic (`internal/orchestrator/orchestrator_deps.go`).
     - **Delete** the `internal/kube` and `internal/portforwarding` packages entirely.
     - **Delete** `ClusterDefinition` and `PortForwardDefinition` from `internal/config/types.go`.
@@ -73,12 +82,12 @@ To provide clarity and avoid conflicts, envctl will use the following tool namin
     - Create a new, minimal `mcp-server-kubectl` that provides basic tools for `kubectl context`, `kubectl port-forward`, etc.
     - Create the default `cluster.capability.yaml` file.
     - Create the default `portforward.capability.yaml` file.
-    - Ensure these capabilities expose the `api_cluster_*` and `api_portforward_*` tools.
+    - Ensure these capabilities expose the `api_cluster_*` and `api_portforward_*` execution tools.
 
 ## Phase 3: Unification and TUI
 - **Goal**: Ensure the user experience is seamless.
 - **Tasks**:
-    - Update the TUI to use the new `api_*` tools for all its operations.
+    - Update the TUI to use the new execution tools (`api_*` for capability operations, `workflow_*` for workflow executions) for all its operations.
     - Provide default `envctl.yaml` examples that show users how to compose precondition workflows.
 
 </PRD>
