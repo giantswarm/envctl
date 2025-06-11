@@ -58,5 +58,5 @@
 // - internal/api: For API layer initialization
 // - internal/adapters: For adapting APIs to service interfaces
 // - internal/tui: For the terminal UI implementation
-// - internal/kube: For Kubernetes operations
+// - internal/aggregator: For MCP tool aggregation and dynamic service management
 package app
