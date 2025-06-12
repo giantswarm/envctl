@@ -36,6 +36,64 @@ func TestPrefixToolName_NewNamingConvention(t *testing.T) {
 			expectedName: "core_service_status",
 			description:  "service status tools get core_ prefix",
 		},
+		// ServiceClass instance management tools
+		{
+			name:         "serviceclass instance create",
+			provider:     "orchestrator",
+			toolName:     "serviceclass_instance_create",
+			expectedName: "core_serviceclass_instance_create",
+			description:  "ServiceClass instance management tools get core_ prefix",
+		},
+		{
+			name:         "serviceclass instance delete",
+			provider:     "orchestrator",
+			toolName:     "serviceclass_instance_delete",
+			expectedName: "core_serviceclass_instance_delete",
+			description:  "ServiceClass instance deletion tools get core_ prefix",
+		},
+		{
+			name:         "serviceclass instance get",
+			provider:     "orchestrator",
+			toolName:     "serviceclass_instance_get",
+			expectedName: "core_serviceclass_instance_get",
+			description:  "ServiceClass instance retrieval tools get core_ prefix",
+		},
+		{
+			name:         "serviceclass instance list",
+			provider:     "orchestrator",
+			toolName:     "serviceclass_instance_list",
+			expectedName: "core_serviceclass_instance_list",
+			description:  "ServiceClass instance listing tools get core_ prefix",
+		},
+		// ServiceClass definition management tools
+		{
+			name:         "serviceclass definition list",
+			provider:     "serviceclass",
+			toolName:     "serviceclass_list",
+			expectedName: "core_serviceclass_list",
+			description:  "ServiceClass definition management tools get core_ prefix",
+		},
+		{
+			name:         "serviceclass definition get",
+			provider:     "serviceclass",
+			toolName:     "serviceclass_get",
+			expectedName: "core_serviceclass_get",
+			description:  "ServiceClass definition retrieval tools get core_ prefix",
+		},
+		{
+			name:         "serviceclass definition availability",
+			provider:     "serviceclass",
+			toolName:     "serviceclass_available",
+			expectedName: "core_serviceclass_available",
+			description:  "ServiceClass availability checking tools get core_ prefix",
+		},
+		{
+			name:         "serviceclass definition refresh",
+			provider:     "serviceclass",
+			toolName:     "serviceclass_refresh",
+			expectedName: "core_serviceclass_refresh",
+			description:  "ServiceClass refresh tools get core_ prefix",
+		},
 		{
 			name:         "workflow management",
 			provider:     "workflow",
@@ -68,8 +126,8 @@ func TestPrefixToolName_NewNamingConvention(t *testing.T) {
 			name:         "cluster management",
 			provider:     "orchestrator",
 			toolName:     "cluster_list",
-			expectedName: "core_cluster_list",
-			description:  "cluster management tools get core_ prefix",
+			expectedName: "x_cluster_list",
+			description:  "cluster management tools get x_ prefix (not in management patterns)",
 		},
 		// Execution tools transformation
 		{
@@ -121,15 +179,15 @@ func TestPrefixToolName_NewNamingConvention(t *testing.T) {
 			name:         "legacy portforward management",
 			provider:     "portforward",
 			toolName:     "portforward_list",
-			expectedName: "core_portforward_list",
-			description:  "legacy portforward tools get core_ prefix",
+			expectedName: "x_portforward_list",
+			description:  "legacy portforward tools get x_ prefix (not in management patterns)",
 		},
 		{
 			name:         "legacy k8s management",
 			provider:     "k8s",
 			toolName:     "k8s_connection_list",
-			expectedName: "core_k8s_connection_list",
-			description:  "legacy K8s tools get core_ prefix",
+			expectedName: "x_k8s_connection_list",
+			description:  "legacy K8s tools get x_ prefix (not in management patterns)",
 		},
 	}
 

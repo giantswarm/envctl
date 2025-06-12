@@ -12,6 +12,10 @@ import (
 	// Import to trigger init() functions that register adapter factories
 	_ "envctl/internal/capability"
 	_ "envctl/internal/workflow"
+
+	// Import ServiceClass manager
+	"envctl/internal/serviceclass"
+	"path/filepath"
 )
 
 // Services holds all the initialized services and APIs
@@ -56,6 +60,32 @@ func InitializeServices(cfg *Config) (*Services, error) {
 	// Register service adapters
 	mcpAdapter := mcpserver.NewServiceAdapter()
 	mcpAdapter.Register()
+
+	// Initialize and register ServiceClass manager
+	// This needs to be done before orchestrator starts to handle ServiceClass-based services
+	configDir, err := config.GetUserConfigDir()
+	if err != nil {
+		// Use default if we can't get config dir
+		configDir = ".config/envctl"
+	}
+	serviceClassPath := filepath.Join(configDir, "serviceclass", "definitions")
+
+	// Create a simple tool checker that delegates to the aggregator when available
+	// For now, we'll use a placeholder that always returns false
+	toolChecker := &placeholderToolChecker{}
+
+	// Create ServiceClass manager
+	serviceClassManager := serviceclass.NewServiceClassManager(serviceClassPath, toolChecker)
+
+	// Create and register ServiceClass adapter
+	serviceClassAdapter := serviceclass.NewAdapter(serviceClassManager)
+	serviceClassAdapter.Register()
+
+	// Load ServiceClass definitions
+	if err := serviceClassManager.LoadServiceDefinitions(); err != nil {
+		// Log warning but don't fail - ServiceClass is optional
+		// This would need proper logging in production
+	}
 
 	// Step 2: Create APIs that use the registered handlers
 	orchestratorAPI := api.NewOrchestratorAPI()
@@ -128,4 +158,14 @@ func InitializeServices(cfg *Config) (*Services, error) {
 		ConfigAPI:       configAPI,
 		AggregatorPort:  cfg.EnvctlConfig.Aggregator.Port,
 	}, nil
+}
+
+// placeholderToolChecker is a temporary implementation of ToolAvailabilityChecker
+// In production, this should check against the aggregator's tool registry
+type placeholderToolChecker struct{}
+
+func (p *placeholderToolChecker) IsToolAvailable(toolName string) bool {
+	// For now, return false for all tools
+	// This will be replaced with actual tool checking logic
+	return false
 }

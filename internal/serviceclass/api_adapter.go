@@ -1,6 +1,7 @@
 package serviceclass
 
 import (
+	"context"
 	"envctl/internal/api"
 	"envctl/pkg/logging"
 	"fmt"
@@ -266,4 +267,170 @@ func (a *Adapter) GetDefinitionsPath() string {
 // This should only be used by other internal packages that need direct access
 func (a *Adapter) GetManager() *ServiceClassManager {
 	return a.manager
+}
+
+// ToolProvider implementation
+
+// GetTools returns all tools this provider offers
+func (a *Adapter) GetTools() []api.ToolMetadata {
+	return []api.ToolMetadata{
+		{
+			Name:        "serviceclass_list",
+			Description: "List all ServiceClass definitions with their availability status",
+		},
+		{
+			Name:        "serviceclass_get",
+			Description: "Get detailed information about a specific ServiceClass definition",
+			Parameters: []api.ParameterMetadata{
+				{
+					Name:        "name",
+					Type:        "string",
+					Required:    true,
+					Description: "Name of the ServiceClass to retrieve",
+				},
+			},
+		},
+		{
+			Name:        "serviceclass_available",
+			Description: "Check if a ServiceClass is available (all required tools present)",
+			Parameters: []api.ParameterMetadata{
+				{
+					Name:        "name",
+					Type:        "string",
+					Required:    true,
+					Description: "Name of the ServiceClass to check",
+				},
+			},
+		},
+		{
+			Name:        "serviceclass_refresh",
+			Description: "Refresh the availability status of all ServiceClass definitions",
+		},
+		{
+			Name:        "serviceclass_load",
+			Description: "Load ServiceClass definitions from the configured directory",
+		},
+		{
+			Name:        "serviceclass_definitions_path",
+			Description: "Get the path where ServiceClass definitions are loaded from",
+		},
+	}
+}
+
+// ExecuteTool executes a tool by name
+func (a *Adapter) ExecuteTool(ctx context.Context, toolName string, args map[string]interface{}) (*api.CallToolResult, error) {
+	switch toolName {
+	case "serviceclass_list":
+		return a.handleServiceClassList()
+	case "serviceclass_get":
+		return a.handleServiceClassGet(args)
+	case "serviceclass_available":
+		return a.handleServiceClassAvailable(args)
+	case "serviceclass_refresh":
+		return a.handleServiceClassRefresh()
+	case "serviceclass_load":
+		return a.handleServiceClassLoad()
+	case "serviceclass_definitions_path":
+		return a.handleServiceClassDefinitionsPath()
+	default:
+		return nil, fmt.Errorf("unknown tool: %s", toolName)
+	}
+}
+
+// Tool handlers
+
+func (a *Adapter) handleServiceClassList() (*api.CallToolResult, error) {
+	serviceClasses := a.ListServiceClasses()
+
+	result := map[string]interface{}{
+		"serviceClasses": serviceClasses,
+		"total":          len(serviceClasses),
+	}
+
+	return &api.CallToolResult{
+		Content: []interface{}{result},
+		IsError: false,
+	}, nil
+}
+
+func (a *Adapter) handleServiceClassGet(args map[string]interface{}) (*api.CallToolResult, error) {
+	name, ok := args["name"].(string)
+	if !ok {
+		return &api.CallToolResult{
+			Content: []interface{}{"name parameter is required"},
+			IsError: true,
+		}, nil
+	}
+
+	serviceClass, err := a.GetServiceClass(name)
+	if err != nil {
+		return &api.CallToolResult{
+			Content: []interface{}{fmt.Sprintf("Failed to get ServiceClass: %v", err)},
+			IsError: true,
+		}, nil
+	}
+
+	return &api.CallToolResult{
+		Content: []interface{}{serviceClass},
+		IsError: false,
+	}, nil
+}
+
+func (a *Adapter) handleServiceClassAvailable(args map[string]interface{}) (*api.CallToolResult, error) {
+	name, ok := args["name"].(string)
+	if !ok {
+		return &api.CallToolResult{
+			Content: []interface{}{"name parameter is required"},
+			IsError: true,
+		}, nil
+	}
+
+	available := a.IsServiceClassAvailable(name)
+
+	result := map[string]interface{}{
+		"name":      name,
+		"available": available,
+	}
+
+	return &api.CallToolResult{
+		Content: []interface{}{result},
+		IsError: false,
+	}, nil
+}
+
+func (a *Adapter) handleServiceClassRefresh() (*api.CallToolResult, error) {
+	a.RefreshAvailability()
+
+	return &api.CallToolResult{
+		Content: []interface{}{"ServiceClass availability refreshed successfully"},
+		IsError: false,
+	}, nil
+}
+
+func (a *Adapter) handleServiceClassLoad() (*api.CallToolResult, error) {
+	err := a.LoadServiceDefinitions()
+	if err != nil {
+		return &api.CallToolResult{
+			Content: []interface{}{fmt.Sprintf("Failed to load ServiceClass definitions: %v", err)},
+			IsError: true,
+		}, nil
+	}
+
+	return &api.CallToolResult{
+		Content: []interface{}{"ServiceClass definitions loaded successfully"},
+		IsError: false,
+	}, nil
+}
+
+func (a *Adapter) handleServiceClassDefinitionsPath() (*api.CallToolResult, error) {
+	path := a.GetDefinitionsPath()
+
+	result := map[string]interface{}{
+		"definitionsPath": path,
+	}
+
+	return &api.CallToolResult{
+		Content: []interface{}{result},
+		IsError: false,
+	}, nil
 }
