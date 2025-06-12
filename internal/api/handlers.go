@@ -229,8 +229,9 @@ type ServiceClassManagerHandler interface {
 	RefreshAvailability()
 
 	// Lifecycle tool access (for service orchestration without direct coupling)
-	GetCreateTool(name string) (toolName string, arguments map[string]interface{}, responseMapping map[string]string, err error)
-	GetDeleteTool(name string) (toolName string, arguments map[string]interface{}, responseMapping map[string]string, err error)
+	GetStartTool(name string) (toolName string, arguments map[string]interface{}, responseMapping map[string]string, err error)
+	GetStopTool(name string) (toolName string, arguments map[string]interface{}, responseMapping map[string]string, err error)
+	GetRestartTool(name string) (toolName string, arguments map[string]interface{}, responseMapping map[string]string, err error)
 	GetHealthCheckTool(name string) (toolName string, arguments map[string]interface{}, responseMapping map[string]string, err error)
 	GetHealthCheckConfig(name string) (enabled bool, interval time.Duration, failureThreshold, successThreshold int, err error)
 	GetServiceDependencies(name string) ([]string, error)

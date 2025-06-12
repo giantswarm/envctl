@@ -71,11 +71,14 @@ type ServiceConfig struct {
 
 // LifecycleTools maps service lifecycle events to aggregator tools
 type LifecycleTools struct {
-	// Tool to call when creating/starting the service
-	Create ToolCall `yaml:"create"`
+	// Tool to call when starting the service (maps to Service.Start)
+	Start ToolCall `yaml:"start"`
 
-	// Tool to call when stopping/deleting the service
-	Delete ToolCall `yaml:"delete"`
+	// Tool to call when stopping the service (maps to Service.Stop)
+	Stop ToolCall `yaml:"stop"`
+
+	// Tool to call for restarting the service (optional, maps to Service.Restart)
+	Restart *ToolCall `yaml:"restart,omitempty"`
 
 	// Tool to call for health checks (optional)
 	HealthCheck *ToolCall `yaml:"healthCheck,omitempty"`

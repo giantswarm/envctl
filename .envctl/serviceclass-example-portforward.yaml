@@ -1,8 +1,12 @@
-# Port Forwarding ServiceClass Definition
-# This example demonstrates a basic ServiceClass for port forwarding operations
+# Port Forwarding ServiceClass Definition v2
+# This example demonstrates a ServiceClass for port forwarding, updated to the new spec.
+# Key Changes:
+# - Renamed lifecycle tools from 'create'/'delete' to 'start'/'stop' to align with the Service interface.
+# - Updated tool names to match the actual tools available in the aggregator.
+# - Removed 'healthCheck' and 'status' tools as no corresponding tools were found in the current environment.
 name: portforward
 type: portforward
-version: "1.0.0"
+version: "2.0.0"
 description: "Port forwarding ServiceClass for Kubernetes resources"
 
 # ServiceClass configuration for lifecycle management
@@ -14,8 +18,8 @@ serviceConfig:
   
   # Lifecycle tool mappings - defines which aggregator tools to call for each lifecycle event
   lifecycleTools:
-    create:
-      tool: "api_kubernetes_port_forward"
+    start:
+      tool: "x_kubernetes_port_forward"
       arguments:
         namespace: "{{ .namespace | default \"default\" }}"
         resourceType: "{{ .resource_type }}"
@@ -33,34 +37,13 @@ serviceConfig:
           remote_port: "$.targetPort"
           pid: "$.pid"
     
-    delete:
-      tool: "api_kubernetes_stop_port_forward"
+    stop:
+      tool: "x_kubernetes_stop_port_forward"
       arguments:
-        id: "{{ .service_id }}"
+        id: "{{ .serviceId }}" # Note: .serviceId comes from the response mapping of the 'start' tool
       responseMapping:
         status: "$.status"
         
-    healthCheck:
-      tool: "api_kubernetes_port_forward_status"
-      arguments:
-        id: "{{ .service_id }}"
-      responseMapping:
-        health: "$.active"
-        status: "$.status"
-        error: "$.error"
-        metadata:
-          connections: "$.activeConnections"
-          
-    status:
-      tool: "api_kubernetes_port_forward_info"
-      arguments:
-        id: "{{ .service_id }}"
-      responseMapping:
-        metadata:
-          bytes_transferred: "$.bytesTransferred"
-          connection_count: "$.connectionCount"
-          start_time: "$.startTime"
-  
   # Health check configuration
   healthCheck:
     enabled: true
@@ -93,166 +76,19 @@ serviceConfig:
       toolParameter: "targetPort"
       required: true
 
-# Operations define the ServiceClass interface
-operations:
-  create:
-    description: "Create a port forward to a Kubernetes resource"
-    parameters:
-      namespace:
-        type: string
-        required: false
-        description: "Kubernetes namespace"
-      resource_type:
-        type: string
-        required: true
-        description: "Type of resource (pod, service, deployment)"
-      resource_name:
-        type: string
-        required: true
-        description: "Name of the resource"
-      local_port:
-        type: number
-        required: true
-        description: "Local port to forward to"
-      remote_port:
-        type: number
-        required: true
-        description: "Remote port on the resource"
-    requires:
-      - api_kubernetes_port_forward
-    workflow:
-      name: portforward_create
-      description: "Create port forward workflow"
-      agentModifiable: false
-      inputSchema:
-        type: object
-        properties:
-          namespace:
-            type: string
-            description: "Kubernetes namespace"
-          resource_type:
-            type: string
-            description: "Type of resource (pod, service, deployment)"
-          resource_name:
-            type: string
-            description: "Name of the resource"
-          local_port:
-            type: number
-            description: "Local port to forward to"
-          remote_port:
-            type: number
-            description: "Remote port on the resource"
-        required:
-          - resource_type
-          - resource_name
-          - local_port
-          - remote_port
-      steps:
-        - id: create_portforward
-          tool: api_kubernetes_port_forward
-          args:
-            namespace: "{{ .namespace }}"
-            resourceType: "{{ .resource_type }}"
-            resourceName: "{{ .resource_name }}"
-            localPort: "{{ .local_port }}"
-            targetPort: "{{ .remote_port }}"
-          store: portforward_result
-  
-  stop:
-    description: "Stop an existing port forward"
-    parameters:
-      id:
-        type: string
-        required: true
-        description: "Port forward ID"
-    requires:
-      - api_kubernetes_stop_port_forward
-    workflow:
-      name: portforward_stop
-      description: "Stop port forward workflow"
-      agentModifiable: false
-      inputSchema:
-        type: object
-        properties:
-          id:
-            type: string
-            description: "Port forward ID"
-        required: ["id"]
-      steps:
-        - id: stop_portforward
-          tool: api_kubernetes_stop_port_forward
-          args:
-            id: "{{ .id }}"
-          store: stop_result
-
-  create_service:
-    description: "Create a managed port forward service"
-    parameters:
-      namespace:
-        type: string
-        required: false
-        description: "Kubernetes namespace"
-        default: "default"
-      resource_type:
-        type: string
-        required: true
-        description: "Type of resource (pod, service, deployment)"
-      resource_name:
-        type: string
-        required: true
-        description: "Name of the resource"
-      local_port:
-        type: number
-        required: true
-        description: "Local port to forward to"
-      remote_port:
-        type: number
-        required: true
-        description: "Remote port on the resource"
-    requires:
-      - api_service_orchestrator_create_service
-    workflow:
-      name: create_portforward_service
-      description: "Create a managed port forward service"
-      agentModifiable: false
-      inputSchema:
-        type: object
-        properties:
-          namespace:
-            type: string
-          resource_type:
-            type: string
-          resource_name:
-            type: string
-          local_port:
-            type: number
-          remote_port:
-            type: number
-        required:
-          - resource_type
-          - resource_name
-          - local_port
-          - remote_port
-      steps:
-        - id: create_service
-          tool: api_service_orchestrator_create_service
-          args:
-            capability_name: "portforward"
-            label: "pf-{{ .resource_type }}-{{ .resource_name }}-{{ .local_port }}"
-            parameters:
-              namespace: "{{ .namespace }}"
-              resource_type: "{{ .resource_type }}"
-              resource_name: "{{ .resource_name }}"
-              local_port: "{{ .local_port }}"
-              remote_port: "{{ .remote_port }}"
-          store: service_result
+# The 'operations' block is a legacy concept and is no longer used for core lifecycle.
+# Service instantiation and management are now handled by the orchestrator via:
+# - `core_serviceclass_instance_create`
+# - `core_service_start` / `core_service_stop`
+# This section is left here as a reference for potentially building higher-level workflows,
+# but it is not required for the basic functionality of the ServiceClass.
+#
+# operations:
+#   ...
 
 # Metadata for additional information
 metadata:
   provider: "kubernetes"
   category: "networking"
   icon: "🔌"
-  tags:
-    - "port-forward"
-    - "networking"
-    - "kubernetes" 
+  tags: "port-forward, networking, kubernetes" 

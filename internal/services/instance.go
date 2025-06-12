@@ -105,183 +105,115 @@ func NewGenericServiceInstance(
 	}
 }
 
-// Start implements the Service interface - starts the service using the create tool
+// Start implements the Service interface - starts the service using the start tool
 func (gsi *GenericServiceInstance) Start(ctx context.Context) error {
 	gsi.mu.Lock()
-	defer gsi.mu.Unlock()
-
-	logging.Info("GenericServiceInstance", "Starting service instance %s using service class %s",
-		gsi.label, gsi.serviceClassName)
-
-	// Update state to starting
-	gsi.updateStateInternal(StateStarting, HealthUnknown, nil)
-
-	// Check if tool caller is available
-	if gsi.toolCaller == nil {
-		err := fmt.Errorf("tool caller not available")
-		gsi.updateStateInternal(StateFailed, HealthUnhealthy, err)
-		return err
+	if gsi.state == StateRunning || gsi.state == StateStarting {
+		gsi.mu.Unlock()
+		return nil // Already running or starting
 	}
+	gsi.mu.Unlock()
 
-	// Get service class manager through API
+	gsi.updateStateInternal(StateStarting, HealthChecking, nil)
+
+	// Get start tool info through API
 	serviceClassMgr := api.GetServiceClassManager()
 	if serviceClassMgr == nil {
-		err := fmt.Errorf("service class manager not available through API")
-		gsi.updateStateInternal(StateFailed, HealthUnhealthy, err)
+		err := fmt.Errorf("service class manager not available")
+		gsi.updateStateInternal(StateFailed, HealthUnknown, err)
 		return err
 	}
 
-	// Get the create tool configuration through API
-	toolName, toolArgs, responseMapping, err := serviceClassMgr.GetCreateTool(gsi.serviceClassName)
+	toolName, arguments, responseMapping, err := serviceClassMgr.GetStartTool(gsi.serviceClassName)
 	if err != nil {
-		gsi.updateStateInternal(StateFailed, HealthUnhealthy, err)
-		return fmt.Errorf("failed to get create tool: %w", err)
-	}
-
-	// Prepare the context for template substitution
-	templateContext := gsi.buildTemplateContext()
-
-	// Apply template substitution to tool arguments
-	processedArgs, err := gsi.templater.Replace(toolArgs, templateContext)
-	if err != nil {
-		err = fmt.Errorf("failed to process tool arguments: %w", err)
-		gsi.updateStateInternal(StateFailed, HealthUnhealthy, err)
+		err = fmt.Errorf("failed to get start tool: %w", err)
+		gsi.updateStateInternal(StateFailed, HealthUnknown, err)
 		return err
 	}
 
-	// Ensure tool arguments is a map
-	toolArgsMap, ok := processedArgs.(map[string]interface{})
-	if !ok {
-		err = fmt.Errorf("tool arguments must be a map, got %T", processedArgs)
-		gsi.updateStateInternal(StateFailed, HealthUnhealthy, err)
-		return err
-	}
-
-	// Call the create tool
-	logging.Debug("GenericServiceInstance", "Calling create tool %s for service %s", toolName, gsi.label)
-	response, err := gsi.toolCaller.CallTool(ctx, toolName, toolArgsMap)
-	if err != nil {
-		gsi.updateStateInternal(StateFailed, HealthUnhealthy, err)
-		return fmt.Errorf("create tool failed: %w", err)
-	}
-
-	// Process the response
-	if err := gsi.processToolResponse(response, responseMapping); err != nil {
-		gsi.updateStateInternal(StateFailed, HealthUnhealthy, err)
-		return fmt.Errorf("failed to process create tool response: %w", err)
-	}
-
-	// Check if tool call was successful
-	if success, ok := response["success"].(bool); ok && !success {
-		errorMsg := "create tool indicated failure"
-		if text, exists := response["text"].(string); exists {
-			errorMsg = text
-		}
-		err = fmt.Errorf("create tool failed: %s", errorMsg)
-		gsi.updateStateInternal(StateFailed, HealthUnhealthy, err)
-		return err
-	}
-
-	// Mark as running and healthy
-	gsi.updateStateInternal(StateRunning, HealthHealthy, nil)
-
-	logging.Info("GenericServiceInstance", "Successfully started service instance: %s", gsi.label)
-	return nil
+	// Execute the start tool
+	return gsi.executeLifecycleTool(ctx, "start", toolName, arguments, responseMapping)
 }
 
-// Stop implements the Service interface - stops the service using the delete tool
+// Stop implements the Service interface - stops the service using the stop tool
 func (gsi *GenericServiceInstance) Stop(ctx context.Context) error {
 	gsi.mu.Lock()
-	defer gsi.mu.Unlock()
+	if gsi.state == StateStopped || gsi.state == StateStopping {
+		gsi.mu.Unlock()
+		return nil // Already stopped or stopping
+	}
+	gsi.mu.Unlock()
 
-	logging.Info("GenericServiceInstance", "Stopping service instance %s", gsi.label)
-
-	// Update state to stopping
 	gsi.updateStateInternal(StateStopping, HealthUnknown, nil)
 
-	// Check if tool caller is available
-	if gsi.toolCaller == nil {
-		err := fmt.Errorf("tool caller not available")
-		gsi.updateStateInternal(StateFailed, HealthUnhealthy, err)
-		return err
-	}
-
-	// Get service class manager through API
+	// Get stop tool info through API
 	serviceClassMgr := api.GetServiceClassManager()
 	if serviceClassMgr == nil {
-		err := fmt.Errorf("service class manager not available through API")
-		gsi.updateStateInternal(StateFailed, HealthUnhealthy, err)
+		err := fmt.Errorf("service class manager not available")
+		gsi.updateStateInternal(StateFailed, HealthUnknown, err)
 		return err
 	}
 
-	// Get the delete tool configuration through API
-	toolName, toolArgs, responseMapping, err := serviceClassMgr.GetDeleteTool(gsi.serviceClassName)
+	toolName, arguments, responseMapping, err := serviceClassMgr.GetStopTool(gsi.serviceClassName)
 	if err != nil {
-		gsi.updateStateInternal(StateFailed, HealthUnhealthy, err)
-		return fmt.Errorf("failed to get delete tool: %w", err)
+		err = fmt.Errorf("failed to get stop tool: %w", err)
+		gsi.updateStateInternal(StateFailed, HealthUnknown, err)
+		return err
 	}
 
-	// Prepare the context for template substitution
-	templateContext := gsi.buildTemplateContext()
-
-	// Apply template substitution to tool arguments
-	processedArgs, err := gsi.templater.Replace(toolArgs, templateContext)
+	// Execute the stop tool
+	err = gsi.executeLifecycleTool(ctx, "stop", toolName, arguments, responseMapping)
 	if err != nil {
-		err = fmt.Errorf("failed to process tool arguments: %w", err)
-		gsi.updateStateInternal(StateFailed, HealthUnhealthy, err)
 		return err
 	}
 
-	// Ensure tool arguments is a map
-	toolArgsMap, ok := processedArgs.(map[string]interface{})
-	if !ok {
-		err = fmt.Errorf("tool arguments must be a map, got %T", processedArgs)
-		gsi.updateStateInternal(StateFailed, HealthUnhealthy, err)
-		return err
-	}
-
-	// Call the delete tool
-	logging.Debug("GenericServiceInstance", "Calling delete tool %s for service %s", toolName, gsi.label)
-	response, err := gsi.toolCaller.CallTool(ctx, toolName, toolArgsMap)
-	if err != nil {
-		gsi.updateStateInternal(StateFailed, HealthUnhealthy, err)
-		return fmt.Errorf("delete tool failed: %w", err)
-	}
-
-	// Process the response
-	if err := gsi.processToolResponse(response, responseMapping); err != nil {
-		gsi.updateStateInternal(StateFailed, HealthUnhealthy, err)
-		return fmt.Errorf("failed to process delete tool response: %w", err)
-	}
-
-	// Check if tool call was successful
-	if success, ok := response["success"].(bool); ok && !success {
-		errorMsg := "delete tool indicated failure"
-		if text, exists := response["text"].(string); exists {
-			errorMsg = text
-		}
-		err = fmt.Errorf("delete tool failed: %s", errorMsg)
-		gsi.updateStateInternal(StateFailed, HealthUnhealthy, err)
-		return err
-	}
-
-	// Mark as stopped
+	// Final state after successful stop tool execution
 	gsi.updateStateInternal(StateStopped, HealthUnknown, nil)
-
-	logging.Info("GenericServiceInstance", "Successfully stopped service instance: %s", gsi.label)
 	return nil
 }
 
-// Restart implements the Service interface - restarts the service
+// Restart implements the Service interface
 func (gsi *GenericServiceInstance) Restart(ctx context.Context) error {
-	logging.Info("GenericServiceInstance", "Restarting service instance %s", gsi.label)
+	gsi.mu.Lock()
+	if gsi.state == StateStarting || gsi.state == StateStopping {
+		gsi.mu.Unlock()
+		return fmt.Errorf("cannot restart while starting or stopping")
+	}
+	gsi.mu.Unlock()
 
-	// Stop first
+	logging.Info("GenericServiceInstance", "Restarting service %s", gsi.label)
+
+	// Get restart tool info through API
+	serviceClassMgr := api.GetServiceClassManager()
+	if serviceClassMgr == nil {
+		err := fmt.Errorf("service class manager not available")
+		gsi.updateStateInternal(StateFailed, HealthUnknown, err)
+		return err
+	}
+
+	toolName, arguments, responseMapping, err := serviceClassMgr.GetRestartTool(gsi.serviceClassName)
+	if err != nil {
+		err = fmt.Errorf("failed to get restart tool info: %w", err)
+		gsi.updateStateInternal(StateFailed, HealthUnknown, err)
+		return err
+	}
+
+	// If a restart tool is defined, use it
+	if toolName != "" {
+		gsi.updateStateInternal(StateStarting, HealthChecking, nil) // A restart is a form of starting
+		return gsi.executeLifecycleTool(ctx, "restart", toolName, arguments, responseMapping)
+	}
+
+	// Otherwise, fallback to Stop() then Start()
+	logging.Info("GenericServiceInstance", "No custom restart tool for %s, using Stop/Start", gsi.label)
 	if err := gsi.Stop(ctx); err != nil {
 		return fmt.Errorf("failed to stop service during restart: %w", err)
 	}
 
-	// Then start
+	// Wait a moment for the service to fully stop
+	// In a real scenario, we might poll for StateStopped, but a short sleep is simpler here
+	time.Sleep(1 * time.Second)
+
 	if err := gsi.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start service during restart: %w", err)
 	}
@@ -590,5 +522,64 @@ func (gsi *GenericServiceInstance) extractFromResponse(response map[string]inter
 	if value, exists := response[path]; exists {
 		return value
 	}
+	return nil
+}
+
+// executeLifecycleTool executes a generic lifecycle tool (start, stop, etc.)
+func (gsi *GenericServiceInstance) executeLifecycleTool(
+	ctx context.Context,
+	toolType string,
+	toolName string,
+	arguments map[string]interface{},
+	responseMapping map[string]string,
+) error {
+	// Prepare the context for template substitution
+	templateContext := gsi.buildTemplateContext()
+
+	// Apply template substitution to tool arguments
+	processedArgs, err := gsi.templater.Replace(arguments, templateContext)
+	if err != nil {
+		err = fmt.Errorf("failed to process %s tool arguments: %w", toolType, err)
+		gsi.updateStateInternal(StateFailed, HealthUnhealthy, err)
+		return err
+	}
+
+	// Ensure tool arguments is a map
+	toolArgsMap, ok := processedArgs.(map[string]interface{})
+	if !ok {
+		err = fmt.Errorf("tool arguments must be a map, got %T", processedArgs)
+		gsi.updateStateInternal(StateFailed, HealthUnhealthy, err)
+		return err
+	}
+
+	// Call the lifecycle tool
+	logging.Debug("GenericServiceInstance", "Calling %s tool %s for service %s", toolType, toolName, gsi.label)
+	response, err := gsi.toolCaller.CallTool(ctx, toolName, toolArgsMap)
+	if err != nil {
+		gsi.updateStateInternal(StateFailed, HealthUnhealthy, err)
+		return fmt.Errorf("%s tool failed: %w", toolType, err)
+	}
+
+	// Process the response
+	if err := gsi.processToolResponse(response, responseMapping); err != nil {
+		gsi.updateStateInternal(StateFailed, HealthUnhealthy, err)
+		return fmt.Errorf("failed to process %s tool response: %w", toolType, err)
+	}
+
+	// Check if tool call was successful
+	if success, ok := response["success"].(bool); ok && !success {
+		errorMsg := "tool indicated failure"
+		if text, exists := response["text"].(string); exists {
+			errorMsg = text
+		}
+		err = fmt.Errorf("%s tool failed: %s", toolType, errorMsg)
+		gsi.updateStateInternal(StateFailed, HealthUnhealthy, err)
+		return err
+	}
+
+	// Mark as running and healthy
+	gsi.updateStateInternal(StateRunning, HealthHealthy, nil)
+
+	logging.Info("GenericServiceInstance", "Successfully %sed service instance: %s", toolType, gsi.label)
 	return nil
 }

@@ -137,11 +137,11 @@ func (scm *ServiceClassManager) validateServiceClassDefinition(def *ServiceClass
 	}
 
 	// Validate lifecycle tools if present
-	if def.ServiceConfig.LifecycleTools.Create.Tool == "" {
-		return fmt.Errorf("create tool is required in lifecycle tools")
+	if def.ServiceConfig.LifecycleTools.Start.Tool == "" {
+		return fmt.Errorf("start tool is required in lifecycle tools")
 	}
-	if def.ServiceConfig.LifecycleTools.Delete.Tool == "" {
-		return fmt.Errorf("delete tool is required in lifecycle tools")
+	if def.ServiceConfig.LifecycleTools.Stop.Tool == "" {
+		return fmt.Errorf("stop tool is required in lifecycle tools")
 	}
 
 	return nil
@@ -169,11 +169,14 @@ func (scm *ServiceClassManager) getRequiredTools(def *ServiceClassDefinition) []
 	tools := make(map[string]bool)
 
 	// Add lifecycle tools
-	if def.ServiceConfig.LifecycleTools.Create.Tool != "" {
-		tools[def.ServiceConfig.LifecycleTools.Create.Tool] = true
+	if def.ServiceConfig.LifecycleTools.Start.Tool != "" {
+		tools[def.ServiceConfig.LifecycleTools.Start.Tool] = true
 	}
-	if def.ServiceConfig.LifecycleTools.Delete.Tool != "" {
-		tools[def.ServiceConfig.LifecycleTools.Delete.Tool] = true
+	if def.ServiceConfig.LifecycleTools.Stop.Tool != "" {
+		tools[def.ServiceConfig.LifecycleTools.Stop.Tool] = true
+	}
+	if def.ServiceConfig.LifecycleTools.Restart != nil && def.ServiceConfig.LifecycleTools.Restart.Tool != "" {
+		tools[def.ServiceConfig.LifecycleTools.Restart.Tool] = true
 	}
 	if def.ServiceConfig.LifecycleTools.HealthCheck != nil && def.ServiceConfig.LifecycleTools.HealthCheck.Tool != "" {
 		tools[def.ServiceConfig.LifecycleTools.HealthCheck.Tool] = true
@@ -240,8 +243,8 @@ func (scm *ServiceClassManager) ListServiceClasses() []ServiceClassInfo {
 			Description:              def.Description,
 			ServiceType:              def.ServiceConfig.ServiceType,
 			Available:                available,
-			CreateToolAvailable:      scm.toolChecker != nil && scm.toolChecker.IsToolAvailable(def.ServiceConfig.LifecycleTools.Create.Tool),
-			DeleteToolAvailable:      scm.toolChecker != nil && scm.toolChecker.IsToolAvailable(def.ServiceConfig.LifecycleTools.Delete.Tool),
+			CreateToolAvailable:      scm.toolChecker != nil && scm.toolChecker.IsToolAvailable(def.ServiceConfig.LifecycleTools.Start.Tool),
+			DeleteToolAvailable:      scm.toolChecker != nil && scm.toolChecker.IsToolAvailable(def.ServiceConfig.LifecycleTools.Stop.Tool),
 			HealthCheckToolAvailable: def.ServiceConfig.LifecycleTools.HealthCheck != nil && scm.toolChecker != nil && scm.toolChecker.IsToolAvailable(def.ServiceConfig.LifecycleTools.HealthCheck.Tool),
 			StatusToolAvailable:      def.ServiceConfig.LifecycleTools.Status != nil && scm.toolChecker != nil && scm.toolChecker.IsToolAvailable(def.ServiceConfig.LifecycleTools.Status.Tool),
 			RequiredTools:            requiredTools,

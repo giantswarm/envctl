@@ -82,8 +82,8 @@ func (a *Adapter) GetServiceClass(name string) (*api.ServiceClassDefinition, err
 	return apiDef, nil
 }
 
-// GetCreateTool returns create tool information for a service class
-func (a *Adapter) GetCreateTool(name string) (toolName string, arguments map[string]interface{}, responseMapping map[string]string, err error) {
+// GetStartTool returns start tool information for a service class
+func (a *Adapter) GetStartTool(name string) (toolName string, arguments map[string]interface{}, responseMapping map[string]string, err error) {
 	if a.manager == nil {
 		return "", nil, nil, fmt.Errorf("service class manager not available")
 	}
@@ -93,24 +93,24 @@ func (a *Adapter) GetCreateTool(name string) (toolName string, arguments map[str
 		return "", nil, nil, fmt.Errorf("service class %s not found", name)
 	}
 
-	createTool := def.ServiceConfig.LifecycleTools.Create
-	if createTool.Tool == "" {
-		return "", nil, nil, fmt.Errorf("no create tool defined for service class %s", name)
+	startTool := def.ServiceConfig.LifecycleTools.Start
+	if startTool.Tool == "" {
+		return "", nil, nil, fmt.Errorf("no start tool defined for service class %s", name)
 	}
 
 	// Convert response mapping to simple map
 	respMapping := map[string]string{
-		"serviceId": createTool.ResponseMapping.ServiceID,
-		"status":    createTool.ResponseMapping.Status,
-		"health":    createTool.ResponseMapping.Health,
-		"error":     createTool.ResponseMapping.Error,
+		"serviceId": startTool.ResponseMapping.ServiceID,
+		"status":    startTool.ResponseMapping.Status,
+		"health":    startTool.ResponseMapping.Health,
+		"error":     startTool.ResponseMapping.Error,
 	}
 
-	return createTool.Tool, createTool.Arguments, respMapping, nil
+	return startTool.Tool, startTool.Arguments, respMapping, nil
 }
 
-// GetDeleteTool returns delete tool information for a service class
-func (a *Adapter) GetDeleteTool(name string) (toolName string, arguments map[string]interface{}, responseMapping map[string]string, err error) {
+// GetStopTool returns stop tool information for a service class
+func (a *Adapter) GetStopTool(name string) (toolName string, arguments map[string]interface{}, responseMapping map[string]string, err error) {
 	if a.manager == nil {
 		return "", nil, nil, fmt.Errorf("service class manager not available")
 	}
@@ -120,20 +120,48 @@ func (a *Adapter) GetDeleteTool(name string) (toolName string, arguments map[str
 		return "", nil, nil, fmt.Errorf("service class %s not found", name)
 	}
 
-	deleteTool := def.ServiceConfig.LifecycleTools.Delete
-	if deleteTool.Tool == "" {
-		return "", nil, nil, fmt.Errorf("no delete tool defined for service class %s", name)
+	stopTool := def.ServiceConfig.LifecycleTools.Stop
+	if stopTool.Tool == "" {
+		return "", nil, nil, fmt.Errorf("no stop tool defined for service class %s", name)
 	}
 
 	// Convert response mapping to simple map
 	respMapping := map[string]string{
-		"serviceId": deleteTool.ResponseMapping.ServiceID,
-		"status":    deleteTool.ResponseMapping.Status,
-		"health":    deleteTool.ResponseMapping.Health,
-		"error":     deleteTool.ResponseMapping.Error,
+		"serviceId": stopTool.ResponseMapping.ServiceID,
+		"status":    stopTool.ResponseMapping.Status,
+		"health":    stopTool.ResponseMapping.Health,
+		"error":     stopTool.ResponseMapping.Error,
 	}
 
-	return deleteTool.Tool, deleteTool.Arguments, respMapping, nil
+	return stopTool.Tool, stopTool.Arguments, respMapping, nil
+}
+
+// GetRestartTool returns restart tool information for a service class
+func (a *Adapter) GetRestartTool(name string) (toolName string, arguments map[string]interface{}, responseMapping map[string]string, err error) {
+	if a.manager == nil {
+		return "", nil, nil, fmt.Errorf("service class manager not available")
+	}
+
+	def, exists := a.manager.GetServiceClassDefinition(name)
+	if !exists {
+		return "", nil, nil, fmt.Errorf("service class %s not found", name)
+	}
+
+	restartTool := def.ServiceConfig.LifecycleTools.Restart
+	if restartTool == nil || restartTool.Tool == "" {
+		// This is an optional tool, so we return no error, just empty info
+		return "", nil, nil, nil
+	}
+
+	// Convert response mapping to simple map
+	respMapping := map[string]string{
+		"serviceId": restartTool.ResponseMapping.ServiceID,
+		"status":    restartTool.ResponseMapping.Status,
+		"health":    restartTool.ResponseMapping.Health,
+		"error":     restartTool.ResponseMapping.Error,
+	}
+
+	return restartTool.Tool, restartTool.Arguments, respMapping, nil
 }
 
 // GetHealthCheckTool returns health check tool information for a service class
