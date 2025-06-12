@@ -3,6 +3,7 @@ package capability
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -425,16 +426,72 @@ func (so *ServiceOrchestrator) updateInstanceState(instance *ServiceInstance, ne
 }
 
 // createServiceInstance handles the actual creation of a service instance
-// This will be enhanced in 43.4 to integrate with the aggregator
 func (so *ServiceOrchestrator) createServiceInstance(ctx context.Context, instance *ServiceInstance, capabilityDef *ServiceCapabilityDefinition) error {
 	so.updateInstanceState(instance, ServiceStateStarting, HealthStatusUnknown, "")
 
-	// For now, this is a placeholder - the actual tool calling will be implemented in 43.4
-	// We'll just simulate successful creation
-	logging.Info("ServiceOrchestrator", "Creating service instance %s using capability %s (tool integration pending)",
+	logging.Info("ServiceOrchestrator", "Creating service instance %s using capability %s",
 		instance.Label, capabilityDef.Name)
 
-	// Mark as running and healthy immediately
+	// Check if tool caller is available
+	if so.toolCaller == nil {
+		return fmt.Errorf("tool caller not available")
+	}
+
+	// Get the create tool configuration
+	createTool := capabilityDef.ServiceConfig.LifecycleTools.Create
+	if createTool.Tool == "" {
+		return fmt.Errorf("no create tool specified in capability definition")
+	}
+
+	// Prepare the context for template substitution
+	templater := NewParameterTemplater()
+	templateContext := MergeContexts(
+		instance.CreationParameters,
+		map[string]interface{}{
+			"label":          instance.Label,
+			"serviceId":      instance.ID,
+			"capabilityName": instance.CapabilityName,
+			"capabilityType": instance.CapabilityType,
+		},
+	)
+
+	// Apply template substitution to tool arguments
+	toolArgs, err := templater.ReplaceTemplates(createTool.Arguments, templateContext)
+	if err != nil {
+		return fmt.Errorf("failed to process tool arguments: %w", err)
+	}
+
+	// Ensure tool arguments is a map
+	toolArgsMap, ok := toolArgs.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("tool arguments must be a map, got %T", toolArgs)
+	}
+
+	// Call the create tool
+	logging.Debug("ServiceOrchestrator", "Calling create tool %s for service %s", createTool.Tool, instance.Label)
+	response, err := so.toolCaller.CallTool(ctx, createTool.Tool, toolArgsMap)
+	if err != nil {
+		so.updateInstanceState(instance, ServiceStateFailed, HealthStatusUnhealthy, err.Error())
+		return fmt.Errorf("create tool failed: %w", err)
+	}
+
+	// Process the response
+	if err := so.processToolResponse(instance, response, createTool.ResponseMapping); err != nil {
+		so.updateInstanceState(instance, ServiceStateFailed, HealthStatusUnhealthy, err.Error())
+		return fmt.Errorf("failed to process create tool response: %w", err)
+	}
+
+	// Check if tool call was successful
+	if success, ok := response["success"].(bool); ok && !success {
+		errorMsg := "create tool indicated failure"
+		if text, exists := response["text"].(string); exists {
+			errorMsg = text
+		}
+		so.updateInstanceState(instance, ServiceStateFailed, HealthStatusUnhealthy, errorMsg)
+		return fmt.Errorf("create tool failed: %s", errorMsg)
+	}
+
+	// Mark as running and healthy
 	so.updateInstanceState(instance, ServiceStateRunning, HealthStatusHealthy, "")
 
 	logging.Info("ServiceOrchestrator", "Successfully created service instance: %s", instance.Label)
@@ -442,14 +499,84 @@ func (so *ServiceOrchestrator) createServiceInstance(ctx context.Context, instan
 }
 
 // deleteServiceInstance handles the actual deletion of a service instance
-// This will be enhanced in 43.4 to integrate with the aggregator
 func (so *ServiceOrchestrator) deleteServiceInstance(ctx context.Context, instance *ServiceInstance) error {
 	so.updateInstanceState(instance, ServiceStateStopping, instance.Health, "")
 
-	// For now, this is a placeholder - the actual tool calling will be implemented in 43.4
-	logging.Info("ServiceOrchestrator", "Deleting service instance %s (tool integration pending)", instance.Label)
+	logging.Info("ServiceOrchestrator", "Deleting service instance %s", instance.Label)
 
-	// Mark as stopped immediately
+	// Get the capability definition
+	capabilityDef, exists := so.registry.GetServiceCapabilityDefinition(instance.CapabilityName)
+	if !exists {
+		// If capability definition is not found, just mark as stopped
+		// This can happen during shutdown or if definitions have changed
+		logging.Warn("ServiceOrchestrator", "Capability definition %s not found for service %s, marking as stopped",
+			instance.CapabilityName, instance.Label)
+		so.updateInstanceState(instance, ServiceStateStopped, HealthStatusUnknown, "")
+		return nil
+	}
+
+	// Check if tool caller is available
+	if so.toolCaller == nil {
+		logging.Warn("ServiceOrchestrator", "Tool caller not available for service %s, marking as stopped", instance.Label)
+		so.updateInstanceState(instance, ServiceStateStopped, HealthStatusUnknown, "")
+		return nil
+	}
+
+	// Get the delete tool configuration
+	deleteTool := capabilityDef.ServiceConfig.LifecycleTools.Delete
+	if deleteTool.Tool == "" {
+		// If no delete tool specified, just mark as stopped
+		logging.Debug("ServiceOrchestrator", "No delete tool specified for service %s, marking as stopped", instance.Label)
+		so.updateInstanceState(instance, ServiceStateStopped, HealthStatusUnknown, "")
+		return nil
+	}
+
+	// Prepare the context for template substitution
+	templater := NewParameterTemplater()
+	templateContext := MergeContexts(
+		instance.CreationParameters,
+		instance.ServiceData, // Include service data that might contain external IDs
+		map[string]interface{}{
+			"label":          instance.Label,
+			"serviceId":      instance.ID,
+			"capabilityName": instance.CapabilityName,
+			"capabilityType": instance.CapabilityType,
+		},
+	)
+
+	// Apply template substitution to tool arguments
+	toolArgs, err := templater.ReplaceTemplates(deleteTool.Arguments, templateContext)
+	if err != nil {
+		logging.Error("ServiceOrchestrator", err, "Failed to process delete tool arguments for service %s", instance.Label)
+		// Continue with deletion anyway and mark as stopped
+		so.updateInstanceState(instance, ServiceStateStopped, HealthStatusUnknown, "")
+		return nil
+	}
+
+	// Ensure tool arguments is a map
+	toolArgsMap, ok := toolArgs.(map[string]interface{})
+	if !ok {
+		logging.Error("ServiceOrchestrator", nil, "Delete tool arguments must be a map for service %s, got %T", instance.Label, toolArgs)
+		so.updateInstanceState(instance, ServiceStateStopped, HealthStatusUnknown, "")
+		return nil
+	}
+
+	// Call the delete tool
+	logging.Debug("ServiceOrchestrator", "Calling delete tool %s for service %s", deleteTool.Tool, instance.Label)
+	response, err := so.toolCaller.CallTool(ctx, deleteTool.Tool, toolArgsMap)
+	if err != nil {
+		logging.Error("ServiceOrchestrator", err, "Delete tool failed for service %s", instance.Label)
+		// Even if delete tool fails, mark as stopped to prevent resource leaks in our tracking
+		so.updateInstanceState(instance, ServiceStateStopped, HealthStatusUnknown, err.Error())
+		return fmt.Errorf("delete tool failed: %w", err)
+	}
+
+	// Process the response (but don't fail deletion if this fails)
+	if err := so.processToolResponse(instance, response, deleteTool.ResponseMapping); err != nil {
+		logging.Warn("ServiceOrchestrator", "Failed to process delete tool response for service %s: %v", instance.Label, err)
+	}
+
+	// Mark as stopped
 	so.updateInstanceState(instance, ServiceStateStopped, HealthStatusUnknown, "")
 
 	logging.Info("ServiceOrchestrator", "Successfully deleted service instance: %s", instance.Label)
@@ -542,26 +669,116 @@ func (so *ServiceOrchestrator) processHealthCheck(serviceID string) {
 	now := time.Now()
 	instance.LastChecked = &now
 
-	// For now, this is a placeholder - actual health check tool calling will be implemented in 43.4
-	// We'll simulate health checks based on service state
-	if instance.State == ServiceStateRunning {
-		// Check if health check is enabled in the capability definition
-		healthCheckEnabled := capabilityDef.ServiceConfig.HealthCheck.Enabled
+	// Only perform health checks for running services
+	if instance.State != ServiceStateRunning {
+		logging.Debug("ServiceOrchestrator", "Skipping health check for service %s (state: %s)", instance.Label, instance.State)
+		return
+	}
 
-		if healthCheckEnabled {
-			// Simulate a successful health check most of the time
-			if instance.HealthCheckFailures < 3 {
-				so.updateInstanceHealth(instance, HealthStatusHealthy, "")
-				instance.HealthCheckSuccesses++
-			} else {
-				// Simulate occasional health check failures
-				so.updateInstanceHealth(instance, HealthStatusUnhealthy, "simulated health check failure")
-				instance.HealthCheckFailures++
-			}
-		} else {
-			// Health check disabled, maintain current health status
-			logging.Debug("ServiceOrchestrator", "Health check disabled for service %s", instance.Label)
+	// Check if health check is enabled in the capability definition
+	healthCheckConfig := capabilityDef.ServiceConfig.HealthCheck
+	if !healthCheckConfig.Enabled {
+		// Health check disabled, maintain current health status
+		logging.Debug("ServiceOrchestrator", "Health check disabled for service %s", instance.Label)
+		return
+	}
+
+	// Check if health check tool is specified
+	if capabilityDef.ServiceConfig.LifecycleTools.HealthCheck == nil {
+		// No health check tool specified, assume healthy if running
+		logging.Debug("ServiceOrchestrator", "No health check tool specified for service %s, assuming healthy", instance.Label)
+		so.updateInstanceHealth(instance, HealthStatusHealthy, "")
+		return
+	}
+
+	// Check if tool caller is available
+	if so.toolCaller == nil {
+		logging.Debug("ServiceOrchestrator", "Tool caller not available for health check of service %s", instance.Label)
+		return
+	}
+
+	healthCheckTool := *capabilityDef.ServiceConfig.LifecycleTools.HealthCheck
+
+	// Prepare the context for template substitution
+	templater := NewParameterTemplater()
+	templateContext := MergeContexts(
+		instance.CreationParameters,
+		instance.ServiceData, // Include service data that might contain external IDs
+		map[string]interface{}{
+			"label":          instance.Label,
+			"serviceId":      instance.ID,
+			"capabilityName": instance.CapabilityName,
+			"capabilityType": instance.CapabilityType,
+		},
+	)
+
+	// Apply template substitution to tool arguments
+	toolArgs, err := templater.ReplaceTemplates(healthCheckTool.Arguments, templateContext)
+	if err != nil {
+		logging.Error("ServiceOrchestrator", err, "Failed to process health check tool arguments for service %s", instance.Label)
+		instance.HealthCheckFailures++
+		so.updateInstanceHealth(instance, HealthStatusUnhealthy, fmt.Sprintf("health check argument processing failed: %v", err))
+		return
+	}
+
+	// Ensure tool arguments is a map
+	toolArgsMap, ok := toolArgs.(map[string]interface{})
+	if !ok {
+		logging.Error("ServiceOrchestrator", nil, "Health check tool arguments must be a map for service %s, got %T", instance.Label, toolArgs)
+		instance.HealthCheckFailures++
+		so.updateInstanceHealth(instance, HealthStatusUnhealthy, "health check argument processing failed")
+		return
+	}
+
+	// Call the health check tool with a timeout
+	healthCheckCtx := context.Background()
+	if healthCheckConfig.Interval > 0 {
+		var cancel context.CancelFunc
+		healthCheckCtx, cancel = context.WithTimeout(context.Background(), healthCheckConfig.Interval/2)
+		defer cancel()
+	}
+
+	logging.Debug("ServiceOrchestrator", "Calling health check tool %s for service %s", healthCheckTool.Tool, instance.Label)
+	response, err := so.toolCaller.CallTool(healthCheckCtx, healthCheckTool.Tool, toolArgsMap)
+	if err != nil {
+		logging.Debug("ServiceOrchestrator", "Health check tool failed for service %s: %v", instance.Label, err)
+		instance.HealthCheckFailures++
+
+		// Check failure threshold
+		if instance.HealthCheckFailures >= healthCheckConfig.FailureThreshold {
+			so.updateInstanceHealth(instance, HealthStatusUnhealthy, fmt.Sprintf("health check failed: %v", err))
 		}
+		return
+	}
+
+	// Process the response (but don't fail health check if this fails)
+	if err := so.processToolResponse(instance, response, healthCheckTool.ResponseMapping); err != nil {
+		logging.Warn("ServiceOrchestrator", "Failed to process health check tool response for service %s: %v", instance.Label, err)
+	}
+
+	// Check if tool call was successful
+	if success, ok := response["success"].(bool); ok && !success {
+		logging.Debug("ServiceOrchestrator", "Health check tool indicated failure for service %s", instance.Label)
+		instance.HealthCheckFailures++
+
+		// Check failure threshold
+		if instance.HealthCheckFailures >= healthCheckConfig.FailureThreshold {
+			errorMsg := "health check tool indicated failure"
+			if text, exists := response["text"].(string); exists {
+				errorMsg = text
+			}
+			so.updateInstanceHealth(instance, HealthStatusUnhealthy, errorMsg)
+		}
+		return
+	}
+
+	// Health check successful
+	instance.HealthCheckSuccesses++
+	instance.HealthCheckFailures = 0 // Reset failure count on success
+
+	// Check success threshold
+	if instance.HealthCheckSuccesses >= healthCheckConfig.SuccessThreshold {
+		so.updateInstanceHealth(instance, HealthStatusHealthy, "")
 	}
 
 	logging.Debug("ServiceOrchestrator", "Health check completed for service %s (health: %s)",
@@ -619,4 +836,82 @@ func (so *ServiceOrchestrator) publishEvent(event ServiceInstanceEvent) {
 			logging.Debug("ServiceOrchestrator", "Event subscriber blocked, skipping event for service %s", event.Label)
 		}
 	}
+}
+
+// processToolResponse processes the response from a tool call and updates service data
+func (so *ServiceOrchestrator) processToolResponse(instance *ServiceInstance, response map[string]interface{}, responseMapping ResponseMapping) error {
+	// Update service data with response
+	if instance.ServiceData == nil {
+		instance.ServiceData = make(map[string]interface{})
+	}
+
+	// Store raw response for debugging
+	instance.ServiceData["last_response"] = response
+
+	// Extract specific fields based on response mapping
+	if responseMapping.ServiceID != "" {
+		if serviceID := so.extractFromResponse(response, responseMapping.ServiceID); serviceID != nil {
+			instance.ServiceData["external_service_id"] = serviceID
+		}
+	}
+
+	if responseMapping.Status != "" {
+		if status := so.extractFromResponse(response, responseMapping.Status); status != nil {
+			instance.ServiceData["external_status"] = status
+		}
+	}
+
+	if responseMapping.Health != "" {
+		if health := so.extractFromResponse(response, responseMapping.Health); health != nil {
+			instance.ServiceData["external_health"] = health
+		}
+	}
+
+	if responseMapping.Error != "" {
+		if errorInfo := so.extractFromResponse(response, responseMapping.Error); errorInfo != nil {
+			instance.ServiceData["external_error"] = errorInfo
+		}
+	}
+
+	// Extract metadata fields
+	for key, path := range responseMapping.Metadata {
+		if value := so.extractFromResponse(response, path); value != nil {
+			instance.ServiceData[key] = value
+		}
+	}
+
+	logging.Debug("ServiceOrchestrator", "Processed tool response for service %s", instance.Label)
+	return nil
+}
+
+// extractFromResponse extracts a value from the response using a simple JSONPath-like syntax
+func (so *ServiceOrchestrator) extractFromResponse(response map[string]interface{}, path string) interface{} {
+	// For now, implement simple dot notation (e.g., "data.port" or "text")
+	if path == "" {
+		return nil
+	}
+
+	// Split path by dots
+	parts := strings.Split(path, ".")
+	current := response
+
+	for i, part := range parts {
+		if current == nil {
+			return nil
+		}
+
+		if i == len(parts)-1 {
+			// Last part - return the value
+			return current[part]
+		}
+
+		// Navigate deeper
+		if next, ok := current[part].(map[string]interface{}); ok {
+			current = next
+		} else {
+			return nil
+		}
+	}
+
+	return nil
 }
