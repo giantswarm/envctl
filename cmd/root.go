@@ -50,7 +50,7 @@ func init() {
 	rootCmd.AddCommand(newSelfUpdateCmd())
 
 	// Example of how to define persistent flags (global for the application):
-	// rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.envctl.yaml)")
+	// rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.config/envctl/config.yaml)")
 
 	// Example of how to define local flags (only run when this action is called directly):
 	// rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")

@@ -117,6 +117,6 @@ This creates a clear separation between the management layer (core_*) and the ex
 - **Tasks**:
     - the TUI becomes an mcp client to the aggregated mcp server instead of running in process.
     - Update the TUI to use the new execution tools (`api_*` for capability operations, `workflow_*` for workflow executions) for all its operations.
-    - Provide default `envctl.yaml` examples that show users how to compose precondition workflows.
+    - Provide default `config.yaml` examples that show users how to compose precondition workflows.
 
 </PRD>
