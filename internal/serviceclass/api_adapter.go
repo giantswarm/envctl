@@ -4,6 +4,7 @@ import (
 	"envctl/internal/api"
 	"envctl/pkg/logging"
 	"fmt"
+	"time"
 )
 
 // Adapter implements the api.ServiceClassManagerHandler interface
@@ -78,6 +79,120 @@ func (a *Adapter) GetServiceClass(name string) (*api.ServiceClassDefinition, err
 	}
 
 	return apiDef, nil
+}
+
+// GetCreateTool returns create tool information for a service class
+func (a *Adapter) GetCreateTool(name string) (toolName string, arguments map[string]interface{}, responseMapping map[string]string, err error) {
+	if a.manager == nil {
+		return "", nil, nil, fmt.Errorf("service class manager not available")
+	}
+
+	def, exists := a.manager.GetServiceClassDefinition(name)
+	if !exists {
+		return "", nil, nil, fmt.Errorf("service class %s not found", name)
+	}
+
+	createTool := def.ServiceConfig.LifecycleTools.Create
+	if createTool.Tool == "" {
+		return "", nil, nil, fmt.Errorf("no create tool defined for service class %s", name)
+	}
+
+	// Convert response mapping to simple map
+	respMapping := map[string]string{
+		"serviceId": createTool.ResponseMapping.ServiceID,
+		"status":    createTool.ResponseMapping.Status,
+		"health":    createTool.ResponseMapping.Health,
+		"error":     createTool.ResponseMapping.Error,
+	}
+
+	return createTool.Tool, createTool.Arguments, respMapping, nil
+}
+
+// GetDeleteTool returns delete tool information for a service class
+func (a *Adapter) GetDeleteTool(name string) (toolName string, arguments map[string]interface{}, responseMapping map[string]string, err error) {
+	if a.manager == nil {
+		return "", nil, nil, fmt.Errorf("service class manager not available")
+	}
+
+	def, exists := a.manager.GetServiceClassDefinition(name)
+	if !exists {
+		return "", nil, nil, fmt.Errorf("service class %s not found", name)
+	}
+
+	deleteTool := def.ServiceConfig.LifecycleTools.Delete
+	if deleteTool.Tool == "" {
+		return "", nil, nil, fmt.Errorf("no delete tool defined for service class %s", name)
+	}
+
+	// Convert response mapping to simple map
+	respMapping := map[string]string{
+		"serviceId": deleteTool.ResponseMapping.ServiceID,
+		"status":    deleteTool.ResponseMapping.Status,
+		"health":    deleteTool.ResponseMapping.Health,
+		"error":     deleteTool.ResponseMapping.Error,
+	}
+
+	return deleteTool.Tool, deleteTool.Arguments, respMapping, nil
+}
+
+// GetHealthCheckTool returns health check tool information for a service class
+func (a *Adapter) GetHealthCheckTool(name string) (toolName string, arguments map[string]interface{}, responseMapping map[string]string, err error) {
+	if a.manager == nil {
+		return "", nil, nil, fmt.Errorf("service class manager not available")
+	}
+
+	def, exists := a.manager.GetServiceClassDefinition(name)
+	if !exists {
+		return "", nil, nil, fmt.Errorf("service class %s not found", name)
+	}
+
+	if def.ServiceConfig.LifecycleTools.HealthCheck == nil {
+		return "", nil, nil, fmt.Errorf("no health check tool defined for service class %s", name)
+	}
+
+	healthTool := *def.ServiceConfig.LifecycleTools.HealthCheck
+	if healthTool.Tool == "" {
+		return "", nil, nil, fmt.Errorf("no health check tool defined for service class %s", name)
+	}
+
+	// Convert response mapping to simple map
+	respMapping := map[string]string{
+		"serviceId": healthTool.ResponseMapping.ServiceID,
+		"status":    healthTool.ResponseMapping.Status,
+		"health":    healthTool.ResponseMapping.Health,
+		"error":     healthTool.ResponseMapping.Error,
+	}
+
+	return healthTool.Tool, healthTool.Arguments, respMapping, nil
+}
+
+// GetHealthCheckConfig returns health check configuration for a service class
+func (a *Adapter) GetHealthCheckConfig(name string) (enabled bool, interval time.Duration, failureThreshold, successThreshold int, err error) {
+	if a.manager == nil {
+		return false, 0, 0, 0, fmt.Errorf("service class manager not available")
+	}
+
+	def, exists := a.manager.GetServiceClassDefinition(name)
+	if !exists {
+		return false, 0, 0, 0, fmt.Errorf("service class %s not found", name)
+	}
+
+	config := def.ServiceConfig.HealthCheck
+	return config.Enabled, config.Interval, config.FailureThreshold, config.SuccessThreshold, nil
+}
+
+// GetServiceDependencies returns dependencies for a service class
+func (a *Adapter) GetServiceDependencies(name string) ([]string, error) {
+	if a.manager == nil {
+		return nil, fmt.Errorf("service class manager not available")
+	}
+
+	def, exists := a.manager.GetServiceClassDefinition(name)
+	if !exists {
+		return nil, fmt.Errorf("service class %s not found", name)
+	}
+
+	return def.ServiceConfig.Dependencies, nil
 }
 
 // IsServiceClassAvailable checks if a service class is available
