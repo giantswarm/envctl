@@ -133,14 +133,36 @@ type WorkflowHandler interface {
 	ToolProvider
 }
 
+// ServiceOrchestratorHandler defines the interface for service orchestrator operations
+type ServiceOrchestratorHandler interface {
+	// Service capability management
+	ListServiceCapabilities() []ServiceCapabilityInfo
+	GetServiceCapability(name string) (*ServiceCapabilityInfo, error)
+	IsServiceCapabilityAvailable(name string) bool
+
+	// Service instance management
+	CreateService(ctx context.Context, req CreateServiceRequest) (*ServiceInstanceInfo, error)
+	DeleteService(ctx context.Context, serviceID string) error
+	GetService(serviceID string) (*ServiceInstanceInfo, error)
+	GetServiceByLabel(label string) (*ServiceInstanceInfo, error)
+	ListServices() []ServiceInstanceInfo
+
+	// Service events
+	SubscribeToServiceEvents() <-chan ServiceInstanceEvent
+
+	// Tool provider interface
+	ToolProvider
+}
+
 // Handler registry
 var (
-	registryHandler     ServiceRegistryHandler
-	orchestratorHandler OrchestratorHandler
-	aggregatorHandler   AggregatorHandler
-	configHandler       ConfigHandler
-	capabilityHandler   CapabilityHandler
-	workflowHandler     WorkflowHandler
+	registryHandler            ServiceRegistryHandler
+	orchestratorHandler        OrchestratorHandler
+	serviceOrchestratorHandler ServiceOrchestratorHandler
+	aggregatorHandler          AggregatorHandler
+	configHandler              ConfigHandler
+	capabilityHandler          CapabilityHandler
+	workflowHandler            WorkflowHandler
 
 	// Maps for service-specific handlers
 	mcpHandlers = make(map[string]MCPServiceHandler)
@@ -282,6 +304,21 @@ func GetWorkflow() WorkflowHandler {
 	handlerMutex.RLock()
 	defer handlerMutex.RUnlock()
 	return workflowHandler
+}
+
+// RegisterServiceOrchestrator registers the service orchestrator handler
+func RegisterServiceOrchestrator(h ServiceOrchestratorHandler) {
+	handlerMutex.Lock()
+	defer handlerMutex.Unlock()
+	logging.Debug("API", "Registering service orchestrator handler: %v", h != nil)
+	serviceOrchestratorHandler = h
+}
+
+// GetServiceOrchestrator returns the registered service orchestrator handler
+func GetServiceOrchestrator() ServiceOrchestratorHandler {
+	handlerMutex.RLock()
+	defer handlerMutex.RUnlock()
+	return serviceOrchestratorHandler
 }
 
 // ExecuteCapability is a convenience function for executing capabilities
