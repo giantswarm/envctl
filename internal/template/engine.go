@@ -15,7 +15,7 @@ type Engine struct {
 // New creates a new template engine
 func New() *Engine {
 	return &Engine{
-		templatePattern: regexp.MustCompile(`\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}`),
+		templatePattern: regexp.MustCompile(`\{\{\s*\.?([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}`),
 	}
 }
 
@@ -70,13 +70,19 @@ func (e *Engine) replaceStringTemplates(template string, context map[string]inte
 			replacementStr = fmt.Sprintf("%v", r)
 		}
 
-		// Replace all occurrences of this variable
+		// Replace all occurrences of this variable (with and without dot prefix)
 		placeholder := fmt.Sprintf("{{ %s }}", varName)
 		result = strings.ReplaceAll(result, placeholder, replacementStr)
+
+		placeholderWithDot := fmt.Sprintf("{{ .%s }}", varName)
+		result = strings.ReplaceAll(result, placeholderWithDot, replacementStr)
 
 		// Also handle version without spaces
 		placeholderNoSpace := fmt.Sprintf("{{%s}}", varName)
 		result = strings.ReplaceAll(result, placeholderNoSpace, replacementStr)
+
+		placeholderNoSpaceWithDot := fmt.Sprintf("{{.%s}}", varName)
+		result = strings.ReplaceAll(result, placeholderNoSpaceWithDot, replacementStr)
 	}
 
 	if len(missingVars) > 0 {

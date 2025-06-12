@@ -1,119 +1,219 @@
-// Package api provides public interfaces for interacting with envctl services.
+// Package api provides the central API layer for envctl's Service Locator Pattern.
 //
-// This package contains the API layer that exposes controlled access to service
-// functionality without exposing internal implementation details. It serves as
-// the primary interface for external consumers like the TUI, HTTP endpoints,
-// or other components that need to interact with services.
+// This package serves as the single point of communication between all envctl
+// packages, preventing direct inter-package dependencies and enabling clean
+// architectural separation. All service functionality is accessed through
+// handler interfaces registered with this central API layer.
 //
-// Architecture:
+// # Service Locator Pattern
 //
-// The API package follows a handler-based architecture that maintains clean
-// separation between interfaces and implementations:
+// The API package implements the core Service Locator Pattern that is
+// **mandatory** for all inter-package communication in envctl:
 //
-//  1. **API Interfaces** - Define the contracts for each service type
-//     (OrchestratorAPI, MCPServiceAPI, etc.)
+//  1. **Handler Interfaces** - Define contracts for each service capability
+//     (OrchestratorHandler, ServiceClassManagerHandler, etc.)
 //
-//  2. **Handler Interfaces** - Define what capabilities the implementations
-//     must provide (ServiceRegistryHandler, OrchestratorHandler, etc.)
+//  2. **API Implementations** - Thin wrappers that delegate to registered handlers
+//     (OrchestratorAPI, ServiceClassAPI, etc.)
 //
-//  3. **Handler Registry** - Manages registration of handler implementations
-//     at runtime
+//  3. **Handler Registry** - Central registry for handler implementations
+//     with thread-safe registration and access
 //
-//  4. **API Implementations** - Thin wrappers that delegate to registered
-//     handlers
+//  4. **Adapter Pattern** - Service packages provide adapters that implement
+//     handler interfaces and register with the API layer
 //
-// This design ensures:
-// - No circular dependencies (API doesn't import internal packages)
-// - Clean separation of concerns
-// - Easy testing through handler mocking
-// - Runtime flexibility in handler registration
+// This architecture ensures:
+// - **Zero circular dependencies** (API doesn't import internal packages)
+// - **Clean separation of concerns** between packages
+// - **Enhanced testability** through handler mocking
+// - **Runtime flexibility** in handler registration
+// - **Independent package development** and refactoring
 //
-// Service Types:
+// # ServiceClass Integration
 //
-//   - OrchestratorAPI: Manages service lifecycle and cluster switching
-//   - MCPServiceAPI: Provides MCP server information and tool access
-//   - PortForwardServiceAPI: Manages kubectl port-forward tunnels
-//   - K8sServiceAPI: Handles Kubernetes cluster connections
-//   - AggregatorAPI: Aggregates MCP servers into a single endpoint
+// The API layer provides comprehensive ServiceClass support through:
 //
-// Example Usage:
+//   - **ServiceClassManagerHandler**: ServiceClass definition management
+//   - **Enhanced OrchestratorHandler**: ServiceClass instance lifecycle
+//   - **ServiceClass APIs**: Complete ServiceClass operations
+//   - **Event Streaming**: Real-time ServiceClass instance events
+//   - **Tool Provider Integration**: ServiceClass tool execution
 //
-//	// At startup, services register their handlers
-//	registryAdapter := services.NewRegistryAdapter(registry)
-//	registryAdapter.Register()
+// # Handler Interfaces
 //
-//	orchAdapter := orchestrator.NewAPIAdapter(orch)
-//	orchAdapter.Register()
+// ## Core Service Handlers
+//   - **ServiceRegistryHandler**: Unified service registry access
+//   - **OrchestratorHandler**: Enhanced with ServiceClass instance management
+//   - **ServiceClassManagerHandler**: ServiceClass definition and tool management
+//   - **AggregatorHandler**: Tool execution and MCP server aggregation
+//   - **ConfigHandler**: Configuration management
 //
-//	// Create API instances
-//	orchestratorAPI := api.NewOrchestratorAPI()
-//	mcpAPI := api.NewMCPServiceAPI()
+// ## Specialized Handlers
+//   - **MCPServiceHandler**: MCP server information and tools
+//   - **CapabilityHandler**: Capability operations and workflows
+//   - **WorkflowHandler**: Workflow execution and management
 //
-//	// Use the APIs
-//	err := orchestratorAPI.StartService("my-service")
-//	status, err := orchestratorAPI.GetServiceStatus("my-service")
+// # ServiceClass Operations
 //
-// Handler Registration:
+// The API layer provides complete ServiceClass functionality:
 //
-// Services must register their handlers before APIs can be used:
+// ## ServiceClass Management
+//   - List available ServiceClasses with availability status
+//   - Get ServiceClass definitions and metadata
+//   - Check tool availability for ServiceClasses
+//   - Register/unregister ServiceClass definitions
 //
-//	// Service adapters implement handler interfaces
+// ## ServiceClass Instance Lifecycle
+//   - Create ServiceClass instances with parameters
+//   - Delete ServiceClass instances with cleanup
+//   - Get ServiceClass instance status and data
+//   - List all ServiceClass instances
+//   - Subscribe to ServiceClass instance events
+//
+// # API Registration Pattern
+//
+// **Critical**: All packages must follow the registration pattern:
+//
+//  1. **Implement Handler Interface** in adapter pattern:
+//     ```go
+//     type ServiceAdapter struct {
+//     service *MyService
+//     }
+//
+//     func (a *ServiceAdapter) SomeOperation() error {
+//     return a.service.performOperation()
+//     }
+//     ```
+//
+//  2. **Register with API Layer**:
+//     ```go
+//     func (a *ServiceAdapter) Register() {
+//     api.RegisterMyServiceHandler(a)
+//     }
+//     ```
+//
+//  3. **Access through API Layer** (never direct imports):
+//     ```go
+//     handler := api.GetMyServiceHandler()
+//     if handler != nil {
+//     handler.SomeOperation()
+//     }
+//     ```
+//
+// # Example Usage
+//
+// ## Service Registration (Service Package)
+//
+//	// Service adapter implements handler interface
 //	type RegistryAdapter struct {
-//	    registry ServiceRegistry
+//	    registry *ServiceRegistry
 //	}
 //
-//	func (r *RegistryAdapter) Get(label string) (api.ServiceInfo, bool) {
-//	    // Implementation
+//	func (r *RegistryAdapter) Get(label string) (ServiceInfo, bool) {
+//	    return r.registry.Get(label)
 //	}
 //
 //	func (r *RegistryAdapter) Register() {
 //	    api.RegisterServiceRegistry(r)
 //	}
 //
-// Testing:
+// ## ServiceClass Registration
 //
-// APIs can be easily tested by registering mock handlers:
-//
-//	mockRegistry := &mockServiceRegistryHandler{
-//	    services: make(map[string]ServiceInfo),
+//	type ServiceClassAdapter struct {
+//	    manager *ServiceClassManager
 //	}
-//	api.RegisterServiceRegistry(mockRegistry)
-//	defer api.RegisterServiceRegistry(nil)
 //
-//	// Test API calls
-//	api := api.NewOrchestratorAPI()
-//	status, err := api.GetServiceStatus("test")
+//	func (s *ServiceClassAdapter) ListServiceClasses() []ServiceClassInfo {
+//	    return s.manager.ListServiceClasses()
+//	}
 //
-// Thread Safety:
+//	func (s *ServiceClassAdapter) Register() {
+//	    api.RegisterServiceClassManager(s)
+//	}
 //
-// All API methods are thread-safe and can be called concurrently from
-// multiple goroutines. The handler registry uses mutex protection for
-// safe concurrent access.
+// ## API Usage (Consumer Package)
 //
-// The api package defines the public API for envctl's runtime services.
+//	// Access through API layer (correct approach)
+//	orchestrator := api.GetOrchestrator()
+//	if orchestrator != nil {
+//	    instance, err := orchestrator.CreateServiceClassInstance(ctx, req)
+//	}
 //
-// These APIs are exposed as MCP tools through the aggregator and provide programmatic
-// access to envctl's functionality.
+//	serviceClassMgr := api.GetServiceClassManager()
+//	if serviceClassMgr != nil {
+//	    classes := serviceClassMgr.ListServiceClasses()
+//	}
 //
-// API Components:
+// # ServiceClass Event Streaming
 //
-// 1. OrchestratorAPI - Service lifecycle and cluster management
-// 2. MCPServiceAPI - MCP server information and tools
-// 3. K8sServiceAPI - Kubernetes connection management
-// 4. PortForwardServiceAPI - Port forwarding management
-// 5. ConfigServiceAPI - Configuration management
+// The API provides real-time event streaming for ServiceClass instances:
 //
-// # ConfigServiceAPI
+//	events := orchestrator.SubscribeToServiceInstanceEvents()
+//	for event := range events {
+//	    fmt.Printf("Instance %s: %s -> %s\n",
+//	        event.Label, event.OldState, event.NewState)
+//	}
 //
-// The ConfigServiceAPI provides runtime access to envctl's configuration. This API allows:
+// # Tool Provider Integration
 //
-// - Reading the entire configuration or specific sections
-// - Updating configuration sections dynamically
-// - Deleting configuration items
-// - Persisting configuration changes to disk
+// Handler interfaces that implement ToolProvider expose tools through the API:
 //
-// Configuration updates made through this API affect the running system immediately
-// for most settings. Some changes may require service restarts to take full effect.
+//   - ServiceClass management tools
+//   - Configuration management tools
+//   - Capability operation tools
+//   - Workflow execution tools
 //
-// # Service Architecture
+// # Testing Support
+//
+// The Service Locator Pattern enables comprehensive testing:
+//
+//	// Mock handler for testing
+//	mockServiceClass := &mockServiceClassHandler{
+//	    definitions: make(map[string]*ServiceClassDefinition),
+//	}
+//	api.RegisterServiceClassManager(mockServiceClass)
+//	defer api.RegisterServiceClassManager(nil)
+//
+//	// Test API operations
+//	orchestrator := api.NewOrchestratorAPI()
+//	instance, err := orchestrator.CreateServiceClassInstance(ctx, req)
+//
+// # Thread Safety
+//
+// All API components are fully thread-safe:
+//
+//   - Handler registry uses mutex protection
+//   - Concurrent handler registration/access
+//   - Thread-safe API method execution
+//   - Safe concurrent ServiceClass operations
+//
+// # Error Handling
+//
+// The API layer provides structured error handling:
+//
+//   - Handler availability checking
+//   - ServiceClass validation errors
+//   - Tool execution error propagation
+//   - Instance management error handling
+//
+// # Performance Characteristics
+//
+// The Service Locator Pattern provides:
+//
+//   - **Minimal overhead**: Thin delegation to handlers
+//   - **Lazy initialization**: Handlers registered as needed
+//   - **Concurrent access**: No bottlenecks in handler access
+//   - **Memory efficiency**: Single handler instances shared
+//
+// # Design Principles
+//
+// 1. **Single Point of Truth**: All inter-package communication through API
+// 2. **No Direct Dependencies**: Packages never import each other directly
+// 3. **Interface Segregation**: Small, focused handler interfaces
+// 4. **Dependency Inversion**: Depend on abstractions, not implementations
+// 5. **Open/Closed Principle**: Easy to extend with new handlers
+//
+// **Critical Rule**: ALL inter-package communication MUST go through this API layer.
+// Direct imports between internal packages are **forbidden** and violate the
+// core architectural principle.
 package api
