@@ -321,7 +321,7 @@ func (gsi *GenericServiceInstance) GetLabel() string {
 func (gsi *GenericServiceInstance) GetType() ServiceType {
 	gsi.mu.RLock()
 	defer gsi.mu.RUnlock()
-	
+
 	// Get service class definition through API to get type
 	serviceClassMgr := api.GetServiceClassManager()
 	if serviceClassMgr == nil {
@@ -470,7 +470,7 @@ func (gsi *GenericServiceInstance) GetHealthCheckInterval() time.Duration {
 func (gsi *GenericServiceInstance) GetServiceData() map[string]interface{} {
 	gsi.mu.RLock()
 	defer gsi.mu.RUnlock()
-	
+
 	// Return a copy to prevent external modification
 	data := make(map[string]interface{})
 	for k, v := range gsi.serviceData {

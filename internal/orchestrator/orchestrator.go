@@ -83,10 +83,10 @@ type Orchestrator struct {
 	yolo       bool
 
 	// ServiceClass-based dynamic service management
-	toolCaller         ToolCaller
-	dynamicInstances   map[string]*services.GenericServiceInstance // service ID -> instance
-	dynamicByLabel     map[string]*services.GenericServiceInstance // service label -> instance
-	instanceEvents     []chan<- ServiceInstanceEvent
+	toolCaller       ToolCaller
+	dynamicInstances map[string]*services.GenericServiceInstance // service ID -> instance
+	dynamicByLabel   map[string]*services.GenericServiceInstance // service label -> instance
+	instanceEvents   []chan<- ServiceInstanceEvent
 
 	// Service tracking
 	stopReasons map[string]StopReason
@@ -133,7 +133,7 @@ func (o *Orchestrator) Start(ctx context.Context) error {
 
 	// Start static services that are already registered
 	staticServices := o.registry.GetAll()
-	
+
 	// Set up state change callbacks on static services
 	o.setupStateChangeNotifications(staticServices)
 
@@ -154,7 +154,7 @@ func (o *Orchestrator) Start(ctx context.Context) error {
 		// Don't fail the orchestrator start if ServiceClass processing fails
 	}
 
-	logging.Info("Orchestrator", "Started orchestrator with unified service management (static: %d, dynamic: %d)", 
+	logging.Info("Orchestrator", "Started orchestrator with unified service management (static: %d, dynamic: %d)",
 		len(staticServices), len(o.dynamicInstances))
 	return nil
 }
@@ -190,15 +190,15 @@ func (o *Orchestrator) processMCPServerServiceClasses(ctx context.Context, mcpSe
 	// Extract ServiceClass requirements from MCP server configuration
 	// This logic will depend on how ServiceClasses are specified in the config
 	serviceClassNames := o.extractServiceClassNames(mcpServer)
-	
+
 	for _, serviceClassName := range serviceClassNames {
 		// Check if we already have an instance for this service class + server combination
 		label := fmt.Sprintf("%s-%s", mcpServer.Name, serviceClassName)
-		
+
 		o.mu.RLock()
 		_, exists := o.dynamicByLabel[label]
 		o.mu.RUnlock()
-		
+
 		if exists {
 			logging.Debug("Orchestrator", "ServiceClass instance already exists: %s", label)
 			continue
@@ -316,13 +316,13 @@ func (o *Orchestrator) CreateServiceClassInstance(ctx context.Context, req Creat
 	// Start the service instance
 	if err := instance.Start(ctx); err != nil {
 		logging.Error("Orchestrator", err, "Failed to start ServiceClass instance %s", instance.GetLabel())
-		
+
 		// Remove from tracking on failure
 		o.mu.Lock()
 		delete(o.dynamicInstances, serviceID)
 		delete(o.dynamicByLabel, req.Label)
 		o.mu.Unlock()
-		
+
 		return nil, fmt.Errorf("failed to start ServiceClass instance: %w", err)
 	}
 
@@ -333,7 +333,7 @@ func (o *Orchestrator) CreateServiceClassInstance(ctx context.Context, req Creat
 		delete(o.dynamicInstances, serviceID)
 		delete(o.dynamicByLabel, req.Label)
 		o.mu.Unlock()
-		
+
 		return nil, fmt.Errorf("failed to register ServiceClass instance in registry: %w", err)
 	}
 
@@ -370,7 +370,7 @@ func (o *Orchestrator) DeleteServiceClassInstance(ctx context.Context, serviceID
 
 	// Remove from registry and tracking
 	o.registry.Unregister(instance.GetLabel())
-	
+
 	o.mu.Lock()
 	delete(o.dynamicInstances, serviceID)
 	delete(o.dynamicByLabel, instance.GetLabel())

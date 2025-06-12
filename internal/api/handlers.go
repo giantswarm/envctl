@@ -88,8 +88,6 @@ type ServiceClassInstanceEvent struct {
 	Metadata    map[string]interface{} `json:"metadata,omitempty"`
 }
 
-
-
 // ServiceInfo provides information about a service
 type ServiceInfo interface {
 	GetLabel() string
@@ -248,8 +246,6 @@ type ServiceClassManagerHandler interface {
 	ToolProvider
 }
 
-
-
 // Handler registry
 var (
 	registryHandler            ServiceRegistryHandler
@@ -401,8 +397,6 @@ func GetWorkflow() WorkflowHandler {
 	defer handlerMutex.RUnlock()
 	return workflowHandler
 }
-
-
 
 // RegisterServiceClassManager registers the service class manager handler
 func RegisterServiceClassManager(h ServiceClassManagerHandler) {

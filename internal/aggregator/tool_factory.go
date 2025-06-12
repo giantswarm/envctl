@@ -155,12 +155,12 @@ func (a *AggregatorServer) createToolsFromProviders() []server.ServerTool {
 func (a *AggregatorServer) prefixToolName(provider, toolName string) string {
 	// Define management tool patterns that should get core_ prefix
 	managementPatterns := []string{
-		"service_",        // orchestrator service management
-		"serviceclass_",   // ServiceClass instance management
-		"workflow_",       // workflow management (not execution)
-		"capability_",     // capability management
-		"config_",         // configuration management
-		"mcp_",            // MCP server management
+		"service_",      // orchestrator service management
+		"serviceclass_", // ServiceClass instance management
+		"workflow_",     // workflow management (not execution)
+		"capability_",   // capability management
+		"config_",       // configuration management
+		"mcp_",          // MCP server management
 	}
 
 	// Check if this is a management tool that should get core_ prefix
