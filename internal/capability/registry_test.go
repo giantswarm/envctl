@@ -8,9 +8,9 @@ func TestRegistry(t *testing.T) {
 	t.Run("Register and Get", func(t *testing.T) {
 		reg := NewRegistry()
 
-		cap := &Capability{
-			ID:          "test-cap-1",
-			Type:        CapabilityTypeAuth,
+		testCap := &Capability{
+			ID:          "test-cap",
+			Type:        "auth",
 			Provider:    "test-provider",
 			Name:        "Test Capability",
 			Description: "A test capability",
@@ -18,19 +18,19 @@ func TestRegistry(t *testing.T) {
 		}
 
 		// Register capability
-		err := reg.Register(cap)
+		err := reg.Register(testCap)
 		if err != nil {
 			t.Fatalf("Failed to register capability: %v", err)
 		}
 
 		// Get capability
-		retrieved, exists := reg.Get("test-cap-1")
+		retrieved, exists := reg.Get("test-cap")
 		if !exists {
 			t.Fatal("Capability not found after registration")
 		}
 
-		if retrieved.Name != cap.Name {
-			t.Errorf("Expected name %s, got %s", cap.Name, retrieved.Name)
+		if retrieved.Name != testCap.Name {
+			t.Errorf("Expected name %s, got %s", testCap.Name, retrieved.Name)
 		}
 
 		if retrieved.Status.State != CapabilityStateActive {
@@ -41,20 +41,20 @@ func TestRegistry(t *testing.T) {
 	t.Run("Register duplicate", func(t *testing.T) {
 		reg := NewRegistry()
 
-		cap := &Capability{
+		testCap := &Capability{
 			ID:       "test-cap-2",
-			Type:     CapabilityTypeAuth,
+			Type:     "auth",
 			Provider: "test-provider",
 			Name:     "Test Capability",
 		}
 
-		err := reg.Register(cap)
+		err := reg.Register(testCap)
 		if err != nil {
 			t.Fatalf("Failed to register capability: %v", err)
 		}
 
 		// Try to register again
-		err = reg.Register(cap)
+		err = reg.Register(testCap)
 		if err == nil {
 			t.Fatal("Expected error when registering duplicate capability")
 		}
@@ -65,17 +65,17 @@ func TestRegistry(t *testing.T) {
 
 		// Register multiple capabilities
 		authCap := &Capability{
-			Type:     CapabilityTypeAuth,
+			Type:     "auth",
 			Provider: "auth-provider",
 			Name:     "Auth Cap",
 		}
 		portForwardCap := &Capability{
-			Type:     CapabilityTypePortForward,
+			Type:     "port-forward",
 			Provider: "pf-provider",
 			Name:     "Port Forward Cap",
 		}
 		authCap2 := &Capability{
-			Type:     CapabilityTypeAuth,
+			Type:     "auth",
 			Provider: "auth-provider-2",
 			Name:     "Auth Cap 2",
 		}
@@ -85,12 +85,12 @@ func TestRegistry(t *testing.T) {
 		reg.Register(authCap2)
 
 		// List by type
-		authCaps := reg.ListByType(CapabilityTypeAuth)
+		authCaps := reg.ListByType("auth")
 		if len(authCaps) != 2 {
 			t.Errorf("Expected 2 auth capabilities, got %d", len(authCaps))
 		}
 
-		pfCaps := reg.ListByType(CapabilityTypePortForward)
+		pfCaps := reg.ListByType("port-forward")
 		if len(pfCaps) != 1 {
 			t.Errorf("Expected 1 port forward capability, got %d", len(pfCaps))
 		}
@@ -101,17 +101,17 @@ func TestRegistry(t *testing.T) {
 
 		// Register capabilities from different providers
 		cap1 := &Capability{
-			Type:     CapabilityTypeAuth,
+			Type:     "auth",
 			Provider: "provider-a",
 			Name:     "Cap 1",
 		}
 		cap2 := &Capability{
-			Type:     CapabilityTypeDiscovery,
+			Type:     "discovery",
 			Provider: "provider-a",
 			Name:     "Cap 2",
 		}
 		cap3 := &Capability{
-			Type:     CapabilityTypeAuth,
+			Type:     "auth",
 			Provider: "provider-b",
 			Name:     "Cap 3",
 		}
@@ -135,14 +135,14 @@ func TestRegistry(t *testing.T) {
 	t.Run("Unregister", func(t *testing.T) {
 		reg := NewRegistry()
 
-		cap := &Capability{
+		testCap := &Capability{
 			ID:       "test-cap-3",
-			Type:     CapabilityTypeAuth,
+			Type:     "auth",
 			Provider: "test-provider",
 			Name:     "Test Capability",
 		}
 
-		reg.Register(cap)
+		reg.Register(testCap)
 
 		// Verify it exists
 		_, exists := reg.Get("test-cap-3")
@@ -163,7 +163,7 @@ func TestRegistry(t *testing.T) {
 		}
 
 		// Verify it's removed from type index
-		authCaps := reg.ListByType(CapabilityTypeAuth)
+		authCaps := reg.ListByType("auth")
 		if len(authCaps) != 0 {
 			t.Errorf("Expected 0 auth capabilities after unregister, got %d", len(authCaps))
 		}
@@ -172,14 +172,14 @@ func TestRegistry(t *testing.T) {
 	t.Run("Update", func(t *testing.T) {
 		reg := NewRegistry()
 
-		cap := &Capability{
+		testCap := &Capability{
 			ID:       "test-cap-4",
-			Type:     CapabilityTypeAuth,
+			Type:     "auth",
 			Provider: "test-provider",
 			Name:     "Test Capability",
 		}
 
-		reg.Register(cap)
+		reg.Register(testCap)
 
 		// Update status
 		newStatus := CapabilityStatus{
@@ -208,19 +208,19 @@ func TestRegistry(t *testing.T) {
 
 		// Register capabilities with different features
 		cap1 := &Capability{
-			Type:     CapabilityTypeAuth,
+			Type:     "auth",
 			Provider: "provider-1",
 			Name:     "Full Auth",
 			Features: []string{"login", "refresh", "validate"},
 		}
 		cap2 := &Capability{
-			Type:     CapabilityTypeAuth,
+			Type:     "auth",
 			Provider: "provider-2",
 			Name:     "Basic Auth",
 			Features: []string{"login"},
 		}
 		cap3 := &Capability{
-			Type:     CapabilityTypeAuth,
+			Type:     "auth",
 			Provider: "provider-3",
 			Name:     "Inactive Auth",
 			Features: []string{"login", "refresh"},
@@ -238,7 +238,7 @@ func TestRegistry(t *testing.T) {
 
 		// Find capabilities with login feature
 		req := CapabilityRequest{
-			Type:     CapabilityTypeAuth,
+			Type:     "auth",
 			Features: []string{"login"},
 		}
 		matches := reg.FindMatching(req)
@@ -276,13 +276,13 @@ func TestRegistry(t *testing.T) {
 		})
 
 		// Test registration callback
-		cap := &Capability{
+		testCap := &Capability{
 			ID:       "test-cap-5",
-			Type:     CapabilityTypeAuth,
+			Type:     "auth",
 			Provider: "test-provider",
 			Name:     "Test Capability",
 		}
-		reg.Register(cap)
+		reg.Register(testCap)
 
 		if registeredCap == nil || registeredCap.ID != "test-cap-5" {
 			t.Error("OnRegister callback not called correctly")
@@ -308,18 +308,18 @@ func TestRegistry(t *testing.T) {
 	t.Run("Auto-generate ID", func(t *testing.T) {
 		reg := NewRegistry()
 
-		cap := &Capability{
-			Type:     CapabilityTypeAuth,
+		testCap := &Capability{
+			Type:     "auth",
 			Provider: "test-provider",
 			Name:     "Test Capability",
 		}
 
-		err := reg.Register(cap)
+		err := reg.Register(testCap)
 		if err != nil {
 			t.Fatalf("Failed to register capability: %v", err)
 		}
 
-		if cap.ID == "" {
+		if testCap.ID == "" {
 			t.Error("Expected auto-generated ID, got empty string")
 		}
 	})
@@ -332,12 +332,12 @@ func TestConcurrency(t *testing.T) {
 	// Start multiple goroutines registering capabilities
 	for i := 0; i < 10; i++ {
 		go func(id int) {
-			cap := &Capability{
-				Type:     CapabilityTypeAuth,
+			testCap := &Capability{
+				Type:     "auth",
 				Provider: "test-provider",
 				Name:     "Test Capability",
 			}
-			reg.Register(cap)
+			reg.Register(testCap)
 			done <- true
 		}(i)
 	}
@@ -346,7 +346,7 @@ func TestConcurrency(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		go func() {
 			reg.ListAll()
-			reg.ListByType(CapabilityTypeAuth)
+			reg.ListByType("auth")
 			done <- true
 		}()
 	}

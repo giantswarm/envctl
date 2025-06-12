@@ -38,7 +38,7 @@ func (m *mockToolCaller) CallToolInternal(ctx context.Context, toolName string, 
 
 	// Return different responses based on tool name
 	switch toolName {
-	case "x_kubernetes_connect":
+	case "api_kubernetes_connect":
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{
 				mcp.NewTextContent(`{
@@ -68,7 +68,7 @@ func TestServiceClassManagerIntegration(t *testing.T) {
 
 	// Write a test ServiceClass definition
 	testYAML := `name: test_k8s_connection
-type: service_k8s_connection_provider
+type: service_k8s_connection
 version: "1.0.0"
 description: "Test Kubernetes connection service class"
 
@@ -79,7 +79,7 @@ serviceConfig:
   
   lifecycleTools:
     create:
-      tool: "x_kubernetes_connect"
+      tool: "api_kubernetes_connect"
       arguments:
         clusterName: "{{ .cluster_name }}"
         context: "{{ .context | default .cluster_name }}"
@@ -88,7 +88,7 @@ serviceConfig:
         status: "$.status"
         health: "$.connected"
     delete:
-      tool: "x_kubernetes_disconnect"
+      tool: "api_kubernetes_disconnect"
       arguments:
         connectionId: "{{ .service_id }}"
       responseMapping:
@@ -110,7 +110,7 @@ operations:
         type: string
         required: true
     requires:
-      - x_kubernetes_connect
+      - api_kubernetes_connect
 
 metadata:
   provider: "kubernetes"
@@ -122,8 +122,8 @@ metadata:
 	// Create mock tool checker with required tools available
 	mockChecker := &mockToolChecker{
 		availableTools: map[string]bool{
-			"x_kubernetes_connect":    true,
-			"x_kubernetes_disconnect": true,
+			"api_kubernetes_connect":    true,
+			"api_kubernetes_disconnect": true,
 		},
 	}
 
@@ -140,7 +140,7 @@ metadata:
 	def, exists := manager.GetServiceClassDefinition("test_k8s_connection")
 	require.True(t, exists)
 	assert.Equal(t, "test_k8s_connection", def.Name)
-	assert.Equal(t, "service_k8s_connection_provider", def.Type)
+	assert.Equal(t, "service_k8s_connection", def.Type)
 	assert.Equal(t, "Test Kubernetes connection service class", def.Description)
 
 	// Test listing ServiceClass definitions
@@ -159,7 +159,7 @@ func TestServiceClassMissingTools(t *testing.T) {
 
 	// Write a ServiceClass definition that requires missing tools
 	portForwardYAML := `name: test_portforward
-type: service_portforward_provider
+type: service_portforward
 version: "1.0.0"
 description: "Test port forward service class"
 
@@ -169,7 +169,7 @@ serviceConfig:
   
   lifecycleTools:
     create:
-      tool: "x_k8s_port_forward"
+      tool: "api_k8s_port_forward"
       arguments:
         namespace: "{{ .namespace }}"
         service: "{{ .service_name }}"
@@ -177,7 +177,7 @@ serviceConfig:
         serviceId: "$.forwardId"
         status: "$.status"
     delete:
-      tool: "x_k8s_port_forward_stop"
+      tool: "api_k8s_port_forward_stop"
       arguments:
         forwardId: "{{ .service_id }}"
       responseMapping:
@@ -191,7 +191,7 @@ operations:
         type: string
         required: true
     requires:
-      - x_k8s_port_forward
+      - api_k8s_port_forward
 
 metadata:
   provider: "kubectl"

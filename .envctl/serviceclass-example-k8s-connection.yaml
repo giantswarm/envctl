@@ -1,89 +1,91 @@
-# Service Kubernetes Connection Capability Definition
-# This demonstrates a more complex service capability with authentication and connection management
-name: service_k8s_connection_provider
-type: service_k8s_connection_provider
+# Service K8s Connection Capability Definition
+# Dynamic service capability for managing Kubernetes cluster connections
+name: service_k8s_connection
+type: service_k8s_connection
 version: "1.0.0"
-description: "Dynamic service capability for managing Kubernetes cluster connections"
+description: "Dynamic service capability for managing Kubernetes cluster connections with authentication"
 
 # Service lifecycle configuration
 serviceConfig:
   # Service metadata
   serviceType: "DynamicK8sConnection"
-  defaultLabel: "k8s-{{ .cluster_name }}"
+  defaultLabel: "k8s-{{ .cluster_name }}-{{ .role }}"
   dependencies: []
   
   # Lifecycle tool mappings
   lifecycleTools:
     create:
-      tool: "x_kubernetes_connect"
+      tool: "api_kubernetes_connect"
       arguments:
         clusterName: "{{ .cluster_name }}"
-        context: "{{ .context | default .cluster_name }}"
-        kubeconfig: "{{ .kubeconfig | default \"\" }}"
+        role: "{{ .role }}"
         authProvider: "{{ .auth_provider | default \"teleport\" }}"
+        region: "{{ .region }}"
+        context: "{{ .context }}"
       responseMapping:
         serviceId: "$.connectionId"
         status: "$.status"
-        health: "$.connected"
+        auth_provider: "$.authProvider"
         metadata:
           cluster_name: "$.clusterName"
+          role: "$.role"
           context: "$.context"
-          auth_provider: "$.authProvider"
-          server_version: "$.serverVersion"
-          current_namespace: "$.currentNamespace"
     
     delete:
-      tool: "x_kubernetes_disconnect"
+      tool: "api_kubernetes_disconnect"
       arguments:
         connectionId: "{{ .service_id }}"
       responseMapping:
         status: "$.status"
         
     healthCheck:
-      tool: "x_kubernetes_connection_status"
+      tool: "api_kubernetes_connection_status"
       arguments:
         connectionId: "{{ .service_id }}"
       responseMapping:
-        health: "$.connected"
+        health: "$.healthy"
         status: "$.status"
         error: "$.error"
         metadata:
-          last_heartbeat: "$.lastHeartbeat"
+          last_activity: "$.lastActivity"
           
     status:
-      tool: "x_kubernetes_connection_info"
+      tool: "api_kubernetes_connection_info"
       arguments:
         connectionId: "{{ .service_id }}"
       responseMapping:
         metadata:
-          nodes_count: "$.cluster.nodesCount"
-          namespaces_count: "$.cluster.namespacesCount"
-          pods_count: "$.cluster.podsCount"
-          services_count: "$.cluster.servicesCount"
+          current_namespace: "$.currentNamespace"
+          user: "$.user"
+          server_version: "$.serverVersion"
+          node_count: "$.nodeCount"
   
-  # Health check configuration - more frequent for connection services
+  # Health check configuration
   healthCheck:
     enabled: true
-    interval: "15s"
-    failureThreshold: 2
-    successThreshold: 1
+    interval: "60s"
+    failureThreshold: 3
+    successThreshold: 2
   
   # Timeout configuration
   timeout:
-    create: "120s"     # Longer timeout for authentication
-    delete: "30s"
-    healthCheck: "5s"
+    create: "120s"
+    delete: "60s"
+    healthCheck: "30s"
   
   # Parameter mapping for service creation
   createParameters:
     cluster_name:
       toolParameter: "clusterName"
       required: true
+    role:
+      toolParameter: "role"
+      required: true
+    region:
+      toolParameter: "region"
+      required: false
     context:
       toolParameter: "context"
-      required: false
-    kubeconfig:
-      toolParameter: "kubeconfig"
       required: false
     auth_provider:
       toolParameter: "authProvider"
@@ -93,100 +95,111 @@ serviceConfig:
 # External API operations
 operations:
   create_connection:
-    description: "Create a new Kubernetes cluster connection service"
+    description: "Create a new Kubernetes cluster connection"
     parameters:
       cluster_name:
         type: string
         required: true
         description: "Name of the Kubernetes cluster"
+      role:
+        type: string
+        required: true
+        description: "Role for the connection (management, workload, etc.)"
+      region:
+        type: string
+        required: false
+        description: "AWS region or cloud region"
       context:
         type: string
         required: false
-        description: "Kubernetes context name (defaults to cluster_name)"
-      kubeconfig:
-        type: string
-        required: false
-        description: "Path to kubeconfig file (optional)"
+        description: "Kubernetes context name"
       auth_provider:
         type: string
         required: false
         description: "Authentication provider (teleport, aws, gcp, etc.)"
     requires:
-      - x_service_orchestrator_create_service
+      - api_service_orchestrator_create_service
     workflow:
       name: create_k8s_connection_service
-      description: "Create a dynamic Kubernetes connection service"
+      description: "Create a dynamic K8s connection service"
       agentModifiable: false
       inputSchema:
         type: object
         properties:
           cluster_name:
             type: string
-          context:
+          role:
             type: string
-          kubeconfig:
+          region:
+            type: string
+          context:
             type: string
           auth_provider:
             type: string
         required:
           - cluster_name
+          - role
       steps:
-        - id: create_connection_service
-          tool: x_service_orchestrator_create_service
+        - id: create_service
+          tool: api_service_orchestrator_create_service
           args:
-            capability_name: "service_k8s_connection_provider"
-            label: "k8s-{{ .cluster_name }}"
+            capability_name: "service_k8s_connection"
+            label: "k8s-{{ .cluster_name }}-{{ .role }}"
             parameters:
               cluster_name: "{{ .cluster_name }}"
+              role: "{{ .role }}"
+              region: "{{ .region }}"
               context: "{{ .context }}"
-              kubeconfig: "{{ .kubeconfig }}"
               auth_provider: "{{ .auth_provider }}"
-          store: connection_result
+          store: service_result
 
   switch_context:
-    description: "Switch the active context for a connection service"
+    description: "Switch Kubernetes context for existing connection"
     parameters:
-      service_label:
+      connection_id:
         type: string
         required: true
-        description: "Label of the connection service"
-      namespace:
+        description: "Connection service ID"
+      context:
         type: string
-        required: false
-        description: "New default namespace"
+        required: true
+        description: "New Kubernetes context"
     requires:
-      - x_kubernetes_switch_context
+      - api_kubernetes_switch_context
     workflow:
       name: switch_k8s_context
-      description: "Switch context for existing connection"
+      description: "Switch K8s context"
       steps:
         - id: switch_context
-          tool: x_kubernetes_switch_context
+          tool: api_kubernetes_switch_context
           args:
-            serviceLabel: "{{ .service_label }}"
-            namespace: "{{ .namespace }}"
+            connectionId: "{{ .connection_id }}"
+            context: "{{ .context }}"
           store: switch_result
 
   list_connections:
-    description: "List all Kubernetes connection service instances"
+    description: "List all Kubernetes connection services"
     requires:
-      - x_service_orchestrator_list_services
+      - api_service_orchestrator_list_services
     workflow:
       name: list_k8s_connections
-      description: "List Kubernetes connection services"
+      description: "List K8s connection services"
       steps:
-        - id: list_connections
-          tool: x_service_orchestrator_list_services
+        - id: list_services
+          tool: api_service_orchestrator_list_services
           args:
-            capability_type: "service_k8s_connection_provider"
-          store: connections_list
+            capability_type: "service_k8s_connection"
+          store: services_list
 
 # Metadata
 metadata:
   provider: "kubernetes"
   category: "connection"
-  icon: "☸️"
+  icon: "⚙️"
   version: "1.0.0"
+  requires:
+    auth:
+      - "teleport" # or other auth providers
   # Additional metadata for this capability type
   supports:
     - "multi-cluster"

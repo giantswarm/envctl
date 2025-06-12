@@ -33,7 +33,7 @@ func TestCapabilityDefinitionParsing(t *testing.T) {
 	// Test parsing a capability definition with embedded workflows
 	yamlContent := `
 name: teleport_auth
-type: auth_provider
+type: auth
 version: "1.0.0"
 description: "Teleport authentication provider"
 operations:
@@ -89,7 +89,7 @@ metadata:
 
 	// Verify basic fields
 	assert.Equal(t, "teleport_auth", def.Name)
-	assert.Equal(t, "auth_provider", def.Type)
+	assert.Equal(t, "auth", def.Type)
 	assert.Equal(t, "1.0.0", def.Version)
 	assert.Equal(t, "Teleport authentication provider", def.Description)
 
@@ -137,7 +137,7 @@ func TestCapabilityLoader(t *testing.T) {
 	// Create a test capability definition file
 	capabilityYAML := `
 name: test_auth
-type: auth_provider
+type: auth
 version: "1.0.0"
 description: "Test authentication provider"
 operations:
@@ -189,13 +189,13 @@ metadata:
 	assert.NotNil(t, def)
 	assert.Equal(t, "test_auth", def.Name)
 
-	// Verify available capability tools
+	// Verify available capability tools (new api_ format)
 	availableTools := loader.GetAvailableCapabilityTools()
-	assert.Contains(t, availableTools, "x_auth_provider_login")
-	assert.Contains(t, availableTools, "x_auth_provider_status")
+	assert.Contains(t, availableTools, "api_auth_login")
+	assert.Contains(t, availableTools, "api_auth_status")
 
-	// Test GetOperationForTool
-	op, capDef, err := loader.GetOperationForTool("x_auth_provider_login")
+	// Test GetOperationForTool (new api_ format)
+	op, capDef, err := loader.GetOperationForTool("api_auth_login")
 	require.NoError(t, err)
 	assert.NotNil(t, op)
 	assert.NotNil(t, capDef)
@@ -205,10 +205,10 @@ metadata:
 	mockChecker.availableTools["x_test_login"] = false
 	loader.RefreshAvailability()
 
-	// Login should no longer be available
+	// Login should no longer be available (api_ format)
 	availableTools = loader.GetAvailableCapabilityTools()
-	assert.NotContains(t, availableTools, "x_auth_provider_login")
-	assert.Contains(t, availableTools, "x_auth_provider_status") // Status still available
+	assert.NotContains(t, availableTools, "api_auth_login")
+	assert.Contains(t, availableTools, "api_auth_status") // Status still available
 }
 
 func TestCapabilityLoaderWithMissingFile(t *testing.T) {
@@ -232,7 +232,7 @@ func TestCapabilityLoaderValidation(t *testing.T) {
 		{
 			name: "missing name",
 			yaml: `
-type: auth_provider
+type: auth
 operations:
   login:
     description: "Login"
@@ -255,7 +255,7 @@ operations:
 			name: "missing operations",
 			yaml: `
 name: test
-type: auth_provider
+type: auth
 `,
 			expectError: true,
 			errorMsg:    "at least one operation is required",
@@ -307,8 +307,8 @@ func TestCapabilityLoaderWithPortForward(t *testing.T) {
 	loader := NewCapabilityLoader(tmpDir, mockChecker, registry)
 
 	// Copy the port forward capability definition to the test directory
-	portForwardYAML := `name: portforward_provider
-type: portforward_provider
+	portForwardYAML := `name: portforward
+type: portforward
 version: "1.0.0"
 description: "Port forwarding capability for Kubernetes services and pods"
 metadata:
@@ -335,7 +335,7 @@ operations:
 `
 
 	// Write the definition to a file
-	err := os.WriteFile(filepath.Join(tmpDir, "portforward_provider.yaml"), []byte(portForwardYAML), 0644)
+	err := os.WriteFile(filepath.Join(tmpDir, "portforward.yaml"), []byte(portForwardYAML), 0644)
 	require.NoError(t, err)
 
 	// Load definitions
@@ -343,18 +343,18 @@ operations:
 	assert.NoError(t, err)
 
 	// Check that the capability was loaded
-	def, exists := loader.GetCapabilityDefinition("portforward_provider")
+	def, exists := loader.GetCapabilityDefinition("portforward")
 	assert.True(t, exists)
 	assert.NotNil(t, def)
-	assert.Equal(t, "portforward_provider", def.Name)
-	assert.Equal(t, "portforward_provider", def.Type)
+	assert.Equal(t, "portforward", def.Name)
+	assert.Equal(t, "portforward", def.Type)
 
-	// Check that the operation is available
+	// Check that the operation is available (new api_ format)
 	availableTools := loader.GetAvailableCapabilityTools()
-	assert.Contains(t, availableTools, "x_portforward_provider_create")
+	assert.Contains(t, availableTools, "api_portforward_create")
 
-	// Verify we can get the operation for the tool
-	op, capDef, err := loader.GetOperationForTool("x_portforward_provider_create")
+	// Verify we can get the operation for the tool (new api_ format)
+	op, capDef, err := loader.GetOperationForTool("api_portforward_create")
 	assert.NoError(t, err)
 	assert.NotNil(t, op)
 	assert.NotNil(t, capDef)

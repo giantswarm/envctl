@@ -134,6 +134,11 @@ func (cl *CapabilityLoader) loadDefinitionFile(filename string) (*CapabilityDefi
 		return nil, fmt.Errorf("at least one operation is required")
 	}
 
+	// Validate the capability type (allow any non-empty string)
+	if !IsValidCapabilityType(def.Type) {
+		return nil, fmt.Errorf("capability type cannot be empty")
+	}
+
 	return &def, nil
 }
 
@@ -143,15 +148,15 @@ func (cl *CapabilityLoader) updateAvailableCapabilities() {
 		// Check each operation
 		for opName, op := range def.Operations {
 			if cl.areRequiredToolsAvailable(op.Requires) {
-				// Mark this capability operation as available
-				toolName := fmt.Sprintf("x_%s_%s", def.Type, opName)
+				// Mark this capability operation as available with api_ format
+				toolName := fmt.Sprintf("api_%s_%s", def.Type, opName)
 				if !cl.exposedTools[toolName] {
 					cl.exposedTools[toolName] = true
 					logging.Info("CapabilityLoader", "Capability operation available: %s", toolName)
 				}
 			} else {
 				// Mark as unavailable
-				toolName := fmt.Sprintf("x_%s_%s", def.Type, opName)
+				toolName := fmt.Sprintf("api_%s_%s", def.Type, opName)
 				if cl.exposedTools[toolName] {
 					delete(cl.exposedTools, toolName)
 					logging.Info("CapabilityLoader", "Capability operation unavailable: %s (missing tools)", toolName)
@@ -197,12 +202,13 @@ func (cl *CapabilityLoader) GetOperationForTool(toolName string) (*OperationDefi
 	cl.mu.RLock()
 	defer cl.mu.RUnlock()
 
-	// Tool names are in format x_<type>_<operation>
-	// e.g., x_auth_provider_login -> auth_provider type, login operation
+	// Tool names are in format api_<type>_<operation>
+	// e.g., api_auth_login -> auth type, login operation
 
 	for _, def := range cl.definitions {
 		for opName, op := range def.Operations {
-			expectedTool := fmt.Sprintf("x_%s_%s", def.Type, opName)
+			// Check api_ format: api_<type>_<operation>
+			expectedTool := fmt.Sprintf("api_%s_%s", def.Type, opName)
 			if expectedTool == toolName {
 				return &op, def, nil
 			}

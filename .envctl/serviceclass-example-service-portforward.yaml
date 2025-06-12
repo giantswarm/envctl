@@ -1,7 +1,7 @@
 # Service Port Forward Capability Definition
 # This demonstrates the new service capability schema for dynamic service lifecycle management
-name: service_portforward_provider
-type: service_portforward_provider
+name: service_portforward
+type: service_portforward
 version: "1.0.0"
 description: "Dynamic service capability for managing Kubernetes port forward instances"
 
@@ -15,7 +15,7 @@ serviceConfig:
   # Lifecycle tool mappings - defines which aggregator tools to call for each lifecycle event
   lifecycleTools:
     create:
-      tool: "x_kubernetes_port_forward"
+      tool: "api_kubernetes_port_forward"
       arguments:
         namespace: "{{ .namespace | default \"default\" }}"
         resourceType: "{{ .resource_type }}"
@@ -32,14 +32,14 @@ serviceConfig:
           pid: "$.pid"
     
     delete:
-      tool: "x_kubernetes_stop_port_forward"
+      tool: "api_kubernetes_stop_port_forward"
       arguments:
         id: "{{ .service_id }}"        # Use service ID from creation
       responseMapping:
         status: "$.status"
         
     healthCheck:
-      tool: "x_kubernetes_port_forward_status"
+      tool: "api_kubernetes_port_forward_status"
       arguments:
         id: "{{ .service_id }}"
       responseMapping:
@@ -48,7 +48,7 @@ serviceConfig:
         error: "$.error"
         
     status:
-      tool: "x_kubernetes_port_forward_info"
+      tool: "api_kubernetes_port_forward_info"
       arguments:
         id: "{{ .service_id }}"
       responseMapping:
@@ -114,7 +114,7 @@ operations:
         required: true
         description: "Remote port on the resource"
     requires:
-      - x_service_orchestrator_create_service
+      - api_service_orchestrator_create_service
     workflow:
       name: create_portforward_service
       description: "Create a dynamic port forward service"
@@ -139,9 +139,9 @@ operations:
           - remote_port
       steps:
         - id: create_service
-          tool: x_service_orchestrator_create_service
+          tool: api_service_orchestrator_create_service
           args:
-            capability_name: "service_portforward_provider"
+            capability_name: "service_portforward"
             label: "pf-{{ .resource_type }}-{{ .resource_name }}-{{ .local_port }}"
             parameters:
               namespace: "{{ .namespace }}"
@@ -154,15 +154,15 @@ operations:
   list_services:
     description: "List all port forward service instances"
     requires:
-      - x_service_orchestrator_list_services
+      - api_service_orchestrator_list_services
     workflow:
       name: list_portforward_services
       description: "List port forward services"
       steps:
         - id: list_services
-          tool: x_service_orchestrator_list_services
+          tool: api_service_orchestrator_list_services
           args:
-            capability_type: "service_portforward_provider"
+            capability_type: "service_portforward"
           store: services_list
 
 # Metadata

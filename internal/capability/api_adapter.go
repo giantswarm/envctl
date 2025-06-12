@@ -5,7 +5,11 @@ import (
 	"envctl/internal/api"
 	"envctl/pkg/logging"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 // Adapter adapts the capability system to implement api.CapabilityHandler
@@ -32,8 +36,8 @@ func (a *Adapter) Register() {
 
 // ExecuteCapability executes a capability operation
 func (a *Adapter) ExecuteCapability(ctx context.Context, capabilityType, operation string, params map[string]interface{}) (*api.CallToolResult, error) {
-	// Build the tool name from capability type and operation
-	toolName := fmt.Sprintf("x_%s_%s", capabilityType, operation)
+	// Build the tool name from capability type and operation (using api_ format)
+	toolName := fmt.Sprintf("api_%s_%s", capabilityType, operation)
 
 	// Check if the capability is available
 	if !a.IsCapabilityAvailable(capabilityType, operation) {
@@ -89,7 +93,7 @@ func (a *Adapter) ExecuteCapability(ctx context.Context, capabilityType, operati
 
 // IsCapabilityAvailable checks if a capability operation is available
 func (a *Adapter) IsCapabilityAvailable(capabilityType, operation string) bool {
-	toolName := fmt.Sprintf("x_%s_%s", capabilityType, operation)
+	toolName := fmt.Sprintf("api_%s_%s", capabilityType, operation)
 
 	availableTools := a.loader.GetAvailableCapabilityTools()
 	for _, tool := range availableTools {
@@ -156,12 +160,23 @@ func (a *Adapter) ListCapabilities() []api.CapabilityInfo {
 			}
 		}
 
-		// Add operation to capability
-		capInfo.Operations = append(capInfo.Operations, api.OperationInfo{
-			Name:        opName,
-			Description: op.Description,
-			Available:   true,
-		})
+		// Check if this operation is already added (deduplication)
+		operationExists := false
+		for _, existingOp := range capInfo.Operations {
+			if existingOp.Name == opName {
+				operationExists = true
+				break
+			}
+		}
+
+		// Only add operation if it doesn't already exist
+		if !operationExists {
+			capInfo.Operations = append(capInfo.Operations, api.OperationInfo{
+				Name:        opName,
+				Description: op.Description,
+				Available:   true,
+			})
+		}
 	}
 
 	// Convert map to slice
@@ -210,7 +225,7 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 					Name:        "type",
 					Type:        "string",
 					Required:    true,
-					Description: "Capability type (e.g., 'auth_provider')",
+					Description: "Capability type (e.g., 'auth')",
 				},
 			},
 		},
@@ -232,6 +247,72 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 				},
 			},
 		},
+		{
+			Name:        "capability_create",
+			Description: "Create a new capability definition from YAML",
+			Parameters: []api.ParameterMetadata{
+				{
+					Name:        "yaml_definition",
+					Type:        "string",
+					Required:    true,
+					Description: "YAML capability definition",
+				},
+				{
+					Name:        "filename",
+					Type:        "string",
+					Required:    false,
+					Description: "Optional filename for the capability definition",
+				},
+			},
+		},
+		{
+			Name:        "capability_update",
+			Description: "Update an existing capability definition",
+			Parameters: []api.ParameterMetadata{
+				{
+					Name:        "name",
+					Type:        "string",
+					Required:    true,
+					Description: "Name of the capability to update",
+				},
+				{
+					Name:        "yaml_definition",
+					Type:        "string",
+					Required:    true,
+					Description: "Updated YAML capability definition",
+				},
+			},
+		},
+		{
+			Name:        "capability_delete",
+			Description: "Delete a capability definition and cleanup resources",
+			Parameters: []api.ParameterMetadata{
+				{
+					Name:        "name",
+					Type:        "string",
+					Required:    true,
+					Description: "Name of the capability to delete",
+				},
+				{
+					Name:        "force",
+					Type:        "boolean",
+					Required:    false,
+					Description: "Force deletion without confirmation",
+				},
+			},
+		},
+		{
+			Name:        "capability_validate",
+			Description: "Validate a capability definition syntax",
+			Parameters: []api.ParameterMetadata{
+				{
+					Name:        "yaml_definition",
+					Type:        "string",
+					Required:    true,
+					Description: "YAML capability definition to validate",
+				},
+			},
+		},
 	}
 
 	// Add tools for each capability operation
@@ -243,7 +324,7 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 				toolName := fmt.Sprintf("%s_%s", cap.Type, op.Name)
 
 				// Get the operation definition to extract parameters
-				opDef, _, err := a.loader.GetOperationForTool(fmt.Sprintf("x_%s", toolName))
+				opDef, _, err := a.loader.GetOperationForTool(fmt.Sprintf("api_%s", toolName))
 				if err != nil {
 					continue
 				}
@@ -280,6 +361,14 @@ func (a *Adapter) ExecuteTool(ctx context.Context, toolName string, args map[str
 		return a.handleInfo(args)
 	case "capability_check":
 		return a.handleCheck(args)
+	case "capability_create":
+		return a.handleCreate(args)
+	case "capability_update":
+		return a.handleUpdate(args)
+	case "capability_delete":
+		return a.handleDelete(args)
+	case "capability_validate":
+		return a.handleValidate(args)
 	default:
 		// Try to parse as capability operation (e.g., "auth_login")
 		parts := strings.SplitN(toolName, "_", 2)
@@ -365,4 +454,276 @@ func (a *Adapter) handleCheck(args map[string]interface{}) (*api.CallToolResult,
 // GetLoader returns the capability loader (for aggregator to use as tool checker)
 func (a *Adapter) GetLoader() *CapabilityLoader {
 	return a.loader
+}
+
+// CRUD operation handlers
+
+func (a *Adapter) handleCreate(args map[string]interface{}) (*api.CallToolResult, error) {
+	yamlDef, ok := args["yaml_definition"].(string)
+	if !ok {
+		return &api.CallToolResult{
+			Content: []interface{}{"yaml_definition is required"},
+			IsError: true,
+		}, nil
+	}
+
+	filename, _ := args["filename"].(string)
+
+	// Validate the capability definition first
+	if err := a.validateCapabilityYAML(yamlDef); err != nil {
+		return &api.CallToolResult{
+			Content: []interface{}{fmt.Sprintf("Invalid capability definition: %s", err.Error())},
+			IsError: true,
+		}, nil
+	}
+
+	// Create the capability definition
+	if err := a.createCapabilityDefinition(yamlDef, filename); err != nil {
+		return &api.CallToolResult{
+			Content: []interface{}{fmt.Sprintf("Failed to create capability: %s", err.Error())},
+			IsError: true,
+		}, nil
+	}
+
+	// Reload definitions to pick up the new capability
+	if err := a.loader.LoadDefinitions(); err != nil {
+		return &api.CallToolResult{
+			Content: []interface{}{fmt.Sprintf("Failed to reload definitions: %s", err.Error())},
+			IsError: true,
+		}, nil
+	}
+
+	return &api.CallToolResult{
+		Content: []interface{}{"Capability created successfully"},
+		IsError: false,
+	}, nil
+}
+
+func (a *Adapter) handleUpdate(args map[string]interface{}) (*api.CallToolResult, error) {
+	name, ok := args["name"].(string)
+	if !ok {
+		return &api.CallToolResult{
+			Content: []interface{}{"name is required"},
+			IsError: true,
+		}, nil
+	}
+
+	yamlDef, ok := args["yaml_definition"].(string)
+	if !ok {
+		return &api.CallToolResult{
+			Content: []interface{}{"yaml_definition is required"},
+			IsError: true,
+		}, nil
+	}
+
+	// Check if capability exists
+	if _, exists := a.loader.GetCapabilityDefinition(name); !exists {
+		return &api.CallToolResult{
+			Content: []interface{}{fmt.Sprintf("Capability '%s' not found", name)},
+			IsError: true,
+		}, nil
+	}
+
+	// Validate the updated capability definition
+	if err := a.validateCapabilityYAML(yamlDef); err != nil {
+		return &api.CallToolResult{
+			Content: []interface{}{fmt.Sprintf("Invalid capability definition: %s", err.Error())},
+			IsError: true,
+		}, nil
+	}
+
+	// Update the capability definition
+	if err := a.updateCapabilityDefinition(name, yamlDef); err != nil {
+		return &api.CallToolResult{
+			Content: []interface{}{fmt.Sprintf("Failed to update capability: %s", err.Error())},
+			IsError: true,
+		}, nil
+	}
+
+	// Reload definitions to pick up the changes
+	if err := a.loader.LoadDefinitions(); err != nil {
+		return &api.CallToolResult{
+			Content: []interface{}{fmt.Sprintf("Failed to reload definitions: %s", err.Error())},
+			IsError: true,
+		}, nil
+	}
+
+	return &api.CallToolResult{
+		Content: []interface{}{fmt.Sprintf("Capability '%s' updated successfully", name)},
+		IsError: false,
+	}, nil
+}
+
+func (a *Adapter) handleDelete(args map[string]interface{}) (*api.CallToolResult, error) {
+	name, ok := args["name"].(string)
+	if !ok {
+		return &api.CallToolResult{
+			Content: []interface{}{"name is required"},
+			IsError: true,
+		}, nil
+	}
+
+	force, _ := args["force"].(bool)
+
+	// Check if capability exists
+	if _, exists := a.loader.GetCapabilityDefinition(name); !exists {
+		return &api.CallToolResult{
+			Content: []interface{}{fmt.Sprintf("Capability '%s' not found", name)},
+			IsError: true,
+		}, nil
+	}
+
+	// Delete the capability definition
+	if err := a.deleteCapabilityDefinition(name, force); err != nil {
+		return &api.CallToolResult{
+			Content: []interface{}{fmt.Sprintf("Failed to delete capability: %s", err.Error())},
+			IsError: true,
+		}, nil
+	}
+
+	// Reload definitions to remove the capability from memory
+	if err := a.loader.LoadDefinitions(); err != nil {
+		return &api.CallToolResult{
+			Content: []interface{}{fmt.Sprintf("Failed to reload definitions: %s", err.Error())},
+			IsError: true,
+		}, nil
+	}
+
+	return &api.CallToolResult{
+		Content: []interface{}{fmt.Sprintf("Capability '%s' deleted successfully", name)},
+		IsError: false,
+	}, nil
+}
+
+func (a *Adapter) handleValidate(args map[string]interface{}) (*api.CallToolResult, error) {
+	yamlDef, ok := args["yaml_definition"].(string)
+	if !ok {
+		return &api.CallToolResult{
+			Content: []interface{}{"yaml_definition is required"},
+			IsError: true,
+		}, nil
+	}
+
+	// Validate the capability definition
+	if err := a.validateCapabilityYAML(yamlDef); err != nil {
+		return &api.CallToolResult{
+			Content: []interface{}{fmt.Sprintf("Validation failed: %s", err.Error())},
+			IsError: true,
+		}, nil
+	}
+
+	return &api.CallToolResult{
+		Content: []interface{}{"Capability definition is valid"},
+		IsError: false,
+	}, nil
+}
+
+// Helper methods for CRUD operations
+
+func (a *Adapter) validateCapabilityYAML(yamlContent string) error {
+	var def CapabilityDefinition
+	if err := yaml.Unmarshal([]byte(yamlContent), &def); err != nil {
+		return fmt.Errorf("failed to parse YAML: %w", err)
+	}
+
+	// Validate required fields
+	if def.Name == "" {
+		return fmt.Errorf("capability name is required")
+	}
+	if def.Type == "" {
+		return fmt.Errorf("capability type is required")
+	}
+	if len(def.Operations) == 0 {
+		return fmt.Errorf("at least one operation is required")
+	}
+
+	// Validate capability type
+	if !IsValidCapabilityType(def.Type) {
+		return fmt.Errorf("invalid capability type: %s", def.Type)
+	}
+
+	return nil
+}
+
+func (a *Adapter) createCapabilityDefinition(yamlContent, filename string) error {
+	// Parse the YAML to get the capability name
+	var def CapabilityDefinition
+	if err := yaml.Unmarshal([]byte(yamlContent), &def); err != nil {
+		return fmt.Errorf("failed to parse YAML: %w", err)
+	}
+
+	// Generate filename if not provided
+	if filename == "" {
+		filename = fmt.Sprintf("%s.yaml", def.Name)
+	}
+
+	// Write to the definitions directory
+	filePath := filepath.Join(a.loader.definitionsPath, filename)
+	if err := os.WriteFile(filePath, []byte(yamlContent), 0644); err != nil {
+		return fmt.Errorf("failed to write capability file: %w", err)
+	}
+
+	return nil
+}
+
+func (a *Adapter) updateCapabilityDefinition(name, yamlContent string) error {
+	// Find the existing file for this capability
+	files, err := filepath.Glob(filepath.Join(a.loader.definitionsPath, "*.yaml"))
+	if err != nil {
+		return fmt.Errorf("failed to list capability files: %w", err)
+	}
+
+	var targetFile string
+	for _, file := range files {
+		def, err := a.loader.loadDefinitionFile(file)
+		if err != nil {
+			continue
+		}
+		if def.Name == name {
+			targetFile = file
+			break
+		}
+	}
+
+	if targetFile == "" {
+		return fmt.Errorf("capability file for '%s' not found", name)
+	}
+
+	// Update the file
+	if err := os.WriteFile(targetFile, []byte(yamlContent), 0644); err != nil {
+		return fmt.Errorf("failed to update capability file: %w", err)
+	}
+
+	return nil
+}
+
+func (a *Adapter) deleteCapabilityDefinition(name string, force bool) error {
+	// Find the existing file for this capability
+	files, err := filepath.Glob(filepath.Join(a.loader.definitionsPath, "*.yaml"))
+	if err != nil {
+		return fmt.Errorf("failed to list capability files: %w", err)
+	}
+
+	var targetFile string
+	for _, file := range files {
+		def, err := a.loader.loadDefinitionFile(file)
+		if err != nil {
+			continue
+		}
+		if def.Name == name {
+			targetFile = file
+			break
+		}
+	}
+
+	if targetFile == "" {
+		return fmt.Errorf("capability file for '%s' not found", name)
+	}
+
+	// Delete the file
+	if err := os.Remove(targetFile); err != nil {
+		return fmt.Errorf("failed to delete capability file: %w", err)
+	}
+
+	return nil
 }

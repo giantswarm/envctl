@@ -1,6 +1,6 @@
 # Teleport Authentication Capability Definition
 name: teleport_auth
-type: auth_provider
+type: auth
 version: "1.0.0"
 description: "Teleport authentication provider for cluster access"
 

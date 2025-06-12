@@ -7,15 +7,6 @@ import (
 // CapabilityType represents the type of capability
 type CapabilityType string
 
-const (
-	// CapabilityTypeAuth handles cluster authentication
-	CapabilityTypeAuth CapabilityType = "auth_provider"
-	// CapabilityTypeDiscovery discovers clusters and services
-	CapabilityTypeDiscovery CapabilityType = "discovery_provider"
-	// CapabilityTypePortForward creates and manages port forwards
-	CapabilityTypePortForward CapabilityType = "portforward_provider"
-)
-
 // Capability represents a capability that can be provided by an MCP server
 type Capability struct {
 	ID          string                 `json:"id"`
@@ -104,4 +95,12 @@ type CapabilityUpdate struct {
 	State        CapabilityState   `json:"state"`
 	Error        string            `json:"error,omitempty"`
 	Metadata     map[string]string `json:"metadata,omitempty"`
+}
+
+// IsValidCapabilityType checks if a capability type is valid
+// A valid capability type is any non-empty string with valid characters
+func IsValidCapabilityType(capType string) bool {
+	// Allow any non-empty string as a capability type
+	// Users can define their own capability types like "database", "monitoring", etc.
+	return len(capType) > 0 && capType != ""
 }

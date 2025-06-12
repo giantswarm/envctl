@@ -40,8 +40,8 @@ func TestPortForwardCapabilityIntegration(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Write the port forward capability definition
-	portForwardYAML := `name: portforward_provider
-type: portforward_provider
+	portForwardYAML := `name: portforward
+type: portforward
 version: "1.0.0"
 description: "Port forwarding capability for Kubernetes services and pods"
 metadata:
@@ -101,7 +101,7 @@ operations:
       name: portforward_info
 `
 
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "portforward_provider.yaml"), []byte(portForwardYAML), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "portforward.yaml"), []byte(portForwardYAML), 0644))
 
 	// Create mock tool checker with kubectl tools available
 	mockChecker := &mockToolChecker{
@@ -123,16 +123,16 @@ operations:
 	require.NoError(t, adapter.LoadDefinitions())
 
 	// Test that port forwarding capability is available
-	assert.True(t, adapter.IsCapabilityAvailable("portforward_provider", "create"))
-	assert.True(t, adapter.IsCapabilityAvailable("portforward_provider", "stop"))
-	assert.True(t, adapter.IsCapabilityAvailable("portforward_provider", "list"))
-	assert.True(t, adapter.IsCapabilityAvailable("portforward_provider", "info"))
+	assert.True(t, adapter.IsCapabilityAvailable("portforward", "create"))
+	assert.True(t, adapter.IsCapabilityAvailable("portforward", "stop"))
+	assert.True(t, adapter.IsCapabilityAvailable("portforward", "list"))
+	assert.True(t, adapter.IsCapabilityAvailable("portforward", "info"))
 
 	// Test listing capabilities includes port forwarding
 	capabilities := adapter.ListCapabilities()
 	var portForwardCap *api.CapabilityInfo
 	for i := range capabilities {
-		if capabilities[i].Type == "portforward_provider" {
+		if capabilities[i].Type == "portforward" {
 			portForwardCap = &capabilities[i]
 			break
 		}
@@ -143,7 +143,7 @@ operations:
 
 	// Test executing port forward create operation
 	ctx := context.Background()
-	result, err := adapter.ExecuteCapability(ctx, "portforward_provider", "create", map[string]interface{}{
+	result, err := adapter.ExecuteCapability(ctx, "portforward", "create", map[string]interface{}{
 		"namespace":     "default",
 		"resource_type": "service",
 		"resource_name": "my-service",
@@ -169,13 +169,13 @@ operations:
 		if tool.Name == "capability_list" {
 			hasCapabilityList = true
 		}
-		if tool.Name == "portforward_provider_create" {
+		if tool.Name == "portforward_create" {
 			hasPortForwardCreate = true
 		}
 	}
 
 	assert.True(t, hasCapabilityList, "Should have capability_list tool")
-	assert.True(t, hasPortForwardCreate, "Should have portforward_provider_create tool")
+	assert.True(t, hasPortForwardCreate, "Should have portforward_create tool")
 }
 
 // TestPortForwardCapabilityWithMissingTools tests behavior when kubectl tools are not available
@@ -184,8 +184,8 @@ func TestPortForwardCapabilityWithMissingTools(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Write the port forward capability definition
-	portForwardYAML := `name: portforward_provider
-type: portforward_provider
+	portForwardYAML := `name: portforward
+type: portforward
 version: "1.0.0"
 description: "Port forwarding capability"
 operations:
@@ -197,7 +197,7 @@ operations:
       name: portforward_create
 `
 
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "portforward_provider.yaml"), []byte(portForwardYAML), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "portforward.yaml"), []byte(portForwardYAML), 0644))
 
 	// Create mock tool checker with no tools available
 	mockChecker := &mockToolChecker{
@@ -214,12 +214,12 @@ operations:
 	require.NoError(t, adapter.LoadDefinitions())
 
 	// Test that port forwarding capability is NOT available
-	assert.False(t, adapter.IsCapabilityAvailable("portforward_provider", "create"))
+	assert.False(t, adapter.IsCapabilityAvailable("portforward", "create"))
 
 	// Test listing capabilities does not include port forwarding operations
 	capabilities := adapter.ListCapabilities()
 	for _, cap := range capabilities {
-		if cap.Type == "portforward_provider" {
+		if cap.Type == "portforward" {
 			// The capability might be listed but operations should not be available
 			for _, op := range cap.Operations {
 				assert.False(t, op.Available, "Operation %s should not be available without tools", op.Name)
@@ -229,7 +229,7 @@ operations:
 
 	// Test executing port forward create operation fails
 	ctx := context.Background()
-	_, err := adapter.ExecuteCapability(ctx, "portforward_provider", "create", map[string]interface{}{
+	_, err := adapter.ExecuteCapability(ctx, "portforward", "create", map[string]interface{}{
 		"namespace":     "default",
 		"resource_type": "service",
 		"resource_name": "my-service",

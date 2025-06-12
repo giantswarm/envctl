@@ -1,6 +1,6 @@
 # Port Forwarding Capability Definition
-name: portforward_provider
-type: portforward_provider
+name: portforward
+type: portforward
 version: "1.0.0"
 description: "Port forwarding capability for Kubernetes resources"
 

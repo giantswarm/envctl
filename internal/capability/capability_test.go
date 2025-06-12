@@ -9,21 +9,20 @@ import (
 )
 
 func TestCapabilityRegistry(t *testing.T) {
-	registry := NewRegistry()
+	registry := GetRegistry()
 
 	// Test registering a capability
 	cap := &Capability{
-		Type:        CapabilityTypeAuth,
+		ID:          "test-cap",
+		Type:        "auth",
 		Provider:    "test-provider",
-		Name:        "Test Auth Provider",
-		Description: "A test authentication provider",
-		Features:    []string{"login", "sso"},
-		Config:      map[string]interface{}{"url": "https://test.com"},
-		Metadata:    map[string]string{"version": "1.0"},
+		Name:        "Test Capability",
+		Description: "A test capability",
+		Features:    []string{"login", "refresh"},
 	}
 
 	err := registry.Register(cap)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	assert.NotEmpty(t, cap.ID)
 
 	// Test getting the capability
@@ -32,7 +31,7 @@ func TestCapabilityRegistry(t *testing.T) {
 	assert.Equal(t, cap.Name, retrieved.Name)
 
 	// Test listing by type
-	caps := registry.ListByType(CapabilityTypeAuth)
+	caps := registry.ListByType("auth")
 	assert.Len(t, caps, 1)
 	assert.Equal(t, cap.ID, caps[0].ID)
 
@@ -63,7 +62,7 @@ func TestCapabilityResolver(t *testing.T) {
 
 	// Register two auth providers
 	cap1 := &Capability{
-		Type:     CapabilityTypeAuth,
+		Type:     "auth",
 		Provider: "provider1",
 		Name:     "Provider 1",
 		Features: []string{"login", "sso"},
@@ -73,7 +72,7 @@ func TestCapabilityResolver(t *testing.T) {
 		},
 	}
 	cap2 := &Capability{
-		Type:     CapabilityTypeAuth,
+		Type:     "auth",
 		Provider: "provider2",
 		Name:     "Provider 2",
 		Features: []string{"login", "mfa"},
@@ -88,7 +87,7 @@ func TestCapabilityResolver(t *testing.T) {
 
 	// Test finding matching capabilities
 	request := CapabilityRequest{
-		Type:     CapabilityTypeAuth,
+		Type:     "auth",
 		Features: []string{"login"},
 	}
 
@@ -100,7 +99,7 @@ func TestCapabilityResolver(t *testing.T) {
 	handle, err := resolver.RequestCapability("test-service", request)
 	require.NoError(t, err)
 	assert.Equal(t, "provider1", handle.Provider)
-	assert.Equal(t, CapabilityTypeAuth, handle.Type)
+	assert.Equal(t, CapabilityType("auth"), handle.Type)
 
 	// Test releasing capability
 	err = resolver.ReleaseCapability("test-service", handle.ID)
@@ -113,21 +112,21 @@ func TestCapabilityMatching(t *testing.T) {
 	// Register capabilities with different features
 	caps := []*Capability{
 		{
-			Type:     CapabilityTypePortForward,
+			Type:     "port-forward",
 			Provider: "kube-pf",
 			Name:     "Kubernetes Port Forward",
 			Features: []string{"tcp", "http", "grpc"},
 			Status:   CapabilityStatus{State: CapabilityStateActive, Health: HealthStatusHealthy},
 		},
 		{
-			Type:     CapabilityTypePortForward,
+			Type:     "port-forward",
 			Provider: "ssh-pf",
 			Name:     "SSH Port Forward",
 			Features: []string{"tcp"},
 			Status:   CapabilityStatus{State: CapabilityStateActive, Health: HealthStatusHealthy},
 		},
 		{
-			Type:     CapabilityTypePortForward,
+			Type:     "port-forward",
 			Provider: "teleport-pf",
 			Name:     "Teleport Port Forward",
 			Features: []string{"tcp", "http"},
@@ -148,7 +147,7 @@ func TestCapabilityMatching(t *testing.T) {
 
 	// Test matching with required features
 	request := CapabilityRequest{
-		Type:     CapabilityTypePortForward,
+		Type:     "port-forward",
 		Features: []string{"tcp", "http"},
 	}
 

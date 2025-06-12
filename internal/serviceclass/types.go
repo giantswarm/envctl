@@ -86,7 +86,7 @@ type LifecycleTools struct {
 
 // ToolCall defines how to call an aggregator tool for a lifecycle event
 type ToolCall struct {
-	// Tool name in the aggregator (e.g., "x_kubernetes_port_forward")
+	// Tool name in the aggregator (e.g., "api_kubernetes_port_forward")
 	Tool string `yaml:"tool"`
 
 	// Parameter mapping from service creation parameters to tool arguments

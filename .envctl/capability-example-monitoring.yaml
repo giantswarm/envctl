@@ -1,0 +1,149 @@
+# Monitoring Capability Definition
+# This example demonstrates another user-defined capability type
+name: monitoring_stack
+type: monitoring  # User-defined capability type
+version: "2.0.0"
+description: "Monitoring and alerting operations for Prometheus, Grafana, and AlertManager"
+
+# Operations define the capability interface with embedded workflows
+operations:
+  query_metrics:
+    description: "Query metrics from Prometheus"
+    parameters:
+      query:
+        type: string
+        required: true
+        description: "PromQL query string"
+      time_range:
+        type: string
+        required: false
+        description: "Time range for the query (e.g., '1h', '24h')"
+    requires:
+      - x_prometheus_query
+    workflow:
+      name: prometheus_query
+      description: "Execute Prometheus query workflow"
+      agentModifiable: true
+      inputSchema:
+        type: object
+        properties:
+          query:
+            type: string
+            description: "PromQL query string"
+          time_range:
+            type: string
+            description: "Time range for the query"
+        required:
+          - query
+      steps:
+        - id: execute_query
+          tool: x_prometheus_query
+          args:
+            query: "{{ .query }}"
+            range: "{{ .time_range }}"
+          store: query_result
+  
+  create_alert:
+    description: "Create or update alert rule"
+    parameters:
+      alert_name:
+        type: string
+        required: true
+        description: "Name of the alert rule"
+      expression:
+        type: string
+        required: true
+        description: "PromQL expression for the alert"
+      severity:
+        type: string
+        required: false
+        description: "Alert severity (critical, warning, info)"
+    requires:
+      - x_alertmanager_create_rule
+    workflow:
+      name: create_alert_rule
+      description: "Create alert rule workflow"
+      agentModifiable: false
+      inputSchema:
+        type: object
+        properties:
+          alert_name:
+            type: string
+            description: "Name of the alert rule"
+          expression:
+            type: string
+            description: "PromQL expression for the alert"
+          severity:
+            type: string
+            description: "Alert severity level"
+        required:
+          - alert_name
+          - expression
+      steps:
+        - id: create_rule
+          tool: x_alertmanager_create_rule
+          args:
+            name: "{{ .alert_name }}"
+            expr: "{{ .expression }}"
+            severity: "{{ .severity }}"
+          store: alert_result
+
+  create_dashboard:
+    description: "Create Grafana dashboard from template"
+    parameters:
+      dashboard_name:
+        type: string
+        required: true
+        description: "Name of the dashboard"
+      template:
+        type: string
+        required: true
+        description: "Dashboard template ID or path"
+      data_source:
+        type: string
+        required: false
+        description: "Data source name"
+    requires:
+      - x_grafana_create_dashboard
+    workflow:
+      name: create_grafana_dashboard
+      description: "Create Grafana dashboard workflow"
+      agentModifiable: true
+      inputSchema:
+        type: object
+        properties:
+          dashboard_name:
+            type: string
+            description: "Name of the dashboard"
+          template:
+            type: string
+            description: "Dashboard template ID or path"
+          data_source:
+            type: string
+            description: "Data source name"
+        required:
+          - dashboard_name
+          - template
+      steps:
+        - id: create_dashboard
+          tool: x_grafana_create_dashboard
+          args:
+            name: "{{ .dashboard_name }}"
+            template: "{{ .template }}"
+            datasource: "{{ .data_source }}"
+          store: dashboard_result
+
+# Metadata for additional information
+metadata:
+  provider: "prometheus-stack"
+  category: "observability"
+  icon: "📊"
+  components:
+    - "prometheus"
+    - "grafana"
+    - "alertmanager"
+  tags:
+    - "metrics"
+    - "alerts"
+    - "dashboards"
+    - "observability" 

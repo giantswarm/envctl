@@ -1,0 +1,132 @@
+# Database Management Capability Definition
+# This example demonstrates how users can define their own capability types
+name: database_management
+type: database  # User-defined capability type
+version: "1.0.0"
+description: "Database management operations for PostgreSQL and MySQL"
+
+# Operations define the capability interface with embedded workflows
+operations:
+  backup:
+    description: "Create a database backup"
+    parameters:
+      database_name:
+        type: string
+        required: true
+        description: "Name of the database to backup"
+      backup_type:
+        type: string
+        required: false
+        description: "Type of backup (full, incremental)"
+    requires:
+      - x_database_backup
+    workflow:
+      name: database_backup
+      description: "Create database backup workflow"
+      agentModifiable: false
+      inputSchema:
+        type: object
+        properties:
+          database_name:
+            type: string
+            description: "Name of the database to backup"
+          backup_type:
+            type: string
+            description: "Type of backup (full, incremental)"
+        required:
+          - database_name
+      steps:
+        - id: create_backup
+          tool: x_database_backup
+          args:
+            database: "{{ .database_name }}"
+            type: "{{ .backup_type }}"
+          store: backup_result
+  
+  restore:
+    description: "Restore database from backup"
+    parameters:
+      database_name:
+        type: string
+        required: true
+        description: "Name of the database to restore"
+      backup_file:
+        type: string
+        required: true
+        description: "Path to backup file"
+    requires:
+      - x_database_restore
+    workflow:
+      name: database_restore
+      description: "Restore database workflow"
+      agentModifiable: false
+      inputSchema:
+        type: object
+        properties:
+          database_name:
+            type: string
+            description: "Name of the database to restore"
+          backup_file:
+            type: string
+            description: "Path to backup file"
+        required:
+          - database_name
+          - backup_file
+      steps:
+        - id: restore_database
+          tool: x_database_restore
+          args:
+            database: "{{ .database_name }}"
+            backup_file: "{{ .backup_file }}"
+          store: restore_result
+
+  migrate:
+    description: "Run database migrations"
+    parameters:
+      database_name:
+        type: string
+        required: true
+        description: "Name of the database"
+      migration_version:
+        type: string
+        required: false
+        description: "Target migration version"
+    requires:
+      - x_database_migrate
+    workflow:
+      name: database_migrate
+      description: "Run database migrations workflow"
+      agentModifiable: true
+      inputSchema:
+        type: object
+        properties:
+          database_name:
+            type: string
+            description: "Name of the database"
+          migration_version:
+            type: string
+            description: "Target migration version"
+        required:
+          - database_name
+      steps:
+        - id: run_migrations
+          tool: x_database_migrate
+          args:
+            database: "{{ .database_name }}"
+            version: "{{ .migration_version }}"
+          store: migration_result
+
+# Metadata for additional information
+metadata:
+  provider: "postgresql"
+  category: "data"
+  icon: "🗄️"
+  supported_databases:
+    - "postgresql"
+    - "mysql"
+    - "mariadb"
+  tags:
+    - "backup"
+    - "restore"
+    - "migration"
+    - "data-management" 
