@@ -11,6 +11,35 @@ import (
 
 // Handler interfaces that services will implement
 
+// ServiceClassInfo provides information about a registered service class
+type ServiceClassInfo struct {
+	Name        string `json:"name"`
+	Type        string `json:"type"`
+	Version     string `json:"version"`
+	Description string `json:"description"`
+	ServiceType string `json:"serviceType"`
+	Available   bool   `json:"available"`
+
+	// Lifecycle tool availability
+	CreateToolAvailable      bool `json:"createToolAvailable"`
+	DeleteToolAvailable      bool `json:"deleteToolAvailable"`
+	HealthCheckToolAvailable bool `json:"healthCheckToolAvailable"`
+	StatusToolAvailable      bool `json:"statusToolAvailable"`
+
+	// Required tools
+	RequiredTools []string `json:"requiredTools"`
+	MissingTools  []string `json:"missingTools"`
+}
+
+// ServiceClassDefinition represents a service class definition (lightweight version for API)
+type ServiceClassDefinition struct {
+	Name        string            `json:"name"`
+	Type        string            `json:"type"`
+	Version     string            `json:"version"`
+	Description string            `json:"description"`
+	Metadata    map[string]string `json:"metadata"`
+}
+
 // ServiceInfo provides information about a service
 type ServiceInfo interface {
 	GetLabel() string
@@ -133,6 +162,23 @@ type WorkflowHandler interface {
 	ToolProvider
 }
 
+// ServiceClassManagerHandler defines the interface for service class management operations
+type ServiceClassManagerHandler interface {
+	// Service class definition management
+	ListServiceClasses() []ServiceClassInfo
+	GetServiceClass(name string) (*ServiceClassDefinition, error)
+	IsServiceClassAvailable(name string) bool
+	LoadServiceDefinitions() error
+	RefreshAvailability()
+
+	// Service class registration (for programmatic definitions)
+	RegisterDefinition(def *ServiceClassDefinition) error
+	UnregisterDefinition(name string) error
+
+	// Utility methods
+	GetDefinitionsPath() string
+}
+
 // ServiceOrchestratorHandler defines the interface for service orchestrator operations
 type ServiceOrchestratorHandler interface {
 	// Service capability management
@@ -159,6 +205,7 @@ var (
 	registryHandler            ServiceRegistryHandler
 	orchestratorHandler        OrchestratorHandler
 	serviceOrchestratorHandler ServiceOrchestratorHandler
+	serviceClassManagerHandler ServiceClassManagerHandler
 	aggregatorHandler          AggregatorHandler
 	configHandler              ConfigHandler
 	capabilityHandler          CapabilityHandler
@@ -319,6 +366,21 @@ func GetServiceOrchestrator() ServiceOrchestratorHandler {
 	handlerMutex.RLock()
 	defer handlerMutex.RUnlock()
 	return serviceOrchestratorHandler
+}
+
+// RegisterServiceClassManager registers the service class manager handler
+func RegisterServiceClassManager(h ServiceClassManagerHandler) {
+	handlerMutex.Lock()
+	defer handlerMutex.Unlock()
+	logging.Debug("API", "Registering service class manager handler: %v", h != nil)
+	serviceClassManagerHandler = h
+}
+
+// GetServiceClassManager returns the registered service class manager handler
+func GetServiceClassManager() ServiceClassManagerHandler {
+	handlerMutex.RLock()
+	defer handlerMutex.RUnlock()
+	return serviceClassManagerHandler
 }
 
 // ExecuteCapability is a convenience function for executing capabilities

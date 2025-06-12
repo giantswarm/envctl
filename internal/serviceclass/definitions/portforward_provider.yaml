@@ -1,0 +1,103 @@
+# Port Forwarding Capability Definition
+name: portforward_provider
+type: portforward_provider
+version: "1.0.0"
+description: "Port forwarding capability for Kubernetes resources"
+
+# Operations define the capability interface with embedded workflows
+operations:
+  create:
+    description: "Create a port forward to a Kubernetes resource"
+    parameters:
+      namespace:
+        type: string
+        required: false
+        description: "Kubernetes namespace"
+      resource_type:
+        type: string
+        required: true
+        description: "Type of resource (pod, service, deployment)"
+      resource_name:
+        type: string
+        required: true
+        description: "Name of the resource"
+      local_port:
+        type: number
+        required: true
+        description: "Local port to forward to"
+      remote_port:
+        type: number
+        required: true
+        description: "Remote port on the resource"
+    requires:
+      - x_kubernetes_port_forward
+    workflow:
+      name: portforward_create
+      description: "Create port forward workflow"
+      agentModifiable: false
+      inputSchema:
+        type: object
+        properties:
+          namespace:
+            type: string
+            description: "Kubernetes namespace"
+          resource_type:
+            type: string
+            description: "Type of resource (pod, service, deployment)"
+          resource_name:
+            type: string
+            description: "Name of the resource"
+          local_port:
+            type: number
+            description: "Local port to forward to"
+          remote_port:
+            type: number
+            description: "Remote port on the resource"
+        required:
+          - resource_type
+          - resource_name
+          - local_port
+          - remote_port
+      steps:
+        - id: create_portforward
+          tool: x_kubernetes_port_forward
+          args:
+            namespace: "{{ .namespace }}"
+            resourceType: "{{ .resource_type }}"
+            resourceName: "{{ .resource_name }}"
+            localPort: "{{ .local_port }}"
+            targetPort: "{{ .remote_port }}"
+          store: portforward_result
+  
+  stop:
+    description: "Stop an existing port forward"
+    parameters:
+      id:
+        type: string
+        required: true
+        description: "Port forward ID"
+    requires:
+      - x_kubernetes_stop_port_forward
+    workflow:
+      name: portforward_stop
+      description: "Stop port forward workflow"
+      agentModifiable: false
+      inputSchema:
+        type: object
+        properties:
+          id:
+            type: string
+            description: "Port forward ID"
+        required: ["id"]
+      steps:
+        - id: stop_portforward
+          tool: x_kubernetes_stop_port_forward
+          args:
+            id: "{{ .id }}"
+          store: stop_result
+
+# Metadata for additional information
+metadata:
+  provider: "kubernetes"
+  category: "networking"
+  icon: "🔌" 

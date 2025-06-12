@@ -1,0 +1,173 @@
+# Service Port Forward Capability Definition
+# This demonstrates the new service capability schema for dynamic service lifecycle management
+name: service_portforward_provider
+type: service_portforward_provider
+version: "1.0.0"
+description: "Dynamic service capability for managing Kubernetes port forward instances"
+
+# Service lifecycle configuration - this is the new addition for dynamic services
+serviceConfig:
+  # Service metadata
+  serviceType: "DynamicPortForward"
+  defaultLabel: "pf-{{ .resource_type }}-{{ .resource_name }}-{{ .local_port }}"
+  dependencies: []
+  
+  # Lifecycle tool mappings - defines which aggregator tools to call for each lifecycle event
+  lifecycleTools:
+    create:
+      tool: "x_kubernetes_port_forward"
+      arguments:
+        namespace: "{{ .namespace | default \"default\" }}"
+        resourceType: "{{ .resource_type }}"
+        resourceName: "{{ .resource_name }}"
+        localPort: "{{ .local_port }}"
+        targetPort: "{{ .remote_port }}"
+      responseMapping:
+        serviceId: "$.id"              # Extract service ID from response
+        status: "$.status"             # Extract status
+        health: "$.healthy"            # Extract health status
+        metadata:
+          local_port: "$.localPort"
+          target_port: "$.targetPort"
+          pid: "$.pid"
+    
+    delete:
+      tool: "x_kubernetes_stop_port_forward"
+      arguments:
+        id: "{{ .service_id }}"        # Use service ID from creation
+      responseMapping:
+        status: "$.status"
+        
+    healthCheck:
+      tool: "x_kubernetes_port_forward_status"
+      arguments:
+        id: "{{ .service_id }}"
+      responseMapping:
+        health: "$.healthy"
+        status: "$.status"
+        error: "$.error"
+        
+    status:
+      tool: "x_kubernetes_port_forward_info"
+      arguments:
+        id: "{{ .service_id }}"
+      responseMapping:
+        metadata:
+          connection_count: "$.connections"
+          bytes_transferred: "$.bytesTransferred"
+  
+  # Health check configuration
+  healthCheck:
+    enabled: true
+    interval: "30s"
+    failureThreshold: 3
+    successThreshold: 1
+  
+  # Timeout configuration
+  timeout:
+    create: "60s"
+    delete: "30s"
+    healthCheck: "10s"
+  
+  # Parameter mapping for service creation
+  createParameters:
+    namespace:
+      toolParameter: "namespace"
+      default: "default"
+      required: false
+    resource_type:
+      toolParameter: "resourceType"
+      required: true
+    resource_name:
+      toolParameter: "resourceName"
+      required: true
+    local_port:
+      toolParameter: "localPort"
+      required: true
+    remote_port:
+      toolParameter: "targetPort"
+      required: true
+
+# External API operations (for user-facing capability calls)
+operations:
+  create_service:
+    description: "Create a new port forward service instance"
+    parameters:
+      namespace:
+        type: string
+        required: false
+        description: "Kubernetes namespace"
+      resource_type:
+        type: string
+        required: true
+        description: "Type of resource (pod, service, deployment)"
+      resource_name:
+        type: string
+        required: true
+        description: "Name of the resource"
+      local_port:
+        type: number
+        required: true
+        description: "Local port to forward to"
+      remote_port:
+        type: number
+        required: true
+        description: "Remote port on the resource"
+    requires:
+      - x_service_orchestrator_create_service
+    workflow:
+      name: create_portforward_service
+      description: "Create a dynamic port forward service"
+      agentModifiable: false
+      inputSchema:
+        type: object
+        properties:
+          namespace:
+            type: string
+          resource_type:
+            type: string
+          resource_name:
+            type: string
+          local_port:
+            type: number
+          remote_port:
+            type: number
+        required:
+          - resource_type
+          - resource_name
+          - local_port
+          - remote_port
+      steps:
+        - id: create_service
+          tool: x_service_orchestrator_create_service
+          args:
+            capability_name: "service_portforward_provider"
+            label: "pf-{{ .resource_type }}-{{ .resource_name }}-{{ .local_port }}"
+            parameters:
+              namespace: "{{ .namespace }}"
+              resource_type: "{{ .resource_type }}"
+              resource_name: "{{ .resource_name }}"
+              local_port: "{{ .local_port }}"
+              remote_port: "{{ .remote_port }}"
+          store: service_result
+
+  list_services:
+    description: "List all port forward service instances"
+    requires:
+      - x_service_orchestrator_list_services
+    workflow:
+      name: list_portforward_services
+      description: "List port forward services"
+      steps:
+        - id: list_services
+          tool: x_service_orchestrator_list_services
+          args:
+            capability_type: "service_portforward_provider"
+          store: services_list
+
+# Metadata
+metadata:
+  provider: "kubernetes"
+  category: "networking"
+  icon: "🔌"
+  version: "1.0.0" 
