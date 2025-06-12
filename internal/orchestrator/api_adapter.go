@@ -121,6 +121,110 @@ func (a *Adapter) GetAllServices() []api.ServiceStatus {
 	return statuses
 }
 
+// ServiceClass-based dynamic service instance management
+
+// CreateServiceClassInstance creates a new ServiceClass-based service instance
+func (a *Adapter) CreateServiceClassInstance(ctx context.Context, req api.CreateServiceClassRequest) (*api.ServiceClassInstanceInfo, error) {
+	// Convert API request to internal request
+	internalReq := CreateServiceRequest{
+		ServiceClassName: req.ServiceClassName,
+		Label:            req.Label,
+		Parameters:       req.Parameters,
+		CreateTimeout:    req.CreateTimeout,
+		DeleteTimeout:    req.DeleteTimeout,
+	}
+
+	// Create the instance using the orchestrator
+	internalInfo, err := a.orchestrator.CreateServiceClassInstance(ctx, internalReq)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert internal response to API response
+	return a.convertToAPIServiceClassInstanceInfo(internalInfo), nil
+}
+
+// DeleteServiceClassInstance deletes a ServiceClass-based service instance
+func (a *Adapter) DeleteServiceClassInstance(ctx context.Context, serviceID string) error {
+	return a.orchestrator.DeleteServiceClassInstance(ctx, serviceID)
+}
+
+// GetServiceClassInstance returns information about a ServiceClass-based service instance
+func (a *Adapter) GetServiceClassInstance(serviceID string) (*api.ServiceClassInstanceInfo, error) {
+	internalInfo, err := a.orchestrator.GetServiceClassInstance(serviceID)
+	if err != nil {
+		return nil, err
+	}
+	return a.convertToAPIServiceClassInstanceInfo(internalInfo), nil
+}
+
+// GetServiceClassInstanceByLabel returns information about a ServiceClass-based service instance by label
+func (a *Adapter) GetServiceClassInstanceByLabel(label string) (*api.ServiceClassInstanceInfo, error) {
+	internalInfo, err := a.orchestrator.GetServiceClassInstanceByLabel(label)
+	if err != nil {
+		return nil, err
+	}
+	return a.convertToAPIServiceClassInstanceInfo(internalInfo), nil
+}
+
+// ListServiceClassInstances returns information about all ServiceClass-based service instances
+func (a *Adapter) ListServiceClassInstances() []api.ServiceClassInstanceInfo {
+	internalInfos := a.orchestrator.ListServiceClassInstances()
+	apiInfos := make([]api.ServiceClassInstanceInfo, len(internalInfos))
+
+	for i, internalInfo := range internalInfos {
+		apiInfos[i] = *a.convertToAPIServiceClassInstanceInfo(&internalInfo)
+	}
+
+	return apiInfos
+}
+
+// SubscribeToServiceInstanceEvents returns a channel for receiving ServiceClass-based service instance events
+func (a *Adapter) SubscribeToServiceInstanceEvents() <-chan api.ServiceClassInstanceEvent {
+	// Convert internal events to API events
+	internalChan := a.orchestrator.SubscribeToServiceInstanceEvents()
+	apiChan := make(chan api.ServiceClassInstanceEvent, 100)
+
+	go func() {
+		for event := range internalChan {
+			apiChan <- api.ServiceClassInstanceEvent{
+				ServiceID:   event.ServiceID,
+				Label:       event.Label,
+				ServiceType: event.ServiceType,
+				OldState:    event.OldState,
+				NewState:    event.NewState,
+				OldHealth:   event.OldHealth,
+				NewHealth:   event.NewHealth,
+				Error:       event.Error,
+				Timestamp:   event.Timestamp,
+				Metadata:    event.Metadata,
+			}
+		}
+		close(apiChan)
+	}()
+
+	return apiChan
+}
+
+// Conversion helpers
+
+// convertToAPIServiceClassInstanceInfo converts internal ServiceInstanceInfo to API ServiceClassInstanceInfo
+func (a *Adapter) convertToAPIServiceClassInstanceInfo(internalInfo *ServiceInstanceInfo) *api.ServiceClassInstanceInfo {
+	return &api.ServiceClassInstanceInfo{
+		ServiceID:          internalInfo.ServiceID,
+		Label:              internalInfo.Label,
+		ServiceClassName:   internalInfo.ServiceClassName,
+		ServiceClassType:   internalInfo.ServiceClassType,
+		State:              internalInfo.State,
+		Health:             internalInfo.Health,
+		LastError:          internalInfo.LastError,
+		CreatedAt:          internalInfo.CreatedAt,
+		LastChecked:        internalInfo.LastChecked,
+		ServiceData:        internalInfo.ServiceData,
+		CreationParameters: internalInfo.CreationParameters,
+	}
+}
+
 // GetTools returns all tools this provider offers
 func (a *Adapter) GetTools() []api.ToolMetadata {
 	return []api.ToolMetadata{
@@ -177,12 +281,72 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 				},
 			},
 		},
+		// ServiceClass instance management tools
+		{
+			Name:        "serviceclass_instance_create",
+			Description: "Create a new ServiceClass-based service instance",
+			Parameters: []api.ParameterMetadata{
+				{
+					Name:        "serviceClassName",
+					Type:        "string",
+					Required:    true,
+					Description: "Name of the ServiceClass to instantiate",
+				},
+				{
+					Name:        "label",
+					Type:        "string",
+					Required:    true,
+					Description: "Unique label for the service instance",
+				},
+				{
+					Name:        "parameters",
+					Type:        "object",
+					Required:    false,
+					Description: "Parameters for service creation",
+				},
+			},
+		},
+		{
+			Name:        "serviceclass_instance_delete",
+			Description: "Delete a ServiceClass-based service instance",
+			Parameters: []api.ParameterMetadata{
+				{
+					Name:        "serviceId",
+					Type:        "string",
+					Required:    true,
+					Description: "ID of the service instance to delete",
+				},
+			},
+		},
+		{
+			Name:        "serviceclass_instance_get",
+			Description: "Get information about a ServiceClass-based service instance",
+			Parameters: []api.ParameterMetadata{
+				{
+					Name:        "serviceId",
+					Type:        "string",
+					Required:    false,
+					Description: "ID of the service instance to get",
+				},
+				{
+					Name:        "label",
+					Type:        "string",
+					Required:    false,
+					Description: "Label of the service instance to get",
+				},
+			},
+		},
+		{
+			Name:        "serviceclass_instance_list",
+			Description: "List all ServiceClass-based service instances",
+		},
 	}
 }
 
 // ExecuteTool executes a tool by name
 func (a *Adapter) ExecuteTool(ctx context.Context, toolName string, args map[string]interface{}) (*api.CallToolResult, error) {
 	switch toolName {
+	// Static service management
 	case "service_list":
 		return a.handleServiceList()
 	case "service_start":
@@ -193,12 +357,21 @@ func (a *Adapter) ExecuteTool(ctx context.Context, toolName string, args map[str
 		return a.handleServiceRestart(args)
 	case "service_status":
 		return a.handleServiceStatus(args)
+	// ServiceClass instance management
+	case "serviceclass_instance_create":
+		return a.handleServiceClassInstanceCreate(ctx, args)
+	case "serviceclass_instance_delete":
+		return a.handleServiceClassInstanceDelete(ctx, args)
+	case "serviceclass_instance_get":
+		return a.handleServiceClassInstanceGet(args)
+	case "serviceclass_instance_list":
+		return a.handleServiceClassInstanceList()
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", toolName)
 	}
 }
 
-// Service management handlers
+// Static service management handlers
 func (a *Adapter) handleServiceList() (*api.CallToolResult, error) {
 	services := a.GetAllServices()
 
@@ -298,6 +471,119 @@ func (a *Adapter) handleServiceStatus(args map[string]interface{}) (*api.CallToo
 
 	return &api.CallToolResult{
 		Content: []interface{}{status},
+		IsError: false,
+	}, nil
+}
+
+// ServiceClass instance management handlers
+
+func (a *Adapter) handleServiceClassInstanceCreate(ctx context.Context, args map[string]interface{}) (*api.CallToolResult, error) {
+	serviceClassName, ok := args["serviceClassName"].(string)
+	if !ok {
+		return &api.CallToolResult{
+			Content: []interface{}{"serviceClassName is required"},
+			IsError: true,
+		}, nil
+	}
+
+	label, ok := args["label"].(string)
+	if !ok {
+		return &api.CallToolResult{
+			Content: []interface{}{"label is required"},
+			IsError: true,
+		}, nil
+	}
+
+	parameters, _ := args["parameters"].(map[string]interface{})
+	if parameters == nil {
+		parameters = make(map[string]interface{})
+	}
+
+	req := api.CreateServiceClassRequest{
+		ServiceClassName: serviceClassName,
+		Label:            label,
+		Parameters:       parameters,
+	}
+
+	instance, err := a.CreateServiceClassInstance(ctx, req)
+	if err != nil {
+		return &api.CallToolResult{
+			Content: []interface{}{fmt.Sprintf("Failed to create ServiceClass instance: %v", err)},
+			IsError: true,
+		}, nil
+	}
+
+	return &api.CallToolResult{
+		Content: []interface{}{instance},
+		IsError: false,
+	}, nil
+}
+
+func (a *Adapter) handleServiceClassInstanceDelete(ctx context.Context, args map[string]interface{}) (*api.CallToolResult, error) {
+	serviceID, ok := args["serviceId"].(string)
+	if !ok {
+		return &api.CallToolResult{
+			Content: []interface{}{"serviceId is required"},
+			IsError: true,
+		}, nil
+	}
+
+	if err := a.DeleteServiceClassInstance(ctx, serviceID); err != nil {
+		return &api.CallToolResult{
+			Content: []interface{}{fmt.Sprintf("Failed to delete ServiceClass instance: %v", err)},
+			IsError: true,
+		}, nil
+	}
+
+	return &api.CallToolResult{
+		Content: []interface{}{fmt.Sprintf("Successfully deleted ServiceClass instance '%s'", serviceID)},
+		IsError: false,
+	}, nil
+}
+
+func (a *Adapter) handleServiceClassInstanceGet(args map[string]interface{}) (*api.CallToolResult, error) {
+	serviceID, hasServiceID := args["serviceId"].(string)
+	label, hasLabel := args["label"].(string)
+
+	if !hasServiceID && !hasLabel {
+		return &api.CallToolResult{
+			Content: []interface{}{"either serviceId or label is required"},
+			IsError: true,
+		}, nil
+	}
+
+	var instance *api.ServiceClassInstanceInfo
+	var err error
+
+	if hasServiceID {
+		instance, err = a.GetServiceClassInstance(serviceID)
+	} else {
+		instance, err = a.GetServiceClassInstanceByLabel(label)
+	}
+
+	if err != nil {
+		return &api.CallToolResult{
+			Content: []interface{}{fmt.Sprintf("Failed to get ServiceClass instance: %v", err)},
+			IsError: true,
+		}, nil
+	}
+
+	return &api.CallToolResult{
+		Content: []interface{}{instance},
+		IsError: false,
+	}, nil
+}
+
+func (a *Adapter) handleServiceClassInstanceList() (*api.CallToolResult, error) {
+	instances := a.ListServiceClassInstances()
+
+	result := map[string]interface{}{
+		"instances": instances,
+		"total":     len(instances),
+	}
+
+	return &api.CallToolResult{
+		Content: []interface{}{result},
 		IsError: false,
 	}, nil
 }

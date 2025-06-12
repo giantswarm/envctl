@@ -262,6 +262,70 @@ func (m *mockOrchestratorHandler) GetAllServices() []ServiceStatus {
 	return m.services
 }
 
+// ServiceClass-based dynamic service instance management methods (for test compatibility)
+func (m *mockOrchestratorHandler) CreateServiceClassInstance(ctx context.Context, req CreateServiceClassRequest) (*ServiceClassInstanceInfo, error) {
+	return &ServiceClassInstanceInfo{
+		ServiceID:        "test-service-id",
+		Label:            req.Label,
+		ServiceClassName: req.ServiceClassName,
+		ServiceClassType: "test",
+		State:            "running",
+		Health:           "healthy",
+		CreatedAt:        time.Now(),
+		ServiceData:      make(map[string]interface{}),
+	}, nil
+}
+
+func (m *mockOrchestratorHandler) DeleteServiceClassInstance(ctx context.Context, serviceID string) error {
+	return nil
+}
+
+func (m *mockOrchestratorHandler) GetServiceClassInstance(serviceID string) (*ServiceClassInstanceInfo, error) {
+	return &ServiceClassInstanceInfo{
+		ServiceID:        serviceID,
+		Label:            "test-label",
+		ServiceClassName: "test-class",
+		ServiceClassType: "test",
+		State:            "running",
+		Health:           "healthy",
+		CreatedAt:        time.Now(),
+		ServiceData:      make(map[string]interface{}),
+	}, nil
+}
+
+func (m *mockOrchestratorHandler) GetServiceClassInstanceByLabel(label string) (*ServiceClassInstanceInfo, error) {
+	return &ServiceClassInstanceInfo{
+		ServiceID:        "test-service-id",
+		Label:            label,
+		ServiceClassName: "test-class",
+		ServiceClassType: "test",
+		State:            "running",
+		Health:           "healthy",
+		CreatedAt:        time.Now(),
+		ServiceData:      make(map[string]interface{}),
+	}, nil
+}
+
+func (m *mockOrchestratorHandler) ListServiceClassInstances() []ServiceClassInstanceInfo {
+	return []ServiceClassInstanceInfo{
+		{
+			ServiceID:        "test-service-id-1",
+			Label:            "test-label-1",
+			ServiceClassName: "test-class",
+			ServiceClassType: "test",
+			State:            "running",
+			Health:           "healthy",
+			CreatedAt:        time.Now(),
+			ServiceData:      make(map[string]interface{}),
+		},
+	}
+}
+
+func (m *mockOrchestratorHandler) SubscribeToServiceInstanceEvents() <-chan ServiceClassInstanceEvent {
+	eventChan := make(chan ServiceClassInstanceEvent, 100)
+	return eventChan
+}
+
 func TestNewOrchestratorAPI(t *testing.T) {
 	// Setup mock handlers
 	registry := newMockServiceRegistryHandler()

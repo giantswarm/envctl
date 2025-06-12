@@ -41,6 +41,55 @@ type ServiceClassDefinition struct {
 	Metadata    map[string]string `json:"metadata"`
 }
 
+// ServiceClass-based service management types (for unified orchestrator)
+
+// CreateServiceClassRequest represents a request to create a new ServiceClass-based service instance
+type CreateServiceClassRequest struct {
+	// ServiceClass to use
+	ServiceClassName string `json:"serviceClassName"`
+
+	// Label for the service instance (must be unique)
+	Label string `json:"label"`
+
+	// Parameters for service creation
+	Parameters map[string]interface{} `json:"parameters"`
+
+	// Override default timeouts (future use)
+	CreateTimeout *time.Duration `json:"createTimeout,omitempty"`
+	DeleteTimeout *time.Duration `json:"deleteTimeout,omitempty"`
+}
+
+// ServiceClassInstanceInfo provides information about a ServiceClass-based service instance
+type ServiceClassInstanceInfo struct {
+	ServiceID          string                 `json:"serviceId"`
+	Label              string                 `json:"label"`
+	ServiceClassName   string                 `json:"serviceClassName"`
+	ServiceClassType   string                 `json:"serviceClassType"`
+	State              string                 `json:"state"`
+	Health             string                 `json:"health"`
+	LastError          string                 `json:"lastError,omitempty"`
+	CreatedAt          time.Time              `json:"createdAt"`
+	LastChecked        *time.Time             `json:"lastChecked,omitempty"`
+	ServiceData        map[string]interface{} `json:"serviceData,omitempty"`
+	CreationParameters map[string]interface{} `json:"creationParameters"`
+}
+
+// ServiceClassInstanceEvent represents a ServiceClass-based service instance state change event
+type ServiceClassInstanceEvent struct {
+	ServiceID   string                 `json:"serviceId"`
+	Label       string                 `json:"label"`
+	ServiceType string                 `json:"serviceType"`
+	OldState    string                 `json:"oldState"`
+	NewState    string                 `json:"newState"`
+	OldHealth   string                 `json:"oldHealth"`
+	NewHealth   string                 `json:"newHealth"`
+	Error       string                 `json:"error,omitempty"`
+	Timestamp   time.Time              `json:"timestamp"`
+	Metadata    map[string]interface{} `json:"metadata,omitempty"`
+}
+
+
+
 // ServiceInfo provides information about a service
 type ServiceInfo interface {
 	GetLabel() string
@@ -58,7 +107,7 @@ type ServiceRegistryHandler interface {
 	GetByType(serviceType ServiceType) []ServiceInfo
 }
 
-// OrchestratorHandler manages service lifecycle
+// OrchestratorHandler manages service lifecycle (both static and ServiceClass-based)
 type OrchestratorHandler interface {
 	StartService(label string) error
 	StopService(label string) error
@@ -66,6 +115,15 @@ type OrchestratorHandler interface {
 	SubscribeToStateChanges() <-chan ServiceStateChangedEvent
 	GetServiceStatus(label string) (*ServiceStatus, error)
 	GetAllServices() []ServiceStatus
+
+	// ServiceClass-based dynamic service instance management
+	CreateServiceClassInstance(ctx context.Context, req CreateServiceClassRequest) (*ServiceClassInstanceInfo, error)
+	DeleteServiceClassInstance(ctx context.Context, serviceID string) error
+	GetServiceClassInstance(serviceID string) (*ServiceClassInstanceInfo, error)
+	GetServiceClassInstanceByLabel(label string) (*ServiceClassInstanceInfo, error)
+	ListServiceClassInstances() []ServiceClassInstanceInfo
+	SubscribeToServiceInstanceEvents() <-chan ServiceClassInstanceEvent
+
 	ToolProvider
 }
 
