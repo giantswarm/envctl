@@ -14,19 +14,16 @@ type ConfigServiceAPI interface {
 
 	// Get specific configuration sections
 	GetMCPServers(ctx context.Context) ([]config.MCPServerDefinition, error)
-	GetWorkflows(ctx context.Context) ([]config.WorkflowDefinition, error)
 	GetAggregatorConfig(ctx context.Context) (*config.AggregatorConfig, error)
 	GetGlobalSettings(ctx context.Context) (*config.GlobalSettings, error)
 
 	// Update configuration sections
 	UpdateMCPServer(ctx context.Context, server config.MCPServerDefinition) error
-	UpdateWorkflow(ctx context.Context, workflow config.WorkflowDefinition) error
 	UpdateAggregatorConfig(ctx context.Context, aggregator config.AggregatorConfig) error
 	UpdateGlobalSettings(ctx context.Context, settings config.GlobalSettings) error
 
 	// Delete configuration items
 	DeleteMCPServer(ctx context.Context, name string) error
-	DeleteWorkflow(ctx context.Context, name string) error
 
 	// Save configuration to file
 	SaveConfig(ctx context.Context) error
@@ -63,15 +60,6 @@ func (c *configServiceAPI) GetMCPServers(ctx context.Context) ([]config.MCPServe
 	return handler.GetMCPServers(ctx)
 }
 
-// GetWorkflows returns all workflow definitions
-func (c *configServiceAPI) GetWorkflows(ctx context.Context) ([]config.WorkflowDefinition, error) {
-	handler := GetConfigHandler()
-	if handler == nil {
-		return nil, fmt.Errorf("config handler not registered")
-	}
-	return handler.GetWorkflows(ctx)
-}
-
 // GetAggregatorConfig returns the aggregator configuration
 func (c *configServiceAPI) GetAggregatorConfig(ctx context.Context) (*config.AggregatorConfig, error) {
 	handler := GetConfigHandler()
@@ -99,15 +87,6 @@ func (c *configServiceAPI) UpdateMCPServer(ctx context.Context, server config.MC
 	return handler.UpdateMCPServer(ctx, server)
 }
 
-// UpdateWorkflow updates or adds a workflow definition
-func (c *configServiceAPI) UpdateWorkflow(ctx context.Context, workflow config.WorkflowDefinition) error {
-	handler := GetConfigHandler()
-	if handler == nil {
-		return fmt.Errorf("config handler not registered")
-	}
-	return handler.UpdateWorkflow(ctx, workflow)
-}
-
 // UpdateAggregatorConfig updates the aggregator configuration
 func (c *configServiceAPI) UpdateAggregatorConfig(ctx context.Context, aggregator config.AggregatorConfig) error {
 	handler := GetConfigHandler()
@@ -133,15 +112,6 @@ func (c *configServiceAPI) DeleteMCPServer(ctx context.Context, name string) err
 		return fmt.Errorf("config handler not registered")
 	}
 	return handler.DeleteMCPServer(ctx, name)
-}
-
-// DeleteWorkflow removes a workflow by name
-func (c *configServiceAPI) DeleteWorkflow(ctx context.Context, name string) error {
-	handler := GetConfigHandler()
-	if handler == nil {
-		return fmt.Errorf("config handler not registered")
-	}
-	return handler.DeleteWorkflow(ctx, name)
 }
 
 // SaveConfig persists the configuration to file

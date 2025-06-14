@@ -5,8 +5,6 @@ import (
 	"envctl/internal/api"
 	"envctl/pkg/logging"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -19,14 +17,17 @@ type Adapter struct {
 }
 
 // NewAdapter creates a new capability adapter
-func NewAdapter(definitionsPath string, toolChecker ToolAvailabilityChecker, workflowExecutor api.ToolCaller) *Adapter {
+func NewAdapter(toolChecker ToolAvailabilityChecker, workflowExecutor api.ToolCaller) (*Adapter, error) {
 	registry := GetRegistry()
-	loader := NewCapabilityLoader(definitionsPath, toolChecker, registry)
+	loader, err := NewCapabilityLoader(toolChecker, registry)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create capability loader: %w", err)
+	}
 
 	return &Adapter{
 		loader:           loader,
 		workflowExecutor: workflowExecutor,
-	}
+	}, nil
 }
 
 // Register registers this adapter with the API package
@@ -646,84 +647,22 @@ func (a *Adapter) validateCapabilityYAML(yamlContent string) error {
 }
 
 func (a *Adapter) createCapabilityDefinition(yamlContent, filename string) error {
-	// Parse the YAML to get the capability name
-	var def CapabilityDefinition
-	if err := yaml.Unmarshal([]byte(yamlContent), &def); err != nil {
-		return fmt.Errorf("failed to parse YAML: %w", err)
-	}
-
-	// Generate filename if not provided
-	if filename == "" {
-		filename = fmt.Sprintf("%s.yaml", def.Name)
-	}
-
-	// Write to the definitions directory
-	filePath := filepath.Join(a.loader.definitionsPath, filename)
-	if err := os.WriteFile(filePath, []byte(yamlContent), 0644); err != nil {
-		return fmt.Errorf("failed to write capability file: %w", err)
-	}
-
-	return nil
+	// TODO: Implement capability creation for layered configuration system
+	// This would need to determine whether to write to user or project config
+	// and handle the layered override behavior appropriately
+	return fmt.Errorf("capability creation not yet supported with layered configuration")
 }
 
 func (a *Adapter) updateCapabilityDefinition(name, yamlContent string) error {
-	// Find the existing file for this capability
-	files, err := filepath.Glob(filepath.Join(a.loader.definitionsPath, "*.yaml"))
-	if err != nil {
-		return fmt.Errorf("failed to list capability files: %w", err)
-	}
-
-	var targetFile string
-	for _, file := range files {
-		def, err := a.loader.loadDefinitionFile(file)
-		if err != nil {
-			continue
-		}
-		if def.Name == name {
-			targetFile = file
-			break
-		}
-	}
-
-	if targetFile == "" {
-		return fmt.Errorf("capability file for '%s' not found", name)
-	}
-
-	// Update the file
-	if err := os.WriteFile(targetFile, []byte(yamlContent), 0644); err != nil {
-		return fmt.Errorf("failed to update capability file: %w", err)
-	}
-
-	return nil
+	// TODO: Implement capability update for layered configuration system
+	// This would need to find the capability in either user or project config
+	// and update it appropriately
+	return fmt.Errorf("capability updates not yet supported with layered configuration")
 }
 
 func (a *Adapter) deleteCapabilityDefinition(name string, force bool) error {
-	// Find the existing file for this capability
-	files, err := filepath.Glob(filepath.Join(a.loader.definitionsPath, "*.yaml"))
-	if err != nil {
-		return fmt.Errorf("failed to list capability files: %w", err)
-	}
-
-	var targetFile string
-	for _, file := range files {
-		def, err := a.loader.loadDefinitionFile(file)
-		if err != nil {
-			continue
-		}
-		if def.Name == name {
-			targetFile = file
-			break
-		}
-	}
-
-	if targetFile == "" {
-		return fmt.Errorf("capability file for '%s' not found", name)
-	}
-
-	// Delete the file
-	if err := os.Remove(targetFile); err != nil {
-		return fmt.Errorf("failed to delete capability file: %w", err)
-	}
-
-	return nil
+	// TODO: Implement capability deletion for layered configuration system
+	// This would need to find and remove the capability from the appropriate
+	// user or project config directory
+	return fmt.Errorf("capability deletion not yet supported with layered configuration")
 }

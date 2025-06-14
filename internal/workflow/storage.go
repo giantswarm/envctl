@@ -13,24 +13,41 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// For testing - allows injecting custom configuration paths
+var getConfigurationPaths = config.GetConfigurationPaths
+
+// ConfigurationLoader interface for testing
+type ConfigurationLoader interface {
+	LoadAndParseYAML(subDir string, validator func(WorkflowDefinition) error) ([]WorkflowDefinition, error)
+}
+
+// defaultConfigurationLoader wraps the config package loader
+type defaultConfigurationLoader struct{}
+
+func (d *defaultConfigurationLoader) LoadAndParseYAML(subDir string, validator func(WorkflowDefinition) error) ([]WorkflowDefinition, error) {
+	return config.LoadAndParseYAML[WorkflowDefinition](subDir, validator)
+}
+
 // WorkflowStorage manages persistent storage of workflows
 type WorkflowStorage struct {
 	mu           sync.RWMutex
-	userFile     string // User-defined workflows (read-only for agents)
-	agentFile    string // Agent-created workflows
-	workflows    map[string]*config.WorkflowDefinition
+	loader       ConfigurationLoader
+	configDir    string // For agent workflow management
+	workflows    map[string]*WorkflowDefinition
 	changeNotify chan struct{} // Notify aggregator of changes
 }
 
 // NewWorkflowStorage creates a new workflow storage manager
 func NewWorkflowStorage(configDir string) (*WorkflowStorage, error) {
-	userFile := filepath.Join(configDir, config.UserWorkflowsFile)
-	agentFile := filepath.Join(configDir, config.AgentWorkflowsFile)
+	return NewWorkflowStorageWithLoader(configDir, &defaultConfigurationLoader{})
+}
 
+// NewWorkflowStorageWithLoader creates a new workflow storage manager with custom loader (for testing)
+func NewWorkflowStorageWithLoader(configDir string, loader ConfigurationLoader) (*WorkflowStorage, error) {
 	ws := &WorkflowStorage{
-		userFile:     userFile,
-		agentFile:    agentFile,
-		workflows:    make(map[string]*config.WorkflowDefinition),
+		loader:       loader,
+		configDir:    configDir,
+		workflows:    make(map[string]*WorkflowDefinition),
 		changeNotify: make(chan struct{}, 1),
 	}
 
@@ -42,52 +59,90 @@ func NewWorkflowStorage(configDir string) (*WorkflowStorage, error) {
 	return ws, nil
 }
 
-// LoadWorkflows loads workflows from both user and agent files
+// LoadWorkflows loads workflows using layered configuration loading
 func (ws *WorkflowStorage) LoadWorkflows() error {
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
 
 	// Clear existing workflows
-	ws.workflows = make(map[string]*config.WorkflowDefinition)
+	ws.workflows = make(map[string]*WorkflowDefinition)
 
-	// Load user workflows (these are not agent-modifiable by default)
-	if err := ws.loadFromFile(ws.userFile, false); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("failed to load user workflows: %w", err)
+	// Load workflow definitions using the configuration loader
+	definitions, err := ws.loader.LoadAndParseYAML("workflows", func(def WorkflowDefinition) error {
+		return ws.validateDefinition(&def)
+	})
+	if err != nil {
+		return fmt.Errorf("failed to load workflow definitions: %w", err)
 	}
 
-	// Load agent workflows (these are agent-modifiable)
-	if err := ws.loadFromFile(ws.agentFile, true); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("failed to load agent workflows: %w", err)
+	logging.Info("WorkflowStorage", "Loading %d workflow definitions", len(definitions))
+
+	// Process each definition
+	for _, def := range definitions {
+		ws.workflows[def.Name] = &def
+		logging.Info("WorkflowStorage", "Loaded workflow definition: %s", def.Name)
+	}
+
+	// Also load legacy agent workflows for backward compatibility
+	if err := ws.loadLegacyAgentWorkflows(); err != nil {
+		logging.Warn("WorkflowStorage", "Failed to load legacy agent workflows: %v", err)
 	}
 
 	return nil
 }
 
-// loadFromFile loads workflows from a specific file
-func (ws *WorkflowStorage) loadFromFile(filename string, setModifiable bool) error {
-	data, err := os.ReadFile(filename)
+// validateDefinition validates a workflow definition
+func (ws *WorkflowStorage) validateDefinition(def *WorkflowDefinition) error {
+	if def.Name == "" {
+		return fmt.Errorf("workflow name is required")
+	}
+	if len(def.Steps) == 0 {
+		return fmt.Errorf("workflow must have at least one step")
+	}
+	for i, step := range def.Steps {
+		if step.Tool == "" {
+			return fmt.Errorf("step %d: tool is required", i)
+		}
+		if step.ID == "" {
+			return fmt.Errorf("step %d: id is required", i)
+		}
+	}
+	return nil
+}
+
+// loadLegacyAgentWorkflows loads agent workflows from legacy agent_workflows.yaml file
+func (ws *WorkflowStorage) loadLegacyAgentWorkflows() error {
+	agentFile := filepath.Join(ws.configDir, AgentWorkflowsFile)
+	
+	data, err := os.ReadFile(agentFile)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // No legacy file exists, which is fine
+		}
 		return err
 	}
 
-	var wfConfig config.WorkflowConfig
+	var wfConfig WorkflowConfig
 	if err := yaml.Unmarshal(data, &wfConfig); err != nil {
 		return err
 	}
 
 	for _, wf := range wfConfig.Workflows {
 		workflow := wf // Create a copy
-		if setModifiable {
-			workflow.AgentModifiable = true
+		workflow.AgentModifiable = true
+		
+		// Only add if not already loaded from directory (directory takes precedence)
+		if _, exists := ws.workflows[workflow.Name]; !exists {
+			ws.workflows[workflow.Name] = &workflow
+			logging.Info("WorkflowStorage", "Loaded legacy agent workflow: %s", workflow.Name)
 		}
-		ws.workflows[workflow.Name] = &workflow
 	}
 
 	return nil
 }
 
 // GetWorkflow retrieves a workflow by name
-func (ws *WorkflowStorage) GetWorkflow(name string) (*config.WorkflowDefinition, error) {
+func (ws *WorkflowStorage) GetWorkflow(name string) (*WorkflowDefinition, error) {
 	ws.mu.RLock()
 	defer ws.mu.RUnlock()
 
@@ -102,11 +157,11 @@ func (ws *WorkflowStorage) GetWorkflow(name string) (*config.WorkflowDefinition,
 }
 
 // ListWorkflows returns all workflows
-func (ws *WorkflowStorage) ListWorkflows() []config.WorkflowDefinition {
+func (ws *WorkflowStorage) ListWorkflows() []WorkflowDefinition {
 	ws.mu.RLock()
 	defer ws.mu.RUnlock()
 
-	workflows := make([]config.WorkflowDefinition, 0, len(ws.workflows))
+	workflows := make([]WorkflowDefinition, 0, len(ws.workflows))
 	for _, wf := range ws.workflows {
 		workflows = append(workflows, *wf)
 	}
@@ -114,7 +169,7 @@ func (ws *WorkflowStorage) ListWorkflows() []config.WorkflowDefinition {
 }
 
 // CreateWorkflow creates a new agent workflow
-func (ws *WorkflowStorage) CreateWorkflow(workflow config.WorkflowDefinition) error {
+func (ws *WorkflowStorage) CreateWorkflow(workflow WorkflowDefinition) error {
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
 
@@ -124,7 +179,7 @@ func (ws *WorkflowStorage) CreateWorkflow(workflow config.WorkflowDefinition) er
 	}
 
 	// Set metadata
-	workflow.CreatedBy = config.WorkflowCreatorAgent
+	workflow.CreatedBy = WorkflowCreatorAgent
 	workflow.CreatedAt = time.Now()
 	workflow.LastModified = time.Now()
 	workflow.Version = 1
@@ -133,7 +188,7 @@ func (ws *WorkflowStorage) CreateWorkflow(workflow config.WorkflowDefinition) er
 	// Add to memory
 	ws.workflows[workflow.Name] = &workflow
 
-	// Persist to agent file
+	// Persist to agent file (legacy for now)
 	if err := ws.saveAgentWorkflows(); err != nil {
 		delete(ws.workflows, workflow.Name) // Rollback
 		return err
@@ -146,7 +201,7 @@ func (ws *WorkflowStorage) CreateWorkflow(workflow config.WorkflowDefinition) er
 }
 
 // UpdateWorkflow updates an existing workflow
-func (ws *WorkflowStorage) UpdateWorkflow(name string, updates config.WorkflowDefinition) error {
+func (ws *WorkflowStorage) UpdateWorkflow(name string, updates WorkflowDefinition) error {
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
 
@@ -170,7 +225,7 @@ func (ws *WorkflowStorage) UpdateWorkflow(name string, updates config.WorkflowDe
 	// Update in memory
 	ws.workflows[name] = &updates
 
-	// Persist changes
+	// Persist changes (legacy for now)
 	if err := ws.saveAgentWorkflows(); err != nil {
 		ws.workflows[name] = existing // Rollback
 		return err
@@ -199,7 +254,7 @@ func (ws *WorkflowStorage) DeleteWorkflow(name string) error {
 	// Remove from memory
 	delete(ws.workflows, name)
 
-	// Persist changes
+	// Persist changes (legacy for now)
 	if err := ws.saveAgentWorkflows(); err != nil {
 		ws.workflows[name] = existing // Rollback
 		return err
@@ -211,29 +266,35 @@ func (ws *WorkflowStorage) DeleteWorkflow(name string) error {
 	return nil
 }
 
-// saveAgentWorkflows persists agent-created workflows to disk
+// saveAgentWorkflows persists agent-created workflows to disk (legacy file approach)
 func (ws *WorkflowStorage) saveAgentWorkflows() error {
-	var agentWorkflows []config.WorkflowDefinition
+	var agentWorkflows []WorkflowDefinition
 
 	for _, wf := range ws.workflows {
-		if wf.CreatedBy == config.WorkflowCreatorAgent || (wf.AgentModifiable && wf.CreatedBy == "") {
+		if wf.CreatedBy == WorkflowCreatorAgent || (wf.AgentModifiable && wf.CreatedBy == "") {
 			agentWorkflows = append(agentWorkflows, *wf)
 		}
 	}
 
-	wfConfig := config.WorkflowConfig{Workflows: agentWorkflows}
+	wfConfig := WorkflowConfig{Workflows: agentWorkflows}
 	data, err := yaml.Marshal(wfConfig)
 	if err != nil {
 		return err
 	}
 
+	// Ensure directory exists
+	agentFile := filepath.Join(ws.configDir, AgentWorkflowsFile)
+	if err := os.MkdirAll(filepath.Dir(agentFile), 0755); err != nil {
+		return err
+	}
+
 	// Write atomically
-	tempFile := ws.agentFile + ".tmp"
+	tempFile := agentFile + ".tmp"
 	if err := os.WriteFile(tempFile, data, 0644); err != nil {
 		return err
 	}
 
-	return os.Rename(tempFile, ws.agentFile)
+	return os.Rename(tempFile, agentFile)
 }
 
 // GetChangeChannel returns a channel that notifies of workflow changes

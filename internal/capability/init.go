@@ -2,7 +2,7 @@ package capability
 
 import (
 	"envctl/internal/api"
-	"path/filepath"
+	"envctl/pkg/logging"
 )
 
 func init() {
@@ -11,18 +11,23 @@ func init() {
 		// Type assert to the expected interfaces
 		toolChecker, ok := toolExecutor.(ToolAvailabilityChecker)
 		if !ok {
+			logging.Error("Capability", nil, "toolExecutor does not implement ToolAvailabilityChecker")
 			return nil
 		}
 
 		toolCaller, ok := toolExecutor.(api.ToolCaller)
 		if !ok {
+			logging.Error("Capability", nil, "toolExecutor does not implement api.ToolCaller")
 			return nil
 		}
 
-		// Determine capability definitions path
-		definitionsPath := filepath.Join(configDir, "capability", "definitions")
+		// Create the adapter (now uses layered configuration loading)
+		adapter, err := NewAdapter(toolChecker, toolCaller)
+		if err != nil {
+			logging.Error("Capability", err, "Failed to create capability adapter")
+			return nil
+		}
 
-		// Create the adapter
-		return NewAdapter(definitionsPath, toolChecker, toolCaller)
+		return adapter
 	})
 }

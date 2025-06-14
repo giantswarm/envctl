@@ -2,13 +2,10 @@ package capability
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"sync"
 
+	"envctl/internal/config"
 	"envctl/pkg/logging"
-
-	"gopkg.in/yaml.v3"
 )
 
 // CapabilityDefinition represents a capability definition from YAML
@@ -56,7 +53,7 @@ type ParamSchema struct {
 // CapabilityLoader loads capability definitions from YAML files
 type CapabilityLoader struct {
 	mu              sync.RWMutex
-	definitionsPath string
+	loader          *config.ConfigurationLoader
 	definitions     map[string]*CapabilityDefinition // capability name -> definition
 	toolChecker     ToolAvailabilityChecker
 	registry        *Registry
@@ -70,17 +67,22 @@ type ToolAvailabilityChecker interface {
 }
 
 // NewCapabilityLoader creates a new capability loader
-func NewCapabilityLoader(definitionsPath string, toolChecker ToolAvailabilityChecker, registry *Registry) *CapabilityLoader {
+func NewCapabilityLoader(toolChecker ToolAvailabilityChecker, registry *Registry) (*CapabilityLoader, error) {
+	loader, err := config.NewConfigurationLoader()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create configuration loader: %w", err)
+	}
+
 	return &CapabilityLoader{
-		definitionsPath: definitionsPath,
+		loader:          loader,
 		definitions:     make(map[string]*CapabilityDefinition),
 		toolChecker:     toolChecker,
 		registry:        registry,
 		exposedTools:    make(map[string]bool),
-	}
+	}, nil
 }
 
-// LoadDefinitions loads all capability definitions from the configured path
+// LoadDefinitions loads all capability definitions using layered configuration loading
 func (cl *CapabilityLoader) LoadDefinitions() error {
 	cl.mu.Lock()
 	defer cl.mu.Unlock()
@@ -88,20 +90,19 @@ func (cl *CapabilityLoader) LoadDefinitions() error {
 	// Clear existing definitions
 	cl.definitions = make(map[string]*CapabilityDefinition)
 
-	// Load all YAML files from the definitions directory
-	files, err := filepath.Glob(filepath.Join(cl.definitionsPath, "*.yaml"))
+	// Load capability definitions using the common configuration loader
+	definitions, err := config.LoadAndParseYAML[CapabilityDefinition]("capabilities", func(def CapabilityDefinition) error {
+		return cl.validateDefinition(&def)
+	})
 	if err != nil {
-		return fmt.Errorf("failed to list capability files: %w", err)
+		return fmt.Errorf("failed to load capability definitions: %w", err)
 	}
 
-	for _, file := range files {
-		def, err := cl.loadDefinitionFile(file)
-		if err != nil {
-			logging.Error("CapabilityLoader", err, "Failed to load capability file: %s", file)
-			continue
-		}
+	logging.Info("CapabilityLoader", "Loading %d capability definitions", len(definitions))
 
-		cl.definitions[def.Name] = def
+	// Process each definition
+	for _, def := range definitions {
+		cl.definitions[def.Name] = &def
 		logging.Info("CapabilityLoader", "Loaded capability definition: %s (type: %s)", def.Name, def.Type)
 	}
 
@@ -111,35 +112,24 @@ func (cl *CapabilityLoader) LoadDefinitions() error {
 	return nil
 }
 
-// loadDefinitionFile loads a single capability definition file
-func (cl *CapabilityLoader) loadDefinitionFile(filename string) (*CapabilityDefinition, error) {
-	data, err := os.ReadFile(filename)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read file: %w", err)
-	}
-
-	var def CapabilityDefinition
-	if err := yaml.Unmarshal(data, &def); err != nil {
-		return nil, fmt.Errorf("failed to parse YAML: %w", err)
-	}
-
-	// Validate the definition
+// validateDefinition validates a capability definition
+func (cl *CapabilityLoader) validateDefinition(def *CapabilityDefinition) error {
 	if def.Name == "" {
-		return nil, fmt.Errorf("capability name is required")
+		return fmt.Errorf("capability name is required")
 	}
 	if def.Type == "" {
-		return nil, fmt.Errorf("capability type is required")
+		return fmt.Errorf("capability type is required")
 	}
 	if len(def.Operations) == 0 {
-		return nil, fmt.Errorf("at least one operation is required")
+		return fmt.Errorf("at least one operation is required")
 	}
 
 	// Validate the capability type (allow any non-empty string)
 	if !IsValidCapabilityType(def.Type) {
-		return nil, fmt.Errorf("capability type cannot be empty")
+		return fmt.Errorf("capability type cannot be empty")
 	}
 
-	return &def, nil
+	return nil
 }
 
 // updateAvailableCapabilities checks tool availability and updates exposed capabilities

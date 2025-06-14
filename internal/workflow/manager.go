@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"sync"
 
-	"envctl/internal/config"
 	"envctl/pkg/logging"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -105,7 +104,7 @@ func (wm *WorkflowManager) GetStorage() *WorkflowStorage {
 }
 
 // workflowToTool converts a workflow definition to an MCP tool
-func (wm *WorkflowManager) workflowToTool(workflow config.WorkflowDefinition) mcp.Tool {
+func (wm *WorkflowManager) workflowToTool(workflow WorkflowDefinition) mcp.Tool {
 	// Convert workflow input schema to MCP tool input schema
 	properties := make(map[string]interface{})
 	required := workflow.InputSchema.Required

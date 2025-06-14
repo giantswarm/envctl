@@ -151,19 +151,16 @@ type ConfigHandler interface {
 	// Get configuration
 	GetConfig(ctx context.Context) (*config.EnvctlConfig, error)
 	GetMCPServers(ctx context.Context) ([]config.MCPServerDefinition, error)
-	GetWorkflows(ctx context.Context) ([]config.WorkflowDefinition, error)
 	GetAggregatorConfig(ctx context.Context) (*config.AggregatorConfig, error)
 	GetGlobalSettings(ctx context.Context) (*config.GlobalSettings, error)
 
 	// Update configuration
 	UpdateMCPServer(ctx context.Context, server config.MCPServerDefinition) error
-	UpdateWorkflow(ctx context.Context, workflow config.WorkflowDefinition) error
 	UpdateAggregatorConfig(ctx context.Context, aggregator config.AggregatorConfig) error
 	UpdateGlobalSettings(ctx context.Context, settings config.GlobalSettings) error
 
 	// Delete configuration
 	DeleteMCPServer(ctx context.Context, name string) error
-	DeleteWorkflow(ctx context.Context, name string) error
 
 	// Save configuration
 	SaveConfig(ctx context.Context) error

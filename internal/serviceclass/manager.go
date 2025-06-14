@@ -2,20 +2,17 @@ package serviceclass
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 
+	"envctl/internal/config"
 	"envctl/pkg/logging"
-
-	"gopkg.in/yaml.v3"
 )
 
 // ServiceClassManager manages service class definitions and their availability
 type ServiceClassManager struct {
 	mu              sync.RWMutex
-	definitionsPath string
+	loader          *config.ConfigurationLoader
 	definitions     map[string]*ServiceClassDefinition // service class name -> definition
 	toolChecker     ToolAvailabilityChecker
 	exposedServices map[string]bool // Track which service classes are available
@@ -27,19 +24,24 @@ type ServiceClassManager struct {
 }
 
 // NewServiceClassManager creates a new service class manager
-func NewServiceClassManager(definitionsPath string, toolChecker ToolAvailabilityChecker) *ServiceClassManager {
+func NewServiceClassManager(toolChecker ToolAvailabilityChecker) (*ServiceClassManager, error) {
+	loader, err := config.NewConfigurationLoader()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create configuration loader: %w", err)
+	}
+
 	return &ServiceClassManager{
-		definitionsPath: definitionsPath,
+		loader:          loader,
 		definitions:     make(map[string]*ServiceClassDefinition),
 		toolChecker:     toolChecker,
 		exposedServices: make(map[string]bool),
 		onRegister:      []func(def *ServiceClassDefinition){},
 		onUnregister:    []func(serviceClassName string){},
 		onUpdate:        []func(def *ServiceClassDefinition){},
-	}
+	}, nil
 }
 
-// LoadServiceDefinitions loads all service class definitions from the configured path
+// LoadServiceDefinitions loads all service class definitions using layered configuration loading
 func (scm *ServiceClassManager) LoadServiceDefinitions() error {
 	scm.mu.Lock()
 	defer scm.mu.Unlock()
@@ -48,43 +50,24 @@ func (scm *ServiceClassManager) LoadServiceDefinitions() error {
 	scm.definitions = make(map[string]*ServiceClassDefinition)
 	scm.exposedServices = make(map[string]bool)
 
-	// Create definitions path if it doesn't exist
-	if err := os.MkdirAll(scm.definitionsPath, 0755); err != nil {
-		return fmt.Errorf("failed to create definitions directory: %w", err)
-	}
-
-	// Load all YAML files from the definitions directory
-	pattern := filepath.Join(scm.definitionsPath, "*.yaml")
-	files, err := filepath.Glob(pattern)
+	// Load service class definitions using the common configuration loader
+	definitions, err := config.LoadAndParseYAML[ServiceClassDefinition]("serviceclasses", func(def ServiceClassDefinition) error {
+		return scm.validateServiceClassDefinition(&def)
+	})
 	if err != nil {
-		return fmt.Errorf("failed to list service class files: %w", err)
+		return fmt.Errorf("failed to load service class definitions: %w", err)
 	}
 
-	// Also check subdirectories (like examples/)
-	subdirPattern := filepath.Join(scm.definitionsPath, "*", "*.yaml")
-	subdirFiles, err := filepath.Glob(subdirPattern)
-	if err == nil {
-		files = append(files, subdirFiles...)
-	}
+	logging.Info("ServiceClassManager", "Loading %d service class definitions", len(definitions))
 
-	for _, file := range files {
-		// Skip non-service class files based on naming convention
-		if !scm.isServiceClassFile(file) {
-			continue
-		}
-
-		def, err := scm.loadServiceDefinitionFile(file)
-		if err != nil {
-			logging.Error("ServiceClassManager", err, "Failed to load service class file: %s", file)
-			continue
-		}
-
-		scm.definitions[def.Name] = def
+	// Process each definition
+	for _, def := range definitions {
+		scm.definitions[def.Name] = &def
 		logging.Info("ServiceClassManager", "Loaded service class definition: %s (type: %s)", def.Name, def.Type)
 
 		// Notify registration callbacks
 		for _, callback := range scm.onRegister {
-			callback(def)
+			callback(&def)
 		}
 	}
 
@@ -92,36 +75,6 @@ func (scm *ServiceClassManager) LoadServiceDefinitions() error {
 	scm.updateServiceAvailability()
 
 	return nil
-}
-
-// isServiceClassFile determines if a file is a service class definition
-func (scm *ServiceClassManager) isServiceClassFile(filename string) bool {
-	// Service class files should have "service_" prefix or be in service-related directories
-	basename := filepath.Base(filename)
-	return strings.HasPrefix(basename, "service_") ||
-		strings.Contains(filename, "/service") ||
-		strings.Contains(filename, "examples") ||
-		strings.Contains(basename, "provider")
-}
-
-// loadServiceDefinitionFile loads a single service class definition file
-func (scm *ServiceClassManager) loadServiceDefinitionFile(filename string) (*ServiceClassDefinition, error) {
-	data, err := os.ReadFile(filename)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read file: %w", err)
-	}
-
-	var def ServiceClassDefinition
-	if err := yaml.Unmarshal(data, &def); err != nil {
-		return nil, fmt.Errorf("failed to parse YAML: %w", err)
-	}
-
-	// Validate the service class definition
-	if err := scm.validateServiceClassDefinition(&def); err != nil {
-		return nil, fmt.Errorf("validation failed: %w", err)
-	}
-
-	return &def, nil
 }
 
 // validateServiceClassDefinition performs basic validation on a service class definition
@@ -377,9 +330,18 @@ func (scm *ServiceClassManager) OnUpdate(callback func(def *ServiceClassDefiniti
 	scm.onUpdate = append(scm.onUpdate, callback)
 }
 
-// GetDefinitionsPath returns the path where service class definitions are loaded from
+// GetDefinitionsPath returns the paths where service class definitions are loaded from
 func (scm *ServiceClassManager) GetDefinitionsPath() string {
-	return scm.definitionsPath
+	userDir, projectDir, err := config.GetConfigurationPaths()
+	if err != nil {
+		logging.Error("ServiceClassManager", err, "Failed to get configuration paths")
+		return "error determining paths"
+	}
+	
+	userPath := filepath.Join(userDir, "serviceclasses")
+	projectPath := filepath.Join(projectDir, "serviceclasses")
+	
+	return fmt.Sprintf("User: %s, Project: %s", userPath, projectPath)
 }
 
 // GetAllDefinitions returns all service class definitions (for internal use)

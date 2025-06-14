@@ -17,7 +17,6 @@ import (
 	// Import ServiceClass manager
 	"envctl/internal/serviceclass"
 	"fmt"
-	"path/filepath"
 )
 
 // Services holds all the initialized services and APIs
@@ -93,12 +92,6 @@ func InitializeServices(cfg *Config) (*Services, error) {
 
 	// Initialize and register ServiceClass manager
 	// This needs to be done before orchestrator starts to handle ServiceClass-based services
-	configDir, err := config.GetUserConfigDir()
-	if err != nil {
-		// Use default if we can't get config dir
-		configDir = ".config/envctl"
-	}
-	serviceClassPath := filepath.Join(configDir, "serviceclass", "definitions")
 
 	// Get the service registry handler from the API
 	registryHandler := api.GetServiceRegistry()
@@ -109,8 +102,11 @@ func InitializeServices(cfg *Config) (*Services, error) {
 	// Create the tool checker using the API handler
 	toolChecker := &aggregatorToolChecker{serviceRegistry: registry}
 
-	// Create ServiceClass manager
-	serviceClassManager := serviceclass.NewServiceClassManager(serviceClassPath, toolChecker)
+	// Create ServiceClass manager (now uses layered configuration loading)
+	serviceClassManager, err := serviceclass.NewServiceClassManager(toolChecker)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create ServiceClass manager: %w", err)
+	}
 
 	// Create and register ServiceClass adapter
 	serviceClassAdapter := serviceclass.NewAdapter(serviceClassManager)
@@ -119,7 +115,7 @@ func InitializeServices(cfg *Config) (*Services, error) {
 	// Load ServiceClass definitions
 	if err := serviceClassManager.LoadServiceDefinitions(); err != nil {
 		// Log warning but don't fail - ServiceClass is optional
-		// This would need proper logging in production
+		logging.Warn("Services", "Failed to load ServiceClass definitions: %v", err)
 	}
 
 	// Step 2: Create APIs that use the registered handlers

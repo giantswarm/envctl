@@ -4,8 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"envctl/internal/config"
-
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -37,12 +35,12 @@ func TestWorkflowExecutor_ExecuteWorkflow(t *testing.T) {
 	mock := &mockToolCaller{}
 	executor := NewWorkflowExecutor(mock)
 
-	workflow := &config.WorkflowDefinition{
+	workflow := &WorkflowDefinition{
 		Name:        "test_workflow",
 		Description: "Test workflow",
-		InputSchema: config.WorkflowInputSchema{
+		InputSchema: WorkflowInputSchema{
 			Type: "object",
-			Properties: map[string]config.SchemaProperty{
+			Properties: map[string]SchemaProperty{
 				"cluster": {
 					Type:        "string",
 					Description: "Cluster name",
@@ -50,7 +48,7 @@ func TestWorkflowExecutor_ExecuteWorkflow(t *testing.T) {
 			},
 			Required: []string{"cluster"},
 		},
-		Steps: []config.WorkflowStep{
+		Steps: []WorkflowStep{
 			{
 				ID:   "step1",
 				Tool: "test_tool",
@@ -81,9 +79,9 @@ func TestWorkflowExecutor_ExecuteWorkflow(t *testing.T) {
 func TestWorkflowExecutor_ValidateInputs(t *testing.T) {
 	executor := NewWorkflowExecutor(nil)
 
-	schema := config.WorkflowInputSchema{
+	schema := WorkflowInputSchema{
 		Type: "object",
-		Properties: map[string]config.SchemaProperty{
+		Properties: map[string]SchemaProperty{
 			"required_string": {
 				Type:        "string",
 				Description: "Required string field",
@@ -173,14 +171,14 @@ func TestWorkflowExecutor_StoreResults(t *testing.T) {
 	mock := &mockToolCaller{}
 	executor := NewWorkflowExecutor(mock)
 
-	workflow := &config.WorkflowDefinition{
+	workflow := &WorkflowDefinition{
 		Name:        "test_workflow",
 		Description: "Test workflow with result storage",
-		InputSchema: config.WorkflowInputSchema{
+		InputSchema: WorkflowInputSchema{
 			Type:       "object",
-			Properties: map[string]config.SchemaProperty{},
+			Properties: map[string]SchemaProperty{},
 		},
-		Steps: []config.WorkflowStep{
+		Steps: []WorkflowStep{
 			{
 				ID:    "step1",
 				Tool:  "test_tool",

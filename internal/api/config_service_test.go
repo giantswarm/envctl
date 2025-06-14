@@ -42,10 +42,6 @@ func (m *mockConfigHandler) GetMCPServers(ctx context.Context) ([]config.MCPServ
 	return m.config.MCPServers, nil
 }
 
-func (m *mockConfigHandler) GetWorkflows(ctx context.Context) ([]config.WorkflowDefinition, error) {
-	return m.config.Workflows, nil
-}
-
 func (m *mockConfigHandler) GetAggregatorConfig(ctx context.Context) (*config.AggregatorConfig, error) {
 	return &m.config.Aggregator, nil
 }
@@ -66,22 +62,6 @@ func (m *mockConfigHandler) UpdateMCPServer(ctx context.Context, server config.M
 	}
 	if !found {
 		m.config.MCPServers = append(m.config.MCPServers, server)
-	}
-	return nil
-}
-
-func (m *mockConfigHandler) UpdateWorkflow(ctx context.Context, workflow config.WorkflowDefinition) error {
-	// Find and update or add
-	found := false
-	for i, w := range m.config.Workflows {
-		if w.Name == workflow.Name {
-			m.config.Workflows[i] = workflow
-			found = true
-			break
-		}
-	}
-	if !found {
-		m.config.Workflows = append(m.config.Workflows, workflow)
 	}
 	return nil
 }
@@ -107,17 +87,6 @@ func (m *mockConfigHandler) DeleteMCPServer(ctx context.Context, name string) er
 	return nil
 }
 
-func (m *mockConfigHandler) DeleteWorkflow(ctx context.Context, name string) error {
-	workflows := []config.WorkflowDefinition{}
-	for _, w := range m.config.Workflows {
-		if w.Name != name {
-			workflows = append(workflows, w)
-		}
-	}
-	m.config.Workflows = workflows
-	return nil
-}
-
 func (m *mockConfigHandler) SaveConfig(ctx context.Context) error {
 	m.called["SaveConfig"] = true
 	return m.saveConfigErr
@@ -133,9 +102,6 @@ func TestConfigServiceAPI(t *testing.T) {
 	mockCfg := &config.EnvctlConfig{
 		MCPServers: []config.MCPServerDefinition{
 			{Name: "test-server", Type: config.MCPServerTypeLocalCommand},
-		},
-		Workflows: []config.WorkflowDefinition{
-			{Name: "test-workflow"},
 		},
 		Aggregator: config.AggregatorConfig{
 			Port: 8080,
@@ -169,13 +135,6 @@ func TestConfigServiceAPI(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Len(t, servers, 1)
 		assert.Equal(t, "test-server", servers[0].Name)
-	})
-
-	t.Run("GetWorkflows", func(t *testing.T) {
-		workflows, err := api.GetWorkflows(ctx)
-		assert.NoError(t, err)
-		assert.Len(t, workflows, 1)
-		assert.Equal(t, "test-workflow", workflows[0].Name)
 	})
 
 	t.Run("GetAggregatorConfig", func(t *testing.T) {

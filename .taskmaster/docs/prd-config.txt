@@ -1,0 +1,307 @@
+You're absolutely right. Let me analyze the current state of each package and create a unified approach with **NO DIFFERENCE** in configuration handling.
+Search files...
+
+## Revised Analysis and Proposal
+
+After analyzing the current state, here's what needs to be done to achieve **NO DIFFERENCE** in configuration handling:
+
+### **Current State Analysis**
+
+| Package | Types Location | Loading Method | Directory Structure | Work Required |
+|---------|---------------|----------------|-------------------|---------------|
+| **ServiceClass** | ✅ Own package (`serviceclass.ServiceClassDefinition`) | ❌ Single path only | ❌ `serviceclass/definitions/` | **Medium** - Add layered loading |
+| **Capability** | ✅ Own package (`capability.CapabilityDefinition`) | ❌ Single path only | ❌ Plain directory | **Medium** - Add layered loading |
+| **Workflow** | ❌ `config` package (`config.WorkflowDefinition`) | ❌ File-based (`workflows.yaml`) | ❌ File-based | **High** - Move types + change loading |
+
+### **Unified Proposal: Common Configuration Pattern**
+
+#### **1. Directory Structure (Consistent)**
+```
+~/.config/envctl/               # User configuration
+├── config.yaml               # Main configuration only
+├── serviceclasses/            # ServiceClass YAML files
+├── capabilities/              # Capability YAML files  
+└── workflows/                 # Workflow YAML files
+
+.envctl/                       # Project configuration  
+├── config.yaml               # Project configuration overrides
+├── serviceclasses/            # Project ServiceClasses (overrides user)
+├── capabilities/              # Project Capabilities (overrides user)
+└── workflows/                 # Project Workflows (overrides user)
+```
+
+#### **2. Type Ownership (Keep in Own Packages)**
+```go
+// internal/workflow/types.go - MOVED from config package
+type WorkflowDefinition struct {
+    Name            string              `yaml:"name"`
+    Description     string              `yaml:"description"`
+    Icon            string              `yaml:"icon,omitempty"`
+    AgentModifiable bool                `yaml:"agentModifiable"`
+    CreatedBy       string              `yaml:"createdBy,omitempty"`
+    CreatedAt       time.Time           `yaml:"createdAt,omitempty"`
+    LastModified    time.Time           `yaml:"lastModified,omitempty"`
+    Version         int                 `yaml:"version,omitempty"`
+    InputSchema     WorkflowInputSchema `yaml:"inputSchema"`
+    Steps           []WorkflowStep      `yaml:"steps"`
+}
+
+// internal/serviceclass/types.go - ALREADY EXISTS
+type ServiceClassDefinition struct { ... }
+
+// internal/capability/types.go - ALREADY EXISTS  
+type CapabilityDefinition struct { ... }
+```
+
+#### **3. Common Loading Pattern (Identical for All)**
+
+```go
+// internal/config/loader_common.go - NEW FILE
+
+// ConfigurationLoader provides common layered loading for all configuration types
+type ConfigurationLoader struct {
+    userConfigDir    string
+    projectConfigDir string
+}
+
+// NewConfigurationLoader creates a new configuration loader
+func NewConfigurationLoader() (*ConfigurationLoader, error) {
+    userDir, err := getUserConfigDir()
+    if err != nil {
+        return nil, err
+    }
+    
+    projectDir, err := getProjectConfigDir()
+    if err != nil {
+        return nil, err
+    }
+    
+    return &ConfigurationLoader{
+        userConfigDir:    userDir,
+        projectConfigDir: projectDir,
+    }, nil
+}
+
+// LoadYAMLFiles loads YAML files from both user and project directories with layered override
+func (cl *ConfigurationLoader) LoadYAMLFiles(subDir string) ([]string, error) {
+    var allFiles []string
+    
+    // 1. Load from user directory first
+    userPath := filepath.Join(cl.userConfigDir, subDir)
+    userFiles, err := cl.loadFilesFromDirectory(userPath)
+    if err != nil && !os.IsNotExist(err) {
+        return nil, fmt.Errorf("failed to load user %s: %w", subDir, err)
+    }
+    allFiles = append(allFiles, userFiles...)
+    
+    // 2. Load from project directory (overrides user)
+    projectPath := filepath.Join(cl.projectConfigDir, subDir)
+    projectFiles, err := cl.loadFilesFromDirectory(projectPath)
+    if err != nil && !os.IsNotExist(err) {
+        return nil, fmt.Errorf("failed to load project %s: %w", subDir, err)
+    }
+    allFiles = append(allFiles, projectFiles...)
+    
+    return allFiles, nil
+}
+
+// loadFilesFromDirectory loads all YAML files from a directory
+func (cl *ConfigurationLoader) loadFilesFromDirectory(dirPath string) ([]string, error) {
+    if _, err := os.Stat(dirPath); os.IsNotExist(err) {
+        return nil, nil // Directory doesn't exist, return empty
+    }
+    
+    pattern := filepath.Join(dirPath, "*.yaml")
+    files, err := filepath.Glob(pattern)
+    if err != nil {
+        return nil, err
+    }
+    
+    // Also check for .yml extension
+    ymlPattern := filepath.Join(dirPath, "*.yml")
+    ymlFiles, err := filepath.Glob(ymlPattern)
+    if err == nil {
+        files = append(files, ymlFiles...)
+    }
+    
+    return files, nil
+}
+```
+
+#### **4. Identical Loading Implementation (All Packages)**
+
+```go
+// internal/serviceclass/loader.go - NEW FILE
+func LoadServiceClassDefinitions() ([]ServiceClassDefinition, error) {
+    loader, err := config.NewConfigurationLoader()
+    if err != nil {
+        return nil, err
+    }
+    
+    files, err := loader.LoadYAMLFiles("serviceclasses")
+    if err != nil {
+        return nil, err
+    }
+    
+    var definitions []ServiceClassDefinition
+    nameMap := make(map[string]bool) // Track names for project override
+    
+    for _, file := range files {
+        var def ServiceClassDefinition
+        data, err := os.ReadFile(file)
+        if err != nil {
+            continue
+        }
+        
+        if err := yaml.Unmarshal(data, &def); err != nil {
+            logging.Error("ServiceClass", err, "Failed to parse %s", file)
+            continue
+        }
+        
+        // Project files override user files (later files override earlier)
+        if nameMap[def.Name] {
+            // Remove existing definition with same name
+            for i, existing := range definitions {
+                if existing.Name == def.Name {
+                    definitions = append(definitions[:i], definitions[i+1:]...)
+                    break
+                }
+            }
+        }
+        
+        definitions = append(definitions, def)
+        nameMap[def.Name] = true
+    }
+    
+    return definitions, nil
+}
+
+// internal/capability/loader.go - UPDATE EXISTING
+func LoadCapabilityDefinitions() ([]CapabilityDefinition, error) {
+    loader, err := config.NewConfigurationLoader()
+    if err != nil {
+        return nil, err
+    }
+    
+    files, err := loader.LoadYAMLFiles("capabilities")
+    if err != nil {
+        return nil, err
+    }
+    
+    // ... EXACT SAME PATTERN as ServiceClass
+}
+
+// internal/workflow/loader.go - NEW FILE (replacing storage.go logic)
+func LoadWorkflowDefinitions() ([]WorkflowDefinition, error) {
+    loader, err := config.NewConfigurationLoader()
+    if err != nil {
+        return nil, err
+    }
+    
+    files, err := loader.LoadYAMLFiles("workflows")
+    if err != nil {
+        return nil, err
+    }
+    
+    // ... EXACT SAME PATTERN as ServiceClass
+}
+```
+
+#### **5. Identical Manager Pattern (All Packages)**
+
+```go
+// internal/serviceclass/manager.go - UPDATE EXISTING
+func NewServiceClassManager(toolChecker ToolAvailabilityChecker) *ServiceClassManager {
+    return &ServiceClassManager{
+        definitions:     make(map[string]*ServiceClassDefinition),
+        toolChecker:     toolChecker,
+        exposedServices: make(map[string]bool),
+    }
+}
+
+func (scm *ServiceClassManager) LoadDefinitions() error {
+    definitions, err := LoadServiceClassDefinitions()
+    if err != nil {
+        return err
+    }
+    
+    scm.mu.Lock()
+    defer scm.mu.Unlock()
+    
+    scm.definitions = make(map[string]*ServiceClassDefinition)
+    for _, def := range definitions {
+        defCopy := def
+        scm.definitions[def.Name] = &defCopy
+    }
+    
+    scm.updateServiceAvailability()
+    return nil
+}
+
+// internal/capability/manager.go - UPDATE EXISTING (same pattern)
+// internal/workflow/manager.go - UPDATE EXISTING (same pattern)
+```
+
+#### **6. Identical Initialization (All Packages)**
+
+```go
+// internal/app/services.go - UPDATE EXISTING
+func InitializeServices(cfg *Config) (*Services, error) {
+    // ... existing code ...
+
+    // ALL THREE USE IDENTICAL PATTERN:
+    
+    // ServiceClass initialization
+    serviceClassManager := serviceclass.NewServiceClassManager(toolChecker)
+    if err := serviceClassManager.LoadDefinitions(); err != nil {
+        return nil, fmt.Errorf("failed to load ServiceClass definitions: %w", err)
+    }
+    serviceClassAdapter := serviceclass.NewAdapter(serviceClassManager)
+    serviceClassAdapter.Register()
+
+    // Capability initialization  
+    capabilityManager := capability.NewCapabilityManager(toolChecker, workflowExecutor)
+    if err := capabilityManager.LoadDefinitions(); err != nil {
+        return nil, fmt.Errorf("failed to load Capability definitions: %w", err)
+    }
+    capabilityAdapter := capability.NewAdapter(capabilityManager)
+    capabilityAdapter.Register()
+
+    // Workflow initialization
+    workflowManager := workflow.NewWorkflowManager(toolCaller)
+    if err := workflowManager.LoadDefinitions(); err != nil {
+        return nil, fmt.Errorf("failed to load Workflow definitions: %w", err)
+    }
+    workflowAdapter := workflow.NewAdapter(workflowManager)
+    workflowAdapter.Register()
+
+    // ... rest of initialization ...
+}
+```
+
+### **Work Required Analysis**
+
+| Package | Type Movement | Loading Changes | Manager Changes | Total Effort |
+|---------|--------------|-----------------|-----------------|--------------|
+| **ServiceClass** | ✅ None (already in package) | 🔵 Medium (add layered loading) | 🟢 Small (adapt existing) | **Medium** |
+| **Capability** | ✅ None (already in package) | 🔵 Medium (add layered loading) | 🟢 Small (adapt existing) | **Medium** |
+| **Workflow** | 🔴 High (move from config) | 🔴 High (directory vs file) | 🔵 Medium (major changes) | **High** |
+| **Config** | 🟢 Small (add common loader) | ✅ None | ✅ None | **Small** |
+
+### **Implementation Order**
+
+1. **Phase 1**: Create common loading utilities in config package
+2. **Phase 2**: Update ServiceClass and Capability packages (parallel)  
+3. **Phase 3**: Move Workflow types and update Workflow package
+4. **Phase 4**: Update initialization in app/services.go
+5. **Phase 5**: Remove old workflow files and deprecated methods
+
+### **Key Benefits**
+
+- ✅ **NO DIFFERENCE**: All packages use identical loading pattern
+- ✅ **Type Ownership**: Each package owns its types  
+- ✅ **Layered Override**: Project configs override user configs uniformly
+- ✅ **Consistent Structure**: Same directory layout for all types
+- ✅ **Maintainable**: Single pattern to understand and maintain
+
+**The most work is in the Workflow package (moving types + changing from file to directory-based loading), but once done, all three packages will be completely uniform. Should I proceed with this approach?**

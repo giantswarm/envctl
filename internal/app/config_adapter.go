@@ -55,16 +55,6 @@ func (a *ConfigAdapter) GetMCPServers(ctx context.Context) ([]config.MCPServerDe
 	return a.config.MCPServers, nil
 }
 
-func (a *ConfigAdapter) GetWorkflows(ctx context.Context) ([]config.WorkflowDefinition, error) {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-
-	if a.config == nil {
-		return nil, fmt.Errorf("configuration not loaded")
-	}
-	return a.config.Workflows, nil
-}
-
 func (a *ConfigAdapter) GetAggregatorConfig(ctx context.Context) (*config.AggregatorConfig, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -105,30 +95,6 @@ func (a *ConfigAdapter) UpdateMCPServer(ctx context.Context, server config.MCPSe
 	}
 	if !found {
 		a.config.MCPServers = append(a.config.MCPServers, server)
-	}
-
-	return a.saveConfig()
-}
-
-func (a *ConfigAdapter) UpdateWorkflow(ctx context.Context, workflow config.WorkflowDefinition) error {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	if a.config == nil {
-		return fmt.Errorf("configuration not loaded")
-	}
-
-	// Find and update existing workflow or add new one
-	found := false
-	for i, existing := range a.config.Workflows {
-		if existing.Name == workflow.Name {
-			a.config.Workflows[i] = workflow
-			found = true
-			break
-		}
-	}
-	if !found {
-		a.config.Workflows = append(a.config.Workflows, workflow)
 	}
 
 	return a.saveConfig()
@@ -183,30 +149,6 @@ func (a *ConfigAdapter) DeleteMCPServer(ctx context.Context, name string) error 
 	return a.saveConfig()
 }
 
-func (a *ConfigAdapter) DeleteWorkflow(ctx context.Context, name string) error {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	if a.config == nil {
-		return fmt.Errorf("configuration not loaded")
-	}
-
-	// Find and remove the workflow
-	newWorkflows := make([]config.WorkflowDefinition, 0, len(a.config.Workflows))
-	for _, wf := range a.config.Workflows {
-		if wf.Name != name {
-			newWorkflows = append(newWorkflows, wf)
-		}
-	}
-
-	if len(newWorkflows) == len(a.config.Workflows) {
-		return fmt.Errorf("workflow %s not found", name)
-	}
-
-	a.config.Workflows = newWorkflows
-	return a.saveConfig()
-}
-
 // Save configuration
 func (a *ConfigAdapter) SaveConfig(ctx context.Context) error {
 	return a.saveConfig()
@@ -239,10 +181,6 @@ func (a *ConfigAdapter) GetTools() []api.ToolMetadata {
 			Description: "Get all MCP server definitions",
 		},
 		{
-			Name:        "config_get_workflows",
-			Description: "Get all workflow definitions",
-		},
-		{
 			Name:        "config_get_aggregator",
 			Description: "Get aggregator configuration",
 		},
@@ -259,18 +197,6 @@ func (a *ConfigAdapter) GetTools() []api.ToolMetadata {
 					Type:        "object",
 					Required:    true,
 					Description: "MCP server definition",
-				},
-			},
-		},
-		{
-			Name:        "config_update_workflow",
-			Description: "Update workflow configuration",
-			Parameters: []api.ParameterMetadata{
-				{
-					Name:        "workflow",
-					Type:        "object",
-					Required:    true,
-					Description: "Workflow definition",
 				},
 			},
 		},
@@ -311,18 +237,6 @@ func (a *ConfigAdapter) GetTools() []api.ToolMetadata {
 			},
 		},
 		{
-			Name:        "config_delete_workflow",
-			Description: "Delete workflow configuration",
-			Parameters: []api.ParameterMetadata{
-				{
-					Name:        "name",
-					Type:        "string",
-					Required:    true,
-					Description: "Name of the workflow to delete",
-				},
-			},
-		},
-		{
 			Name:        "config_save",
 			Description: "Save the current configuration to file",
 		},
@@ -340,24 +254,18 @@ func (a *ConfigAdapter) ExecuteTool(ctx context.Context, toolName string, args m
 		return a.handleConfigGet(ctx)
 	case "config_get_mcp_servers":
 		return a.handleConfigGetMCPServers(ctx)
-	case "config_get_workflows":
-		return a.handleConfigGetWorkflows(ctx)
 	case "config_get_aggregator":
 		return a.handleConfigGetAggregator(ctx)
 	case "config_get_global_settings":
 		return a.handleConfigGetGlobalSettings(ctx)
 	case "config_update_mcp_server":
 		return a.handleConfigUpdateMCPServer(ctx, args)
-	case "config_update_workflow":
-		return a.handleConfigUpdateWorkflow(ctx, args)
 	case "config_update_aggregator":
 		return a.handleConfigUpdateAggregator(ctx, args)
 	case "config_update_global_settings":
 		return a.handleConfigUpdateGlobalSettings(ctx, args)
 	case "config_delete_mcp_server":
 		return a.handleConfigDeleteMCPServer(ctx, args)
-	case "config_delete_workflow":
-		return a.handleConfigDeleteWorkflow(ctx, args)
 	case "config_save":
 		return a.handleConfigSave(ctx)
 	case "config_reload":
@@ -464,26 +372,6 @@ func (a *ConfigAdapter) handleConfigGetMCPServers(ctx context.Context) (*api.Cal
 	}, nil
 }
 
-func (a *ConfigAdapter) handleConfigGetWorkflows(ctx context.Context) (*api.CallToolResult, error) {
-	workflows, err := a.GetWorkflows(ctx)
-	if err != nil {
-		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Failed to get workflows: %v", err)},
-			IsError: true,
-		}, nil
-	}
-
-	result := map[string]interface{}{
-		"workflows": workflows,
-		"total":     len(workflows),
-	}
-
-	return &api.CallToolResult{
-		Content: []interface{}{result},
-		IsError: false,
-	}, nil
-}
-
 func (a *ConfigAdapter) handleConfigGetAggregator(ctx context.Context) (*api.CallToolResult, error) {
 	aggregator, err := a.GetAggregatorConfig(ctx)
 	if err != nil {
@@ -542,37 +430,6 @@ func (a *ConfigAdapter) handleConfigUpdateMCPServer(ctx context.Context, args ma
 
 	return &api.CallToolResult{
 		Content: []interface{}{fmt.Sprintf("Successfully updated MCP server '%s'", server.Name)},
-		IsError: false,
-	}, nil
-}
-
-func (a *ConfigAdapter) handleConfigUpdateWorkflow(ctx context.Context, args map[string]interface{}) (*api.CallToolResult, error) {
-	workflowData, ok := args["workflow"]
-	if !ok {
-		return &api.CallToolResult{
-			Content: []interface{}{"workflow is required"},
-			IsError: true,
-		}, nil
-	}
-
-	// Convert to config.WorkflowDefinition
-	var workflow config.WorkflowDefinition
-	if err := convertToStruct(workflowData, &workflow); err != nil {
-		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Failed to parse workflow definition: %v", err)},
-			IsError: true,
-		}, nil
-	}
-
-	if err := a.UpdateWorkflow(ctx, workflow); err != nil {
-		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Failed to update workflow: %v", err)},
-			IsError: true,
-		}, nil
-	}
-
-	return &api.CallToolResult{
-		Content: []interface{}{fmt.Sprintf("Successfully updated workflow '%s'", workflow.Name)},
 		IsError: false,
 	}, nil
 }
@@ -658,28 +515,6 @@ func (a *ConfigAdapter) handleConfigDeleteMCPServer(ctx context.Context, args ma
 
 	return &api.CallToolResult{
 		Content: []interface{}{fmt.Sprintf("Successfully deleted MCP server '%s'", name)},
-		IsError: false,
-	}, nil
-}
-
-func (a *ConfigAdapter) handleConfigDeleteWorkflow(ctx context.Context, args map[string]interface{}) (*api.CallToolResult, error) {
-	name, ok := args["name"].(string)
-	if !ok {
-		return &api.CallToolResult{
-			Content: []interface{}{"name is required"},
-			IsError: true,
-		}, nil
-	}
-
-	if err := a.DeleteWorkflow(ctx, name); err != nil {
-		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Failed to delete workflow: %v", err)},
-			IsError: true,
-		}, nil
-	}
-
-	return &api.CallToolResult{
-		Content: []interface{}{fmt.Sprintf("Successfully deleted workflow '%s'", name)},
 		IsError: false,
 	}, nil
 }

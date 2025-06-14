@@ -13,6 +13,5 @@ func GetDefaultConfigWithRoles() EnvctlConfig {
 			Transport: MCPTransportStreamableHTTP,
 			Enabled:   true,
 		},
-		Workflows: []WorkflowDefinition{},
 	}
 }

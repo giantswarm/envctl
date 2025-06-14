@@ -3,7 +3,6 @@ package workflow
 import (
 	"context"
 	"envctl/internal/api"
-	"envctl/internal/config"
 	"envctl/pkg/logging"
 	"fmt"
 	"strconv"
@@ -98,7 +97,7 @@ func (a *Adapter) GetWorkflow(name string) (*api.WorkflowDefinition, error) {
 			Tool:  step.Tool,
 			Args:  step.Args,
 			Store: step.Store,
-			// Note: config.WorkflowStep doesn't have Condition or Description fields
+			// Note: WorkflowStep doesn't have Condition or Description fields
 		}
 	}
 
@@ -131,14 +130,14 @@ func (a *Adapter) GetWorkflow(name string) (*api.WorkflowDefinition, error) {
 		Version:     strconv.Itoa(workflow.Version),
 		InputSchema: inputSchema,
 		Steps:       steps,
-		// Note: config.WorkflowDefinition doesn't have OutputSchema
+		// Note: WorkflowDefinition doesn't have OutputSchema
 	}, nil
 }
 
 // CreateWorkflow creates a new workflow from YAML
 func (a *Adapter) CreateWorkflow(yamlStr string) error {
 	// Parse YAML to workflow definition
-	var wf config.WorkflowDefinition
+	var wf WorkflowDefinition
 	if err := yaml.Unmarshal([]byte(yamlStr), &wf); err != nil {
 		return fmt.Errorf("failed to parse workflow YAML: %w", err)
 	}
@@ -150,7 +149,7 @@ func (a *Adapter) CreateWorkflow(yamlStr string) error {
 // UpdateWorkflow updates an existing workflow
 func (a *Adapter) UpdateWorkflow(name, yamlStr string) error {
 	// Parse YAML to workflow definition
-	var wf config.WorkflowDefinition
+	var wf WorkflowDefinition
 	if err := yaml.Unmarshal([]byte(yamlStr), &wf); err != nil {
 		return fmt.Errorf("failed to parse workflow YAML: %w", err)
 	}
@@ -168,7 +167,7 @@ func (a *Adapter) DeleteWorkflow(name string) error {
 // ValidateWorkflow validates a workflow YAML
 func (a *Adapter) ValidateWorkflow(yamlStr string) error {
 	// Parse YAML to validate structure
-	var wf config.WorkflowDefinition
+	var wf WorkflowDefinition
 	if err := yaml.Unmarshal([]byte(yamlStr), &wf); err != nil {
 		return fmt.Errorf("invalid workflow YAML: %w", err)
 	}
