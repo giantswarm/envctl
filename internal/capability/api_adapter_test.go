@@ -659,9 +659,9 @@ operations:
 	t.Run("crud_parameter_validation", func(t *testing.T) {
 		// Test missing required parameters
 		tests := []struct {
-			tool         string
-			args         map[string]interface{}
-			expectedErr  string
+			tool        string
+			args        map[string]interface{}
+			expectedErr string
 		}{
 			{"capability_validate", map[string]interface{}{}, "yaml_definition is required"},
 			{"capability_create", map[string]interface{}{}, "yaml_definition is required"},
@@ -686,10 +686,10 @@ func TestAdapter_UserDefinedCapabilityTypes(t *testing.T) {
 	// Create mock tool checker
 	mockChecker := &mockToolChecker{
 		availableTools: map[string]bool{
-			"api_custom_deploy":      true,
-			"api_monitoring_query":   true,
-			"api_database_backup":    true,
-			"api_payment_process":    true,
+			"api_custom_deploy":    true,
+			"api_monitoring_query": true,
+			"api_database_backup":  true,
+			"api_payment_process":  true,
 		},
 	}
 
@@ -792,16 +792,16 @@ operations:
 	t.Run("verify_user_defined_capabilities", func(t *testing.T) {
 		// Verify all custom capability types are accepted and listed
 		capabilities := adapter.ListCapabilities()
-		
+
 		// Should have at least our custom capabilities plus the original test auth capability
 		assert.GreaterOrEqual(t, len(capabilities), 4)
-		
+
 		// Check that our custom capability types are present
 		typesSeen := make(map[string]bool)
 		for _, cap := range capabilities {
 			typesSeen[cap.Type] = true
 		}
-		
+
 		expectedTypes := []string{"deployment", "monitoring", "database", "payment"}
 		for _, expectedType := range expectedTypes {
 			assert.True(t, typesSeen[expectedType], "Expected to find capability type: %s", expectedType)
