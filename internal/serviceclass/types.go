@@ -349,9 +349,3 @@ func (s *ServiceInstanceState) ListInstances() []*ServiceInstance {
 
 	return instances
 }
-
-// ToolAvailabilityChecker interface for checking tool availability
-// This allows the ServiceClassManager to check if required tools are available
-type ToolAvailabilityChecker interface {
-	IsToolAvailable(toolName string) bool
-}

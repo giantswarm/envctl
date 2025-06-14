@@ -2,20 +2,29 @@ package workflow
 
 import (
 	"envctl/internal/api"
+	"envctl/internal/config"
+	"envctl/pkg/logging"
 )
 
 func init() {
 	// Register the workflow adapter factory
 	api.SetWorkflowAdapterFactory(func(configDir string, toolExecutor interface{}) interface{ Register() } {
-		// Type assert to the expected interface
+		// Type assert to the expected interfaces
 		toolCaller, ok := toolExecutor.(api.ToolCaller)
 		if !ok {
+			logging.Error("Workflow", nil, "toolExecutor does not implement api.ToolCaller")
 			return nil
 		}
 
-		adapter, err := NewAdapter(configDir, toolCaller)
+		toolChecker, ok := toolExecutor.(config.ToolAvailabilityChecker)
+		if !ok {
+			logging.Error("Workflow", nil, "toolExecutor does not implement config.ToolAvailabilityChecker")
+			return nil
+		}
+
+		adapter, err := NewAdapter(configDir, toolCaller, toolChecker)
 		if err != nil {
-			// Log error but return nil
+			logging.Error("Workflow", err, "Failed to create workflow adapter")
 			return nil
 		}
 		return adapter

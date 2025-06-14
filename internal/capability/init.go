@@ -2,6 +2,7 @@ package capability
 
 import (
 	"envctl/internal/api"
+	"envctl/internal/config"
 	"envctl/pkg/logging"
 )
 
@@ -9,9 +10,9 @@ func init() {
 	// Register the capability adapter factory
 	api.SetCapabilityAdapterFactory(func(configDir string, toolExecutor interface{}) interface{ Register() } {
 		// Type assert to the expected interfaces
-		toolChecker, ok := toolExecutor.(ToolAvailabilityChecker)
+		toolChecker, ok := toolExecutor.(config.ToolAvailabilityChecker)
 		if !ok {
-			logging.Error("Capability", nil, "toolExecutor does not implement ToolAvailabilityChecker")
+			logging.Error("Capability", nil, "toolExecutor does not implement config.ToolAvailabilityChecker")
 			return nil
 		}
 

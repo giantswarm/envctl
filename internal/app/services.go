@@ -56,6 +56,28 @@ func (a *aggregatorToolChecker) IsToolAvailable(toolName string) bool {
 	return false
 }
 
+func (a *aggregatorToolChecker) GetAvailableTools() []string {
+	// Get the aggregator service
+	service, exists := a.serviceRegistry.Get("mcp-aggregator")
+	if !exists {
+		return []string{}
+	}
+
+	// Cast to aggregator service to get the manager
+	if aggService, ok := service.(interface {
+		GetManager() *aggregator.AggregatorManager
+	}); ok {
+		manager := aggService.GetManager()
+		if manager != nil {
+			server := manager.GetAggregatorServer()
+			if server != nil {
+				return server.GetAvailableTools()
+			}
+		}
+	}
+	return []string{}
+}
+
 // InitializeServices creates and registers all required services
 func InitializeServices(cfg *Config) (*Services, error) {
 	// Create orchestrator without ToolCaller initially

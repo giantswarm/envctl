@@ -103,7 +103,7 @@ Whenever you change Go code and want to test the new functionality, you **MUST**
 2.  **Initial Log Check:**
     -   Verify that the service started correctly by checking the logs.
     -   ```bash
-      journalctl --user -u envctl.service --no-pager
+      journalctl --user -u envctl.service --no-pager |tail -n 50
       ```
     -   Look for any startup errors or unexpected messages.
 
@@ -123,7 +123,7 @@ Whenever you change Go code and want to test the new functionality, you **MUST**
 4.  **Final Log Check:**
     -   Inspect the logs again to see the output and any errors generated during your testing.
     -   ```bash
-      journalctl --user -u envctl.service --no-pager
+      journalctl --user -u envctl.service --no-pager |tail -n 50
       ```
 
 ### ❗ Important Note

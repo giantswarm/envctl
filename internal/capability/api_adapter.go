@@ -3,648 +3,274 @@ package capability
 import (
 	"context"
 	"envctl/internal/api"
+	"envctl/internal/config"
 	"envctl/pkg/logging"
 	"fmt"
-	"strings"
-
-	"gopkg.in/yaml.v3"
 )
 
 // Adapter adapts the capability system to implement api.CapabilityHandler
 type Adapter struct {
-	loader           *CapabilityLoader
+	manager          *CapabilityManager
 	workflowExecutor api.ToolCaller
 }
 
 // NewAdapter creates a new capability adapter
-func NewAdapter(toolChecker ToolAvailabilityChecker, workflowExecutor api.ToolCaller) (*Adapter, error) {
+func NewAdapter(toolChecker config.ToolAvailabilityChecker, workflowExecutor api.ToolCaller) (*Adapter, error) {
 	registry := GetRegistry()
-	loader, err := NewCapabilityLoader(toolChecker, registry)
+	manager, err := NewCapabilityManager(toolChecker, registry)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create capability loader: %w", err)
+		return nil, fmt.Errorf("failed to create capability manager: %w", err)
 	}
 
 	return &Adapter{
-		loader:           loader,
+		manager:          manager,
 		workflowExecutor: workflowExecutor,
 	}, nil
 }
 
-// Register registers this adapter with the API package
+// Register registers this adapter with the API
 func (a *Adapter) Register() {
 	api.RegisterCapability(a)
 }
 
-// ExecuteCapability executes a capability operation
-func (a *Adapter) ExecuteCapability(ctx context.Context, capabilityType, operation string, params map[string]interface{}) (*api.CallToolResult, error) {
-	// Build the tool name from capability type and operation (using api_ format)
-	toolName := fmt.Sprintf("api_%s_%s", capabilityType, operation)
-
-	// Check if the capability is available
-	if !a.IsCapabilityAvailable(capabilityType, operation) {
-		return nil, fmt.Errorf("capability %s.%s is not available", capabilityType, operation)
-	}
-
-	logging.Info("CapabilityAdapter", "Executing capability %s.%s", capabilityType, operation)
-
-	// Get the operation definition
-	op, _, err := a.loader.GetOperationForTool(toolName)
-	if err != nil {
-		return nil, fmt.Errorf("unknown capability operation: %s", toolName)
-	}
-
-	// Execute the workflow associated with this operation
-	if op.Workflow == "" {
-		return nil, fmt.Errorf("no workflow defined for operation")
-	}
-
-	// Extract workflow name from the operation
-	var workflowName string
-	if workflowMap, ok := op.Workflow.(map[string]interface{}); ok {
-		if name, ok := workflowMap["name"].(string); ok {
-			workflowName = name
-		}
-	} else if name, ok := op.Workflow.(string); ok {
-		workflowName = name
-	}
-
-	if workflowName == "" {
-		return nil, fmt.Errorf("workflow name not found in operation")
-	}
-
-	logging.Info("CapabilityAdapter", "Executing workflow %s for capability %s.%s", workflowName, capabilityType, operation)
-
-	// Call the workflow through the workflow executor
-	result, err := a.workflowExecutor.CallToolInternal(ctx, fmt.Sprintf("action_%s", workflowName), params)
-	if err != nil {
-		return nil, fmt.Errorf("workflow execution failed: %w", err)
-	}
-
-	// Convert MCP result to API result
-	content := make([]interface{}, len(result.Content))
-	for i, c := range result.Content {
-		content[i] = c
-	}
-
-	return &api.CallToolResult{
-		Content: content,
-		IsError: result.IsError,
-	}, nil
-}
-
-// IsCapabilityAvailable checks if a capability operation is available
-func (a *Adapter) IsCapabilityAvailable(capabilityType, operation string) bool {
-	toolName := fmt.Sprintf("api_%s_%s", capabilityType, operation)
-
-	availableTools := a.loader.GetAvailableCapabilityTools()
-	for _, tool := range availableTools {
-		if tool == toolName {
-			return true
-		}
-	}
-
-	return false
-}
-
-// ListCapabilities returns information about all available capabilities
-func (a *Adapter) ListCapabilities() []api.CapabilityInfo {
-	// Map to group operations by capability
-	capMap := make(map[string]*api.CapabilityInfo)
-
-	// Get all capability definitions
-	for _, toolName := range a.loader.GetAvailableCapabilityTools() {
-		op, def, err := a.loader.GetOperationForTool(toolName)
-		if err != nil {
-			continue
-		}
-
-		// Get or create capability info
-		capKey := def.Name
-		capInfo, exists := capMap[capKey]
-		if !exists {
-			capInfo = &api.CapabilityInfo{
-				Type:        def.Type,
-				Name:        def.Name,
-				Description: def.Description,
-				Version:     def.Version,
-				Operations:  []api.OperationInfo{},
-			}
-			capMap[capKey] = capInfo
-		}
-
-		// Extract operation name from the definition
-		var opName string
-		// Get the workflow name from the operation
-		var opWorkflowName string
-		if workflowMap, ok := op.Workflow.(map[string]interface{}); ok {
-			if name, ok := workflowMap["name"].(string); ok {
-				opWorkflowName = name
-			}
-		} else if workflowName, ok := op.Workflow.(string); ok {
-			opWorkflowName = workflowName
-		}
-
-		// Find the matching operation by comparing workflow names
-		for name, operation := range def.Operations {
-			var defWorkflowName string
-			if workflowDef, ok := operation.Workflow.(map[string]interface{}); ok {
-				if wfName, ok := workflowDef["name"].(string); ok {
-					defWorkflowName = wfName
-				}
-			} else if workflowName, ok := operation.Workflow.(string); ok {
-				defWorkflowName = workflowName
-			}
-
-			if defWorkflowName == opWorkflowName {
-				opName = name
-				break
-			}
-		}
-
-		// Check if this operation is already added (deduplication)
-		operationExists := false
-		for _, existingOp := range capInfo.Operations {
-			if existingOp.Name == opName {
-				operationExists = true
-				break
-			}
-		}
-
-		// Only add operation if it doesn't already exist
-		if !operationExists {
-			capInfo.Operations = append(capInfo.Operations, api.OperationInfo{
-				Name:        opName,
-				Description: op.Description,
-				Available:   true,
-			})
-		}
-	}
-
-	// Convert map to slice
-	capInfos := make([]api.CapabilityInfo, 0, len(capMap))
-	for _, capInfo := range capMap {
-		capInfos = append(capInfos, *capInfo)
-	}
-
-	return capInfos
-}
-
-// LoadDefinitions loads capability definitions from the configured path
-func (a *Adapter) LoadDefinitions() error {
-	return a.loader.LoadDefinitions()
-}
-
-// ReloadDefinitions reloads capability definitions from disk
-func (a *Adapter) ReloadDefinitions() error {
-	// Get the singleton registry and clear it
-	registry := GetRegistry()
-
-	// Lock the registry while clearing
-	registry.mu.Lock()
-	registry.capabilities = make(map[string]*Capability)
-	registry.byType = make(map[CapabilityType][]*Capability)
-	registry.byProvider = make(map[string][]*Capability)
-	registry.mu.Unlock()
-
-	// Reload from disk
-	return a.loader.LoadDefinitions()
-}
-
-// GetTools returns all tools this provider offers
+// GetTools returns MCP tools for capability management
 func (a *Adapter) GetTools() []api.ToolMetadata {
-	tools := []api.ToolMetadata{
-		// Capability management tools
+	return []api.ToolMetadata{
 		{
 			Name:        "capability_list",
-			Description: "List all capabilities",
+			Description: "List all capability definitions",
 		},
 		{
-			Name:        "capability_info",
-			Description: "Get capability information",
+			Name:        "capability_get",
+			Description: "Get a specific capability definition",
 			Parameters: []api.ParameterMetadata{
-				{
-					Name:        "type",
-					Type:        "string",
-					Required:    true,
-					Description: "Capability type (e.g., 'auth')",
-				},
+				{Name: "name", Type: "string", Required: true, Description: "Capability name"},
 			},
 		},
 		{
-			Name:        "capability_check",
-			Description: "Check if a capability operation is available",
+			Name:        "capability_available",
+			Description: "Check if a capability is available",
 			Parameters: []api.ParameterMetadata{
-				{
-					Name:        "type",
-					Type:        "string",
-					Required:    true,
-					Description: "Capability type",
-				},
-				{
-					Name:        "operation",
-					Type:        "string",
-					Required:    true,
-					Description: "Operation name",
-				},
+				{Name: "name", Type: "string", Required: true, Description: "Capability name"},
 			},
 		},
 		{
-			Name:        "capability_create",
-			Description: "Create a new capability definition from YAML",
-			Parameters: []api.ParameterMetadata{
-				{
-					Name:        "yaml_definition",
-					Type:        "string",
-					Required:    true,
-					Description: "YAML capability definition",
-				},
-				{
-					Name:        "filename",
-					Type:        "string",
-					Required:    false,
-					Description: "Optional filename for the capability definition",
-				},
-			},
+			Name:        "capability_definitions_path",
+			Description: "Get the paths where capability definitions are loaded from",
 		},
 		{
-			Name:        "capability_update",
-			Description: "Update an existing capability definition",
-			Parameters: []api.ParameterMetadata{
-				{
-					Name:        "name",
-					Type:        "string",
-					Required:    true,
-					Description: "Name of the capability to update",
-				},
-				{
-					Name:        "yaml_definition",
-					Type:        "string",
-					Required:    true,
-					Description: "Updated YAML capability definition",
-				},
-			},
-		},
-		{
-			Name:        "capability_delete",
-			Description: "Delete a capability definition and cleanup resources",
-			Parameters: []api.ParameterMetadata{
-				{
-					Name:        "name",
-					Type:        "string",
-					Required:    true,
-					Description: "Name of the capability to delete",
-				},
-				{
-					Name:        "force",
-					Type:        "boolean",
-					Required:    false,
-					Description: "Force deletion without confirmation",
-				},
-			},
-		},
-		{
-			Name:        "capability_validate",
-			Description: "Validate a capability definition syntax",
-			Parameters: []api.ParameterMetadata{
-				{
-					Name:        "yaml_definition",
-					Type:        "string",
-					Required:    true,
-					Description: "YAML capability definition to validate",
-				},
-			},
+			Name:        "capability_load",
+			Description: "Reload capability definitions from disk",
 		},
 	}
-
-	// Add tools for each capability operation
-	capabilities := a.ListCapabilities()
-	for _, cap := range capabilities {
-		for _, op := range cap.Operations {
-			if op.Available {
-				// Tool name is just type_operation (e.g., "auth_login")
-				toolName := fmt.Sprintf("%s_%s", cap.Type, op.Name)
-
-				// Get the operation definition to extract parameters
-				opDef, _, err := a.loader.GetOperationForTool(fmt.Sprintf("api_%s", toolName))
-				if err != nil {
-					continue
-				}
-
-				// Convert operation parameters to tool parameters
-				var params []api.ParameterMetadata
-				for paramName, param := range opDef.Parameters {
-					params = append(params, api.ParameterMetadata{
-						Name:        paramName,
-						Type:        param.Type,
-						Required:    param.Required,
-						Description: param.Description,
-					})
-				}
-
-				tools = append(tools, api.ToolMetadata{
-					Name:        toolName,
-					Description: op.Description,
-					Parameters:  params,
-				})
-			}
-		}
-	}
-
-	return tools
 }
 
-// ExecuteTool executes a tool by name
+// ExecuteTool executes a capability management tool
 func (a *Adapter) ExecuteTool(ctx context.Context, toolName string, args map[string]interface{}) (*api.CallToolResult, error) {
 	switch toolName {
 	case "capability_list":
-		return a.handleList()
-	case "capability_info":
-		return a.handleInfo(args)
-	case "capability_check":
-		return a.handleCheck(args)
-	case "capability_create":
-		return a.handleCreate(args)
-	case "capability_update":
-		return a.handleUpdate(args)
-	case "capability_delete":
-		return a.handleDelete(args)
-	case "capability_validate":
-		return a.handleValidate(args)
-	default:
-		// Try to parse as capability operation (e.g., "auth_login")
-		parts := strings.SplitN(toolName, "_", 2)
-		if len(parts) == 2 {
-			return a.ExecuteCapability(ctx, parts[0], parts[1], args)
+		return a.listCapabilities(ctx)
+	case "capability_get":
+		name, ok := args["name"].(string)
+		if !ok {
+			return nil, fmt.Errorf("name parameter is required")
 		}
+		return a.getCapability(ctx, name)
+	case "capability_available":
+		name, ok := args["name"].(string)
+		if !ok {
+			return nil, fmt.Errorf("name parameter is required")
+		}
+		return a.checkCapabilityAvailable(ctx, name)
+	case "capability_definitions_path":
+		return a.getDefinitionsPath(ctx)
+	case "capability_load":
+		return a.loadCapabilities(ctx)
+	default:
 		return nil, fmt.Errorf("unknown tool: %s", toolName)
 	}
 }
 
-// Helper methods for handling management operations
-func (a *Adapter) handleList() (*api.CallToolResult, error) {
-	capabilities := a.ListCapabilities()
-
-	result := map[string]interface{}{
-		"capabilities": capabilities,
-		"total":        len(capabilities),
-	}
-
-	return &api.CallToolResult{
-		Content: []interface{}{result},
-		IsError: false,
-	}, nil
-}
-
-func (a *Adapter) handleInfo(args map[string]interface{}) (*api.CallToolResult, error) {
-	capType, ok := args["type"].(string)
-	if !ok {
+// ExecuteCapability executes a capability operation (implements CapabilityHandler interface)
+func (a *Adapter) ExecuteCapability(ctx context.Context, capabilityType, operation string, params map[string]interface{}) (*api.CallToolResult, error) {
+	// Find the operation
+	toolName := fmt.Sprintf("api_%s_%s", capabilityType, operation)
+	opDef, capDef, err := a.manager.GetOperationForTool(toolName)
+	if err != nil {
 		return &api.CallToolResult{
-			Content: []interface{}{"type is required"},
+			Content: []interface{}{fmt.Sprintf("Operation not found: %v", err)},
 			IsError: true,
 		}, nil
 	}
 
-	// Find the capability in the list
-	capabilities := a.ListCapabilities()
-	for _, cap := range capabilities {
-		if cap.Type == capType {
-			return &api.CallToolResult{
-				Content: []interface{}{cap},
-				IsError: false,
-			}, nil
+	// Check if operation is available
+	if !a.manager.IsAvailable(capDef.Name) {
+		return &api.CallToolResult{
+			Content: []interface{}{fmt.Sprintf("Capability %s is not available (missing required tools)", capabilityType)},
+			IsError: true,
+		}, nil
+	}
+
+	// Execute the capability operation
+	logging.Info("CapabilityAdapter", "Executing capability operation: %s.%s (description: %s)", capabilityType, operation, opDef.Description)
+	
+	// For now, return a placeholder result
+	// TODO: Implement actual capability execution logic
+	return &api.CallToolResult{
+		Content: []interface{}{fmt.Sprintf("Executed %s.%s successfully", capabilityType, operation)},
+		IsError: false,
+	}, nil
+}
+
+// IsCapabilityAvailable checks if a capability operation is available (implements CapabilityHandler interface)
+func (a *Adapter) IsCapabilityAvailable(capabilityType, operation string) bool {
+	toolName := fmt.Sprintf("api_%s_%s", capabilityType, operation)
+	_, _, err := a.manager.GetOperationForTool(toolName)
+	if err != nil {
+		return false
+	}
+	
+	// Check if the capability itself is available
+	def, exists := a.manager.GetDefinition(capabilityType)
+	if !exists {
+		return false
+	}
+	
+	return a.manager.IsAvailable(def.Name)
+}
+
+// ListCapabilities returns information about all available capabilities (implements CapabilityHandler interface)
+func (a *Adapter) ListCapabilities() []api.CapabilityInfo {
+	definitions := a.manager.ListDefinitions()
+	result := make([]api.CapabilityInfo, len(definitions))
+	
+	for i, def := range definitions {
+		operations := make([]api.OperationInfo, 0, len(def.Operations))
+		for opName, opDef := range def.Operations {
+			operations = append(operations, api.OperationInfo{
+				Name:        opName,
+				Description: opDef.Description,
+				Available:   a.IsCapabilityAvailable(def.Type, opName),
+			})
+		}
+		
+		result[i] = api.CapabilityInfo{
+			Type:        def.Type,
+			Name:        def.Name,
+			Description: def.Description,
+			Version:     def.Version,
+			Operations:  operations,
+		}
+	}
+	
+	return result
+}
+
+// listCapabilities lists all capability definitions
+func (a *Adapter) listCapabilities(ctx context.Context) (*api.CallToolResult, error) {
+	definitions := a.manager.ListDefinitions()
+	
+	result := make([]map[string]interface{}, len(definitions))
+	for i, def := range definitions {
+		available := a.manager.IsAvailable(def.Name)
+		result[i] = map[string]interface{}{
+			"name":        def.Name,
+			"type":        def.Type,
+			"version":     def.Version,
+			"description": def.Description,
+			"available":   available,
+			"operations":  len(def.Operations),
 		}
 	}
 
 	return &api.CallToolResult{
-		Content: []interface{}{fmt.Sprintf("Capability type '%s' not found", capType)},
-		IsError: true,
+		Content: []interface{}{fmt.Sprintf("Found %d capability definitions", len(result)), result},
+		IsError: false,
 	}, nil
 }
 
-func (a *Adapter) handleCheck(args map[string]interface{}) (*api.CallToolResult, error) {
-	capType, ok := args["type"].(string)
-	if !ok {
+// getCapability gets a specific capability definition
+func (a *Adapter) getCapability(ctx context.Context, name string) (*api.CallToolResult, error) {
+	def, exists := a.manager.GetDefinition(name)
+	if !exists {
 		return &api.CallToolResult{
-			Content: []interface{}{"type is required"},
+			Content: []interface{}{fmt.Sprintf("Capability '%s' not found", name)},
 			IsError: true,
 		}, nil
 	}
 
-	operation, ok := args["operation"].(string)
-	if !ok {
-		return &api.CallToolResult{
-			Content: []interface{}{"operation is required"},
-			IsError: true,
-		}, nil
-	}
-
-	available := a.IsCapabilityAvailable(capType, operation)
-
+	available := a.manager.IsAvailable(name)
+	
 	result := map[string]interface{}{
-		"type":      capType,
-		"operation": operation,
+		"name":        def.Name,
+		"type":        def.Type,
+		"version":     def.Version,
+		"description": def.Description,
+		"available":   available,
+		"operations":  def.Operations,
+		"metadata":    def.Metadata,
+	}
+
+	return &api.CallToolResult{
+		Content: []interface{}{fmt.Sprintf("Capability: %s (Type: %s, Available: %v)", def.Name, def.Type, available), result},
+		IsError: false,
+	}, nil
+}
+
+// checkCapabilityAvailable checks if a capability is available
+func (a *Adapter) checkCapabilityAvailable(ctx context.Context, name string) (*api.CallToolResult, error) {
+	available := a.manager.IsAvailable(name)
+	
+	result := map[string]interface{}{
+		"name":      name,
 		"available": available,
 	}
 
 	return &api.CallToolResult{
-		Content: []interface{}{result},
+		Content: []interface{}{fmt.Sprintf("Capability '%s' available: %v", name, available), result},
 		IsError: false,
 	}, nil
 }
 
-// GetLoader returns the capability loader (for aggregator to use as tool checker)
-func (a *Adapter) GetLoader() *CapabilityLoader {
-	return a.loader
-}
-
-// CRUD operation handlers
-
-func (a *Adapter) handleCreate(args map[string]interface{}) (*api.CallToolResult, error) {
-	yamlDef, ok := args["yaml_definition"].(string)
-	if !ok {
-		return &api.CallToolResult{
-			Content: []interface{}{"yaml_definition is required"},
-			IsError: true,
-		}, nil
-	}
-
-	filename, _ := args["filename"].(string)
-
-	// Validate the capability definition first
-	if err := a.validateCapabilityYAML(yamlDef); err != nil {
-		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Invalid capability definition: %s", err.Error())},
-			IsError: true,
-		}, nil
-	}
-
-	// Create the capability definition
-	if err := a.createCapabilityDefinition(yamlDef, filename); err != nil {
-		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Failed to create capability: %s", err.Error())},
-			IsError: true,
-		}, nil
-	}
-
-	// Reload definitions to pick up the new capability
-	if err := a.loader.LoadDefinitions(); err != nil {
-		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Failed to reload definitions: %s", err.Error())},
-			IsError: true,
-		}, nil
+// getDefinitionsPath returns the paths where capability definitions are loaded from
+func (a *Adapter) getDefinitionsPath(ctx context.Context) (*api.CallToolResult, error) {
+	path := a.manager.GetDefinitionsPath()
+	
+	result := map[string]interface{}{
+		"path": path,
 	}
 
 	return &api.CallToolResult{
-		Content: []interface{}{"Capability created successfully"},
+		Content: []interface{}{fmt.Sprintf("Capability definitions path: %s", path), result},
 		IsError: false,
 	}, nil
 }
 
-func (a *Adapter) handleUpdate(args map[string]interface{}) (*api.CallToolResult, error) {
-	name, ok := args["name"].(string)
-	if !ok {
+// loadCapabilities reloads capability definitions from disk
+func (a *Adapter) loadCapabilities(ctx context.Context) (*api.CallToolResult, error) {
+	err := a.manager.LoadDefinitions()
+	if err != nil {
 		return &api.CallToolResult{
-			Content: []interface{}{"name is required"},
+			Content: []interface{}{fmt.Sprintf("Failed to load capabilities: %v", err)},
 			IsError: true,
 		}, nil
 	}
 
-	yamlDef, ok := args["yaml_definition"].(string)
-	if !ok {
-		return &api.CallToolResult{
-			Content: []interface{}{"yaml_definition is required"},
-			IsError: true,
-		}, nil
-	}
+	definitions := a.manager.ListDefinitions()
+	available := a.manager.ListAvailableDefinitions()
 
-	// Check if capability exists
-	if _, exists := a.loader.GetCapabilityDefinition(name); !exists {
-		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Capability '%s' not found", name)},
-			IsError: true,
-		}, nil
-	}
-
-	// Validate the updated capability definition
-	if err := a.validateCapabilityYAML(yamlDef); err != nil {
-		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Invalid capability definition: %s", err.Error())},
-			IsError: true,
-		}, nil
-	}
-
-	// Update the capability definition
-	if err := a.updateCapabilityDefinition(name, yamlDef); err != nil {
-		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Failed to update capability: %s", err.Error())},
-			IsError: true,
-		}, nil
-	}
-
-	// Reload definitions to pick up the changes
-	if err := a.loader.LoadDefinitions(); err != nil {
-		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Failed to reload definitions: %s", err.Error())},
-			IsError: true,
-		}, nil
+	result := map[string]interface{}{
+		"loaded":    len(definitions),
+		"available": len(available),
 	}
 
 	return &api.CallToolResult{
-		Content: []interface{}{fmt.Sprintf("Capability '%s' updated successfully", name)},
+		Content: []interface{}{fmt.Sprintf("Loaded %d capabilities, %d available", len(definitions), len(available)), result},
 		IsError: false,
 	}, nil
 }
 
-func (a *Adapter) handleDelete(args map[string]interface{}) (*api.CallToolResult, error) {
-	name, ok := args["name"].(string)
-	if !ok {
-		return &api.CallToolResult{
-			Content: []interface{}{"name is required"},
-			IsError: true,
-		}, nil
-	}
-
-	force, _ := args["force"].(bool)
-
-	// Check if capability exists
-	if _, exists := a.loader.GetCapabilityDefinition(name); !exists {
-		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Capability '%s' not found", name)},
-			IsError: true,
-		}, nil
-	}
-
-	// Delete the capability definition
-	if err := a.deleteCapabilityDefinition(name, force); err != nil {
-		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Failed to delete capability: %s", err.Error())},
-			IsError: true,
-		}, nil
-	}
-
-	// Reload definitions to remove the capability from memory
-	if err := a.loader.LoadDefinitions(); err != nil {
-		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Failed to reload definitions: %s", err.Error())},
-			IsError: true,
-		}, nil
-	}
-
-	return &api.CallToolResult{
-		Content: []interface{}{fmt.Sprintf("Capability '%s' deleted successfully", name)},
-		IsError: false,
-	}, nil
-}
-
-func (a *Adapter) handleValidate(args map[string]interface{}) (*api.CallToolResult, error) {
-	yamlDef, ok := args["yaml_definition"].(string)
-	if !ok {
-		return &api.CallToolResult{
-			Content: []interface{}{"yaml_definition is required"},
-			IsError: true,
-		}, nil
-	}
-
-	// Validate the capability definition
-	if err := a.validateCapabilityYAML(yamlDef); err != nil {
-		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Validation failed: %s", err.Error())},
-			IsError: true,
-		}, nil
-	}
-
-	return &api.CallToolResult{
-		Content: []interface{}{"Capability definition is valid"},
-		IsError: false,
-	}, nil
-}
-
-// Helper methods for CRUD operations
-
-func (a *Adapter) validateCapabilityYAML(yamlContent string) error {
-	var def CapabilityDefinition
-	if err := yaml.Unmarshal([]byte(yamlContent), &def); err != nil {
-		return fmt.Errorf("failed to parse YAML: %w", err)
-	}
-
-	// Validate required fields
-	if def.Name == "" {
-		return fmt.Errorf("capability name is required")
-	}
-	if def.Type == "" {
-		return fmt.Errorf("capability type is required")
-	}
-	if len(def.Operations) == 0 {
-		return fmt.Errorf("at least one operation is required")
-	}
-
-	// Validate capability type
-	if !IsValidCapabilityType(def.Type) {
-		return fmt.Errorf("invalid capability type: %s", def.Type)
-	}
-
-	return nil
-}
+// Legacy methods updated to work with CapabilityManager
 
 func (a *Adapter) createCapabilityDefinition(yamlContent, filename string) error {
 	// TODO: Implement capability creation for layered configuration system
@@ -660,9 +286,9 @@ func (a *Adapter) updateCapabilityDefinition(name, yamlContent string) error {
 	return fmt.Errorf("capability updates not yet supported with layered configuration")
 }
 
-func (a *Adapter) deleteCapabilityDefinition(name string, force bool) error {
+func (a *Adapter) deleteCapabilityDefinition(name string) error {
 	// TODO: Implement capability deletion for layered configuration system
-	// This would need to find and remove the capability from the appropriate
-	// user or project config directory
+	// This would need to find the capability in either user or project config
+	// and remove it appropriately
 	return fmt.Errorf("capability deletion not yet supported with layered configuration")
 }

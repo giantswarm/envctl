@@ -14,7 +14,7 @@ type ServiceClassManager struct {
 	mu              sync.RWMutex
 	loader          *config.ConfigurationLoader
 	definitions     map[string]*ServiceClassDefinition // service class name -> definition
-	toolChecker     ToolAvailabilityChecker
+	toolChecker     config.ToolAvailabilityChecker
 	exposedServices map[string]bool // Track which service classes are available
 
 	// Callbacks for lifecycle events
@@ -24,7 +24,7 @@ type ServiceClassManager struct {
 }
 
 // NewServiceClassManager creates a new service class manager
-func NewServiceClassManager(toolChecker ToolAvailabilityChecker) (*ServiceClassManager, error) {
+func NewServiceClassManager(toolChecker config.ToolAvailabilityChecker) (*ServiceClassManager, error) {
 	loader, err := config.NewConfigurationLoader()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create configuration loader: %w", err)

@@ -3,6 +3,7 @@ package workflow
 import (
 	"context"
 	"envctl/internal/api"
+	"envctl/internal/config"
 	"envctl/pkg/logging"
 	"fmt"
 	"strconv"
@@ -19,9 +20,9 @@ type Adapter struct {
 }
 
 // NewAdapter creates a new workflow adapter
-func NewAdapter(configDir string, toolCaller api.ToolCaller) (*Adapter, error) {
+func NewAdapter(configDir string, toolCaller api.ToolCaller, toolChecker config.ToolAvailabilityChecker) (*Adapter, error) {
 	// Create workflow manager
-	manager, err := NewWorkflowManager(configDir, toolCaller)
+	manager, err := NewWorkflowManager(configDir, toolCaller, toolChecker)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create workflow manager: %w", err)
 	}

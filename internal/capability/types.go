@@ -4,6 +4,49 @@ import (
 	"time"
 )
 
+// CapabilityDefinition defines a capability with operations and requirements
+type CapabilityDefinition struct {
+	Name        string                     `yaml:"name"`
+	Type        string                     `yaml:"type"`
+	Version     string                     `yaml:"version"`
+	Description string                     `yaml:"description"`
+	Operations  map[string]OperationDefinition `yaml:"operations"`
+	Metadata    map[string]string          `yaml:"metadata"`
+}
+
+// OperationDefinition defines an operation within a capability
+type OperationDefinition struct {
+	Description string               `yaml:"description"`
+	Parameters  map[string]Parameter `yaml:"parameters"`
+	Requires    []string             `yaml:"requires"`
+	Workflow    *WorkflowDefinition  `yaml:"workflow,omitempty"`
+}
+
+// Parameter defines a parameter for an operation
+type Parameter struct {
+	Type        string      `yaml:"type"`
+	Required    bool        `yaml:"required"`
+	Description string      `yaml:"description"`
+	Default     interface{} `yaml:"default,omitempty"`
+}
+
+// WorkflowDefinition defines a workflow for an operation
+type WorkflowDefinition struct {
+	Name            string                 `yaml:"name"`
+	Description     string                 `yaml:"description"`
+	AgentModifiable bool                   `yaml:"agentModifiable"`
+	InputSchema     map[string]interface{} `yaml:"inputSchema"`
+	Steps           []WorkflowStep         `yaml:"steps"`
+}
+
+// WorkflowStep defines a step in a workflow
+type WorkflowStep struct {
+	ID    string                 `yaml:"id"`
+	Tool  string                 `yaml:"tool"`
+	Args  map[string]interface{} `yaml:"args"`
+	Store string                 `yaml:"store"`
+}
+
 // CapabilityType represents the type of capability
 type CapabilityType string
 
