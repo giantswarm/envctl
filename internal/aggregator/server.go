@@ -2,13 +2,14 @@ package aggregator
 
 import (
 	"context"
+	"envctl/internal/api"
+	"envctl/internal/config"
+	"envctl/pkg/logging"
 	"fmt"
 	"net/http"
+	"os"
 	"sync"
 	"time"
-
-	"envctl/internal/api"
-	"envctl/pkg/logging"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -20,8 +21,10 @@ type AggregatorServer struct {
 	registry *ServerRegistry
 	server   *server.MCPServer
 
-	// SSE server for HTTP transport
-	sseServer *server.SSEServer
+	// Transport-specific servers
+	sseServer            *server.SSEServer
+	streamableHTTPServer *server.StreamableHTTPServer
+	stdioServer          *server.StdioServer
 
 	// HTTP server for SSE endpoint
 	httpServer *http.Server
@@ -39,20 +42,10 @@ type AggregatorServer struct {
 }
 
 // NewAggregatorServer creates a new aggregator server
-func NewAggregatorServer(config AggregatorConfig) *AggregatorServer {
-	if config.Host == "" {
-		config.Host = "localhost"
-	}
-	if config.Port == 0 {
-		config.Port = 8080
-	}
-	if config.EnvctlPrefix == "" {
-		config.EnvctlPrefix = "x"
-	}
-
+func NewAggregatorServer(aggConfig AggregatorConfig) *AggregatorServer {
 	return &AggregatorServer{
-		config:          config,
-		registry:        NewServerRegistry(config.EnvctlPrefix),
+		config:          aggConfig,
+		registry:        NewServerRegistry(aggConfig.EnvctlPrefix),
 		toolManager:     newActiveItemManager(itemTypeTool),
 		promptManager:   newActiveItemManager(itemTypePrompt),
 		resourceManager: newActiveItemManager(itemTypeResource),
@@ -80,17 +73,6 @@ func (a *AggregatorServer) Start(ctx context.Context) error {
 	)
 
 	a.server = mcpServer
-
-	// Create SSE server
-	baseURL := fmt.Sprintf("http://%s:%d", a.config.Host, a.config.Port)
-	a.sseServer = server.NewSSEServer(
-		a.server,
-		server.WithBaseURL(baseURL),
-		server.WithSSEEndpoint("/sse"),
-		server.WithMessageEndpoint("/message"),
-		server.WithKeepAlive(true),
-		server.WithKeepAliveInterval(30*time.Second),
-	)
 
 	// Initialize workflow adapter if config directory is provided
 	if a.config.ConfigDir != "" {
@@ -127,18 +109,55 @@ func (a *AggregatorServer) Start(ctx context.Context) error {
 	// Update initial capabilities
 	a.updateCapabilities()
 
-	// Start SSE server
+	// Start the configured transport server
 	addr := fmt.Sprintf("%s:%d", a.config.Host, a.config.Port)
-	logging.Info("Aggregator", "Starting MCP aggregator server on %s", addr)
 
-	// Capture sseServer to avoid race condition
-	sseServer := a.sseServer
-	if sseServer != nil {
-		go func() {
-			if err := sseServer.Start(addr); err != nil && err != http.ErrServerClosed {
-				logging.Error("Aggregator", err, "SSE server error")
-			}
-		}()
+	switch a.config.Transport {
+	case config.MCPTransportSSE:
+		logging.Info("Aggregator", "Starting MCP aggregator server with SSE transport on %s", addr)
+		baseURL := fmt.Sprintf("http://%s:%d", a.config.Host, a.config.Port)
+		a.sseServer = server.NewSSEServer(
+			a.server,
+			server.WithBaseURL(baseURL),
+			server.WithSSEEndpoint("/sse"),
+			server.WithMessageEndpoint("/message"),
+			server.WithKeepAlive(true),
+			server.WithKeepAliveInterval(30*time.Second),
+		)
+		sseServer := a.sseServer
+		if sseServer != nil {
+			go func() {
+				if err := sseServer.Start(addr); err != nil && err != http.ErrServerClosed {
+					logging.Error("Aggregator", err, "SSE server error")
+				}
+			}()
+		}
+
+	case config.MCPTransportStdio:
+		logging.Info("Aggregator", "Starting MCP aggregator server with stdio transport")
+		a.stdioServer = server.NewStdioServer(a.server)
+		stdioServer := a.stdioServer
+		if stdioServer != nil {
+			go func() {
+				if err := stdioServer.Listen(a.ctx, os.Stdin, os.Stdout); err != nil {
+					logging.Error("Aggregator", err, "Stdio server error")
+				}
+			}()
+		}
+
+	case config.MCPTransportStreamableHTTP:
+		fallthrough
+	default:
+		logging.Info("Aggregator", "Starting MCP aggregator server with streamable-http transport on %s", addr)
+		a.streamableHTTPServer = server.NewStreamableHTTPServer(a.server)
+		streamableServer := a.streamableHTTPServer
+		if streamableServer != nil {
+			go func() {
+				if err := streamableServer.Start(addr); err != nil && err != http.ErrServerClosed {
+					logging.Error("Aggregator", err, "Streamable HTTP server error")
+				}
+			}()
+		}
 	}
 
 	return nil
@@ -157,21 +176,30 @@ func (a *AggregatorServer) Stop(ctx context.Context) error {
 	// Cancel context to stop background routines
 	cancelFunc := a.cancelFunc
 	sseServer := a.sseServer
+	streamableServer := a.streamableHTTPServer
 	a.mu.Unlock()
 
 	if cancelFunc != nil {
 		cancelFunc()
 	}
 
-	// Shutdown SSE server
-	if sseServer != nil {
-		shutdownCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		defer cancel()
+	// Shutdown transport servers
+	shutdownCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 
+	if sseServer != nil {
 		if err := sseServer.Shutdown(shutdownCtx); err != nil {
 			logging.Error("Aggregator", err, "Error shutting down SSE server")
 		}
 	}
+
+	if streamableServer != nil {
+		if err := streamableServer.Shutdown(shutdownCtx); err != nil {
+			logging.Error("Aggregator", err, "Error shutting down streamable HTTP server")
+		}
+	}
+
+	// Stdio server stops on context cancellation, no explicit shutdown needed.
 
 	// Wait for background routines
 	a.wg.Wait()
@@ -186,6 +214,8 @@ func (a *AggregatorServer) Stop(ctx context.Context) error {
 	a.mu.Lock()
 	a.server = nil
 	a.sseServer = nil
+	a.streamableHTTPServer = nil
+	a.stdioServer = nil
 	a.httpServer = nil
 	a.mu.Unlock()
 
@@ -351,9 +381,22 @@ func (a *AggregatorServer) logCapabilitiesSummary(servers map[string]*ServerInfo
 		toolCount, resourceCount, promptCount)
 }
 
-// GetEndpoint returns the aggregator's SSE endpoint URL
+// GetEndpoint returns the aggregator's endpoint URL based on transport
 func (a *AggregatorServer) GetEndpoint() string {
-	return fmt.Sprintf("http://%s:%d/sse", a.config.Host, a.config.Port)
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	switch a.config.Transport {
+	case config.MCPTransportSSE:
+		return fmt.Sprintf("http://%s:%d/sse", a.config.Host, a.config.Port)
+	case config.MCPTransportStreamableHTTP:
+		return fmt.Sprintf("http://%s:%d/mcp", a.config.Host, a.config.Port) // Default path for streamable
+	case config.MCPTransportStdio:
+		return "stdio"
+	default:
+		// Default to streamable-http endpoint
+		return fmt.Sprintf("http://%s:%d/mcp", a.config.Host, a.config.Port)
+	}
 }
 
 // GetTools returns all available tools with smart prefixing (only prefixed when conflicts exist)

@@ -43,7 +43,9 @@ func (a *aggregatorToolChecker) IsToolAvailable(toolName string) bool {
 	}
 
 	// Cast to aggregator service to get the manager
-	if aggService, ok := service.(interface{ GetManager() *aggregator.AggregatorManager }); ok {
+	if aggService, ok := service.(interface {
+		GetManager() *aggregator.AggregatorManager
+	}); ok {
 		manager := aggService.GetManager()
 		if manager != nil {
 			server := manager.GetAggregatorServer()
@@ -162,6 +164,7 @@ func InitializeServices(cfg *Config) (*Services, error) {
 			aggConfig := aggregator.AggregatorConfig{
 				Port:         cfg.EnvctlConfig.Aggregator.Port,
 				Host:         cfg.EnvctlConfig.Aggregator.Host,
+				Transport:    cfg.EnvctlConfig.Aggregator.Transport,
 				EnvctlPrefix: cfg.EnvctlConfig.Aggregator.EnvctlPrefix,
 				Yolo:         cfg.Yolo,
 				ConfigDir:    configDir,
@@ -174,6 +177,9 @@ func InitializeServices(cfg *Config) (*Services, error) {
 			if aggConfig.Host == "" {
 				aggConfig.Host = "localhost"
 			}
+			if aggConfig.Transport == "" {
+				aggConfig.Transport = config.MCPTransportStreamableHTTP
+			}
 
 			aggService := aggregatorService.NewAggregatorService(
 				aggConfig,
@@ -183,51 +189,53 @@ func InitializeServices(cfg *Config) (*Services, error) {
 			)
 			registry.Register(aggService)
 
-							// Set up ToolCaller for ServiceClass-based services using orchestrator's event system
-		// This follows our architectural principles by using event-driven patterns instead of time.Sleep
-		setupToolCaller := func() {
-			logging.Info("Bootstrap", "Setting up ToolCaller for ServiceClass-based services")
-			
-			// Get the aggregator service and create a ToolCaller
-			if service, exists := registry.Get("mcp-aggregator"); exists {
-				if aggSvc, ok := service.(interface{ GetManager() *aggregator.AggregatorManager }); ok {
-					manager := aggSvc.GetManager()
-					if manager != nil {
-						server := manager.GetAggregatorServer()
-						if server != nil {
-							// Create AggregatorToolCaller and set it on the orchestrator
-							toolCaller := capability.NewAggregatorToolCaller(server)
-							orch.SetToolCaller(toolCaller)
-							logging.Info("Bootstrap", "Set up ToolCaller for ServiceClass-based services")
-							
-							// Refresh ServiceClass availability now that ToolCaller is available
-							if serviceClassHandler := api.GetServiceClassManager(); serviceClassHandler != nil {
-								serviceClassHandler.RefreshAvailability()
-								logging.Info("Bootstrap", "Refreshed ServiceClass availability after ToolCaller setup")
+			// Set up ToolCaller for ServiceClass-based services using orchestrator's event system
+			// This follows our architectural principles by using event-driven patterns instead of time.Sleep
+			setupToolCaller := func() {
+				logging.Info("Bootstrap", "Setting up ToolCaller for ServiceClass-based services")
+
+				// Get the aggregator service and create a ToolCaller
+				if service, exists := registry.Get("mcp-aggregator"); exists {
+					if aggSvc, ok := service.(interface {
+						GetManager() *aggregator.AggregatorManager
+					}); ok {
+						manager := aggSvc.GetManager()
+						if manager != nil {
+							server := manager.GetAggregatorServer()
+							if server != nil {
+								// Create AggregatorToolCaller and set it on the orchestrator
+								toolCaller := capability.NewAggregatorToolCaller(server)
+								orch.SetToolCaller(toolCaller)
+								logging.Info("Bootstrap", "Set up ToolCaller for ServiceClass-based services")
+
+								// Refresh ServiceClass availability now that ToolCaller is available
+								if serviceClassHandler := api.GetServiceClassManager(); serviceClassHandler != nil {
+									serviceClassHandler.RefreshAvailability()
+									logging.Info("Bootstrap", "Refreshed ServiceClass availability after ToolCaller setup")
+								}
 							}
 						}
 					}
 				}
 			}
-		}
-		
-		// Subscribe to orchestrator state change events to detect when aggregator becomes running
-		go func() {
-			stateChanges := orch.SubscribeToStateChanges()
-			for event := range stateChanges {
-				if event.Label == "mcp-aggregator" && event.NewState == "Running" && event.OldState != "Running" {
-					logging.Info("Bootstrap", "Aggregator service transitioned to running state via orchestrator event")
-					setupToolCaller()
-					return // Exit goroutine after setting up ToolCaller
+
+			// Subscribe to orchestrator state change events to detect when aggregator becomes running
+			go func() {
+				stateChanges := orch.SubscribeToStateChanges()
+				for event := range stateChanges {
+					if event.Label == "mcp-aggregator" && event.NewState == "Running" && event.OldState != "Running" {
+						logging.Info("Bootstrap", "Aggregator service transitioned to running state via orchestrator event")
+						setupToolCaller()
+						return // Exit goroutine after setting up ToolCaller
+					}
 				}
+			}()
+
+			// Check if aggregator is already running and set up ToolCaller immediately
+			if aggService.GetState() == services.StateRunning {
+				logging.Info("Bootstrap", "Aggregator service is already running")
+				setupToolCaller()
 			}
-		}()
-		
-		// Check if aggregator is already running and set up ToolCaller immediately
-		if aggService.GetState() == services.StateRunning {
-			logging.Info("Bootstrap", "Aggregator service is already running")
-			setupToolCaller()
-		}
 		}
 	}
 

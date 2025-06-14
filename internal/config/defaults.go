@@ -8,9 +8,10 @@ func GetDefaultConfigWithRoles() EnvctlConfig {
 			DefaultContainerRuntime: "docker",
 		},
 		Aggregator: AggregatorConfig{
-			Port:    8090,
-			Host:    "localhost",
-			Enabled: true,
+			Port:      8090,
+			Host:      "localhost",
+			Transport: MCPTransportStreamableHTTP,
+			Enabled:   true,
 		},
 		Workflows: []WorkflowDefinition{},
 	}

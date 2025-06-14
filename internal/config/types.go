@@ -26,6 +26,15 @@ const (
 	MCPServerTypeContainer    MCPServerType = "container"
 )
 
+const (
+	// MCPTransportStreamableHTTP is the streamable HTTP transport.
+	MCPTransportStreamableHTTP = "streamable-http"
+	// MCPTransportSSE is the Server-Sent Events transport.
+	MCPTransportSSE = "sse"
+	// MCPTransportStdio is the standard I/O transport.
+	MCPTransportStdio = "stdio"
+)
+
 // CapabilityType defines the type of capability that an MCP server can provide.
 type CapabilityType string
 
@@ -68,6 +77,7 @@ type MCPServerDefinition struct {
 type AggregatorConfig struct {
 	Port         int    `yaml:"port,omitempty"`         // Port for the aggregator SSE endpoint (default: 8080)
 	Host         string `yaml:"host,omitempty"`         // Host to bind to (default: localhost)
+	Transport    string `yaml:"transport,omitempty"`    // Transport to use (default: streamable-http)
 	Enabled      bool   `yaml:"enabled,omitempty"`      // Whether the aggregator is enabled (default: true if MCP servers exist)
 	EnvctlPrefix string `yaml:"envctlPrefix,omitempty"` // Pre-prefix for all tools (default: "x")
 }

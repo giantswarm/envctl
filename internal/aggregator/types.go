@@ -93,6 +93,7 @@ func (s *ServerInfo) IsConnected() bool {
 type AggregatorConfig struct {
 	Port         int    // Port to listen on for the aggregated SSE endpoint
 	Host         string // Host to bind to (default: localhost)
+	Transport    string // Transport protocol to use (e.g., "sse", "streamable-http")
 	Yolo         bool   // Disable denylist for destructive tools
 	ConfigDir    string // User configuration directory for workflows
 	EnvctlPrefix string // Pre-prefix for all tools (default: "x")
