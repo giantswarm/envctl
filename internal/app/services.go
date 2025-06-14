@@ -3,18 +3,20 @@ package app
 import (
 	"envctl/internal/aggregator"
 	"envctl/internal/api"
+	"envctl/internal/capability"
 	"envctl/internal/config"
 	"envctl/internal/orchestrator"
 	"envctl/internal/services"
 	aggregatorService "envctl/internal/services/aggregator"
 	"envctl/internal/services/mcpserver"
+	"envctl/pkg/logging"
 
 	// Import to trigger init() functions that register adapter factories
-	_ "envctl/internal/capability"
 	_ "envctl/internal/workflow"
 
 	// Import ServiceClass manager
 	"envctl/internal/serviceclass"
+	"fmt"
 	"path/filepath"
 )
 
@@ -28,13 +30,39 @@ type Services struct {
 	AggregatorPort  int
 }
 
+// aggregatorToolChecker checks tool availability using the aggregator server
+type aggregatorToolChecker struct {
+	serviceRegistry services.ServiceRegistry
+}
+
+func (a *aggregatorToolChecker) IsToolAvailable(toolName string) bool {
+	// Get the aggregator service
+	service, exists := a.serviceRegistry.Get("mcp-aggregator")
+	if !exists {
+		return false
+	}
+
+	// Cast to aggregator service to get the manager
+	if aggService, ok := service.(interface{ GetManager() *aggregator.AggregatorManager }); ok {
+		manager := aggService.GetManager()
+		if manager != nil {
+			server := manager.GetAggregatorServer()
+			if server != nil {
+				return server.IsToolAvailable(toolName)
+			}
+		}
+	}
+	return false
+}
+
 // InitializeServices creates and registers all required services
 func InitializeServices(cfg *Config) (*Services, error) {
-	// Create the orchestrator
+	// Create orchestrator without ToolCaller initially
 	orchConfig := orchestrator.Config{
 		MCPServers: cfg.EnvctlConfig.MCPServers,
 		Aggregator: cfg.EnvctlConfig.Aggregator,
 		Yolo:       cfg.Yolo,
+		ToolCaller: nil, // Will be set up after aggregator is available
 	}
 
 	orch := orchestrator.New(orchConfig)
@@ -70,9 +98,14 @@ func InitializeServices(cfg *Config) (*Services, error) {
 	}
 	serviceClassPath := filepath.Join(configDir, "serviceclass", "definitions")
 
-	// Create a simple tool checker that delegates to the aggregator when available
-	// For now, we'll use a placeholder that always returns false
-	toolChecker := &placeholderToolChecker{}
+	// Get the service registry handler from the API
+	registryHandler := api.GetServiceRegistry()
+	if registryHandler == nil {
+		return nil, fmt.Errorf("service registry handler not available")
+	}
+
+	// Create the tool checker using the API handler
+	toolChecker := &aggregatorToolChecker{serviceRegistry: registry}
 
 	// Create ServiceClass manager
 	serviceClassManager := serviceclass.NewServiceClassManager(serviceClassPath, toolChecker)
@@ -90,6 +123,8 @@ func InitializeServices(cfg *Config) (*Services, error) {
 	// Step 2: Create APIs that use the registered handlers
 	orchestratorAPI := api.NewOrchestratorAPI()
 	mcpAPI := api.NewMCPServiceAPI()
+	// Register the MCP service API so mcp_server_* tools can work
+	api.SetMCPServiceAPI(mcpAPI)
 	aggregatorAPI := api.NewAggregatorAPI()
 	configAPI := api.NewConfigServiceAPI()
 
@@ -147,6 +182,52 @@ func InitializeServices(cfg *Config) (*Services, error) {
 				registryHandler,
 			)
 			registry.Register(aggService)
+
+							// Set up ToolCaller for ServiceClass-based services using orchestrator's event system
+		// This follows our architectural principles by using event-driven patterns instead of time.Sleep
+		setupToolCaller := func() {
+			logging.Info("Bootstrap", "Setting up ToolCaller for ServiceClass-based services")
+			
+			// Get the aggregator service and create a ToolCaller
+			if service, exists := registry.Get("mcp-aggregator"); exists {
+				if aggSvc, ok := service.(interface{ GetManager() *aggregator.AggregatorManager }); ok {
+					manager := aggSvc.GetManager()
+					if manager != nil {
+						server := manager.GetAggregatorServer()
+						if server != nil {
+							// Create AggregatorToolCaller and set it on the orchestrator
+							toolCaller := capability.NewAggregatorToolCaller(server)
+							orch.SetToolCaller(toolCaller)
+							logging.Info("Bootstrap", "Set up ToolCaller for ServiceClass-based services")
+							
+							// Refresh ServiceClass availability now that ToolCaller is available
+							if serviceClassHandler := api.GetServiceClassManager(); serviceClassHandler != nil {
+								serviceClassHandler.RefreshAvailability()
+								logging.Info("Bootstrap", "Refreshed ServiceClass availability after ToolCaller setup")
+							}
+						}
+					}
+				}
+			}
+		}
+		
+		// Subscribe to orchestrator state change events to detect when aggregator becomes running
+		go func() {
+			stateChanges := orch.SubscribeToStateChanges()
+			for event := range stateChanges {
+				if event.Label == "mcp-aggregator" && event.NewState == "Running" && event.OldState != "Running" {
+					logging.Info("Bootstrap", "Aggregator service transitioned to running state via orchestrator event")
+					setupToolCaller()
+					return // Exit goroutine after setting up ToolCaller
+				}
+			}
+		}()
+		
+		// Check if aggregator is already running and set up ToolCaller immediately
+		if aggService.GetState() == services.StateRunning {
+			logging.Info("Bootstrap", "Aggregator service is already running")
+			setupToolCaller()
+		}
 		}
 	}
 
@@ -158,14 +239,4 @@ func InitializeServices(cfg *Config) (*Services, error) {
 		ConfigAPI:       configAPI,
 		AggregatorPort:  cfg.EnvctlConfig.Aggregator.Port,
 	}, nil
-}
-
-// placeholderToolChecker is a temporary implementation of ToolAvailabilityChecker
-// In production, this should check against the aggregator's tool registry
-type placeholderToolChecker struct{}
-
-func (p *placeholderToolChecker) IsToolAvailable(toolName string) bool {
-	// For now, return false for all tools
-	// This will be replaced with actual tool checking logic
-	return false
 }

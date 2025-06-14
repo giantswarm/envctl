@@ -59,3 +59,181 @@ If a service shows as unhealthy:
 - Use `core_workflow_validate` to check syntax
 - Ensure tool names exist (check with `mcp_mcp-debug_list_tools`)
 - Verify argument schemas match the tool requirements
+
+# MCP Debugging Workflow
+
+This rule outlines the mandatory approach for debugging MCP servers and ServiceClasses in envctl using the mcp-debug tools.
+
+## **Core Debugging Principle**
+
+- **ALWAYS follow the systematic 5-phase debugging workflow** when investigating MCP or ServiceClass issues
+- **Document all findings** and update the debugging workflow documentation when new issues are discovered
+- **Use mcp-debug tools as the primary debugging interface** rather than manual inspection
+
+## **Phase-Based Debugging Approach**
+
+### **Phase 1: System Health Verification**
+```bash
+# Required first steps - ALWAYS run these
+mcp_mcp-debug_call_tool(name="core_service_list", arguments={})
+mcp_mcp-debug_call_tool(name="core_serviceclass_list", arguments={})
+```
+
+**Key Checks:**
+- All MCP servers show `"health": "Healthy"` and `"state": "Running"`
+- ServiceClasses show `"available": true`
+- No `missingTools` in ServiceClass definitions
+
+### **Phase 2: ServiceClass-Specific Testing**
+```bash
+# Test specific ServiceClass availability
+mcp_mcp-debug_call_tool(name="core_serviceclass_available", arguments={"name": "<serviceclass-name>"})
+
+# Test instantiation with safe parameters
+mcp_mcp-debug_call_tool(name="core_serviceclass_instance_create", arguments={
+  "serviceClassName": "<name>",
+  "label": "debug-test",
+  "parameters": {...}
+})
+```
+
+### **Phase 3: Dependency Verification**
+```bash
+# Test underlying tools directly
+mcp_mcp-debug_call_tool(name="<required-tool>", arguments={...})
+
+# Verify connectivity to external systems
+```
+
+### **Phase 4: Service Recovery**
+```bash
+# Restart failed services
+mcp_mcp-debug_call_tool(name="core_service_restart", arguments={"label": "<service-name>"})
+
+# Check detailed status
+mcp_mcp-debug_call_tool(name="core_service_status", arguments={"label": "<service-name>"})
+```
+
+### **Phase 5: Instance Management**
+```bash
+# List and clean up test instances
+mcp_mcp-debug_call_tool(name="core_serviceclass_instance_list", arguments={})
+mcp_mcp-debug_call_tool(name="core_serviceclass_instance_delete", arguments={"instanceId": "debug-test"})
+```
+
+## **Error Classification and Response**
+
+### **Tool Missing Errors**
+- **Pattern:** `missingTools` array not empty in ServiceClass list
+- **Action:** Check MCP server health, restart if needed
+- **Root Cause:** Usually failed MCP server initialization
+
+### **Parameter Type Errors**
+- **Pattern:** Numeric parameters rendered as "X.000000" strings
+- **Action:** Use string parameters instead of numeric
+- **Root Cause:** ServiceClass parameter template conversion issue
+
+### **Content Type Errors**
+- **Pattern:** "unsupported content type" from tool execution
+- **Action:** Check if operation actually succeeded despite error
+- **Root Cause:** Often false positive from streaming responses
+
+### **Resource Not Found Errors**
+- **Pattern:** "pod not found", "service not found"
+- **Action:** Use `x_kubernetes_kubectl_get` to find valid test resources
+- **Root Cause:** Testing with non-existent Kubernetes resources
+
+### **JSON Parsing Errors**
+- **Pattern:** "failed to unmarshal response: unexpected end of JSON input"
+- **Action:** Check MCP server implementation for malformed JSON responses
+- **Root Cause:** MCP server returning incomplete or malformed JSON
+- **Current Status:** Known issue with Kubernetes MCP server
+
+## **Testing Best Practices**
+
+### **Resource Selection**
+- **✅ DO:** Use system resources like `coredns` in `kube-system` for testing
+- **✅ DO:** Verify resource existence with `kubectl_get` before testing
+- **❌ DON'T:** Assume resources exist in default namespace
+
+### **Parameter Handling**
+- **✅ DO:** Use string values for ports when numeric conversion fails
+- **✅ DO:** Check service descriptions for port names vs numbers
+- **❌ DON'T:** Rely on parameter type inference
+
+### **Cleanup Protocol**
+- **✅ DO:** Always clean up test ServiceClass instances after debugging
+- **✅ DO:** Use unique, identifiable labels for test instances (e.g., "debug-test-<timestamp>")
+- **❌ DON'T:** Leave test instances running in production systems
+
+## **Documentation Requirements**
+
+### **When Debugging ServiceClasses**
+1. **Document the issue** in the debugging session
+2. **Update the debugging workflow** if new issues are discovered
+3. **Add specific examples** to the common issues section
+4. **Create reproduction steps** for any bugs found
+
+### **Workflow Documentation Updates**
+- **File:** [debugging-serviceclass-workflow.md](mdc:docs/debugging-serviceclass-workflow.md)
+- **Required when:** New error patterns discovered, new tools added, workflow improvements
+- **Format:** Follow the existing 5-phase structure
+
+## **Integration with Development Workflow**
+
+### **Before ServiceClass Changes**
+```bash
+# Verify current state before modifications
+mcp_mcp-debug_call_tool(name="core_serviceclass_list", arguments={})
+mcp_mcp-debug_call_tool(name="core_serviceclass_available", arguments={"name": "<target-serviceclass>"})
+```
+
+### **After ServiceClass Changes**
+```bash
+# Test the modified ServiceClass
+mcp_mcp-debug_call_tool(name="core_serviceclass_available", arguments={"name": "<modified-serviceclass>"})
+mcp_mcp-debug_call_tool(name="core_serviceclass_instance_create", arguments={...})
+```
+
+### **Continuous Monitoring**
+- **Include ServiceClass health checks** in CI/CD pipelines
+- **Monitor MCP server health** in production environments
+- **Alert on ServiceClass availability changes**
+
+## **Common Commands Reference**
+
+### **Quick Health Check**
+```bash
+# One-liner to check overall system health
+mcp_mcp-debug_call_tool(name="core_service_list", arguments={}) && \
+mcp_mcp-debug_call_tool(name="core_serviceclass_list", arguments={})
+```
+
+### **ServiceClass Deep Dive**
+```bash
+# Complete analysis of a specific ServiceClass
+mcp_mcp-debug_call_tool(name="core_serviceclass_get", arguments={"name": "<name>"})
+mcp_mcp-debug_call_tool(name="core_serviceclass_available", arguments={"name": "<name>"})
+```
+
+### **Instance Management**
+```bash
+# Safe test instance creation and cleanup
+mcp_mcp-debug_call_tool(name="core_serviceclass_instance_create", arguments={
+  "serviceClassName": "<name>",
+  "label": "debug-$(date +%s)",
+  "parameters": {...}
+})
+# ... test operations ...
+mcp_mcp-debug_call_tool(name="core_serviceclass_instance_delete", arguments={"instanceId": "debug-$(date +%s)"})
+```
+
+## **Mandatory Workflow Adherence**
+
+- **NEVER skip Phase 1** health verification when debugging
+- **ALWAYS clean up** test instances after debugging sessions
+- **DOCUMENT new issues** in the workflow documentation
+- **USE mcp-debug tools** as the primary debugging interface
+- **FOLLOW the systematic approach** rather than ad-hoc investigation
+
+This rule ensures consistent, thorough debugging practices across all MCP and ServiceClass development work.

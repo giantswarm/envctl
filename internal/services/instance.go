@@ -536,6 +536,10 @@ func (gsi *GenericServiceInstance) executeLifecycleTool(
 	// Prepare the context for template substitution
 	templateContext := gsi.buildTemplateContext()
 
+	// Debug logging
+	logging.Debug("GenericServiceInstance", "Template context for %s tool %s: %+v", toolType, toolName, templateContext)
+	logging.Debug("GenericServiceInstance", "Raw arguments for %s tool %s: %+v", toolType, toolName, arguments)
+
 	// Apply template substitution to tool arguments
 	processedArgs, err := gsi.templater.Replace(arguments, templateContext)
 	if err != nil {
@@ -543,6 +547,9 @@ func (gsi *GenericServiceInstance) executeLifecycleTool(
 		gsi.updateStateInternal(StateFailed, HealthUnhealthy, err)
 		return err
 	}
+
+	// Debug logging for processed arguments
+	logging.Debug("GenericServiceInstance", "Processed arguments for %s tool %s: %+v", toolType, toolName, processedArgs)
 
 	// Ensure tool arguments is a map
 	toolArgsMap, ok := processedArgs.(map[string]interface{})

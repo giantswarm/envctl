@@ -498,3 +498,126 @@ The health checking system is implemented through:
 - Services that implement the `HealthChecker` interface can provide their own health checks
 - The orchestrator automatically starts health check goroutines for services that support it
 - Health checks run at intervals specified by each service (default 30 seconds)
+
+# envctl Development Guide
+
+This guide explains how to set up and use the systemd user service for envctl development, making debugging and testing much easier.
+
+## Quick Setup
+
+1. **First-time setup:**
+   ```bash
+   ./scripts/setup-systemd.sh
+   ```
+
+2. **Development workflow:**
+   ```bash
+   # Make your changes to the code
+   ./scripts/dev-restart.sh
+   ```
+
+## systemd Service Benefits
+
+- **Automatic restarts**: Service restarts automatically if it crashes
+- **Easy management**: Use standard systemd commands
+- **Centralized logging**: All logs go to journald
+- **Background operation**: Runs in background, freeing up your terminal
+- **Quick iteration**: `dev-restart.sh` rebuilds and restarts in seconds
+
+## Commands
+
+### Logging
+```bash
+# Follow logs in real-time
+journalctl --user -u envctl.service -f --no-pager
+
+# Show recent logs
+journalctl --user -u envctl.service -n 50 --no-pager
+
+# Show logs since a specific time
+journalctl --user -u envctl.service --since "1 hour ago" --no-pager
+
+# Show logs with timestamps
+journalctl --user -u envctl.service -o short-precise --no-pager
+```
+
+### Development Workflow
+```bash
+# Quick development cycle
+./scripts/dev-restart.sh
+
+# Or manually:
+go install .                                        # Install to ~/.go/bin
+systemctl --user restart envctl.service --no-pager  # Restart service
+journalctl --user -u envctl.service -f --no-pager   # Follow logs
+```
+
+## Debugging ServiceClasses
+
+With the systemd service running, you can easily test ServiceClass functionality:
+
+```bash
+# Check if envctl is running
+systemctl --user status envctl.service
+
+# Test ServiceClass availability
+# (using mcp-debug or Cursor MCP tools)
+core_serviceclass_list
+core_serviceclass_available --name=portforward
+
+# Create a ServiceClass instance
+core_serviceclass_instance_create \
+  --serviceClassName=portforward \
+  --label=test-pf \
+  --parameters='{"namespace":"mimir","resourceType":"service","resourceName":"mimir-query-frontend","localPort":8080,"targetPort":8080}'
+```
+
+## Troubleshooting
+
+### Service won't start
+```bash
+# Check service status for errors
+systemctl --user status envctl.service --no-pager
+
+# Check recent logs
+journalctl --user -u envctl.service -n 20 --no-pager
+```
+
+### Service keeps restarting
+```bash
+# Check logs for crash details
+journalctl --user -u envctl.service --no-pager
+
+# Look for specific errors
+journalctl --user -u envctl.service --no-pager | grep -i error
+```
+
+## Integration with Development Tools
+
+### VS Code / Cursor
+- The service runs in the background, so your editor terminal is free
+- Use mcp-debug tools to test functionality
+- Logs are available via `journalctl` commands
+
+### Git Workflow
+```bash
+# After making changes and committing
+git add .
+git commit -m "feat: implement new feature"
+./scripts/dev-restart.sh  # Test the changes immediately
+```
+
+### Testing ServiceClass Changes
+```bash
+# Edit ServiceClass definitions
+vim ~/.config/envctl/serviceclass/definitions/portforward.yaml
+
+# Restart to reload definitions
+./scripts/dev-restart.sh
+
+# Test the updated ServiceClass
+core_serviceclass_refresh
+core_serviceclass_available --name=portforward
+```
+
+This setup significantly improves the development experience by providing a stable, manageable service that can be quickly restarted during development iterations.

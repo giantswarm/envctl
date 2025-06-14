@@ -1,0 +1,108 @@
+# Mimir Prometheus ServiceClass Definition
+# This ServiceClass provides easy port forwarding to Mimir's query frontend
+# for Prometheus-compatible API access
+name: mimir-prometheus
+type: prometheus
+version: "1.0.0"
+description: "Port forwarding to Mimir query frontend service for Prometheus API access"
+
+# ServiceClass configuration for lifecycle management
+serviceConfig:
+  # Service metadata
+  serviceType: "PrometheusPortForward"
+  defaultLabel: "mimir-prometheus-{{ .local_port }}"
+  dependencies: []
+  
+  # Lifecycle tool mappings - using the working Kubernetes tools
+  lifecycleTools:
+    start:
+      tool: "x_kubernetes_port_forward"
+      arguments:
+        namespace: "mimir"
+        resourceType: "service"
+        resourceName: "mimir-query-frontend"
+        ports: ["{{ .local_port }}:8080"]
+      responseMapping:
+        serviceId: "$.id"
+        status: "$.status"
+    stop:
+      tool: "x_kubernetes_stop_port_forward_session"
+      arguments:
+        sessionID: "{{ .serviceId }}"
+      responseMapping:
+        status: "$.status"
+        
+  # Health checking configuration
+  healthCheck:
+    enabled: false
+    interval: "30s"
+    failureThreshold: 3
+    successThreshold: 1
+  
+  # Timeout configuration
+  timeout:
+    create: "60s"
+    delete: "30s"
+    healthCheck: "10s"
+  
+  # Parameter definitions for create operation
+  createParameters:
+    local_port:
+      toolParameter: "localPort"
+      default: "9090"
+      required: false
+  
+  # Parameters for other operations (empty for this ServiceClass)
+  deleteParameters: {}
+  statusParameters: {}
+  healthCheckParameters: {}
+
+# Metadata for additional information
+metadata:
+  provider: "mimir"
+  category: "monitoring"
+  icon: "🔥"
+  tags: "prometheus, mimir, monitoring, port-forward"
+  
+# Usage examples and documentation
+documentation:
+  description: |
+    This ServiceClass provides easy access to Mimir's Prometheus-compatible query frontend
+    by setting up port forwarding to the mimir-query-frontend service.
+    
+    Once the port forward is active, you can access the Prometheus API at:
+    http://localhost:9090/prometheus/api/v1/query
+    
+  examples:
+    - name: "Default Mimir connection"
+      description: "Connect to Mimir on default port 9090"
+      parameters: {}
+      
+    - name: "Custom local port"
+      description: "Connect to Mimir using a different local port"
+      parameters:
+        local_port: "19090"
+        
+    - name: "Different namespace"
+      description: "Connect to Mimir in a different namespace"
+      parameters:
+        namespace: "monitoring"
+        service_name: "mimir-query-frontend"
+
+# Validation rules for parameters
+validation:
+  rules:
+    - field: "local_port"
+      type: "port"
+      min: 1024
+      max: 65535
+      message: "Local port must be between 1024 and 65535"
+    - field: "remote_port"
+      type: "port"
+      min: 1
+      max: 65535
+      message: "Remote port must be between 1 and 65535"
+    - field: "namespace"
+      type: "string"
+      pattern: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+      message: "Namespace must be a valid Kubernetes namespace name" 

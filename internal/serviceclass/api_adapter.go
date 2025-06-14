@@ -6,6 +6,8 @@ import (
 	"envctl/pkg/logging"
 	"fmt"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 // Adapter implements the api.ServiceClassManagerHandler interface
@@ -342,6 +344,21 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 			Name:        "serviceclass_definitions_path",
 			Description: "Get the path where ServiceClass definitions are loaded from",
 		},
+		{
+			Name:        "serviceclass_register",
+			Description: "Register a ServiceClass from YAML on the fly",
+			Parameters: []api.ParameterMetadata{
+				{Name: "yaml", Type: "string", Required: true, Description: "Full ServiceClass YAML definition"},
+				{Name: "merge", Type: "boolean", Required: false, Description: "If true, replace existing ServiceClass of the same name"},
+			},
+		},
+		{
+			Name:        "serviceclass_unregister",
+			Description: "Unregister a ServiceClass by name",
+			Parameters: []api.ParameterMetadata{
+				{Name: "name", Type: "string", Required: true, Description: "Name of the ServiceClass to remove"},
+			},
+		},
 	}
 }
 
@@ -360,6 +377,10 @@ func (a *Adapter) ExecuteTool(ctx context.Context, toolName string, args map[str
 		return a.handleServiceClassLoad()
 	case "serviceclass_definitions_path":
 		return a.handleServiceClassDefinitionsPath()
+	case "serviceclass_register":
+		return a.handleServiceClassRegister(args)
+	case "serviceclass_unregister":
+		return a.handleServiceClassUnregister(args)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", toolName)
 	}
@@ -461,4 +482,48 @@ func (a *Adapter) handleServiceClassDefinitionsPath() (*api.CallToolResult, erro
 		Content: []interface{}{result},
 		IsError: false,
 	}, nil
+}
+
+// helper to create simple error CallToolResult
+func simpleError(msg string) (*api.CallToolResult, error) {
+	return &api.CallToolResult{Content: []interface{}{msg}, IsError: true}, nil
+}
+
+func simpleOK(msg string) (*api.CallToolResult, error) {
+	return &api.CallToolResult{Content: []interface{}{msg}, IsError: false}, nil
+}
+
+func (a *Adapter) handleServiceClassRegister(args map[string]interface{}) (*api.CallToolResult, error) {
+	yamlStr, ok := args["yaml"].(string)
+	if !ok || yamlStr == "" {
+		return simpleError("yaml parameter is required")
+	}
+	merge, _ := args["merge"].(bool)
+
+	var def ServiceClassDefinition
+	if err := yaml.Unmarshal([]byte(yamlStr), &def); err != nil {
+		return simpleError(fmt.Sprintf("YAML parse error: %v", err))
+	}
+
+	// Optionally overwrite existing definition
+	if merge {
+		_ = a.manager.UnregisterDefinition(def.Name)
+	}
+	if err := a.manager.RegisterDefinition(&def); err != nil {
+		return simpleError(fmt.Sprintf("Register failed: %v", err))
+	}
+	// after registering, refresh availability so missing tools list is updated
+	a.manager.RefreshAvailability()
+	return simpleOK(fmt.Sprintf("registered ServiceClass %s", def.Name))
+}
+
+func (a *Adapter) handleServiceClassUnregister(args map[string]interface{}) (*api.CallToolResult, error) {
+	name, ok := args["name"].(string)
+	if !ok || name == "" {
+		return simpleError("name parameter is required")
+	}
+	if err := a.manager.UnregisterDefinition(name); err != nil {
+		return simpleError(fmt.Sprintf("Unregister failed: %v", err))
+	}
+	return simpleOK(fmt.Sprintf("unregistered ServiceClass %s", name))
 }

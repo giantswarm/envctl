@@ -1,0 +1,68 @@
+# Mimir Prometheus ServiceClass Definition (Test)
+# Copied from working portforward example
+name: mimir-test
+type: prometheus
+version: "1.0.0"
+description: "Port forwarding to Mimir query frontend service"
+
+# ServiceClass configuration for lifecycle management
+serviceConfig:
+  # Service metadata
+  serviceType: "PrometheusPortForward"
+  defaultLabel: "mimir-pf-{{ .local_port }}"
+  dependencies: []
+  
+  # Lifecycle tool mappings - defines which aggregator tools to call for each lifecycle event
+  lifecycleTools:
+    start:
+      tool: "x_kubernetes_port_forward"
+      arguments:
+        namespace: "mimir"
+        resourceType: "service"
+        resourceName: "mimir-query-frontend"
+        localPort: "{{ .local_port }}"
+        targetPort: "8080"
+      responseMapping:
+        serviceId: "$.id"
+        status: "$.status"
+        metadata:
+          namespace: "$.namespace"
+          resource_type: "$.resourceType"
+          resource_name: "$.resourceName"
+          local_port: "$.localPort"
+          remote_port: "$.targetPort"
+          pid: "$.pid"
+    
+    stop:
+      tool: "x_kubernetes_stop_port_forward_session"
+      arguments:
+        sessionID: "{{ .serviceId }}"
+      responseMapping:
+        status: "$.status"
+        
+  # Health check configuration
+  healthCheck:
+    enabled: false
+    interval: "30s"
+    failureThreshold: 3
+    successThreshold: 1
+  
+  # Timeout configuration
+  timeout:
+    create: "60s"
+    delete: "30s"
+    healthCheck: "10s"
+  
+  # Parameter mapping for service creation
+  createParameters:
+    local_port:
+      toolParameter: "localPort"
+      default: "9090"
+      required: false
+
+# Metadata for additional information
+metadata:
+  provider: "mimir"
+  category: "monitoring"
+  icon: "🔥"
+  tags: "port-forward, networking, mimir" 

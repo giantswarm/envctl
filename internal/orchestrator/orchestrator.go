@@ -714,3 +714,18 @@ type ServiceStatus struct {
 	Health string
 	Error  error
 }
+
+// SetToolCaller sets the ToolCaller for ServiceClass-based services
+// This is called after the aggregator is available
+func (o *Orchestrator) SetToolCaller(toolCaller ToolCaller) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.toolCaller = toolCaller
+}
+
+// GetToolCaller returns the current ToolCaller
+func (o *Orchestrator) GetToolCaller() ToolCaller {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	return o.toolCaller
+}
