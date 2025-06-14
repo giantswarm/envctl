@@ -5,6 +5,7 @@ import (
 	"envctl/internal/api"
 	"envctl/internal/capability"
 	"envctl/internal/config"
+	mcpserverPkg "envctl/internal/mcpserver"
 	"envctl/internal/orchestrator"
 	"envctl/internal/serviceclass"
 	"envctl/internal/services"
@@ -72,6 +73,28 @@ func (a *aggregatorToolChecker) GetAvailableTools() []string {
 		}
 	}
 	return []string{}
+}
+
+// convertMCPServerDefinition converts config.MCPServerDefinition to mcpserver.MCPServerDefinition
+func convertMCPServerDefinition(cfg config.MCPServerDefinition) mcpserverPkg.MCPServerDefinition {
+	return mcpserverPkg.MCPServerDefinition{
+		Name:                cfg.Name,
+		Type:                mcpserverPkg.MCPServerType(cfg.Type),
+		Enabled:             cfg.Enabled,
+		Icon:                cfg.Icon,
+		Category:            cfg.Category,
+		HealthCheckInterval: cfg.HealthCheckInterval,
+		ToolPrefix:          cfg.ToolPrefix,
+		Command:             cfg.Command,
+		Env:                 cfg.Env,
+		Image:               cfg.Image,
+		ContainerPorts:      cfg.ContainerPorts,
+		ContainerEnv:        cfg.ContainerEnv,
+		ContainerVolumes:    cfg.ContainerVolumes,
+		HealthCheckCmd:      cfg.HealthCheckCmd,
+		Entrypoint:          cfg.Entrypoint,
+		ContainerUser:       cfg.ContainerUser,
+	}
 }
 
 // InitializeServices creates and registers all required services
@@ -195,7 +218,7 @@ func InitializeServices(cfg *Config) (*Services, error) {
 	// Create MCP server services based on configuration
 	for _, mcpConfig := range cfg.EnvctlConfig.MCPServers {
 		if mcpConfig.Enabled {
-			mcpService := mcpserver.NewMCPServerService(mcpConfig)
+			mcpService := mcpserver.NewMCPServerService(convertMCPServerDefinition(mcpConfig))
 			if mcpService != nil {
 				registry.Register(mcpService)
 			}

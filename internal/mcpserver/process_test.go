@@ -1,17 +1,16 @@
 package mcpserver
 
 import (
-	"envctl/internal/config"
 	"testing"
 )
 
 // TestErrorHandling tests that errors are properly reported when starting a server with invalid command
 func TestErrorHandling(t *testing.T) {
 	// Test that errors are properly reported
-	serverCfg := config.MCPServerDefinition{
+	serverCfg := MCPServerDefinition{
 		Name:    "error-test-server",
 		Command: []string{"/non/existent/command"},
-		Type:    config.MCPServerTypeLocalCommand,
+		Type:    MCPServerTypeLocalCommand,
 	}
 
 	var reportedError error
@@ -42,4 +41,4 @@ func TestStartAndManageIndividualMcpServer(t *testing.T) {
 // TestPipeFails is no longer applicable since mark3labs/mcp-go handles pipe creation internally
 func TestPipeFails(t *testing.T) {
 	t.Skip("Skipping test - mark3labs/mcp-go handles pipe creation internally")
-}
+} 

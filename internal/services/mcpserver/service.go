@@ -2,7 +2,6 @@ package mcpserver
 
 import (
 	"context"
-	"envctl/internal/config"
 	"envctl/internal/containerizer"
 	"envctl/internal/mcpserver"
 	"envctl/internal/services"
@@ -18,7 +17,7 @@ type MCPServerService struct {
 	*services.BaseService
 
 	// Immutable configuration (no mutex needed)
-	config config.MCPServerDefinition
+	config mcpserver.MCPServerDefinition
 
 	// Runtime state (minimal mutex protection needed)
 	mu            sync.RWMutex
@@ -36,7 +35,7 @@ type MCPServerService struct {
 }
 
 // NewMCPServerService creates a new MCP server service
-func NewMCPServerService(cfg config.MCPServerDefinition) *MCPServerService {
+func NewMCPServerService(cfg mcpserver.MCPServerDefinition) *MCPServerService {
 	deps := []string{}
 
 	return &MCPServerService{
@@ -104,9 +103,9 @@ func (s *MCPServerService) Start(ctx context.Context) error {
 
 	var err error
 	switch s.config.Type {
-	case config.MCPServerTypeLocalCommand:
+	case mcpserver.MCPServerTypeLocalCommand:
 		err = s.startLocalCommand(updateFn)
-	case config.MCPServerTypeContainer:
+	case mcpserver.MCPServerTypeContainer:
 		err = s.startContainer(updateFn)
 	default:
 		err = fmt.Errorf("unsupported server type: %s", s.config.Type)
@@ -320,14 +319,14 @@ func (s *MCPServerService) GetMCPClient() interface{} {
 	}
 
 	switch s.config.Type {
-	case config.MCPServerTypeLocalCommand:
+	case mcpserver.MCPServerTypeLocalCommand:
 		if s.managedServer != nil {
 			logging.Debug("MCPServer", "GetMCPClient returning client for %s", s.config.Name)
 			return s.managedServer.Client
 		} else {
 			logging.Warn("MCPServer", "GetMCPClient: managedServer is nil for running service %s", s.config.Name)
 		}
-	case config.MCPServerTypeContainer:
+	case mcpserver.MCPServerTypeContainer:
 		// TODO: Implement container client support
 		logging.Debug("MCPServer", "GetMCPClient: container type not yet supported for %s", s.config.Name)
 		return nil

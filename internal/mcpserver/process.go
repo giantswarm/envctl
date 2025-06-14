@@ -2,8 +2,6 @@ package mcpserver
 
 import (
 	"context"
-	"envctl/internal/aggregator"
-	"envctl/internal/config"
 	"envctl/pkg/logging"
 	"fmt"
 	"io"
@@ -15,14 +13,14 @@ import (
 // ManagedMcpServer represents a running MCP server with its client
 type ManagedMcpServer struct {
 	Label    string
-	Client   aggregator.MCPClient
+	Client   MCPClient
 	StopChan chan struct{}
 }
 
 // StartAndManageIndividualMcpServer prepares, starts, and manages a single MCP server process.
 // It returns the managed server info including the stdio client for communication.
 func StartAndManageIndividualMcpServer(
-	serverConfig config.MCPServerDefinition,
+	serverConfig MCPServerDefinition,
 	updateFn McpUpdateFunc,
 	wg *sync.WaitGroup,
 ) (*ManagedMcpServer, error) {

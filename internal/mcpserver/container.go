@@ -3,7 +3,6 @@ package mcpserver
 import (
 	"bufio"
 	"context"
-	"envctl/internal/config"
 	"envctl/internal/containerizer"
 	"envctl/pkg/logging"
 	"fmt"
@@ -15,7 +14,7 @@ import (
 
 // StartAndManageContainerizedMcpServer starts and manages a containerized MCP server
 func StartAndManageContainerizedMcpServer(
-	serverConfig config.MCPServerDefinition,
+	serverConfig MCPServerDefinition,
 	runtime containerizer.ContainerRuntime,
 	updateFn McpUpdateFunc,
 	wg *sync.WaitGroup,
