@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"envctl/internal/config"
 	"os"
 	"path/filepath"
 	"testing"
@@ -29,6 +30,18 @@ func (m *mockConfigurationLoader) LoadAndParseYAML(subDir string, validator func
 	}
 	
 	return validWorkflows, nil
+}
+
+func (m *mockConfigurationLoader) LoadAndParseYAMLWithErrors(subDir string, validator func(WorkflowDefinition) error) ([]WorkflowDefinition, *config.ConfigurationErrorCollection, error) {
+	// For testing, we'll just use the simple version and return no errors
+	workflows, err := m.LoadAndParseYAML(subDir, validator)
+	if err != nil {
+		return nil, nil, err
+	}
+	
+	// Return empty error collection for successful case
+	errorCollection := &config.ConfigurationErrorCollection{}
+	return workflows, errorCollection, nil
 }
 
 func TestWorkflowStorage_LayeredLoading(t *testing.T) {

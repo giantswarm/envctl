@@ -19,6 +19,7 @@ var getConfigurationPaths = config.GetConfigurationPaths
 // ConfigurationLoader interface for testing
 type ConfigurationLoader interface {
 	LoadAndParseYAML(subDir string, validator func(WorkflowDefinition) error) ([]WorkflowDefinition, error)
+	LoadAndParseYAMLWithErrors(subDir string, validator func(WorkflowDefinition) error) ([]WorkflowDefinition, *config.ConfigurationErrorCollection, error)
 }
 
 // defaultConfigurationLoader wraps the config package loader
@@ -26,6 +27,10 @@ type defaultConfigurationLoader struct{}
 
 func (d *defaultConfigurationLoader) LoadAndParseYAML(subDir string, validator func(WorkflowDefinition) error) ([]WorkflowDefinition, error) {
 	return config.LoadAndParseYAML[WorkflowDefinition](subDir, validator)
+}
+
+func (d *defaultConfigurationLoader) LoadAndParseYAMLWithErrors(subDir string, validator func(WorkflowDefinition) error) ([]WorkflowDefinition, *config.ConfigurationErrorCollection, error) {
+	return config.LoadAndParseYAMLWithErrors[WorkflowDefinition](subDir, validator)
 }
 
 // WorkflowStorage manages persistent storage of workflows
@@ -60,6 +65,7 @@ func NewWorkflowStorageWithLoader(configDir string, loader ConfigurationLoader) 
 }
 
 // LoadWorkflows loads workflows using layered configuration loading
+// with enhanced error handling and graceful degradation
 func (ws *WorkflowStorage) LoadWorkflows() error {
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
@@ -67,8 +73,8 @@ func (ws *WorkflowStorage) LoadWorkflows() error {
 	// Clear existing workflows
 	ws.workflows = make(map[string]*WorkflowDefinition)
 
-	// Load workflow definitions using the configuration loader
-	definitions, err := ws.loader.LoadAndParseYAML("workflows", func(def WorkflowDefinition) error {
+	// Load workflow definitions using the enhanced configuration loader
+	definitions, errorCollection, err := ws.loader.LoadAndParseYAMLWithErrors("workflows", func(def WorkflowDefinition) error {
 		return ws.validateDefinition(&def)
 	})
 	if err != nil {
@@ -86,6 +92,31 @@ func (ws *WorkflowStorage) LoadWorkflows() error {
 	// Also load legacy agent workflows for backward compatibility
 	if err := ws.loadLegacyAgentWorkflows(); err != nil {
 		logging.Warn("WorkflowStorage", "Failed to load legacy agent workflows: %v", err)
+	}
+
+	// Handle configuration errors with detailed reporting
+	if errorCollection.HasErrors() {
+		errorCount := errorCollection.Count()
+		successCount := len(definitions)
+		
+		// Log comprehensive error information
+		logging.Warn("WorkflowStorage", "Workflow loading completed with %d errors (loaded %d successfully)", 
+			errorCount, successCount)
+		
+		// Log detailed error summary for troubleshooting
+		logging.Warn("WorkflowStorage", "Workflow configuration errors:\n%s", 
+			errorCollection.GetSummary())
+		
+		// Log full error details for debugging
+		logging.Debug("WorkflowStorage", "Detailed error report:\n%s", 
+			errorCollection.GetDetailedReport())
+		
+		// For Workflow, we allow graceful degradation - return success with warnings
+		// This enables the application to continue with working Workflow definitions
+		logging.Info("WorkflowStorage", "Workflow storage initialized with %d valid definitions (graceful degradation enabled)", 
+			successCount)
+		
+		return nil // Return success to allow graceful degradation
 	}
 
 	return nil

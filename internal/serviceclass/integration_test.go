@@ -23,6 +23,16 @@ func (m *mockToolChecker) IsToolAvailable(toolName string) bool {
 	return m.availableTools[toolName]
 }
 
+func (m *mockToolChecker) GetAvailableTools() []string {
+	var tools []string
+	for tool, available := range m.availableTools {
+		if available {
+			tools = append(tools, tool)
+		}
+	}
+	return tools
+}
+
 // mockToolCaller implements api.ToolCaller for testing
 type mockToolCaller struct {
 	calls []toolCall
@@ -128,7 +138,8 @@ metadata:
 	}
 
 	// Create ServiceClass manager
-	manager := NewServiceClassManager(tmpDir, mockChecker)
+	manager, err := NewServiceClassManager(mockChecker)
+	require.NoError(t, err)
 
 	// Load definitions
 	require.NoError(t, manager.LoadServiceDefinitions())
@@ -206,7 +217,8 @@ metadata:
 	}
 
 	// Create ServiceClass manager
-	manager := NewServiceClassManager(tmpDir, mockChecker)
+	manager, err := NewServiceClassManager(mockChecker)
+	require.NoError(t, err)
 
 	// Load definitions
 	require.NoError(t, manager.LoadServiceDefinitions())
@@ -268,7 +280,8 @@ metadata:
 	}
 
 	// Create ServiceClass manager and adapter
-	manager := NewServiceClassManager(tmpDir, mockChecker)
+	manager, err := NewServiceClassManager(mockChecker)
+	require.NoError(t, err)
 	adapter := NewAdapter(manager)
 
 	// Load definitions through adapter
@@ -289,18 +302,8 @@ metadata:
 	assert.Equal(t, "test_simple", classes[0].Name)
 	assert.True(t, classes[0].Available)
 
-	// Test create and delete tool info through adapter
-	createTool, createArgs, createMapping, err := adapter.GetCreateTool("test_simple")
-	require.NoError(t, err)
-	assert.Equal(t, "test_create_tool", createTool)
-	assert.NotNil(t, createArgs)
-	assert.Equal(t, "$.id", createMapping["serviceId"])
-
-	deleteTool, deleteArgs, deleteMapping, err := adapter.GetDeleteTool("test_simple")
-	require.NoError(t, err)
-	assert.Equal(t, "test_delete_tool", deleteTool)
-	assert.NotNil(t, deleteArgs)
-	assert.Equal(t, "$.status", deleteMapping["status"])
+	// Note: GetCreateTool and GetDeleteTool methods are no longer available
+	// The functionality has been moved to the unified manager pattern
 }
 
 // TestServiceClassErrorHandling tests various error scenarios
@@ -322,7 +325,8 @@ description: "Invalid service class for testing"
 	}
 
 	// Create ServiceClass manager
-	manager := NewServiceClassManager(tmpDir, mockChecker)
+	manager, err := NewServiceClassManager(mockChecker)
+	require.NoError(t, err)
 
 	// Loading should succeed but invalid definitions should be skipped
 	require.NoError(t, manager.LoadServiceDefinitions())
@@ -338,14 +342,11 @@ description: "Invalid service class for testing"
 	adapter := NewAdapter(manager)
 
 	// Test getting non-existent ServiceClass through API
-	_, err := adapter.GetServiceClass("non_existent")
+	_, err = adapter.GetServiceClass("non_existent")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
 
-	// Test getting create tool for non-existent ServiceClass
-	_, _, _, err = adapter.GetCreateTool("non_existent")
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "not found")
+	// Note: GetCreateTool method is no longer available in the new architecture
 }
 
 // TestServiceClassToolProviderIntegration tests the ToolProvider functionality
@@ -393,7 +394,8 @@ metadata:
 	}
 
 	// Create ServiceClass manager and adapter
-	manager := NewServiceClassManager(tmpDir, mockChecker)
+	manager, err := NewServiceClassManager(mockChecker)
+	require.NoError(t, err)
 	adapter := NewAdapter(manager)
 
 	// Load definitions

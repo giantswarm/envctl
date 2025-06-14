@@ -146,10 +146,26 @@ func (m *mockServiceClassManager) GetHealthCheckTool(name string) (toolName stri
 }
 
 func (m *mockServiceClassManager) GetHealthCheckConfig(name string) (enabled bool, interval time.Duration, failureThreshold, successThreshold int, err error) {
-	if config, exists := m.healthCheckConfigs[name]; exists {
-		return config.enabled, config.interval, config.failureThreshold, config.successThreshold, nil
+	config, exists := m.healthCheckConfigs[name]
+	if !exists {
+		return false, 0, 0, 0, fmt.Errorf("health check config not found for service class: %s", name)
 	}
-	return false, 0, 0, 0, fmt.Errorf("health check config for service class %s not found", name)
+	return config.enabled, config.interval, config.failureThreshold, config.successThreshold, nil
+}
+
+func (m *mockServiceClassManager) GetRestartTool(name string) (toolName string, arguments map[string]interface{}, responseMapping map[string]string, err error) {
+	// For testing, return a default restart tool or error if not available
+	return "", nil, nil, fmt.Errorf("restart tool not configured for service class: %s", name)
+}
+
+func (m *mockServiceClassManager) GetStartTool(name string) (toolName string, arguments map[string]interface{}, responseMapping map[string]string, err error) {
+	// Delegate to GetCreateTool for backward compatibility
+	return m.GetCreateTool(name)
+}
+
+func (m *mockServiceClassManager) GetStopTool(name string) (toolName string, arguments map[string]interface{}, responseMapping map[string]string, err error) {
+	// Delegate to GetDeleteTool for backward compatibility
+	return m.GetDeleteTool(name)
 }
 
 func (m *mockServiceClassManager) GetServiceDependencies(name string) ([]string, error) {

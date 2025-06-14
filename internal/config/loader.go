@@ -180,47 +180,183 @@ func (cl *ConfigurationLoader) loadFilesFromDirectory(dirPath, source string) ([
 	return result, nil
 }
 
-// LoadAndParseYAML is a generic utility for loading and parsing YAML files into any type.
-// This ensures consistent loading behavior across all packages.
-func LoadAndParseYAML[T any](subDir string, validator func(T) error) ([]T, error) {
+// LoadAndParseYAMLWithErrors is a generic utility for loading and parsing YAML files into any type
+// with comprehensive error collection and graceful degradation.
+func LoadAndParseYAMLWithErrors[T any](subDir string, validator func(T) error) ([]T, *ConfigurationErrorCollection, error) {
 	loader, err := NewConfigurationLoader()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	files, err := loader.LoadYAMLFiles(subDir)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	var results []T
+	errorCollection := NewConfigurationErrorCollection()
 
 	for _, file := range files {
 		var item T
+		
+		// Read file
 		data, err := os.ReadFile(file.Path)
 		if err != nil {
-			logging.Error("ConfigurationLoader", err, "Failed to read %s file: %s", file.Source, file.Path)
+			suggestions := []string{
+				"Check file permissions",
+				"Verify the file exists and is readable",
+			}
+			configError := NewConfigurationErrorWithDetails(
+				file.Path, file.Name, file.Source, subDir, "io",
+				fmt.Sprintf("Failed to read file: %v", err),
+				"File system error occurred while reading configuration file",
+				suggestions,
+			)
+			errorCollection.Add(configError)
 			continue
 		}
 
+		// Parse YAML
 		if err := yaml.Unmarshal(data, &item); err != nil {
-			logging.Error("ConfigurationLoader", err, "Failed to parse %s YAML file: %s", file.Source, file.Path)
+			suggestions := []string{
+				"Check YAML syntax and indentation",
+				"Verify all strings are properly quoted",
+				"Ensure no tabs are used (use spaces for indentation)",
+				"Validate YAML structure with a YAML validator",
+			}
+			
+			details := fmt.Sprintf("YAML parsing failed: %v", err)
+			if yamlErr, ok := err.(*yaml.TypeError); ok {
+				details = fmt.Sprintf("YAML type error: %s", strings.Join(yamlErr.Errors, ", "))
+			}
+
+			configError := NewConfigurationErrorWithDetails(
+				file.Path, file.Name, file.Source, subDir, "parse",
+				"Invalid YAML format",
+				details,
+				suggestions,
+			)
+			errorCollection.Add(configError)
 			continue
 		}
 
 		// Validate if validator provided
 		if validator != nil {
 			if err := validator(item); err != nil {
-				logging.Error("ConfigurationLoader", err, "Validation failed for %s file: %s", file.Source, file.Path)
+				suggestions := getValidationSuggestions(subDir, err)
+				configError := NewConfigurationErrorWithDetails(
+					file.Path, file.Name, file.Source, subDir, "validation",
+					fmt.Sprintf("Validation failed: %v", err),
+					"Configuration content does not meet requirements",
+					suggestions,
+				)
+				errorCollection.Add(configError)
 				continue
 			}
 		}
 
 		results = append(results, item)
-		logging.Info("ConfigurationLoader", "Loaded %s configuration from %s: %s", file.Source, subDir, file.Name)
+		logging.Info("ConfigurationLoader", "Successfully loaded %s configuration: %s from %s", file.Source, file.Name, subDir)
 	}
 
+	// Log summary of results
+	totalFiles := len(files)
+	successCount := len(results)
+	errorCount := errorCollection.Count()
+	
+	if errorCount > 0 {
+		logging.Warn("ConfigurationLoader", "Loaded %d/%d %s configurations (%d errors)", 
+			successCount, totalFiles, subDir, errorCount)
+	} else if totalFiles > 0 {
+		logging.Info("ConfigurationLoader", "Successfully loaded all %d %s configurations", 
+			successCount, subDir)
+	}
+
+	return results, errorCollection, nil
+}
+
+// LoadAndParseYAML is the original function maintained for backward compatibility
+// It now uses the enhanced error handling but only returns the first error for compatibility
+func LoadAndParseYAML[T any](subDir string, validator func(T) error) ([]T, error) {
+	results, errorCollection, err := LoadAndParseYAMLWithErrors[T](subDir, validator)
+	if err != nil {
+		return nil, err
+	}
+	
+	// For backward compatibility, return the first error if any exist
+	if errorCollection.HasErrors() {
+		// Log all errors for visibility
+		logging.Warn("ConfigurationLoader", "Configuration errors encountered:\n%s", 
+			errorCollection.GetSummary())
+		
+		// Return first error to maintain backward compatibility
+		return results, errorCollection.Errors[0]
+	}
+	
 	return results, nil
+}
+
+// getValidationSuggestions returns context-aware suggestions based on the configuration type and error
+func getValidationSuggestions(subDir string, validationErr error) []string {
+	errorMsg := strings.ToLower(validationErr.Error())
+	var suggestions []string
+
+	// Common suggestions based on configuration type
+	switch subDir {
+	case "serviceclasses":
+		suggestions = append(suggestions, []string{
+			"Ensure 'name', 'type', and 'version' fields are provided",
+			"Verify serviceConfig.lifecycleTools.start.tool is specified",
+			"Check that serviceConfig.lifecycleTools.stop.tool is specified",
+			"Review serviceclass examples in .envctl/serviceclasses/",
+		}...)
+	case "capabilities":
+		suggestions = append(suggestions, []string{
+			"Ensure 'name' and 'type' fields are provided",
+			"Add at least one operation to the operations map",
+			"Verify all operations have valid tool requirements",
+			"Review capability examples in .envctl/capabilities/",
+		}...)
+	case "workflows":
+		suggestions = append(suggestions, []string{
+			"Ensure 'name' field is provided",
+			"Add at least one step to the steps array",
+			"Verify each step has 'id' and 'tool' fields",
+			"Check inputSchema format if present",
+			"Review workflow examples in .envctl/workflows/",
+		}...)
+	}
+
+	// Error-specific suggestions
+	if strings.Contains(errorMsg, "name") && strings.Contains(errorMsg, "empty") {
+		suggestions = append(suggestions, "Set a unique, descriptive name for this configuration")
+	}
+	if strings.Contains(errorMsg, "type") && strings.Contains(errorMsg, "empty") {
+		suggestions = append(suggestions, "Specify the configuration type (must not be empty)")
+	}
+	if strings.Contains(errorMsg, "version") && strings.Contains(errorMsg, "empty") {
+		suggestions = append(suggestions, "Add a version string (e.g., '1.0.0')")
+	}
+	if strings.Contains(errorMsg, "tool") && strings.Contains(errorMsg, "required") {
+		suggestions = append(suggestions, "Specify the MCP tool name to execute")
+	}
+	if strings.Contains(errorMsg, "step") && strings.Contains(errorMsg, "least one") {
+		suggestions = append(suggestions, "Add workflow steps with tool calls")
+	}
+	if strings.Contains(errorMsg, "operation") && strings.Contains(errorMsg, "least one") {
+		suggestions = append(suggestions, "Define operations that this capability provides")
+	}
+
+	// Add generic suggestions if none were added
+	if len(suggestions) == 0 {
+		suggestions = []string{
+			"Check the configuration file format and required fields",
+			"Review documentation for this configuration type",
+			"Compare with working examples in .envctl/",
+		}
+	}
+
+	return suggestions
 }
 
 // Path helper functions

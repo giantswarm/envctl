@@ -35,6 +35,7 @@ func NewCapabilityManager(toolChecker config.ToolAvailabilityChecker, registry *
 }
 
 // LoadDefinitions loads all capability definitions using layered configuration loading
+// with enhanced error handling and graceful degradation
 func (cm *CapabilityManager) LoadDefinitions() error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
@@ -43,8 +44,8 @@ func (cm *CapabilityManager) LoadDefinitions() error {
 	cm.definitions = make(map[string]*CapabilityDefinition)
 	cm.exposedTools = make(map[string]bool)
 
-	// Load capability definitions using the common configuration loader
-	definitions, err := config.LoadAndParseYAML[CapabilityDefinition]("capabilities", func(def CapabilityDefinition) error {
+	// Load capability definitions using the enhanced configuration loader
+	definitions, errorCollection, err := config.LoadAndParseYAMLWithErrors[CapabilityDefinition]("capabilities", func(def CapabilityDefinition) error {
 		return cm.validateDefinition(&def)
 	})
 	if err != nil {
@@ -61,6 +62,31 @@ func (cm *CapabilityManager) LoadDefinitions() error {
 
 	// Check which capabilities can be exposed
 	cm.updateAvailableCapabilities()
+
+	// Handle configuration errors with detailed reporting
+	if errorCollection.HasErrors() {
+		errorCount := errorCollection.Count()
+		successCount := len(definitions)
+		
+		// Log comprehensive error information
+		logging.Warn("CapabilityManager", "Capability loading completed with %d errors (loaded %d successfully)", 
+			errorCount, successCount)
+		
+		// Log detailed error summary for troubleshooting
+		logging.Warn("CapabilityManager", "Capability configuration errors:\n%s", 
+			errorCollection.GetSummary())
+		
+		// Log full error details for debugging
+		logging.Debug("CapabilityManager", "Detailed error report:\n%s", 
+			errorCollection.GetDetailedReport())
+		
+		// For Capability, we allow graceful degradation - return success with warnings
+		// This enables the application to continue with working Capability definitions
+		logging.Info("CapabilityManager", "Capability manager initialized with %d valid definitions (graceful degradation enabled)", 
+			successCount)
+		
+		return nil // Return success to allow graceful degradation
+	}
 
 	return nil
 }

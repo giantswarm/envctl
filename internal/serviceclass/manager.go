@@ -42,6 +42,7 @@ func NewServiceClassManager(toolChecker config.ToolAvailabilityChecker) (*Servic
 }
 
 // LoadServiceDefinitions loads all service class definitions using layered configuration loading
+// with enhanced error handling and graceful degradation
 func (scm *ServiceClassManager) LoadServiceDefinitions() error {
 	scm.mu.Lock()
 	defer scm.mu.Unlock()
@@ -50,8 +51,8 @@ func (scm *ServiceClassManager) LoadServiceDefinitions() error {
 	scm.definitions = make(map[string]*ServiceClassDefinition)
 	scm.exposedServices = make(map[string]bool)
 
-	// Load service class definitions using the common configuration loader
-	definitions, err := config.LoadAndParseYAML[ServiceClassDefinition]("serviceclasses", func(def ServiceClassDefinition) error {
+	// Load service class definitions using the enhanced configuration loader
+	definitions, errorCollection, err := config.LoadAndParseYAMLWithErrors[ServiceClassDefinition]("serviceclasses", func(def ServiceClassDefinition) error {
 		return scm.validateServiceClassDefinition(&def)
 	})
 	if err != nil {
@@ -73,6 +74,31 @@ func (scm *ServiceClassManager) LoadServiceDefinitions() error {
 
 	// Check which service classes are available based on tool availability
 	scm.updateServiceAvailability()
+
+	// Handle configuration errors with detailed reporting
+	if errorCollection.HasErrors() {
+		errorCount := errorCollection.Count()
+		successCount := len(definitions)
+		
+		// Log comprehensive error information
+		logging.Warn("ServiceClassManager", "ServiceClass loading completed with %d errors (loaded %d successfully)", 
+			errorCount, successCount)
+		
+		// Log detailed error summary for troubleshooting
+		logging.Warn("ServiceClassManager", "ServiceClass configuration errors:\n%s", 
+			errorCollection.GetSummary())
+		
+		// Log full error details for debugging
+		logging.Debug("ServiceClassManager", "Detailed error report:\n%s", 
+			errorCollection.GetDetailedReport())
+		
+		// For ServiceClass, we allow graceful degradation - return success with warnings
+		// This enables the application to continue with working ServiceClass definitions
+		logging.Info("ServiceClassManager", "ServiceClass manager initialized with %d valid definitions (graceful degradation enabled)", 
+			successCount)
+		
+		return nil // Return success to allow graceful degradation
+	}
 
 	return nil
 }
