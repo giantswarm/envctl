@@ -113,7 +113,7 @@ func (a *Adapter) ExecuteCapability(ctx context.Context, capabilityType, operati
 
 	// Execute the capability operation
 	logging.Info("CapabilityAdapter", "Executing capability operation: %s.%s (description: %s)", capabilityType, operation, opDef.Description)
-	
+
 	// For now, return a placeholder result
 	// TODO: Implement actual capability execution logic
 	return &api.CallToolResult{
@@ -129,13 +129,13 @@ func (a *Adapter) IsCapabilityAvailable(capabilityType, operation string) bool {
 	if err != nil {
 		return false
 	}
-	
+
 	// Check if the capability itself is available
 	def, exists := a.manager.GetDefinition(capabilityType)
 	if !exists {
 		return false
 	}
-	
+
 	return a.manager.IsAvailable(def.Name)
 }
 
@@ -143,7 +143,7 @@ func (a *Adapter) IsCapabilityAvailable(capabilityType, operation string) bool {
 func (a *Adapter) ListCapabilities() []api.CapabilityInfo {
 	definitions := a.manager.ListDefinitions()
 	result := make([]api.CapabilityInfo, len(definitions))
-	
+
 	for i, def := range definitions {
 		operations := make([]api.OperationInfo, 0, len(def.Operations))
 		for opName, opDef := range def.Operations {
@@ -153,7 +153,7 @@ func (a *Adapter) ListCapabilities() []api.CapabilityInfo {
 				Available:   a.IsCapabilityAvailable(def.Type, opName),
 			})
 		}
-		
+
 		result[i] = api.CapabilityInfo{
 			Type:        def.Type,
 			Name:        def.Name,
@@ -162,14 +162,14 @@ func (a *Adapter) ListCapabilities() []api.CapabilityInfo {
 			Operations:  operations,
 		}
 	}
-	
+
 	return result
 }
 
 // listCapabilities lists all capability definitions
 func (a *Adapter) listCapabilities(ctx context.Context) (*api.CallToolResult, error) {
 	definitions := a.manager.ListDefinitions()
-	
+
 	result := make([]map[string]interface{}, len(definitions))
 	for i, def := range definitions {
 		available := a.manager.IsAvailable(def.Name)
@@ -200,7 +200,7 @@ func (a *Adapter) getCapability(ctx context.Context, name string) (*api.CallTool
 	}
 
 	available := a.manager.IsAvailable(name)
-	
+
 	result := map[string]interface{}{
 		"name":        def.Name,
 		"type":        def.Type,
@@ -220,7 +220,7 @@ func (a *Adapter) getCapability(ctx context.Context, name string) (*api.CallTool
 // checkCapabilityAvailable checks if a capability is available
 func (a *Adapter) checkCapabilityAvailable(ctx context.Context, name string) (*api.CallToolResult, error) {
 	available := a.manager.IsAvailable(name)
-	
+
 	result := map[string]interface{}{
 		"name":      name,
 		"available": available,
@@ -235,7 +235,7 @@ func (a *Adapter) checkCapabilityAvailable(ctx context.Context, name string) (*a
 // getDefinitionsPath returns the paths where capability definitions are loaded from
 func (a *Adapter) getDefinitionsPath(ctx context.Context) (*api.CallToolResult, error) {
 	path := a.manager.GetDefinitionsPath()
-	
+
 	result := map[string]interface{}{
 		"path": path,
 	}

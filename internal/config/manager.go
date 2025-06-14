@@ -11,16 +11,16 @@ import (
 type DefinitionManager[T any] interface {
 	// Loading and initialization
 	LoadDefinitions() error
-	
+
 	// Definition retrieval
 	GetDefinition(name string) (T, bool)
 	ListDefinitions() []T
 	ListAvailableDefinitions() []T
-	
+
 	// Availability management
 	IsAvailable(name string) bool
 	RefreshAvailability()
-	
+
 	// Information retrieval
 	GetDefinitionsPath() string
 }
@@ -40,12 +40,12 @@ type ManagerConfig struct {
 
 // CommonManager provides shared functionality for all definition managers
 type CommonManager[T any] struct {
-	mu              sync.RWMutex
-	loader          *ConfigurationLoader
-	definitions     map[string]*T
-	availableItems  map[string]bool
-	config          ManagerConfig
-	subDirectory    string // The subdirectory name (e.g., "serviceclasses", "capabilities", "workflows")
+	mu             sync.RWMutex
+	loader         *ConfigurationLoader
+	definitions    map[string]*T
+	availableItems map[string]bool
+	config         ManagerConfig
+	subDirectory   string // The subdirectory name (e.g., "serviceclasses", "capabilities", "workflows")
 }
 
 // NewCommonManager creates a new common manager base
@@ -70,10 +70,10 @@ func (cm *CommonManager[T]) GetDefinitionsPath() string {
 	if err != nil {
 		return "error determining paths"
 	}
-	
+
 	userPath := filepath.Join(userDir, cm.subDirectory)
 	projectPath := filepath.Join(projectDir, cm.subDirectory)
-	
+
 	return fmt.Sprintf("User: %s, Project: %s", userPath, projectPath)
 }
 
@@ -96,4 +96,4 @@ func (cm *CommonManager[T]) IsAvailable(name string) bool {
 	defer cm.mu.RUnlock()
 
 	return cm.availableItems[name]
-} 
+}

@@ -15,6 +15,16 @@ import (
 var osUserHomeDir = os.UserHomeDir
 var osGetwd = os.Getwd
 
+// GetOsGetwd returns the current osGetwd function (for testing)
+func GetOsGetwd() func() (string, error) {
+	return osGetwd
+}
+
+// SetOsGetwd sets the osGetwd function (for testing)
+func SetOsGetwd(fn func() (string, error)) {
+	osGetwd = fn
+}
+
 const (
 	userConfigDir    = ".config/envctl"
 	projectConfigDir = ".envctl"
@@ -198,7 +208,7 @@ func LoadAndParseYAMLWithErrors[T any](subDir string, validator func(T) error) (
 
 	for _, file := range files {
 		var item T
-		
+
 		// Read file
 		data, err := os.ReadFile(file.Path)
 		if err != nil {
@@ -224,7 +234,7 @@ func LoadAndParseYAMLWithErrors[T any](subDir string, validator func(T) error) (
 				"Ensure no tabs are used (use spaces for indentation)",
 				"Validate YAML structure with a YAML validator",
 			}
-			
+
 			details := fmt.Sprintf("YAML parsing failed: %v", err)
 			if yamlErr, ok := err.(*yaml.TypeError); ok {
 				details = fmt.Sprintf("YAML type error: %s", strings.Join(yamlErr.Errors, ", "))
@@ -263,12 +273,12 @@ func LoadAndParseYAMLWithErrors[T any](subDir string, validator func(T) error) (
 	totalFiles := len(files)
 	successCount := len(results)
 	errorCount := errorCollection.Count()
-	
+
 	if errorCount > 0 {
-		logging.Warn("ConfigurationLoader", "Loaded %d/%d %s configurations (%d errors)", 
+		logging.Warn("ConfigurationLoader", "Loaded %d/%d %s configurations (%d errors)",
 			successCount, totalFiles, subDir, errorCount)
 	} else if totalFiles > 0 {
-		logging.Info("ConfigurationLoader", "Successfully loaded all %d %s configurations", 
+		logging.Info("ConfigurationLoader", "Successfully loaded all %d %s configurations",
 			successCount, subDir)
 	}
 
@@ -282,17 +292,17 @@ func LoadAndParseYAML[T any](subDir string, validator func(T) error) ([]T, error
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// For backward compatibility, return the first error if any exist
 	if errorCollection.HasErrors() {
 		// Log all errors for visibility
-		logging.Warn("ConfigurationLoader", "Configuration errors encountered:\n%s", 
+		logging.Warn("ConfigurationLoader", "Configuration errors encountered:\n%s",
 			errorCollection.GetSummary())
-		
+
 		// Return first error to maintain backward compatibility
 		return results, errorCollection.Errors[0]
 	}
-	
+
 	return results, nil
 }
 

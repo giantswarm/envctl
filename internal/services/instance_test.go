@@ -384,6 +384,7 @@ func TestGenericServiceInstance_Start_ToolCallError(t *testing.T) {
 		Name: "test-service",
 		Type: "test",
 	})
+	// Use SetCreateTool since GetStartTool delegates to GetCreateTool in the mock
 	mockMgr.SetCreateTool("test-service", "test_create_tool",
 		map[string]interface{}{},
 		map[string]string{})
@@ -407,7 +408,7 @@ func TestGenericServiceInstance_Start_ToolCallError(t *testing.T) {
 	err := instance.Start(ctx)
 
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "create tool failed")
+	assert.Contains(t, err.Error(), "start tool failed") // Updated to expect "start tool failed"
 	assert.Equal(t, StateFailed, instance.GetState())
 	assert.Equal(t, HealthUnhealthy, instance.GetHealth())
 	assert.NotNil(t, instance.GetLastError())
@@ -422,6 +423,7 @@ func TestGenericServiceInstance_Start_ToolIndicatesFailure(t *testing.T) {
 		Name: "test-service",
 		Type: "test",
 	})
+	// Use SetCreateTool since GetStartTool delegates to GetCreateTool in the mock
 	mockMgr.SetCreateTool("test-service", "test_create_tool",
 		map[string]interface{}{},
 		map[string]string{})
@@ -448,7 +450,7 @@ func TestGenericServiceInstance_Start_ToolIndicatesFailure(t *testing.T) {
 	err := instance.Start(ctx)
 
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "create tool failed")
+	assert.Contains(t, err.Error(), "start tool failed") // Updated to expect "start tool failed"
 	assert.Contains(t, err.Error(), "insufficient resources")
 	assert.Equal(t, StateFailed, instance.GetState())
 	assert.Equal(t, HealthUnhealthy, instance.GetHealth())
@@ -515,6 +517,7 @@ func TestGenericServiceInstance_Restart(t *testing.T) {
 		Name: "test-service",
 		Type: "test",
 	})
+	// Setup both create and delete tools since restart uses stop/start fallback
 	mockMgr.SetCreateTool("test-service", "test_create_tool",
 		map[string]interface{}{},
 		map[string]string{})
@@ -546,7 +549,8 @@ func TestGenericServiceInstance_Restart(t *testing.T) {
 	// Set instance to running state first
 	instance.UpdateState(StateRunning, HealthHealthy, nil)
 
-	// Test restart
+	// Test restart - Note: Since GetRestartTool returns error (no restart tool configured),
+	// it will fall back to Stop + Start sequence
 	ctx := context.Background()
 	err := instance.Restart(ctx)
 
@@ -554,7 +558,7 @@ func TestGenericServiceInstance_Restart(t *testing.T) {
 	assert.Equal(t, StateRunning, instance.GetState())
 	assert.Equal(t, HealthHealthy, instance.GetHealth())
 
-	// Verify both tools were called
+	// Verify both tools were called (stop then start)
 	calls := toolCaller.GetCalls()
 	require.Len(t, calls, 2)
 	assert.Equal(t, "test_delete_tool", calls[0].toolName)

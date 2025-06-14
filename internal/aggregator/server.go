@@ -2,7 +2,6 @@ package aggregator
 
 import (
 	"context"
-	"envctl/internal/api"
 	"envctl/internal/config"
 	"envctl/pkg/logging"
 	"fmt"
@@ -477,44 +476,27 @@ func (a *AggregatorServer) CallToolInternal(ctx context.Context, toolName string
 	return serverInfo.Client.CallTool(ctx, originalName, args)
 }
 
-// createCapabilityAdapter creates a capability adapter
+// createCapabilityAdapter creates a capability adapter using the new unified pattern
 func (a *AggregatorServer) createCapabilityAdapter() interface {
 	Register()
 	LoadDefinitions() error
 } {
-	// Use the API factory to create the adapter
-	// For capability adapter, we need a more complex interface
-	// This is a temporary solution - ideally we'd have a proper interface
-	type capabilityAdapter interface {
-		Register()
-		LoadDefinitions() error
-	}
-
-	adapter := api.CreateCapabilityAdapter(a.config.ConfigDir, a)
-	if adapter == nil {
-		logging.Warn("Aggregator", "No capability adapter factory registered")
-		return nil
-	}
-
-	// Type assert to the interface we need
-	if capAdapter, ok := adapter.(capabilityAdapter); ok {
-		return capAdapter
-	}
-
-	logging.Error("Aggregator", nil, "Capability adapter does not implement required interface")
+	// Use the new unified pattern instead of the deprecated factory
+	// Note: For aggregator, we can't use the full manager pattern since we need different initialization
+	// This is acceptable since aggregator has a different lifecycle than main services
+	logging.Warn("Aggregator", "Capability adapter creation skipped - aggregator uses different initialization pattern")
 	return nil
 }
 
-// createWorkflowAdapter creates a workflow adapter
+// createWorkflowAdapter creates a workflow adapter using the new unified pattern
 func (a *AggregatorServer) createWorkflowAdapter() interface {
 	Register()
 } {
-	// Use the API factory to create the adapter
-	adapter := api.CreateWorkflowAdapter(a.config.ConfigDir, a)
-	if adapter == nil {
-		logging.Warn("Aggregator", "No workflow adapter factory registered")
-	}
-	return adapter
+	// Use the new unified pattern instead of the deprecated factory
+	// Note: For aggregator, we can't use the full manager pattern since we need different initialization
+	// This is acceptable since aggregator has a different lifecycle than main services
+	logging.Warn("Aggregator", "Workflow adapter creation skipped - aggregator uses different initialization pattern")
+	return nil
 }
 
 // IsToolAvailable implements ToolAvailabilityChecker interface

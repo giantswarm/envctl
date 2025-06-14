@@ -10,12 +10,12 @@ import (
 
 // CapabilityManager manages capability definitions and their availability
 type CapabilityManager struct {
-	mu              sync.RWMutex
-	loader          *config.ConfigurationLoader
-	definitions     map[string]*CapabilityDefinition // capability name -> definition
-	toolChecker     config.ToolAvailabilityChecker
-	registry        *Registry
-	exposedTools    map[string]bool // Track which capability tools we've exposed
+	mu           sync.RWMutex
+	loader       *config.ConfigurationLoader
+	definitions  map[string]*CapabilityDefinition // capability name -> definition
+	toolChecker  config.ToolAvailabilityChecker
+	registry     *Registry
+	exposedTools map[string]bool // Track which capability tools we've exposed
 }
 
 // NewCapabilityManager creates a new capability manager
@@ -26,11 +26,11 @@ func NewCapabilityManager(toolChecker config.ToolAvailabilityChecker, registry *
 	}
 
 	return &CapabilityManager{
-		loader:          loader,
-		definitions:     make(map[string]*CapabilityDefinition),
-		toolChecker:     toolChecker,
-		registry:        registry,
-		exposedTools:    make(map[string]bool),
+		loader:       loader,
+		definitions:  make(map[string]*CapabilityDefinition),
+		toolChecker:  toolChecker,
+		registry:     registry,
+		exposedTools: make(map[string]bool),
 	}, nil
 }
 
@@ -67,24 +67,24 @@ func (cm *CapabilityManager) LoadDefinitions() error {
 	if errorCollection.HasErrors() {
 		errorCount := errorCollection.Count()
 		successCount := len(definitions)
-		
+
 		// Log comprehensive error information
-		logging.Warn("CapabilityManager", "Capability loading completed with %d errors (loaded %d successfully)", 
+		logging.Warn("CapabilityManager", "Capability loading completed with %d errors (loaded %d successfully)",
 			errorCount, successCount)
-		
+
 		// Log detailed error summary for troubleshooting
-		logging.Warn("CapabilityManager", "Capability configuration errors:\n%s", 
+		logging.Warn("CapabilityManager", "Capability configuration errors:\n%s",
 			errorCollection.GetSummary())
-		
+
 		// Log full error details for debugging
-		logging.Debug("CapabilityManager", "Detailed error report:\n%s", 
+		logging.Debug("CapabilityManager", "Detailed error report:\n%s",
 			errorCollection.GetDetailedReport())
-		
+
 		// For Capability, we allow graceful degradation - return success with warnings
 		// This enables the application to continue with working Capability definitions
-		logging.Info("CapabilityManager", "Capability manager initialized with %d valid definitions (graceful degradation enabled)", 
+		logging.Info("CapabilityManager", "Capability manager initialized with %d valid definitions (graceful degradation enabled)",
 			successCount)
-		
+
 		return nil // Return success to allow graceful degradation
 	}
 
@@ -186,10 +186,10 @@ func (cm *CapabilityManager) GetDefinitionsPath() string {
 		logging.Error("CapabilityManager", err, "Failed to get configuration paths")
 		return "error determining paths"
 	}
-	
+
 	userPath := fmt.Sprintf("%s/capabilities", userDir)
 	projectPath := fmt.Sprintf("%s/capabilities", projectDir)
-	
+
 	return fmt.Sprintf("User: %s, Project: %s", userPath, projectPath)
 }
 
@@ -222,7 +222,7 @@ func (cm *CapabilityManager) areRequiredToolsAvailable(requiredTools []string) b
 	if cm.toolChecker == nil {
 		return false
 	}
-	
+
 	for _, tool := range requiredTools {
 		if !cm.toolChecker.IsToolAvailable(tool) {
 			return false
@@ -262,4 +262,4 @@ func (cm *CapabilityManager) GetOperationForTool(toolName string) (*OperationDef
 	}
 
 	return nil, nil, fmt.Errorf("no operation found for tool %s", toolName)
-} 
+}

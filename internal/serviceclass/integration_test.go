@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"envctl/internal/config"
+
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -71,10 +73,35 @@ func (m *mockToolCaller) CallToolInternal(ctx context.Context, toolName string, 
 	}
 }
 
+// setupTestDirectory creates a test directory structure and overrides the config paths
+func setupTestDirectory(t *testing.T) (string, func()) {
+	// Create a temporary directory for test
+	tmpDir := t.TempDir()
+
+	// Create the .envctl/serviceclasses directory structure in tmpDir
+	serviceclassDir := filepath.Join(tmpDir, ".envctl", "serviceclasses")
+	require.NoError(t, os.MkdirAll(serviceclassDir, 0755))
+
+	// Store original functions
+	originalOsGetwd := config.GetOsGetwd()
+
+	// Override osGetwd to return our test directory
+	config.SetOsGetwd(func() (string, error) {
+		return tmpDir, nil
+	})
+
+	// Return cleanup function
+	cleanup := func() {
+		config.SetOsGetwd(originalOsGetwd)
+	}
+
+	return serviceclassDir, cleanup
+}
+
 // TestServiceClassManagerIntegration tests the complete integration of ServiceClass loading
 func TestServiceClassManagerIntegration(t *testing.T) {
-	// Create a temporary directory for test definitions
-	tmpDir := t.TempDir()
+	serviceclassDir, cleanup := setupTestDirectory(t)
+	defer cleanup()
 
 	// Write a test ServiceClass definition
 	testYAML := `name: test_k8s_connection
@@ -88,7 +115,7 @@ serviceConfig:
   dependencies: []
   
   lifecycleTools:
-    create:
+    start:
       tool: "api_kubernetes_connect"
       arguments:
         clusterName: "{{ .cluster_name }}"
@@ -97,7 +124,7 @@ serviceConfig:
         serviceId: "$.connectionId"
         status: "$.status"
         health: "$.connected"
-    delete:
+    stop:
       tool: "api_kubernetes_disconnect"
       arguments:
         connectionId: "{{ .service_id }}"
@@ -127,7 +154,7 @@ metadata:
   category: "connection"
 `
 
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "service_k8s_connection.yaml"), []byte(testYAML), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(serviceclassDir, "service_k8s_connection.yaml"), []byte(testYAML), 0644))
 
 	// Create mock tool checker with required tools available
 	mockChecker := &mockToolChecker{
@@ -165,8 +192,8 @@ metadata:
 
 // TestServiceClassMissingTools tests behavior when required tools are not available
 func TestServiceClassMissingTools(t *testing.T) {
-	// Create a temporary directory for test definitions
-	tmpDir := t.TempDir()
+	serviceclassDir, cleanup := setupTestDirectory(t)
+	defer cleanup()
 
 	// Write a ServiceClass definition that requires missing tools
 	portForwardYAML := `name: test_portforward
@@ -179,7 +206,7 @@ serviceConfig:
   defaultLabel: "pf-{{ .service_name }}"
   
   lifecycleTools:
-    create:
+    start:
       tool: "api_k8s_port_forward"
       arguments:
         namespace: "{{ .namespace }}"
@@ -187,7 +214,7 @@ serviceConfig:
       responseMapping:
         serviceId: "$.forwardId"
         status: "$.status"
-    delete:
+    stop:
       tool: "api_k8s_port_forward_stop"
       arguments:
         forwardId: "{{ .service_id }}"
@@ -209,7 +236,7 @@ metadata:
   category: "networking"
 `
 
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "service_portforward.yaml"), []byte(portForwardYAML), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(serviceclassDir, "service_portforward.yaml"), []byte(portForwardYAML), 0644))
 
 	// Create mock tool checker with no tools available
 	mockChecker := &mockToolChecker{
@@ -237,8 +264,8 @@ metadata:
 
 // TestServiceClassAPIAdapter tests the API adapter integration
 func TestServiceClassAPIAdapter(t *testing.T) {
-	// Create a temporary directory for test definitions
-	tmpDir := t.TempDir()
+	serviceclassDir, cleanup := setupTestDirectory(t)
+	defer cleanup()
 
 	// Write a simple ServiceClass definition
 	simpleYAML := `name: test_simple
@@ -251,14 +278,14 @@ serviceConfig:
   defaultLabel: "test-{{ .name }}"
   
   lifecycleTools:
-    create:
+    start:
       tool: "test_create_tool"
       arguments:
         name: "{{ .name }}"
       responseMapping:
         serviceId: "$.id"
         status: "$.status"
-    delete:
+    stop:
       tool: "test_delete_tool"
       arguments:
         serviceId: "{{ .service_id }}"
@@ -269,7 +296,7 @@ metadata:
   provider: "test"
 `
 
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "service_simple.yaml"), []byte(simpleYAML), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(serviceclassDir, "service_simple.yaml"), []byte(simpleYAML), 0644))
 
 	// Create mock tool checker
 	mockChecker := &mockToolChecker{
@@ -308,8 +335,8 @@ metadata:
 
 // TestServiceClassErrorHandling tests various error scenarios
 func TestServiceClassErrorHandling(t *testing.T) {
-	// Create a temporary directory for test definitions
-	tmpDir := t.TempDir()
+	serviceclassDir, cleanup := setupTestDirectory(t)
+	defer cleanup()
 
 	// Write an invalid ServiceClass definition (missing required fields)
 	invalidYAML := `name: test_invalid
@@ -317,7 +344,7 @@ func TestServiceClassErrorHandling(t *testing.T) {
 description: "Invalid service class for testing"
 `
 
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "service_invalid.yaml"), []byte(invalidYAML), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(serviceclassDir, "service_invalid.yaml"), []byte(invalidYAML), 0644))
 
 	// Create mock tool checker
 	mockChecker := &mockToolChecker{
@@ -351,8 +378,8 @@ description: "Invalid service class for testing"
 
 // TestServiceClassToolProviderIntegration tests the ToolProvider functionality
 func TestServiceClassToolProviderIntegration(t *testing.T) {
-	// Create a temporary directory for test definitions
-	tmpDir := t.TempDir()
+	serviceclassDir, cleanup := setupTestDirectory(t)
+	defer cleanup()
 
 	// Write a ServiceClass definition
 	testYAML := `name: test_tool_provider
@@ -365,14 +392,14 @@ serviceConfig:
   defaultLabel: "test"
   
   lifecycleTools:
-    create:
+    start:
       tool: "test_tool"
       arguments:
         param: "value"
       responseMapping:
         serviceId: "$.id"
         status: "$.status"
-    delete:
+    stop:
       tool: "test_delete"
       arguments:
         id: "{{ .service_id }}"
@@ -383,7 +410,7 @@ metadata:
   provider: "test"
 `
 
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "service_tool_provider.yaml"), []byte(testYAML), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(serviceclassDir, "service_tool_provider.yaml"), []byte(testYAML), 0644))
 
 	// Create mock tool checker
 	mockChecker := &mockToolChecker{

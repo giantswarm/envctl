@@ -6,12 +6,12 @@ import (
 
 // CapabilityDefinition defines a capability with operations and requirements
 type CapabilityDefinition struct {
-	Name        string                     `yaml:"name"`
-	Type        string                     `yaml:"type"`
-	Version     string                     `yaml:"version"`
-	Description string                     `yaml:"description"`
+	Name        string                         `yaml:"name"`
+	Type        string                         `yaml:"type"`
+	Version     string                         `yaml:"version"`
+	Description string                         `yaml:"description"`
 	Operations  map[string]OperationDefinition `yaml:"operations"`
-	Metadata    map[string]string          `yaml:"metadata"`
+	Metadata    map[string]string              `yaml:"metadata"`
 }
 
 // OperationDefinition defines an operation within a capability

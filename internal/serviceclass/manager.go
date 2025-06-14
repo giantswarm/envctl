@@ -79,24 +79,24 @@ func (scm *ServiceClassManager) LoadServiceDefinitions() error {
 	if errorCollection.HasErrors() {
 		errorCount := errorCollection.Count()
 		successCount := len(definitions)
-		
+
 		// Log comprehensive error information
-		logging.Warn("ServiceClassManager", "ServiceClass loading completed with %d errors (loaded %d successfully)", 
+		logging.Warn("ServiceClassManager", "ServiceClass loading completed with %d errors (loaded %d successfully)",
 			errorCount, successCount)
-		
+
 		// Log detailed error summary for troubleshooting
-		logging.Warn("ServiceClassManager", "ServiceClass configuration errors:\n%s", 
+		logging.Warn("ServiceClassManager", "ServiceClass configuration errors:\n%s",
 			errorCollection.GetSummary())
-		
+
 		// Log full error details for debugging
-		logging.Debug("ServiceClassManager", "Detailed error report:\n%s", 
+		logging.Debug("ServiceClassManager", "Detailed error report:\n%s",
 			errorCollection.GetDetailedReport())
-		
+
 		// For ServiceClass, we allow graceful degradation - return success with warnings
 		// This enables the application to continue with working ServiceClass definitions
-		logging.Info("ServiceClassManager", "ServiceClass manager initialized with %d valid definitions (graceful degradation enabled)", 
+		logging.Info("ServiceClassManager", "ServiceClass manager initialized with %d valid definitions (graceful degradation enabled)",
 			successCount)
-		
+
 		return nil // Return success to allow graceful degradation
 	}
 
@@ -363,10 +363,10 @@ func (scm *ServiceClassManager) GetDefinitionsPath() string {
 		logging.Error("ServiceClassManager", err, "Failed to get configuration paths")
 		return "error determining paths"
 	}
-	
+
 	userPath := filepath.Join(userDir, "serviceclasses")
 	projectPath := filepath.Join(projectDir, "serviceclasses")
-	
+
 	return fmt.Sprintf("User: %s, Project: %s", userPath, projectPath)
 }
 

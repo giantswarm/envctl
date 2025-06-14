@@ -26,30 +26,30 @@ func (ce ConfigurationError) Error() string {
 // DetailedError returns a detailed error message with all context
 func (ce ConfigurationError) DetailedError() string {
 	var parts []string
-	
+
 	// Base error info
 	parts = append(parts, fmt.Sprintf("Configuration Error in %s file: %s", ce.Source, ce.FileName))
 	parts = append(parts, fmt.Sprintf("  File: %s", ce.FilePath))
 	parts = append(parts, fmt.Sprintf("  Category: %s", ce.Category))
 	parts = append(parts, fmt.Sprintf("  Type: %s", ce.ErrorType))
-	
+
 	if ce.LineNumber > 0 {
 		parts = append(parts, fmt.Sprintf("  Line: %d", ce.LineNumber))
 	}
-	
+
 	parts = append(parts, fmt.Sprintf("  Error: %s", ce.Message))
-	
+
 	if ce.Details != "" {
 		parts = append(parts, fmt.Sprintf("  Details: %s", ce.Details))
 	}
-	
+
 	if len(ce.Suggestions) > 0 {
 		parts = append(parts, "  Suggestions:")
 		for _, suggestion := range ce.Suggestions {
 			parts = append(parts, fmt.Sprintf("    - %s", suggestion))
 		}
 	}
-	
+
 	return strings.Join(parts, "\n")
 }
 
@@ -63,12 +63,12 @@ func (cec ConfigurationErrorCollection) Error() string {
 	if len(cec.Errors) == 0 {
 		return "no configuration errors"
 	}
-	
+
 	if len(cec.Errors) == 1 {
 		return cec.Errors[0].Error()
 	}
-	
-	return fmt.Sprintf("%d configuration errors: %s (and %d more)", 
+
+	return fmt.Sprintf("%d configuration errors: %s (and %d more)",
 		len(cec.Errors), cec.Errors[0].Error(), len(cec.Errors)-1)
 }
 
@@ -126,7 +126,7 @@ func (cec *ConfigurationErrorCollection) GetSummary() string {
 	if len(cec.Errors) == 0 {
 		return "No configuration errors"
 	}
-	
+
 	// Group errors by category and source
 	groups := make(map[string]map[string][]ConfigurationError)
 	for _, err := range cec.Errors {
@@ -135,10 +135,10 @@ func (cec *ConfigurationErrorCollection) GetSummary() string {
 		}
 		groups[err.Category][err.Source] = append(groups[err.Category][err.Source], err)
 	}
-	
+
 	var parts []string
 	parts = append(parts, fmt.Sprintf("Configuration Error Summary (%d total errors):", len(cec.Errors)))
-	
+
 	for category, sources := range groups {
 		parts = append(parts, fmt.Sprintf("\n%s:", category))
 		for source, errors := range sources {
@@ -148,7 +148,7 @@ func (cec *ConfigurationErrorCollection) GetSummary() string {
 			}
 		}
 	}
-	
+
 	return strings.Join(parts, "\n")
 }
 
@@ -157,20 +157,20 @@ func (cec *ConfigurationErrorCollection) GetDetailedReport() string {
 	if len(cec.Errors) == 0 {
 		return "No configuration errors to report"
 	}
-	
+
 	var parts []string
 	parts = append(parts, fmt.Sprintf("Detailed Configuration Error Report (%d errors):", len(cec.Errors)))
 	parts = append(parts, strings.Repeat("=", 60))
-	
+
 	for i, err := range cec.Errors {
 		parts = append(parts, fmt.Sprintf("\nError %d:", i+1))
 		parts = append(parts, err.DetailedError())
-		
+
 		if i < len(cec.Errors)-1 {
 			parts = append(parts, strings.Repeat("-", 40))
 		}
 	}
-	
+
 	return strings.Join(parts, "\n")
 }
 
@@ -205,4 +205,4 @@ func NewConfigurationErrorCollection() *ConfigurationErrorCollection {
 	return &ConfigurationErrorCollection{
 		Errors: make([]ConfigurationError, 0),
 	}
-} 
+}

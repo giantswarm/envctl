@@ -28,7 +28,7 @@ func (m *mockConfigurationLoader) LoadAndParseYAML(subDir string, validator func
 			validWorkflows = append(validWorkflows, wf)
 		}
 	}
-	
+
 	return validWorkflows, nil
 }
 
@@ -38,7 +38,7 @@ func (m *mockConfigurationLoader) LoadAndParseYAMLWithErrors(subDir string, vali
 	if err != nil {
 		return nil, nil, err
 	}
-	
+
 	// Return empty error collection for successful case
 	errorCollection := &config.ConfigurationErrorCollection{}
 	return workflows, errorCollection, nil
@@ -47,7 +47,7 @@ func (m *mockConfigurationLoader) LoadAndParseYAMLWithErrors(subDir string, vali
 func TestWorkflowStorage_LayeredLoading(t *testing.T) {
 	// Create mock workflows
 	projectWorkflow := WorkflowDefinition{
-		Name:        "project_workflow", 
+		Name:        "project_workflow",
 		Description: "Project workflow",
 		Steps: []WorkflowStep{
 			{ID: "step1", Tool: "exec_tool", Args: map[string]interface{}{"command": "{{ .command }}"}},
@@ -221,4 +221,4 @@ func TestWorkflowStorage_DirectoryOverridesLegacy(t *testing.T) {
 	assert.Equal(t, "test_workflow", workflow.Name)
 	assert.Equal(t, "Directory-based workflow", workflow.Description) // Should be directory version
 	assert.Equal(t, "directory_tool", workflow.Steps[0].Tool)         // Should be directory version
-} 
+}

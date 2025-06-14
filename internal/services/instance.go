@@ -192,14 +192,8 @@ func (gsi *GenericServiceInstance) Restart(ctx context.Context) error {
 	}
 
 	toolName, arguments, responseMapping, err := serviceClassMgr.GetRestartTool(gsi.serviceClassName)
-	if err != nil {
-		err = fmt.Errorf("failed to get restart tool info: %w", err)
-		gsi.updateStateInternal(StateFailed, HealthUnknown, err)
-		return err
-	}
-
-	// If a restart tool is defined, use it
-	if toolName != "" {
+	// If a restart tool is defined and available, use it
+	if err == nil && toolName != "" {
 		gsi.updateStateInternal(StateStarting, HealthChecking, nil) // A restart is a form of starting
 		return gsi.executeLifecycleTool(ctx, "restart", toolName, arguments, responseMapping)
 	}

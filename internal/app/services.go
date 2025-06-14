@@ -6,16 +6,12 @@ import (
 	"envctl/internal/capability"
 	"envctl/internal/config"
 	"envctl/internal/orchestrator"
+	"envctl/internal/serviceclass"
 	"envctl/internal/services"
 	aggregatorService "envctl/internal/services/aggregator"
 	"envctl/internal/services/mcpserver"
+	"envctl/internal/workflow"
 	"envctl/pkg/logging"
-
-	// Import to trigger init() functions that register adapter factories
-	_ "envctl/internal/workflow"
-
-	// Import ServiceClass manager
-	"envctl/internal/serviceclass"
 	"fmt"
 )
 
@@ -140,6 +136,53 @@ func InitializeServices(cfg *Config) (*Services, error) {
 		logging.Warn("Services", "Failed to load ServiceClass definitions: %v", err)
 	}
 
+	// Initialize and register Capability manager
+	capabilityManager, err := capability.NewCapabilityManager(toolChecker, capability.NewRegistry())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Capability manager: %w", err)
+	}
+
+	// Create and register Capability adapter
+	// Note: We'll need to pass a ToolCaller when it becomes available
+	capabilityAdapter, err := capability.NewAdapter(toolChecker, nil) // ToolCaller will be set later
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Capability adapter: %w", err)
+	}
+	capabilityAdapter.Register()
+
+	// Load Capability definitions
+	if err := capabilityManager.LoadDefinitions(); err != nil {
+		// Log warning but don't fail - Capability is optional
+		logging.Warn("Services", "Failed to load Capability definitions: %v", err)
+	}
+
+	// Initialize and register Workflow storage
+	// Auto-detect config directory for workflow storage
+	configDir, err := config.GetUserConfigDir()
+	if err != nil {
+		// Fallback to empty string if auto-detection fails
+		configDir = ""
+	}
+
+	workflowStorage, err := workflow.NewWorkflowStorage(configDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Workflow storage: %w", err)
+	}
+
+	// Create and register Workflow adapter
+	// Note: We'll need to pass a ToolCaller when it becomes available
+	workflowAdapter, err := workflow.NewAdapter(configDir, nil, toolChecker) // ToolCaller will be set later
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Workflow adapter: %w", err)
+	}
+	workflowAdapter.Register()
+
+	// Load Workflow definitions (already done in NewWorkflowStorage, but we can reload if needed)
+	if err := workflowStorage.LoadWorkflows(); err != nil {
+		// Log warning but don't fail - Workflow is optional
+		logging.Warn("Services", "Failed to load Workflow definitions: %v", err)
+	}
+
 	// Step 2: Create APIs that use the registered handlers
 	orchestratorAPI := api.NewOrchestratorAPI()
 	mcpAPI := api.NewMCPServiceAPI()
@@ -231,6 +274,10 @@ func InitializeServices(cfg *Config) (*Services, error) {
 									serviceClassHandler.RefreshAvailability()
 									logging.Info("Bootstrap", "Refreshed ServiceClass availability after ToolCaller setup")
 								}
+
+								// Refresh Capability availability now that ToolCaller is available
+								capabilityManager.RefreshAvailability()
+								logging.Info("Bootstrap", "Refreshed Capability availability after ToolCaller setup")
 							}
 						}
 					}

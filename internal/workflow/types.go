@@ -54,4 +54,4 @@ const (
 	// Workflow creator types
 	WorkflowCreatorUser  = "user"
 	WorkflowCreatorAgent = "agent"
-) 
+)

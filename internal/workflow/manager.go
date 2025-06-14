@@ -125,10 +125,10 @@ func (wm *WorkflowManager) GetDefinitionsPath() string {
 		logging.Error("WorkflowManager", err, "Failed to get configuration paths")
 		return "error determining paths"
 	}
-	
+
 	userPath := fmt.Sprintf("%s/workflows", userDir)
 	projectPath := fmt.Sprintf("%s/workflows", projectDir)
-	
+
 	return fmt.Sprintf("User: %s, Project: %s", userPath, projectPath)
 }
 

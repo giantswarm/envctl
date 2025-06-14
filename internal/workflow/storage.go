@@ -98,24 +98,24 @@ func (ws *WorkflowStorage) LoadWorkflows() error {
 	if errorCollection.HasErrors() {
 		errorCount := errorCollection.Count()
 		successCount := len(definitions)
-		
+
 		// Log comprehensive error information
-		logging.Warn("WorkflowStorage", "Workflow loading completed with %d errors (loaded %d successfully)", 
+		logging.Warn("WorkflowStorage", "Workflow loading completed with %d errors (loaded %d successfully)",
 			errorCount, successCount)
-		
+
 		// Log detailed error summary for troubleshooting
-		logging.Warn("WorkflowStorage", "Workflow configuration errors:\n%s", 
+		logging.Warn("WorkflowStorage", "Workflow configuration errors:\n%s",
 			errorCollection.GetSummary())
-		
+
 		// Log full error details for debugging
-		logging.Debug("WorkflowStorage", "Detailed error report:\n%s", 
+		logging.Debug("WorkflowStorage", "Detailed error report:\n%s",
 			errorCollection.GetDetailedReport())
-		
+
 		// For Workflow, we allow graceful degradation - return success with warnings
 		// This enables the application to continue with working Workflow definitions
-		logging.Info("WorkflowStorage", "Workflow storage initialized with %d valid definitions (graceful degradation enabled)", 
+		logging.Info("WorkflowStorage", "Workflow storage initialized with %d valid definitions (graceful degradation enabled)",
 			successCount)
-		
+
 		return nil // Return success to allow graceful degradation
 	}
 
@@ -144,7 +144,7 @@ func (ws *WorkflowStorage) validateDefinition(def *WorkflowDefinition) error {
 // loadLegacyAgentWorkflows loads agent workflows from legacy agent_workflows.yaml file
 func (ws *WorkflowStorage) loadLegacyAgentWorkflows() error {
 	agentFile := filepath.Join(ws.configDir, AgentWorkflowsFile)
-	
+
 	data, err := os.ReadFile(agentFile)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -161,7 +161,7 @@ func (ws *WorkflowStorage) loadLegacyAgentWorkflows() error {
 	for _, wf := range wfConfig.Workflows {
 		workflow := wf // Create a copy
 		workflow.AgentModifiable = true
-		
+
 		// Only add if not already loaded from directory (directory takes precedence)
 		if _, exists := ws.workflows[workflow.Name]; !exists {
 			ws.workflows[workflow.Name] = &workflow
