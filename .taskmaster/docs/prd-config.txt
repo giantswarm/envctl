@@ -9,41 +9,58 @@ After analyzing the current state, here's what needs to be done to achieve **NO 
 
 | Package | Types Location | Loading Method | Directory Structure | Work Required |
 |---------|---------------|----------------|-------------------|---------------|
-| **ServiceClass** | ✅ Own package (`serviceclass.ServiceClassDefinition`) | ❌ Single path only | ❌ `serviceclass/definitions/` | **Medium** - Add layered loading |
-| **Capability** | ✅ Own package (`capability.CapabilityDefinition`) | ❌ Single path only | ❌ Plain directory | **Medium** - Add layered loading |
-| **Workflow** | ❌ `config` package (`config.WorkflowDefinition`) | ❌ File-based (`workflows.yaml`) | ❌ File-based | **High** - Move types + change loading |
+| **ServiceClass** | ✅ Own package (`serviceclass.ServiceClassDefinition`) | ✅ Layered loading | ✅ `serviceclasses/` | **Complete** |
+| **Capability** | ✅ Own package (`capability.CapabilityDefinition`) | ✅ Layered loading | ✅ `capabilities/` | **Complete** |
+| **Workflow** | ✅ Own package (`workflow.WorkflowDefinition`) | ✅ Layered loading | ✅ `workflows/` | **Complete** |
+| **MCPServer** | ❌ `config` package (`config.MCPServerDefinition`) | ❌ Main config file only | ❌ Part of `config.yaml` | **High** - Full standardization needed |
 
-### **Unified Proposal: Common Configuration Pattern**
+### **MCPServer Configuration Analysis**
 
-#### **1. Directory Structure (Consistent)**
+**Current Issues:**
+- Types defined in `config` package instead of own package
+- Loaded as part of main `config.yaml` file, not from dedicated directory
+- No layered loading (user vs project override)
+- No dedicated manager pattern 
+- Inconsistent with other configuration types
+
+**Required Changes:**
+1. **Move Types**: Create `internal/mcpserver/types.go` with `MCPServerDefinition`
+2. **Directory Structure**: Use `mcpservers/` directory like other types
+3. **Layered Loading**: Implement user + project override pattern
+4. **Manager Pattern**: Create `MCPServerManager` with common interface
+5. **Tool Integration**: Add tool availability checking if needed (not needed for mcpservers)
+
+### **Unified Directory Structure (Updated)**
 ```
 ~/.config/envctl/               # User configuration
 ├── config.yaml               # Main configuration only
 ├── serviceclasses/            # ServiceClass YAML files
 ├── capabilities/              # Capability YAML files  
-└── workflows/                 # Workflow YAML files
+├── workflows/                 # Workflow YAML files
+└── mcpservers/                # MCP Server YAML files (NEW)
 
 .envctl/                       # Project configuration  
 ├── config.yaml               # Project configuration overrides
 ├── serviceclasses/            # Project ServiceClasses (overrides user)
 ├── capabilities/              # Project Capabilities (overrides user)
-└── workflows/                 # Project Workflows (overrides user)
+├── workflows/                 # Project Workflows (overrides user)
+└── mcpservers/                # Project MCP Servers (overrides user) (NEW)
 ```
 
-#### **2. Type Ownership (Keep in Own Packages)**
+### **Unified Type Ownership (Updated)**
 ```go
-// internal/workflow/types.go - MOVED from config package
-type WorkflowDefinition struct {
-    Name            string              `yaml:"name"`
-    Description     string              `yaml:"description"`
-    Icon            string              `yaml:"icon,omitempty"`
-    AgentModifiable bool                `yaml:"agentModifiable"`
-    CreatedBy       string              `yaml:"createdBy,omitempty"`
-    CreatedAt       time.Time           `yaml:"createdAt,omitempty"`
-    LastModified    time.Time           `yaml:"lastModified,omitempty"`
-    Version         int                 `yaml:"version,omitempty"`
-    InputSchema     WorkflowInputSchema `yaml:"inputSchema"`
-    Steps           []WorkflowStep      `yaml:"steps"`
+// internal/mcpserver/types.go - MOVED from config package
+type MCPServerDefinition struct {
+    Name                string        `yaml:"name"`
+    Type                MCPServerType `yaml:"type"`
+    Enabled             bool          `yaml:"enabledByDefault"`
+    Icon                string        `yaml:"icon,omitempty"`
+    Category            string        `yaml:"category,omitempty"`
+    HealthCheckInterval time.Duration `yaml:"healthCheckInterval,omitempty"`
+    ToolPrefix          string        `yaml:"toolPrefix,omitempty"`
+    Command             []string      `yaml:"command,omitempty"`
+    Env                 map[string]string `yaml:"env,omitempty"`
+    // ... other fields
 }
 
 // internal/serviceclass/types.go - ALREADY EXISTS
@@ -51,110 +68,38 @@ type ServiceClassDefinition struct { ... }
 
 // internal/capability/types.go - ALREADY EXISTS  
 type CapabilityDefinition struct { ... }
+
+// internal/workflow/types.go - ALREADY EXISTS
+type WorkflowDefinition struct { ... }
 ```
 
-#### **3. Common Loading Pattern (Identical for All)**
+### **Identical Loading Implementation (Updated)**
 
 ```go
-// internal/config/loader_common.go - NEW FILE
-
-// ConfigurationLoader provides common layered loading for all configuration types
-type ConfigurationLoader struct {
-    userConfigDir    string
-    projectConfigDir string
-}
-
-// NewConfigurationLoader creates a new configuration loader
-func NewConfigurationLoader() (*ConfigurationLoader, error) {
-    userDir, err := getUserConfigDir()
-    if err != nil {
-        return nil, err
-    }
-    
-    projectDir, err := getProjectConfigDir()
-    if err != nil {
-        return nil, err
-    }
-    
-    return &ConfigurationLoader{
-        userConfigDir:    userDir,
-        projectConfigDir: projectDir,
-    }, nil
-}
-
-// LoadYAMLFiles loads YAML files from both user and project directories with layered override
-func (cl *ConfigurationLoader) LoadYAMLFiles(subDir string) ([]string, error) {
-    var allFiles []string
-    
-    // 1. Load from user directory first
-    userPath := filepath.Join(cl.userConfigDir, subDir)
-    userFiles, err := cl.loadFilesFromDirectory(userPath)
-    if err != nil && !os.IsNotExist(err) {
-        return nil, fmt.Errorf("failed to load user %s: %w", subDir, err)
-    }
-    allFiles = append(allFiles, userFiles...)
-    
-    // 2. Load from project directory (overrides user)
-    projectPath := filepath.Join(cl.projectConfigDir, subDir)
-    projectFiles, err := cl.loadFilesFromDirectory(projectPath)
-    if err != nil && !os.IsNotExist(err) {
-        return nil, fmt.Errorf("failed to load project %s: %w", subDir, err)
-    }
-    allFiles = append(allFiles, projectFiles...)
-    
-    return allFiles, nil
-}
-
-// loadFilesFromDirectory loads all YAML files from a directory
-func (cl *ConfigurationLoader) loadFilesFromDirectory(dirPath string) ([]string, error) {
-    if _, err := os.Stat(dirPath); os.IsNotExist(err) {
-        return nil, nil // Directory doesn't exist, return empty
-    }
-    
-    pattern := filepath.Join(dirPath, "*.yaml")
-    files, err := filepath.Glob(pattern)
-    if err != nil {
-        return nil, err
-    }
-    
-    // Also check for .yml extension
-    ymlPattern := filepath.Join(dirPath, "*.yml")
-    ymlFiles, err := filepath.Glob(ymlPattern)
-    if err == nil {
-        files = append(files, ymlFiles...)
-    }
-    
-    return files, nil
-}
-```
-
-#### **4. Identical Loading Implementation (All Packages)**
-
-```go
-// internal/serviceclass/loader.go - NEW FILE
-func LoadServiceClassDefinitions() ([]ServiceClassDefinition, error) {
+// internal/mcpserver/loader.go - NEW FILE
+func LoadMCPServerDefinitions() ([]MCPServerDefinition, error) {
     loader, err := config.NewConfigurationLoader()
     if err != nil {
         return nil, err
     }
     
-    files, err := loader.LoadYAMLFiles("serviceclasses")
+    files, err := loader.LoadYAMLFiles("mcpservers")
     if err != nil {
         return nil, err
     }
     
-    var definitions []ServiceClassDefinition
+    var definitions []MCPServerDefinition
     nameMap := make(map[string]bool) // Track names for project override
     
     for _, file := range files {
-        var def ServiceClassDefinition
-        data, err := os.ReadFile(file)
+        var def MCPServerDefinition
+        data, err := os.ReadFile(file.Path)
         if err != nil {
             continue
         }
         
         if err := yaml.Unmarshal(data, &def); err != nil {
-            logging.Error("ServiceClass", err, "Failed to parse %s", file)
+            logging.Error("MCPServer", err, "Failed to parse %s", file.Path)
             continue
         }
         
@@ -176,80 +121,75 @@ func LoadServiceClassDefinitions() ([]ServiceClassDefinition, error) {
     return definitions, nil
 }
 
-// internal/capability/loader.go - UPDATE EXISTING
-func LoadCapabilityDefinitions() ([]CapabilityDefinition, error) {
-    loader, err := config.NewConfigurationLoader()
-    if err != nil {
-        return nil, err
-    }
-    
-    files, err := loader.LoadYAMLFiles("capabilities")
-    if err != nil {
-        return nil, err
-    }
-    
-    // ... EXACT SAME PATTERN as ServiceClass
-}
-
-// internal/workflow/loader.go - NEW FILE (replacing storage.go logic)
-func LoadWorkflowDefinitions() ([]WorkflowDefinition, error) {
-    loader, err := config.NewConfigurationLoader()
-    if err != nil {
-        return nil, err
-    }
-    
-    files, err := loader.LoadYAMLFiles("workflows")
-    if err != nil {
-        return nil, err
-    }
-    
-    // ... EXACT SAME PATTERN as ServiceClass
-}
+// internal/serviceclass/loader.go - ALREADY EXISTS (same pattern)
+// internal/capability/loader.go - ALREADY EXISTS (same pattern) 
+// internal/workflow/loader.go - ALREADY EXISTS (same pattern)
 ```
 
-#### **5. Identical Manager Pattern (All Packages)**
+### **Identical Manager Pattern (Updated)**
 
 ```go
-// internal/serviceclass/manager.go - UPDATE EXISTING
-func NewServiceClassManager(toolChecker ToolAvailabilityChecker) *ServiceClassManager {
-    return &ServiceClassManager{
-        definitions:     make(map[string]*ServiceClassDefinition),
-        toolChecker:     toolChecker,
-        exposedServices: make(map[string]bool),
+// internal/mcpserver/manager.go - NEW FILE
+type MCPServerManager struct {
+    mu              sync.RWMutex
+    definitions     map[string]*MCPServerDefinition
+    availability    map[string]bool
+}
+
+func NewMCPServerManager() *MCPServerManager {
+    return &MCPServerManager{
+        definitions:  make(map[string]*MCPServerDefinition),
+
+        availability: make(map[string]bool),
     }
 }
 
-func (scm *ServiceClassManager) LoadDefinitions() error {
-    definitions, err := LoadServiceClassDefinitions()
+func (msm *MCPServerManager) LoadDefinitions() error {
+    definitions, err := LoadMCPServerDefinitions()
     if err != nil {
         return err
     }
     
-    scm.mu.Lock()
-    defer scm.mu.Unlock()
+    msm.mu.Lock()
+    defer msm.mu.Unlock()
     
-    scm.definitions = make(map[string]*ServiceClassDefinition)
+    msm.definitions = make(map[string]*MCPServerDefinition)
     for _, def := range definitions {
         defCopy := def
-        scm.definitions[def.Name] = &defCopy
+        msm.definitions[def.Name] = &defCopy
     }
     
-    scm.updateServiceAvailability()
+    msm.updateAvailability()
     return nil
 }
 
-// internal/capability/manager.go - UPDATE EXISTING (same pattern)
-// internal/workflow/manager.go - UPDATE EXISTING (same pattern)
+// Implement same interface methods as other managers:
+// GetDefinition(), ListDefinitions(), ListAvailableDefinitions(), 
+// IsAvailable(), RefreshAvailability(), GetDefinitionsPath()
+
+// internal/serviceclass/manager.go - ALREADY EXISTS (same pattern)
+// internal/capability/manager.go - ALREADY EXISTS (same pattern)
+// internal/workflow/manager.go - ALREADY EXISTS (same pattern)
 ```
 
-#### **6. Identical Initialization (All Packages)**
+### **Updated Main Config Structure**
+```go
+// internal/config/types.go - UPDATED
+type EnvctlConfig struct {
+    GlobalSettings GlobalSettings   `yaml:"globalSettings"`
+    Aggregator     AggregatorConfig `yaml:"aggregator"`
+    // MCPServers removed - now loaded from mcpservers/ directory
+}
+```
+
+### **Identical Initialization (Updated)**
 
 ```go
 // internal/app/services.go - UPDATE EXISTING
 func InitializeServices(cfg *Config) (*Services, error) {
     // ... existing code ...
 
-    // ALL THREE USE IDENTICAL PATTERN:
+    // ALL FOUR USE IDENTICAL PATTERN:
     
     // ServiceClass initialization
     serviceClassManager := serviceclass.NewServiceClassManager(toolChecker)
@@ -275,33 +215,44 @@ func InitializeServices(cfg *Config) (*Services, error) {
     workflowAdapter := workflow.NewAdapter(workflowManager)
     workflowAdapter.Register()
 
+    // MCP Server initialization (NEW - same pattern)
+    mcpServerManager := mcpserver.NewMCPServerManager()
+    if err := mcpServerManager.LoadDefinitions(); err != nil {
+        return nil, fmt.Errorf("failed to load MCP Server definitions: %w", err)
+    }
+    mcpServerAdapter := mcpserver.NewAdapter(mcpServerManager)
+    mcpServerAdapter.Register()
+
     // ... rest of initialization ...
 }
 ```
 
-### **Work Required Analysis**
+### **Work Required Analysis (Updated)**
 
 | Package | Type Movement | Loading Changes | Manager Changes | Total Effort |
 |---------|--------------|-----------------|-----------------|--------------|
-| **ServiceClass** | ✅ None (already in package) | 🔵 Medium (add layered loading) | 🟢 Small (adapt existing) | **Medium** |
-| **Capability** | ✅ None (already in package) | 🔵 Medium (add layered loading) | 🟢 Small (adapt existing) | **Medium** |
-| **Workflow** | 🔴 High (move from config) | 🔴 High (directory vs file) | 🔵 Medium (major changes) | **High** |
-| **Config** | 🟢 Small (add common loader) | ✅ None | ✅ None | **Small** |
+| **ServiceClass** | ✅ Complete | ✅ Complete | ✅ Complete | **Complete** |
+| **Capability** | ✅ Complete | ✅ Complete | ✅ Complete | **Complete** |
+| **Workflow** | ✅ Complete | ✅ Complete | ✅ Complete | **Complete** |
+| **MCPServer** | 🔴 High (move from config) | 🔴 High (file to directory) | 🔴 High (create manager) | **High** |
+| **Config** | 🟢 Small (remove MCPServers) | ✅ Complete | ✅ Complete | **Small** |
 
-### **Implementation Order**
+### **Implementation Order (Updated)**
 
-1. **Phase 1**: Create common loading utilities in config package
-2. **Phase 2**: Update ServiceClass and Capability packages (parallel)  
-3. **Phase 3**: Move Workflow types and update Workflow package
-4. **Phase 4**: Update initialization in app/services.go
-5. **Phase 5**: Remove old workflow files and deprecated methods
+1. **Phase 1**: ✅ Create common loading utilities in config package (COMPLETE)
+2. **Phase 2**: ✅ Update ServiceClass and Capability packages (COMPLETE)  
+3. **Phase 3**: ✅ Move Workflow types and update Workflow package (COMPLETE)
+4. **Phase 4**: ✅ Update initialization in app/services.go (COMPLETE)
+5. **Phase 5**: ❌ **Move MCP Server types and create unified pattern** (REMAINING)
+6. **Phase 6**: ❌ **Remove MCPServers from main config and update references** (REMAINING)
 
-### **Key Benefits**
+### **Key Benefits (Updated)**
 
-- ✅ **NO DIFFERENCE**: All packages use identical loading pattern
+- ✅ **NO DIFFERENCE**: All four packages use identical loading pattern
 - ✅ **Type Ownership**: Each package owns its types  
 - ✅ **Layered Override**: Project configs override user configs uniformly
 - ✅ **Consistent Structure**: Same directory layout for all types
 - ✅ **Maintainable**: Single pattern to understand and maintain
+- ✅ **Migration Path**: Clear path from current MCP server config to unified pattern
 
-**The most work is in the Workflow package (moving types + changing from file to directory-based loading), but once done, all three packages will be completely uniform. Should I proceed with this approach?**
+**The remaining work is in the MCP Server package (moving types + changing from main config file to directory-based loading), plus updating all references throughout the codebase. Once done, all four configuration types will be completely uniform.**
