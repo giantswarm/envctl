@@ -244,11 +244,58 @@ type ServiceClassManagerHandler interface {
 	ToolProvider
 }
 
+// MCPServerConfigInfo provides information about a registered MCP server configuration
+type MCPServerConfigInfo struct {
+	Name        string `json:"name"`
+	Type        string `json:"type"`
+	Enabled     bool   `json:"enabled"`
+	Category    string `json:"category"`
+	Icon        string `json:"icon"`
+	Available   bool   `json:"available"`
+	Description string `json:"description,omitempty"`
+	Command     []string `json:"command,omitempty"`
+	Image       string `json:"image,omitempty"`
+}
+
+// MCPServerDefinition represents an MCP server definition (lightweight version for API)
+type MCPServerDefinition struct {
+	Name        string            `json:"name"`
+	Type        string            `json:"type"`
+	Enabled     bool              `json:"enabled"`
+	Category    string            `json:"category"`
+	Icon        string            `json:"icon"`
+	Description string            `json:"description,omitempty"`
+	Command     []string          `json:"command,omitempty"`
+	Image       string            `json:"image,omitempty"`
+	Env         map[string]string `json:"env,omitempty"`
+}
+
+// MCPServerManagerHandler defines the interface for MCP server management operations
+type MCPServerManagerHandler interface {
+	// MCP server definition management
+	ListMCPServers() []MCPServerConfigInfo
+	GetMCPServer(name string) (*MCPServerDefinition, error)
+	IsMCPServerAvailable(name string) bool
+	LoadDefinitions() error
+	RefreshAvailability()
+
+	// MCP server registration (for programmatic definitions)
+	RegisterDefinition(def *MCPServerDefinition) error
+	UnregisterDefinition(name string) error
+
+	// Utility methods
+	GetDefinitionsPath() string
+
+	// Tool provider interface for exposing MCP server management tools
+	ToolProvider
+}
+
 // Handler registry
 var (
 	registryHandler            ServiceRegistryHandler
 	orchestratorHandler        OrchestratorHandler
 	serviceClassManagerHandler ServiceClassManagerHandler
+	mcpServerManagerHandler    MCPServerManagerHandler
 	aggregatorHandler          AggregatorHandler
 	configHandler              ConfigHandler
 	capabilityHandler          CapabilityHandler
@@ -503,4 +550,26 @@ func ToolNameToCapability(toolName string) (capabilityType, operation string, is
 	}
 
 	return "", "", false
+}
+
+// RegisterMCPServerManager registers the MCP server manager handler
+func RegisterMCPServerManager(h MCPServerManagerHandler) {
+	handlerMutex.Lock()
+	defer handlerMutex.Unlock()
+	logging.Debug("API", "Registering MCP server manager handler: %v", h != nil)
+	mcpServerManagerHandler = h
+}
+
+// GetMCPServerManager returns the registered MCP server manager handler
+func GetMCPServerManager() MCPServerManagerHandler {
+	handlerMutex.RLock()
+	defer handlerMutex.RUnlock()
+	return mcpServerManagerHandler
+}
+
+// SetMCPServerManagerForTesting sets the MCP server manager handler for testing purposes
+func SetMCPServerManagerForTesting(h MCPServerManagerHandler) {
+	handlerMutex.Lock()
+	defer handlerMutex.Unlock()
+	mcpServerManagerHandler = h
 }
