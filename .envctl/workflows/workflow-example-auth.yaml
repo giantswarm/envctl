@@ -1,0 +1,29 @@
+name: auth-workflow
+description: "Authenticate with Teleport and set kubectl context"
+icon: "🔐"
+agentModifiable: false
+createdBy: "user"
+version: 1
+inputSchema:
+  type: object
+  properties:
+    cluster:
+      type: string
+      description: "Name of the cluster to authenticate with"
+    profile:
+      type: string
+      description: "Teleport profile to use"
+      default: "default"
+  required: ["cluster"]
+steps:
+  - id: teleport_login
+    tool: api_auth_login
+    args:
+      cluster: "{{ .cluster }}"
+      profile: "{{ .profile }}"
+    store: "auth_result"
+  - id: set_context
+    tool: api_kubernetes_set_context
+    args:
+      context: "{{ .auth_result.context }}"
+      cluster: "{{ .cluster }}" 

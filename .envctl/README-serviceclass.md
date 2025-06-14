@@ -14,11 +14,11 @@ To use these examples, copy them to your user configuration directory:
 
 ```bash
 # Create the serviceclass definitions directory
-mkdir -p ~/.config/envctl/serviceclass/definitions
+mkdir -p ~/.config/envctl/serviceclasses
 
 # Copy the examples you want to use
-cp .envctl/serviceclass-example-portforward.yaml ~/.config/envctl/serviceclass/definitions/portforward.yaml
-cp .envctl/serviceclass-example-k8s-connection.yaml ~/.config/envctl/serviceclass/definitions/k8s-connection.yaml
+cp .envctl/serviceclasses/serviceclass-example-portforward.yaml ~/.config/envctl/serviceclasses/portforward.yaml
+cp .envctl/serviceclasses/serviceclass-example-k8s-connection.yaml ~/.config/envctl/serviceclasses/k8s-connection.yaml
 ```
 
 ### 2. Customize for Your Environment
@@ -27,7 +27,7 @@ Edit the copied files to match your environment:
 
 ```bash
 # Edit the portforward serviceclass
-vim ~/.config/envctl/serviceclass/definitions/portforward.yaml
+vim ~/.config/envctl/serviceclasses/portforward.yaml
 ```
 
 ### 3. Restart envctl
@@ -188,7 +188,7 @@ operations:
               version: "{{ .version }}"
 ```
 
-Save this as `~/.config/envctl/serviceclass/definitions/app-deployment.yaml`
+Save this as `~/.config/envctl/serviceclasses/app-deployment.yaml`
 
 ## Using ServiceClasses
 

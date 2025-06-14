@@ -17,8 +17,8 @@ To use these examples, copy them to your user configuration directory:
 mkdir -p ~/.config/envctl/capability/definitions
 
 # Copy the examples you want to use
-cp .envctl/capability-example-teleport-auth.yaml ~/.config/envctl/capability/definitions/auth.yaml
-cp .envctl/capability-example-portforward.yaml ~/.config/envctl/capability/definitions/portforward.yaml
+cp .envctl/capabilities/capability-example-teleport-auth.yaml ~/.config/envctl/capabilities/auth.yaml
+cp .envctl/capabilities/capability-example-portforward.yaml ~/.config/envctl/capabilities/portforward.yaml
 ```
 
 ### 2. Customize for Your Environment
