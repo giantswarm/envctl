@@ -40,34 +40,34 @@ func NewOrchestratorAPI() OrchestratorAPI {
 
 // StartService starts a specific service
 func (a *orchestratorAPI) StartService(label string) error {
-	handler := GetOrchestrator()
+	handler := GetServiceManager()
 	if handler == nil {
-		return fmt.Errorf("orchestrator not registered")
+		return fmt.Errorf("service manager not registered")
 	}
 	return handler.StartService(label)
 }
 
 // StopService stops a specific service
 func (a *orchestratorAPI) StopService(label string) error {
-	handler := GetOrchestrator()
+	handler := GetServiceManager()
 	if handler == nil {
-		return fmt.Errorf("orchestrator not registered")
+		return fmt.Errorf("service manager not registered")
 	}
 	return handler.StopService(label)
 }
 
 // RestartService restarts a specific service
 func (a *orchestratorAPI) RestartService(label string) error {
-	handler := GetOrchestrator()
+	handler := GetServiceManager()
 	if handler == nil {
-		return fmt.Errorf("orchestrator not registered")
+		return fmt.Errorf("service manager not registered")
 	}
 	return handler.RestartService(label)
 }
 
 // SubscribeToStateChanges returns a channel for receiving service state change events
 func (a *orchestratorAPI) SubscribeToStateChanges() <-chan ServiceStateChangedEvent {
-	handler := GetOrchestrator()
+	handler := GetServiceManager()
 	if handler == nil {
 		// Return a closed channel if no handler is registered
 		ch := make(chan ServiceStateChangedEvent)

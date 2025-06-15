@@ -45,33 +45,6 @@ func (a *ConfigAdapter) GetConfig(ctx context.Context) (*config.EnvctlConfig, er
 	return a.config, nil
 }
 
-func (a *ConfigAdapter) GetMCPServers(ctx context.Context) ([]api.MCPServerDefinition, error) {
-	// Delegate to MCPServerManager API instead of reading from config file
-	mcpServerMgr := api.GetMCPServerManager()
-	if mcpServerMgr == nil {
-		return nil, fmt.Errorf("MCPServerManager not available")
-	}
-
-	// Get MCP servers from the manager
-	mcpServers := mcpServerMgr.ListMCPServers()
-
-	// Convert from API types to config types for backward compatibility
-	result := make([]api.MCPServerDefinition, len(mcpServers))
-	for i, mcpServer := range mcpServers {
-		result[i] = api.MCPServerDefinition{
-			Name:     mcpServer.Name,
-			Type:     mcpServer.Type,
-			Enabled:  mcpServer.Enabled,
-			Icon:     mcpServer.Icon,
-			Category: mcpServer.Category,
-			// Note: Some fields may not be available in the API type
-			// This is acceptable as we're transitioning to directory-based config
-		}
-	}
-
-	return result, nil
-}
-
 func (a *ConfigAdapter) GetAggregatorConfig(ctx context.Context) (*config.AggregatorConfig, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -93,12 +66,6 @@ func (a *ConfigAdapter) GetGlobalSettings(ctx context.Context) (*config.GlobalSe
 }
 
 // Update configuration
-func (a *ConfigAdapter) UpdateMCPServer(ctx context.Context, server api.MCPServerDefinition) error {
-	// MCPServers are now managed by MCPServerManager through directory-based configuration
-	// This method is deprecated and should use the MCPServerManager API instead
-	return fmt.Errorf("MCP server configuration has moved to directory-based management via MCPServerManager - use the mcpserver_* tools instead")
-}
-
 func (a *ConfigAdapter) UpdateAggregatorConfig(ctx context.Context, aggregator config.AggregatorConfig) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -121,13 +88,6 @@ func (a *ConfigAdapter) UpdateGlobalSettings(ctx context.Context, settings confi
 
 	a.config.GlobalSettings = settings
 	return a.saveConfig()
-}
-
-// Delete configuration
-func (a *ConfigAdapter) DeleteMCPServer(ctx context.Context, name string) error {
-	// MCPServers are now managed by MCPServerManager through directory-based configuration
-	// This method is deprecated and should use the MCPServerManager API instead
-	return fmt.Errorf("MCP server configuration has moved to directory-based management via MCPServerManager - use the mcpserver_* tools instead")
 }
 
 // Save configuration
@@ -158,28 +118,12 @@ func (a *ConfigAdapter) GetTools() []api.ToolMetadata {
 			Description: "Get the current envctl configuration",
 		},
 		{
-			Name:        "config_get_mcp_servers",
-			Description: "Get all MCP server definitions",
-		},
-		{
 			Name:        "config_get_aggregator",
 			Description: "Get aggregator configuration",
 		},
 		{
 			Name:        "config_get_global_settings",
 			Description: "Get global settings",
-		},
-		{
-			Name:        "config_update_mcp_server",
-			Description: "Update MCP server configuration",
-			Parameters: []api.ParameterMetadata{
-				{
-					Name:        "server",
-					Type:        "object",
-					Required:    true,
-					Description: "MCP server definition",
-				},
-			},
 		},
 		{
 			Name:        "config_update_aggregator",
@@ -206,18 +150,6 @@ func (a *ConfigAdapter) GetTools() []api.ToolMetadata {
 			},
 		},
 		{
-			Name:        "config_delete_mcp_server",
-			Description: "Delete MCP server configuration",
-			Parameters: []api.ParameterMetadata{
-				{
-					Name:        "name",
-					Type:        "string",
-					Required:    true,
-					Description: "Name of the MCP server to delete",
-				},
-			},
-		},
-		{
 			Name:        "config_save",
 			Description: "Save the current configuration to file",
 		},
@@ -233,20 +165,14 @@ func (a *ConfigAdapter) ExecuteTool(ctx context.Context, toolName string, args m
 	switch toolName {
 	case "config_get":
 		return a.handleConfigGet(ctx)
-	case "config_get_mcp_servers":
-		return a.handleConfigGetMCPServers(ctx)
 	case "config_get_aggregator":
 		return a.handleConfigGetAggregator(ctx)
 	case "config_get_global_settings":
 		return a.handleConfigGetGlobalSettings(ctx)
-	case "config_update_mcp_server":
-		return a.handleConfigUpdateMCPServer(ctx, args)
 	case "config_update_aggregator":
 		return a.handleConfigUpdateAggregator(ctx, args)
 	case "config_update_global_settings":
 		return a.handleConfigUpdateGlobalSettings(ctx, args)
-	case "config_delete_mcp_server":
-		return a.handleConfigDeleteMCPServer(ctx, args)
 	case "config_save":
 		return a.handleConfigSave(ctx)
 	case "config_reload":
@@ -333,26 +259,6 @@ func (a *ConfigAdapter) handleConfigGet(ctx context.Context) (*api.CallToolResul
 	}, nil
 }
 
-func (a *ConfigAdapter) handleConfigGetMCPServers(ctx context.Context) (*api.CallToolResult, error) {
-	servers, err := a.GetMCPServers(ctx)
-	if err != nil {
-		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Failed to get MCP servers: %v", err)},
-			IsError: true,
-		}, nil
-	}
-
-	result := map[string]interface{}{
-		"servers": servers,
-		"total":   len(servers),
-	}
-
-	return &api.CallToolResult{
-		Content: []interface{}{result},
-		IsError: false,
-	}, nil
-}
-
 func (a *ConfigAdapter) handleConfigGetAggregator(ctx context.Context) (*api.CallToolResult, error) {
 	aggregator, err := a.GetAggregatorConfig(ctx)
 	if err != nil {
@@ -384,37 +290,6 @@ func (a *ConfigAdapter) handleConfigGetGlobalSettings(ctx context.Context) (*api
 }
 
 // Update handlers
-func (a *ConfigAdapter) handleConfigUpdateMCPServer(ctx context.Context, args map[string]interface{}) (*api.CallToolResult, error) {
-	serverData, ok := args["server"]
-	if !ok {
-		return &api.CallToolResult{
-			Content: []interface{}{"server is required"},
-			IsError: true,
-		}, nil
-	}
-
-	// Convert to api.MCPServerDefinition
-	var server api.MCPServerDefinition
-	if err := convertToStruct(serverData, &server); err != nil {
-		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Failed to parse server definition: %v", err)},
-			IsError: true,
-		}, nil
-	}
-
-	if err := a.UpdateMCPServer(ctx, server); err != nil {
-		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Failed to update MCP server: %v", err)},
-			IsError: true,
-		}, nil
-	}
-
-	return &api.CallToolResult{
-		Content: []interface{}{fmt.Sprintf("Successfully updated MCP server '%s'", server.Name)},
-		IsError: false,
-	}, nil
-}
-
 func (a *ConfigAdapter) handleConfigUpdateAggregator(ctx context.Context, args map[string]interface{}) (*api.CallToolResult, error) {
 	aggregatorData, ok := args["aggregator"]
 	if !ok {
@@ -473,29 +348,6 @@ func (a *ConfigAdapter) handleConfigUpdateGlobalSettings(ctx context.Context, ar
 
 	return &api.CallToolResult{
 		Content: []interface{}{"Successfully updated global settings"},
-		IsError: false,
-	}, nil
-}
-
-// Delete handlers
-func (a *ConfigAdapter) handleConfigDeleteMCPServer(ctx context.Context, args map[string]interface{}) (*api.CallToolResult, error) {
-	name, ok := args["name"].(string)
-	if !ok {
-		return &api.CallToolResult{
-			Content: []interface{}{"name is required"},
-			IsError: true,
-		}, nil
-	}
-
-	if err := a.DeleteMCPServer(ctx, name); err != nil {
-		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Failed to delete MCP server: %v", err)},
-			IsError: true,
-		}, nil
-	}
-
-	return &api.CallToolResult{
-		Content: []interface{}{fmt.Sprintf("Successfully deleted MCP server '%s'", name)},
 		IsError: false,
 	}, nil
 }

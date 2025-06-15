@@ -42,7 +42,7 @@ func TestStartOrchestrator(t *testing.T) {
 			api.RegisterServiceRegistry(registryAdapter)
 
 			orchAdapter := orchestrator.NewAPIAdapter(orch)
-			api.RegisterOrchestrator(orchAdapter)
+			api.RegisterServiceManager(orchAdapter)
 
 			// Create APIs
 			orchestratorAPI := api.NewOrchestratorAPI()
@@ -52,7 +52,7 @@ func TestStartOrchestrator(t *testing.T) {
 			// Clean up handlers after test
 			defer func() {
 				api.RegisterServiceRegistry(nil)
-				api.RegisterOrchestrator(nil)
+				api.RegisterServiceManager(nil)
 			}()
 
 			// Create model

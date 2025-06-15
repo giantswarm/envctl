@@ -105,21 +105,24 @@ type ServiceRegistryHandler interface {
 	GetByType(serviceType ServiceType) []ServiceInfo
 }
 
-// OrchestratorHandler manages service lifecycle (both static and ServiceClass-based)
-type OrchestratorHandler interface {
+// ServiceManagerHandler provides unified management for both static and ServiceClass-based services
+type ServiceManagerHandler interface {
+	// Unified service lifecycle management (works for both static and ServiceClass-based services)
 	StartService(label string) error
 	StopService(label string) error
 	RestartService(label string) error
-	SubscribeToStateChanges() <-chan ServiceStateChangedEvent
+	
+	// Service information and status
 	GetServiceStatus(label string) (*ServiceStatus, error)
 	GetAllServices() []ServiceStatus
-
-	// ServiceClass-based dynamic service instance management
-	CreateServiceClassInstance(ctx context.Context, req CreateServiceClassRequest) (*ServiceClassInstanceInfo, error)
-	DeleteServiceClassInstance(ctx context.Context, serviceID string) error
-	GetServiceClassInstance(serviceID string) (*ServiceClassInstanceInfo, error)
-	GetServiceClassInstanceByLabel(label string) (*ServiceClassInstanceInfo, error)
-	ListServiceClassInstances() []ServiceClassInstanceInfo
+	GetService(labelOrServiceID string) (*ServiceClassInstanceInfo, error) // Get detailed service info by label or serviceID
+	
+	// ServiceClass instance creation and deletion (only for ServiceClass-based services)
+	CreateService(ctx context.Context, req CreateServiceClassRequest) (*ServiceClassInstanceInfo, error)
+	DeleteService(ctx context.Context, labelOrServiceID string) error // Delete by label or serviceID
+	
+	// Event subscriptions
+	SubscribeToStateChanges() <-chan ServiceStateChangedEvent
 	SubscribeToServiceInstanceEvents() <-chan ServiceClassInstanceEvent
 
 	ToolProvider
@@ -150,17 +153,12 @@ type MCPServiceHandler interface {
 type ConfigHandler interface {
 	// Get configuration
 	GetConfig(ctx context.Context) (*config.EnvctlConfig, error)
-	GetMCPServers(ctx context.Context) ([]MCPServerDefinition, error)
 	GetAggregatorConfig(ctx context.Context) (*config.AggregatorConfig, error)
 	GetGlobalSettings(ctx context.Context) (*config.GlobalSettings, error)
 
 	// Update configuration
-	UpdateMCPServer(ctx context.Context, server MCPServerDefinition) error
 	UpdateAggregatorConfig(ctx context.Context, aggregator config.AggregatorConfig) error
 	UpdateGlobalSettings(ctx context.Context, settings config.GlobalSettings) error
-
-	// Delete configuration
-	DeleteMCPServer(ctx context.Context, name string) error
 
 	// Save configuration
 	SaveConfig(ctx context.Context) error
@@ -293,7 +291,7 @@ type MCPServerManagerHandler interface {
 // Handler registry
 var (
 	registryHandler            ServiceRegistryHandler
-	orchestratorHandler        OrchestratorHandler
+	serviceManagerHandler      ServiceManagerHandler
 	serviceClassManagerHandler ServiceClassManagerHandler
 	mcpServerManagerHandler    MCPServerManagerHandler
 	aggregatorHandler          AggregatorHandler
@@ -314,12 +312,12 @@ func RegisterServiceRegistry(h ServiceRegistryHandler) {
 	registryHandler = h
 }
 
-// RegisterOrchestrator registers the orchestrator handler
-func RegisterOrchestrator(h OrchestratorHandler) {
+// RegisterServiceManager registers the service manager handler
+func RegisterServiceManager(h ServiceManagerHandler) {
 	handlerMutex.Lock()
 	defer handlerMutex.Unlock()
-	logging.Debug("API", "Registering orchestrator handler: %v", h != nil)
-	orchestratorHandler = h
+	logging.Debug("API", "Registering service manager handler: %v", h != nil)
+	serviceManagerHandler = h
 }
 
 // RegisterAggregator registers the aggregator handler
@@ -364,11 +362,11 @@ func GetServiceRegistry() ServiceRegistryHandler {
 	return registryHandler
 }
 
-// GetOrchestrator returns the registered orchestrator handler
-func GetOrchestrator() OrchestratorHandler {
+// GetServiceManager returns the registered service manager handler
+func GetServiceManager() ServiceManagerHandler {
 	handlerMutex.RLock()
 	defer handlerMutex.RUnlock()
-	return orchestratorHandler
+	return serviceManagerHandler
 }
 
 // GetAggregator returns the registered aggregator handler

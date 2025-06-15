@@ -53,11 +53,35 @@ func (c *configServiceAPI) GetConfig(ctx context.Context) (*config.EnvctlConfig,
 
 // GetMCPServers returns all MCP server definitions
 func (c *configServiceAPI) GetMCPServers(ctx context.Context) ([]MCPServerDefinition, error) {
-	handler := GetConfigHandler()
+	handler := GetMCPServerManager()
 	if handler == nil {
-		return nil, fmt.Errorf("config handler not registered")
+		return nil, fmt.Errorf("MCP server manager not registered")
 	}
-	return handler.GetMCPServers(ctx)
+	
+	// Convert MCPServerConfigInfo to MCPServerDefinition
+	configInfos := handler.ListMCPServers()
+	definitions := make([]MCPServerDefinition, len(configInfos))
+	
+	for i, info := range configInfos {
+		// Get detailed definition
+		if def, err := handler.GetMCPServer(info.Name); err == nil {
+			definitions[i] = *def
+		} else {
+			// Fallback to basic info if detailed get fails
+			definitions[i] = MCPServerDefinition{
+				Name:        info.Name,
+				Type:        info.Type,
+				Enabled:     info.Enabled,
+				Category:    info.Category,
+				Icon:        info.Icon,
+				Description: info.Description,
+				Command:     info.Command,
+				Image:       info.Image,
+			}
+		}
+	}
+	
+	return definitions, nil
 }
 
 // GetAggregatorConfig returns the aggregator configuration
@@ -80,11 +104,11 @@ func (c *configServiceAPI) GetGlobalSettings(ctx context.Context) (*config.Globa
 
 // UpdateMCPServer updates or adds an MCP server definition
 func (c *configServiceAPI) UpdateMCPServer(ctx context.Context, server MCPServerDefinition) error {
-	handler := GetConfigHandler()
+	handler := GetMCPServerManager()
 	if handler == nil {
-		return fmt.Errorf("config handler not registered")
+		return fmt.Errorf("MCP server manager not registered")
 	}
-	return handler.UpdateMCPServer(ctx, server)
+	return handler.RegisterDefinition(&server)
 }
 
 // UpdateAggregatorConfig updates the aggregator configuration
@@ -107,11 +131,11 @@ func (c *configServiceAPI) UpdateGlobalSettings(ctx context.Context, settings co
 
 // DeleteMCPServer removes an MCP server by name
 func (c *configServiceAPI) DeleteMCPServer(ctx context.Context, name string) error {
-	handler := GetConfigHandler()
+	handler := GetMCPServerManager()
 	if handler == nil {
-		return fmt.Errorf("config handler not registered")
+		return fmt.Errorf("MCP server manager not registered")
 	}
-	return handler.DeleteMCPServer(ctx, name)
+	return handler.UnregisterDefinition(name)
 }
 
 // SaveConfig persists the configuration to file

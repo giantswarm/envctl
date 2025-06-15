@@ -60,12 +60,12 @@ func (a *AggregatorServer) createToolsFromProviders() []server.ServerTool {
 		}
 	}
 
-	// Get orchestrator handler and check if it's a ToolProvider
-	if orchestratorHandler := api.GetOrchestrator(); orchestratorHandler != nil {
-		if provider, ok := orchestratorHandler.(api.ToolProvider); ok {
+	// Get service manager handler and check if it's a ToolProvider
+	if serviceManagerHandler := api.GetServiceManager(); serviceManagerHandler != nil {
+		if provider, ok := serviceManagerHandler.(api.ToolProvider); ok {
 			for _, toolMeta := range provider.GetTools() {
 				// Apply appropriate prefix
-				mcpToolName := a.prefixToolName("orchestrator", toolMeta.Name)
+				mcpToolName := a.prefixToolName("service", toolMeta.Name)
 				a.toolManager.setActive(mcpToolName, true)
 
 				tool := server.ServerTool{
