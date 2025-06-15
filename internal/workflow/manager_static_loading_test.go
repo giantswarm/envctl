@@ -162,7 +162,7 @@ func TestWorkflowManager_DynamicStorage_Integration(t *testing.T) {
 	// Create a test workflow
 	testWorkflow := WorkflowDefinition{
 		Name:        "dynamic-test-workflow",
-		Description: "Test workflow for dynamic storage",
+		Description: "Test workflow for storage",
 		InputSchema: WorkflowInputSchema{
 			Type:       "object",
 			Properties: map[string]SchemaProperty{},
@@ -172,7 +172,7 @@ func TestWorkflowManager_DynamicStorage_Integration(t *testing.T) {
 		},
 	}
 	
-	// Save to dynamic storage
+	// Save to storage
 	data, err := yaml.Marshal(testWorkflow)
 	require.NoError(t, err)
 	err = storage.Save("workflows", "dynamic-test-workflow", data)
@@ -188,7 +188,7 @@ func TestWorkflowManager_DynamicStorage_Integration(t *testing.T) {
 	
 	loadedWorkflow := definitions[0]
 	assert.Equal(t, "dynamic-test-workflow", loadedWorkflow.Name)
-	assert.Equal(t, "Test workflow for dynamic storage", loadedWorkflow.Description)
+	assert.Equal(t, "Test workflow for storage", loadedWorkflow.Description)
 	assert.Len(t, loadedWorkflow.Steps, 1)
 	assert.Equal(t, "step1", loadedWorkflow.Steps[0].ID)
 	assert.Equal(t, "test-tool", loadedWorkflow.Steps[0].Tool)
@@ -211,7 +211,7 @@ func TestWorkflowManager_InvalidDynamicWorkflow(t *testing.T) {
 		Steps:       []WorkflowStep{}, // Empty steps - should fail validation
 	}
 	
-	// Save to dynamic storage
+	// Save to storage
 	data, err := yaml.Marshal(invalidWorkflow)
 	require.NoError(t, err)
 	err = storage.Save("workflows", "invalid-workflow-test", data)

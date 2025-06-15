@@ -155,7 +155,7 @@ func (m *ServiceClassManager) UpdateServiceClass(name string, sc ServiceClassDef
 	return nil
 }
 
-// DeleteServiceClass deletes a service class from storage and memory
+// DeleteServiceClass deletes a service class from YAML files and memory
 func (m *ServiceClassManager) DeleteServiceClass(name string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -168,7 +168,7 @@ func (m *ServiceClassManager) DeleteServiceClass(name string) error {
 		// If it doesn't exist in storage, but exists in memory (from file), that's ok.
 		// We just need to remove it from memory.
 		if !os.IsNotExist(err) {
-			return fmt.Errorf("failed to delete service class %s from storage: %w", name, err)
+			return fmt.Errorf("failed to delete service class %s from YAML files: %w", name, err)
 		}
 	}
 

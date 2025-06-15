@@ -361,7 +361,7 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 		},
 		{
 			Name:        "serviceclass_create",
-			Description: "Create a new dynamic service class",
+			Description: "Create a new service class",
 			Parameters: []api.ParameterMetadata{
 				{Name: "yaml", Type: "string", Required: true, Description: "Full ServiceClass YAML definition"},
 			},

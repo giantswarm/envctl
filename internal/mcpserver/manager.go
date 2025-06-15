@@ -276,7 +276,7 @@ func (msm *MCPServerManager) UpdateMCPServer(name string, def MCPServerDefinitio
 	return nil
 }
 
-// DeleteMCPServer deletes an MCP server from storage and memory
+// DeleteMCPServer deletes an MCP server from YAML files and memory
 func (msm *MCPServerManager) DeleteMCPServer(name string) error {
 	msm.mu.Lock()
 	defer msm.mu.Unlock()
@@ -289,7 +289,7 @@ func (msm *MCPServerManager) DeleteMCPServer(name string) error {
 		// If it doesn't exist in storage, but exists in memory (from file), that's ok.
 		// We just need to remove it from memory.
 		if !os.IsNotExist(err) {
-			return fmt.Errorf("failed to delete MCP server %s from storage: %w", name, err)
+			return fmt.Errorf("failed to delete MCP server %s from YAML files: %w", name, err)
 		}
 	}
 

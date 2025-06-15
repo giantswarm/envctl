@@ -327,10 +327,10 @@ func (wm *WorkflowManager) DeleteWorkflow(name string) error {
 	}
 
 	if err := wm.storage.Delete("workflows", name); err != nil {
-		return fmt.Errorf("failed to delete workflow %s from storage: %w", name, err)
+		return fmt.Errorf("failed to delete workflow %s from YAML files: %w", name, err)
 	}
 
-	// Delete from in-memory store after successful deletion from storage
+	// Delete from in-memory store after successful deletion from YAML files
 	delete(wm.workflows, name)
 	logging.Info("WorkflowManager", "Deleted workflow %s (was tool: action_%s)", name, name)
 	return nil

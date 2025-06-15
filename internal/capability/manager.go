@@ -18,11 +18,11 @@ type CapabilityManager struct {
 	toolChecker    config.ToolAvailabilityChecker
 	registry       *Registry
 	exposedTools   map[string]bool // Track which capability tools we've exposed
-	dynamicStorage *config.DynamicStorage
+	storage *config.DynamicStorage
 }
 
 // NewCapabilityManager creates a new capability manager
-func NewCapabilityManager(toolChecker config.ToolAvailabilityChecker, registry *Registry, dynamicStorage *config.DynamicStorage) (*CapabilityManager, error) {
+func NewCapabilityManager(toolChecker config.ToolAvailabilityChecker, registry *Registry, storage *config.DynamicStorage) (*CapabilityManager, error) {
 	loader, err := config.NewConfigurationLoader()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create configuration loader: %w", err)
@@ -34,7 +34,7 @@ func NewCapabilityManager(toolChecker config.ToolAvailabilityChecker, registry *
 		toolChecker:    toolChecker,
 		registry:       registry,
 		exposedTools:   make(map[string]bool),
-		dynamicStorage: dynamicStorage,
+		storage: storage,
 	}, nil
 }
 
@@ -271,7 +271,7 @@ func (cm *CapabilityManager) CreateCapability(def *CapabilityDefinition) error {
 	}
 
 	// Save to storage
-	if err := cm.dynamicStorage.Save("capabilities", def.Name, data); err != nil {
+	if err := cm.storage.Save("capabilities", def.Name, data); err != nil {
 		return fmt.Errorf("failed to save capability definition %s: %w", def.Name, err)
 	}
 
@@ -304,7 +304,7 @@ func (cm *CapabilityManager) UpdateCapability(def *CapabilityDefinition) error {
 	}
 
 	// Save to storage
-	if err := cm.dynamicStorage.Save("capabilities", def.Name, data); err != nil {
+	if err := cm.storage.Save("capabilities", def.Name, data); err != nil {
 		return fmt.Errorf("failed to save capability definition %s: %w", def.Name, err)
 	}
 
@@ -325,8 +325,8 @@ func (cm *CapabilityManager) DeleteCapability(name string) error {
 		return fmt.Errorf("capability '%s' not found", name)
 	}
 
-	// Delete from storage
-	if err := cm.dynamicStorage.Delete("capabilities", name); err != nil {
+	// Delete from YAML files
+	if err := cm.storage.Delete("capabilities", name); err != nil {
 		return fmt.Errorf("failed to delete capability definition %s: %w", name, err)
 	}
 

@@ -140,7 +140,7 @@ func InitializeServices(cfg *Config) (*Services, error) {
 	}
 	capabilityAdapter.Register()
 
-	// Load Capability definitions - will now load from both files and dynamic storage
+	// Load Capability definitions - will now load from both files and storage
 	if err := api.GetCapability().LoadDefinitions(); err != nil {
 		// Log warning but don't fail - Capability is optional
 		logging.Warn("Services", "Failed to load Capability definitions: %v", err)

@@ -17,9 +17,9 @@ type Adapter struct {
 }
 
 // NewAdapter creates a new capability adapter
-func NewAdapter(toolChecker config.ToolAvailabilityChecker, workflowExecutor api.ToolCaller, dynamicStorage *config.DynamicStorage) (*Adapter, error) {
+func NewAdapter(toolChecker config.ToolAvailabilityChecker, workflowExecutor api.ToolCaller, storage *config.DynamicStorage) (*Adapter, error) {
 	registry := GetRegistry()
-	manager, err := NewCapabilityManager(toolChecker, registry, dynamicStorage)
+	manager, err := NewCapabilityManager(toolChecker, registry, storage)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create capability manager: %w", err)
 	}
@@ -66,14 +66,14 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 		},
 		{
 			Name:        "capability_create",
-			Description: "Create a new capability definition in dynamic storage",
+			Description: "Create a new capability definition in storage",
 			Parameters: []api.ParameterMetadata{
 				{Name: "yamlContent", Type: "string", Required: true, Description: "YAML content of the capability definition"},
 			},
 		},
 		{
 			Name:        "capability_update",
-			Description: "Update an existing capability definition in dynamic storage",
+			Description: "Update an existing capability definition in storage",
 			Parameters: []api.ParameterMetadata{
 				{Name: "name", Type: "string", Required: true, Description: "Name of the capability to update"},
 				{Name: "yamlContent", Type: "string", Required: true, Description: "Updated YAML content of the capability definition"},
@@ -81,7 +81,7 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 		},
 		{
 			Name:        "capability_delete",
-			Description: "Delete a capability definition from dynamic storage",
+			Description: "Delete a capability definition from YAML files",
 			Parameters: []api.ParameterMetadata{
 				{Name: "name", Type: "string", Required: true, Description: "Name of the capability to delete"},
 			},
