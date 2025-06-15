@@ -10,22 +10,22 @@ import (
 	"envctl/pkg/logging"
 )
 
-// DynamicStorage provides generic storage functionality for dynamic entities
+// Storage provides generic storage functionality for dynamic entities
 // with context-aware path resolution that prefers project over user paths
-type DynamicStorage struct {
+type Storage struct {
 	mu sync.RWMutex
 }
 
-// NewDynamicStorage creates a new DynamicStorage instance
-func NewDynamicStorage() *DynamicStorage {
-	return &DynamicStorage{}
+// NewStorage creates a new Storage instance
+func NewStorage() *Storage {
+	return &Storage{}
 }
 
 // Save stores data for the given entity type and name
 // entityType: subdirectory name (workflows, serviceclasses, mcpservers, capabilities)
 // name: filename without extension
 // data: file content to write
-func (ds *DynamicStorage) Save(entityType string, name string, data []byte) error {
+func (ds *Storage) Save(entityType string, name string, data []byte) error {
 	if entityType == "" {
 		return fmt.Errorf("entityType cannot be empty")
 	}
@@ -56,13 +56,13 @@ func (ds *DynamicStorage) Save(entityType string, name string, data []byte) erro
 		return fmt.Errorf("failed to write file %s: %w", filePath, err)
 	}
 
-	logging.Info("DynamicStorage", "Saved %s/%s to %s", entityType, name, filePath)
+	logging.Info("Storage", "Saved %s/%s to %s", entityType, name, filePath)
 	return nil
 }
 
 // Load retrieves data for the given entity type and name
 // Returns the file content, or an error if not found
-func (ds *DynamicStorage) Load(entityType string, name string) ([]byte, error) {
+func (ds *Storage) Load(entityType string, name string) ([]byte, error) {
 	if entityType == "" {
 		return nil, fmt.Errorf("entityType cannot be empty")
 	}
@@ -82,7 +82,7 @@ func (ds *DynamicStorage) Load(entityType string, name string) ([]byte, error) {
 	// Check project path first (preferred)
 	projectPath := filepath.Join(projectDir, entityType, ds.sanitizeFilename(name)+".yaml")
 	if data, err := os.ReadFile(projectPath); err == nil {
-		logging.Info("DynamicStorage", "Loaded %s/%s from project path: %s", entityType, name, projectPath)
+		logging.Info("Storage", "Loaded %s/%s from project path: %s", entityType, name, projectPath)
 		return data, nil
 	}
 
@@ -96,12 +96,12 @@ func (ds *DynamicStorage) Load(entityType string, name string) ([]byte, error) {
 		return nil, fmt.Errorf("failed to read file %s: %w", userPath, err)
 	}
 
-	logging.Info("DynamicStorage", "Loaded %s/%s from user path: %s", entityType, name, userPath)
+	logging.Info("Storage", "Loaded %s/%s from user path: %s", entityType, name, userPath)
 	return data, nil
 }
 
 // Delete removes the file for the given entity type and name
-func (ds *DynamicStorage) Delete(entityType string, name string) error {
+func (ds *Storage) Delete(entityType string, name string) error {
 	if entityType == "" {
 		return fmt.Errorf("entityType cannot be empty")
 	}
@@ -127,7 +127,7 @@ func (ds *DynamicStorage) Delete(entityType string, name string) error {
 		if err := os.Remove(projectPath); err != nil {
 			return fmt.Errorf("failed to delete file %s: %w", projectPath, err)
 		}
-		logging.Info("DynamicStorage", "Deleted %s/%s from project path: %s", entityType, name, projectPath)
+		logging.Info("Storage", "Deleted %s/%s from project path: %s", entityType, name, projectPath)
 		deleted = true
 	}
 
@@ -137,7 +137,7 @@ func (ds *DynamicStorage) Delete(entityType string, name string) error {
 		if err := os.Remove(userPath); err != nil {
 			return fmt.Errorf("failed to delete file %s: %w", userPath, err)
 		}
-		logging.Info("DynamicStorage", "Deleted %s/%s from user path: %s", entityType, name, userPath)
+		logging.Info("Storage", "Deleted %s/%s from user path: %s", entityType, name, userPath)
 		deleted = true
 	}
 
@@ -150,7 +150,7 @@ func (ds *DynamicStorage) Delete(entityType string, name string) error {
 
 // List returns all available names for the given entity type
 // Returns names from both user and project directories, with project overriding user
-func (ds *DynamicStorage) List(entityType string) ([]string, error) {
+func (ds *Storage) List(entityType string) ([]string, error) {
 	if entityType == "" {
 		return nil, fmt.Errorf("entityType cannot be empty")
 	}
@@ -193,7 +193,7 @@ func (ds *DynamicStorage) List(entityType string) ([]string, error) {
 		nameMap[name] = true
 	}
 
-	logging.Info("DynamicStorage", "Listed %d unique %s entities (%d user, %d project)",
+	logging.Info("Storage", "Listed %d unique %s entities (%d user, %d project)",
 		len(names), entityType, len(userNames), len(projectNames))
 
 	return names, nil
@@ -201,7 +201,7 @@ func (ds *DynamicStorage) List(entityType string) ([]string, error) {
 
 // resolveEntityDir determines the target directory for saving based on context
 // Prefers project directory if .envctl exists in current directory
-func (ds *DynamicStorage) resolveEntityDir(entityType string) (string, error) {
+func (ds *Storage) resolveEntityDir(entityType string) (string, error) {
 	userDir, projectDir, err := GetConfigurationPaths()
 	if err != nil {
 		return "", err
@@ -219,7 +219,7 @@ func (ds *DynamicStorage) resolveEntityDir(entityType string) (string, error) {
 }
 
 // listFilesInDirectory lists all .yaml files in a directory and returns their base names
-func (ds *DynamicStorage) listFilesInDirectory(dirPath string) ([]string, error) {
+func (ds *Storage) listFilesInDirectory(dirPath string) ([]string, error) {
 	if _, err := os.Stat(dirPath); os.IsNotExist(err) {
 		return nil, nil // Directory doesn't exist, return empty
 	}
@@ -251,7 +251,7 @@ func (ds *DynamicStorage) listFilesInDirectory(dirPath string) ([]string, error)
 }
 
 // sanitizeFilename ensures the filename is safe for filesystem operations
-func (ds *DynamicStorage) sanitizeFilename(name string) string {
+func (ds *Storage) sanitizeFilename(name string) string {
 	// Replace problematic characters with underscores
 	sanitized := strings.ReplaceAll(name, "/", "_")
 	sanitized = strings.ReplaceAll(sanitized, "\\", "_")

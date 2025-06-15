@@ -482,8 +482,8 @@ func (a *AggregatorServer) createCapabilityAdapter() interface {
 	Register()
 	LoadDefinitions() error
 } {
-	// Create a DynamicStorage instance for the aggregator
-	storage := config.NewDynamicStorage()
+	// Create a Storage instance for the aggregator
+	storage := config.NewStorage()
 
 	// Create capability adapter with aggregator as tool checker, nil tool caller, and shared storage
 	adapter, err := capability.NewAdapter(a, nil, storage)

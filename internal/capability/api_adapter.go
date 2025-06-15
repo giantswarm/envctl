@@ -17,7 +17,7 @@ type Adapter struct {
 }
 
 // NewAdapter creates a new capability adapter
-func NewAdapter(toolChecker config.ToolAvailabilityChecker, workflowExecutor api.ToolCaller, storage *config.DynamicStorage) (*Adapter, error) {
+func NewAdapter(toolChecker config.ToolAvailabilityChecker, workflowExecutor api.ToolCaller, storage *config.Storage) (*Adapter, error) {
 	registry := GetRegistry()
 	manager, err := NewCapabilityManager(toolChecker, registry, storage)
 	if err != nil {

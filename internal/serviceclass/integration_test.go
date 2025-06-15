@@ -76,19 +76,19 @@ func (m *mockToolCaller) CallToolInternal(ctx context.Context, toolName string, 
 	}
 }
 
-// mockDynamicStorage implements a test-only DynamicStorage that doesn't load from system directories
-type mockDynamicStorage struct {
+// mockStorage implements a test-only Storage that doesn't load from system directories
+type mockStorage struct {
 	data map[string]map[string][]byte // entityType -> name -> data
 	mu   sync.RWMutex
 }
 
-func newMockDynamicStorage() *mockDynamicStorage {
-	return &mockDynamicStorage{
+func newMockStorage() *mockStorage {
+	return &mockStorage{
 		data: make(map[string]map[string][]byte),
 	}
 }
 
-func (m *mockDynamicStorage) Save(entityType string, name string, data []byte) error {
+func (m *mockStorage) Save(entityType string, name string, data []byte) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.data[entityType] == nil {
@@ -98,7 +98,7 @@ func (m *mockDynamicStorage) Save(entityType string, name string, data []byte) e
 	return nil
 }
 
-func (m *mockDynamicStorage) Load(entityType string, name string) ([]byte, error) {
+func (m *mockStorage) Load(entityType string, name string) ([]byte, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	if m.data[entityType] == nil {
@@ -111,7 +111,7 @@ func (m *mockDynamicStorage) Load(entityType string, name string) ([]byte, error
 	return data, nil
 }
 
-func (m *mockDynamicStorage) Delete(entityType string, name string) error {
+func (m *mockStorage) Delete(entityType string, name string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.data[entityType] == nil {
@@ -124,7 +124,7 @@ func (m *mockDynamicStorage) Delete(entityType string, name string) error {
 	return nil
 }
 
-func (m *mockDynamicStorage) List(entityType string) ([]string, error) {
+func (m *mockStorage) List(entityType string) ([]string, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	if m.data[entityType] == nil {
@@ -168,7 +168,7 @@ func setupTestManager(t *testing.T) (*ServiceClassManager, *mockToolChecker) {
 	toolChecker := &mockToolChecker{
 		availableTools: make(map[string]bool),
 	}
-	storage := config.NewDynamicStorage()
+	storage := config.NewStorage()
 	manager, err := NewServiceClassManager(toolChecker, storage)
 	require.NoError(t, err)
 	return manager, toolChecker
@@ -241,7 +241,7 @@ metadata:
 	}
 
 	// Create ServiceClass manager
-	storage := config.NewDynamicStorage()
+	storage := config.NewStorage()
 	manager, err := NewServiceClassManager(mockChecker, storage)
 	require.NoError(t, err)
 
@@ -331,7 +331,7 @@ metadata:
 	}
 
 	// Create ServiceClass manager
-	storage := config.NewDynamicStorage()
+	storage := config.NewStorage()
 	manager, err := NewServiceClassManager(mockChecker, storage)
 	require.NoError(t, err)
 
@@ -405,7 +405,7 @@ metadata:
 	}
 
 	// Create ServiceClass manager and adapter
-	storage := config.NewDynamicStorage()
+	storage := config.NewStorage()
 	manager, err := NewServiceClassManager(mockChecker, storage)
 	require.NoError(t, err)
 	adapter := NewAdapter(manager)
@@ -461,7 +461,7 @@ description: "Invalid service class for testing"
 	}
 
 	// Create ServiceClass manager
-	storage := config.NewDynamicStorage()
+	storage := config.NewStorage()
 	manager, err := NewServiceClassManager(mockChecker, storage)
 	require.NoError(t, err)
 

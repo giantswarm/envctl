@@ -19,7 +19,7 @@ type ServiceClassManager struct {
 	definitions     map[string]*ServiceClassDefinition // service class name -> definition
 	toolChecker     config.ToolAvailabilityChecker
 	exposedServices map[string]bool // Track which service classes are available
-	storage         *config.DynamicStorage
+	storage         *config.Storage
 
 	// Callbacks for lifecycle events
 	onRegister   []func(def *ServiceClassDefinition)
@@ -28,7 +28,7 @@ type ServiceClassManager struct {
 }
 
 // NewServiceClassManager creates a new service class manager
-func NewServiceClassManager(toolChecker config.ToolAvailabilityChecker, storage *config.DynamicStorage) (*ServiceClassManager, error) {
+func NewServiceClassManager(toolChecker config.ToolAvailabilityChecker, storage *config.Storage) (*ServiceClassManager, error) {
 	if toolChecker == nil {
 		return nil, fmt.Errorf("tool checker is required")
 	}

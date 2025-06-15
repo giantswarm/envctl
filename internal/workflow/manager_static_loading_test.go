@@ -41,7 +41,7 @@ func (mtc *MockToolChecker) SetToolAvailable(toolName string, available bool) {
 
 func TestWorkflowManager_LoadDefinitions_Integration(t *testing.T) {
 	// Create a workflow manager with real storage
-	storage := config.NewDynamicStorage()
+	storage := config.NewStorage()
 	mockToolChecker := NewMockToolChecker()
 
 	// Clean up any existing workflows first
@@ -63,7 +63,7 @@ func TestWorkflowManager_LoadDefinitions_Integration(t *testing.T) {
 }
 
 func TestWorkflowManager_ValidationFunction(t *testing.T) {
-	storage := config.NewDynamicStorage()
+	storage := config.NewStorage()
 	mockToolChecker := NewMockToolChecker()
 
 	manager, err := NewWorkflowManager(storage, nil, mockToolChecker)
@@ -146,8 +146,8 @@ func TestWorkflowManager_ValidationFunction(t *testing.T) {
 	}
 }
 
-func TestWorkflowManager_DynamicStorage_Integration(t *testing.T) {
-	storage := config.NewDynamicStorage()
+func TestWorkflowManager_Storage_Integration(t *testing.T) {
+	storage := config.NewStorage()
 	mockToolChecker := NewMockToolChecker()
 
 	// Clean up any existing workflows first
@@ -198,7 +198,7 @@ func TestWorkflowManager_DynamicStorage_Integration(t *testing.T) {
 }
 
 func TestWorkflowManager_InvalidDynamicWorkflow(t *testing.T) {
-	storage := config.NewDynamicStorage()
+	storage := config.NewStorage()
 	mockToolChecker := NewMockToolChecker()
 
 	manager, err := NewWorkflowManager(storage, nil, mockToolChecker)
@@ -238,7 +238,7 @@ func TestWorkflowManager_InvalidDynamicWorkflow(t *testing.T) {
 }
 
 func TestWorkflowManager_MalformedYAML(t *testing.T) {
-	storage := config.NewDynamicStorage()
+	storage := config.NewStorage()
 	mockToolChecker := NewMockToolChecker()
 
 	manager, err := NewWorkflowManager(storage, nil, mockToolChecker)
@@ -276,7 +276,7 @@ steps:
 }
 
 func TestWorkflowManager_WorkflowAvailability(t *testing.T) {
-	storage := config.NewDynamicStorage()
+	storage := config.NewStorage()
 	mockToolChecker := NewMockToolChecker()
 
 	// Clean up any existing workflows first

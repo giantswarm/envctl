@@ -14,7 +14,7 @@ import (
 
 // WorkflowManager manages workflows and their execution
 type WorkflowManager struct {
-	storage     *config.DynamicStorage         // Use the new DynamicStorage
+	storage     *config.Storage                // Use the new Storage
 	workflows   map[string]*WorkflowDefinition // In-memory workflow storage
 	executor    *WorkflowExecutor
 	toolChecker config.ToolAvailabilityChecker
@@ -23,7 +23,7 @@ type WorkflowManager struct {
 }
 
 // NewWorkflowManager creates a new workflow manager
-func NewWorkflowManager(storage *config.DynamicStorage, toolCaller ToolCaller, toolChecker config.ToolAvailabilityChecker) (*WorkflowManager, error) {
+func NewWorkflowManager(storage *config.Storage, toolCaller ToolCaller, toolChecker config.ToolAvailabilityChecker) (*WorkflowManager, error) {
 	executor := NewWorkflowExecutor(toolCaller)
 
 	wm := &WorkflowManager{

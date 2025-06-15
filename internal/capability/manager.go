@@ -18,11 +18,11 @@ type CapabilityManager struct {
 	toolChecker  config.ToolAvailabilityChecker
 	registry     *Registry
 	exposedTools map[string]bool // Track which capability tools we've exposed
-	storage      *config.DynamicStorage
+	storage      *config.Storage
 }
 
 // NewCapabilityManager creates a new capability manager
-func NewCapabilityManager(toolChecker config.ToolAvailabilityChecker, registry *Registry, storage *config.DynamicStorage) (*CapabilityManager, error) {
+func NewCapabilityManager(toolChecker config.ToolAvailabilityChecker, registry *Registry, storage *config.Storage) (*CapabilityManager, error) {
 	loader, err := config.NewConfigurationLoader()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create configuration loader: %w", err)

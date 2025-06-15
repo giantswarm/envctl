@@ -19,11 +19,11 @@ type MCPServerManager struct {
 	mu          sync.RWMutex
 	loader      *config.ConfigurationLoader
 	definitions map[string]*MCPServerDefinition // server name -> definition
-	storage     *config.DynamicStorage
+	storage     *config.Storage
 }
 
 // NewMCPServerManager creates a new MCP server manager
-func NewMCPServerManager(storage *config.DynamicStorage) (*MCPServerManager, error) {
+func NewMCPServerManager(storage *config.Storage) (*MCPServerManager, error) {
 	loader, err := config.NewConfigurationLoader()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create configuration loader: %w", err)

@@ -65,7 +65,7 @@ func testUserConfigStorage(t *testing.T, entityType string) {
 	}
 
 	// Create storage instance
-	storage := NewDynamicStorage()
+	storage := NewStorage()
 
 	// Create test entity data
 	testData := generateTestEntityData(entityType, "test-user-entity")
@@ -118,7 +118,7 @@ func testProjectConfigStorage(t *testing.T, entityType string) {
 	}
 
 	// Create storage instance
-	storage := NewDynamicStorage()
+	storage := NewStorage()
 
 	// Create test entity data
 	testData := generateTestEntityData(entityType, "test-project-entity")
@@ -189,7 +189,7 @@ func testProjectOverridesUser(t *testing.T, entityType string) {
 	require.NoError(t, os.WriteFile(projectPath, projectData, 0644))
 
 	// Create storage and test loading - should return project version
-	storage := NewDynamicStorage()
+	storage := NewStorage()
 	loadedData, err := storage.Load(entityType, "shared-entity")
 	require.NoError(t, err)
 	assert.Equal(t, projectData, loadedData)
@@ -230,7 +230,7 @@ func testCRUDOperations(t *testing.T, entityType string) {
 		return tempHomeDir, nil
 	}
 
-	storage := NewDynamicStorage()
+	storage := NewStorage()
 
 	// CREATE
 	testData := generateTestEntityData(entityType, "crud-test-entity")
@@ -285,7 +285,7 @@ func testLoadingMultipleFiles(t *testing.T, entityType string) {
 		return tempHomeDir, nil
 	}
 
-	storage := NewDynamicStorage()
+	storage := NewStorage()
 
 	// Create multiple entities
 	entities := []string{"entity1", "entity2", "entity3"}
@@ -413,7 +413,7 @@ func TestEntityStorageConsistency(t *testing.T) {
 		return tempHomeDir, nil
 	}
 
-	storage := NewDynamicStorage()
+	storage := NewStorage()
 
 	// Test that all entity types can be created, loaded, and deleted consistently
 	for _, entityType := range entityTypes {
@@ -475,7 +475,7 @@ func TestFilenameHandling(t *testing.T) {
 		return tempHomeDir, nil
 	}
 
-	storage := NewDynamicStorage()
+	storage := NewStorage()
 
 	// Test problematic filenames that should be sanitized
 	testCases := []struct {

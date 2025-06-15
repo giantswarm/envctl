@@ -116,7 +116,7 @@ func InitializeServices(cfg *Config) (*Services, error) {
 	toolChecker := &aggregatorToolChecker{serviceRegistry: registry}
 
 	// Create ServiceClass manager (now uses layered configuration loading)
-	storage := config.NewDynamicStorage() // Create storage once
+	storage := config.NewStorage() // Create storage once
 	serviceClassManager, err := serviceclass.NewServiceClassManager(toolChecker, storage)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ServiceClass manager: %w", err)

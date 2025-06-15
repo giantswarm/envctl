@@ -9,14 +9,14 @@ import (
 	"testing"
 )
 
-func TestNewDynamicStorage(t *testing.T) {
-	ds := NewDynamicStorage()
+func TestNewStorage(t *testing.T) {
+	ds := NewStorage()
 	if ds == nil {
-		t.Fatal("NewDynamicStorage returned nil")
+		t.Fatal("NewStorage returned nil")
 	}
 }
 
-func TestDynamicStorage_Save(t *testing.T) {
+func TestStorage_Save(t *testing.T) {
 	// Save original functions
 	originalUserHomeDir := osUserHomeDir
 	originalGetwd := osGetwd
@@ -44,7 +44,7 @@ func TestDynamicStorage_Save(t *testing.T) {
 		t.Fatalf("Failed to create project .envctl directory: %v", err)
 	}
 
-	ds := NewDynamicStorage()
+	ds := NewStorage()
 
 	tests := []struct {
 		name        string
@@ -134,7 +134,7 @@ func TestDynamicStorage_Save(t *testing.T) {
 	}
 }
 
-func TestDynamicStorage_Load(t *testing.T) {
+func TestStorage_Load(t *testing.T) {
 	// Save original functions
 	originalUserHomeDir := osUserHomeDir
 	originalGetwd := osGetwd
@@ -156,7 +156,7 @@ func TestDynamicStorage_Load(t *testing.T) {
 		return projectDir, nil
 	}
 
-	ds := NewDynamicStorage()
+	ds := NewStorage()
 
 	// Create test files
 	userWorkflowDir := filepath.Join(userDir, ".config", "envctl", "workflows")
@@ -262,7 +262,7 @@ func TestDynamicStorage_Load(t *testing.T) {
 	}
 }
 
-func TestDynamicStorage_Delete(t *testing.T) {
+func TestStorage_Delete(t *testing.T) {
 	// Save original functions
 	originalUserHomeDir := osUserHomeDir
 	originalGetwd := osGetwd
@@ -284,7 +284,7 @@ func TestDynamicStorage_Delete(t *testing.T) {
 		return projectDir, nil
 	}
 
-	ds := NewDynamicStorage()
+	ds := NewStorage()
 
 	// Create test files
 	userWorkflowDir := filepath.Join(userDir, ".config", "envctl", "workflows")
@@ -399,7 +399,7 @@ func TestDynamicStorage_Delete(t *testing.T) {
 	}
 }
 
-func TestDynamicStorage_List(t *testing.T) {
+func TestStorage_List(t *testing.T) {
 	// Save original functions
 	originalUserHomeDir := osUserHomeDir
 	originalGetwd := osGetwd
@@ -421,7 +421,7 @@ func TestDynamicStorage_List(t *testing.T) {
 		return projectDir, nil
 	}
 
-	ds := NewDynamicStorage()
+	ds := NewStorage()
 
 	// Create test files
 	userWorkflowDir := filepath.Join(userDir, ".config", "envctl", "workflows")
@@ -518,7 +518,7 @@ func TestDynamicStorage_List(t *testing.T) {
 	}
 }
 
-func TestDynamicStorage_resolveEntityDir(t *testing.T) {
+func TestStorage_resolveEntityDir(t *testing.T) {
 	// Save original functions
 	originalUserHomeDir := osUserHomeDir
 	originalGetwd := osGetwd
@@ -537,7 +537,7 @@ func TestDynamicStorage_resolveEntityDir(t *testing.T) {
 		return userDir, nil
 	}
 
-	ds := NewDynamicStorage()
+	ds := NewStorage()
 
 	tests := []struct {
 		name         string
@@ -591,8 +591,8 @@ func TestDynamicStorage_resolveEntityDir(t *testing.T) {
 	}
 }
 
-func TestDynamicStorage_sanitizeFilename(t *testing.T) {
-	ds := NewDynamicStorage()
+func TestStorage_sanitizeFilename(t *testing.T) {
+	ds := NewStorage()
 
 	tests := []struct {
 		name  string

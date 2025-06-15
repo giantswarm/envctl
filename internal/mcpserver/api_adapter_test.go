@@ -7,7 +7,7 @@ import (
 )
 
 func TestNewAdapter(t *testing.T) {
-	storage := config.NewDynamicStorage()
+	storage := config.NewStorage()
 	manager, err := NewMCPServerManager(storage)
 	if err != nil {
 		t.Fatalf("Failed to create MCP server manager: %v", err)
@@ -24,7 +24,7 @@ func TestNewAdapter(t *testing.T) {
 }
 
 func TestAdapterListMCPServers(t *testing.T) {
-	storage := config.NewDynamicStorage()
+	storage := config.NewStorage()
 	manager, err := NewMCPServerManager(storage)
 	if err != nil {
 		t.Fatalf("Failed to create MCP server manager: %v", err)
@@ -44,7 +44,7 @@ func TestAdapterListMCPServers(t *testing.T) {
 }
 
 func TestAdapterGetMCPServer(t *testing.T) {
-	storage := config.NewDynamicStorage()
+	storage := config.NewStorage()
 	manager, err := NewMCPServerManager(storage)
 	if err != nil {
 		t.Fatalf("Failed to create MCP server manager: %v", err)
@@ -63,7 +63,7 @@ func TestAdapterGetMCPServer(t *testing.T) {
 }
 
 func TestAdapterIsMCPServerAvailable(t *testing.T) {
-	storage := config.NewDynamicStorage()
+	storage := config.NewStorage()
 	manager, err := NewMCPServerManager(storage)
 	if err != nil {
 		t.Fatalf("Failed to create MCP server manager: %v", err)
@@ -79,7 +79,7 @@ func TestAdapterIsMCPServerAvailable(t *testing.T) {
 }
 
 func TestAdapterGetTools(t *testing.T) {
-	storage := config.NewDynamicStorage()
+	storage := config.NewStorage()
 	manager, err := NewMCPServerManager(storage)
 	if err != nil {
 		t.Fatalf("Failed to create MCP server manager: %v", err)
@@ -119,7 +119,7 @@ func TestAdapterGetTools(t *testing.T) {
 }
 
 func TestAdapterExecuteTool(t *testing.T) {
-	storage := config.NewDynamicStorage()
+	storage := config.NewStorage()
 	manager, err := NewMCPServerManager(storage)
 	if err != nil {
 		t.Fatalf("Failed to create MCP server manager: %v", err)

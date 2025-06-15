@@ -9,7 +9,7 @@ import (
 )
 
 func TestNewMCPServerManager(t *testing.T) {
-	storage := config.NewDynamicStorage()
+	storage := config.NewStorage()
 	manager, err := NewMCPServerManager(storage)
 	require.NoError(t, err)
 	assert.NotNil(t, manager)
@@ -19,7 +19,7 @@ func TestNewMCPServerManager(t *testing.T) {
 }
 
 func TestMCPServerManager_validateDefinition(t *testing.T) {
-	storage := config.NewDynamicStorage()
+	storage := config.NewStorage()
 	manager, err := NewMCPServerManager(storage)
 	require.NoError(t, err)
 
@@ -99,7 +99,7 @@ func TestMCPServerManager_validateDefinition(t *testing.T) {
 }
 
 func TestMCPServerManager_GetDefinition(t *testing.T) {
-	storage := config.NewDynamicStorage()
+	storage := config.NewStorage()
 	manager, err := NewMCPServerManager(storage)
 	require.NoError(t, err)
 
@@ -124,7 +124,7 @@ func TestMCPServerManager_GetDefinition(t *testing.T) {
 }
 
 func TestMCPServerManager_ListDefinitions(t *testing.T) {
-	storage := config.NewDynamicStorage()
+	storage := config.NewStorage()
 	manager, err := NewMCPServerManager(storage)
 	require.NoError(t, err)
 
@@ -163,7 +163,7 @@ func TestMCPServerManager_ListDefinitions(t *testing.T) {
 }
 
 func TestMCPServerManager_ListAvailableDefinitions(t *testing.T) {
-	storage := config.NewDynamicStorage()
+	storage := config.NewStorage()
 	manager, err := NewMCPServerManager(storage)
 	require.NoError(t, err)
 
@@ -202,7 +202,7 @@ func TestMCPServerManager_ListAvailableDefinitions(t *testing.T) {
 }
 
 func TestMCPServerManager_IsAvailable(t *testing.T) {
-	storage := config.NewDynamicStorage()
+	storage := config.NewStorage()
 	manager, err := NewMCPServerManager(storage)
 	require.NoError(t, err)
 
@@ -223,7 +223,7 @@ func TestMCPServerManager_IsAvailable(t *testing.T) {
 }
 
 func TestMCPServerManager_RefreshAvailability(t *testing.T) {
-	storage := config.NewDynamicStorage()
+	storage := config.NewStorage()
 	manager, err := NewMCPServerManager(storage)
 	require.NoError(t, err)
 
@@ -232,7 +232,7 @@ func TestMCPServerManager_RefreshAvailability(t *testing.T) {
 }
 
 func TestMCPServerManager_GetDefinitionsPath(t *testing.T) {
-	storage := config.NewDynamicStorage()
+	storage := config.NewStorage()
 	manager, err := NewMCPServerManager(storage)
 	require.NoError(t, err)
 
@@ -244,7 +244,7 @@ func TestMCPServerManager_GetDefinitionsPath(t *testing.T) {
 }
 
 func TestMCPServerManager_GetAllDefinitions(t *testing.T) {
-	storage := config.NewDynamicStorage()
+	storage := config.NewStorage()
 	manager, err := NewMCPServerManager(storage)
 	require.NoError(t, err)
 

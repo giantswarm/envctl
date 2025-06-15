@@ -14,7 +14,7 @@ The implementation of this persistence layer **MUST** adhere to the following pr
 
 - ✅ **Centralized Logic**: All logic related to configuration file paths, layered loading, and dynamic storage **MUST** reside exclusively within the `internal/config` package.
 - ✅ **NO DIFFERENCE**: All four entity packages (`workflow`, `serviceclass`, etc.) **MUST** use the identical, centralized storage pattern provided by the config package. They will contain no direct file I/O logic.
-- ✅ **Type Ownership**: Each entity package remains the definitive owner of its own data structures (types). The generic `DynamicStorage` service will be agnostic to the content it is saving, operating only on `[]byte`.
+- ✅ **Type Ownership**: Each entity package remains the definitive owner of its own data structures (types). The generic `Storage` service will be agnostic to the content it is saving, operating only on `[]byte`.
 - ✅ **Consistent Structure**: The directory layout for saved entities **MUST** be consistent for all types (e.g., `.../workflows/`, `.../serviceclasses/`) in both the user and project configuration directories.
 - ✅ **Maintainable**: By co-locating the storage and loading logic within `internal/config`, there will be a single, simple pattern to understand and maintain for all current and future dynamic entities.
 - ✅ **Breaking Change**: This tool hasn't been released. No backwards compatibility is needed. Breaking changes are fine.
@@ -58,13 +58,13 @@ The workflow package already had an implementation to store workflows. This must
 
 ## 7. Technical Requirements
 
-*   A new generic `DynamicStorage` service must be implemented in the `internal/config` package. It will be responsible for resolving the correct base path and performing file CRUD operations.
+*   A new generic `Storage` service must be implemented in the `internal/config` package. It will be responsible for resolving the correct base path and performing file CRUD operations.
 *   The `config.LoadYAMLFiles` function does NOT need to change.
-*   The API adapters in the `workflow`, `serviceclass`, `mcpserver`, and `capability` packages must be modified. Their `ExecuteTool` methods for `_create`, `_update`, and `_delete` operations must be re-wired to use the new `DynamicStorage` service from `internal/config`.
+*   The API adapters in the `workflow`, `serviceclass`, `mcpserver`, and `capability` packages must be modified. Their `ExecuteTool` methods for `_create`, `_update`, and `_delete` operations must be re-wired to use the new `Storage` service from `internal/config`.
 
 ## 8. Acceptance Criteria
 
 *   A user is in a directory **without** an `.envctl/` folder. They run `workflow_create`. The new workflow YAML is saved in `~/.config/envctl/workflows/`.
 *   A user is in a directory **with** an `.envctl/` folder. They run `serviceclass_create`. The new serviceclass YAML is saved in `./.envctl/serviceclasses/`.
 *   In all cases, the created entity persists after an application restart.
-*   The Go code for saving a user-created `workflow`, `serviceclass`, `mcpserver`, and `capability` reuses the exact same underlying `DynamicStorage` service from the `internal/config` package. 
+*   The Go code for saving a user-created `workflow`, `serviceclass`, `mcpserver`, and `capability` reuses the exact same underlying `Storage` service from the `internal/config` package. 
