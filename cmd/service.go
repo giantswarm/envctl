@@ -220,4 +220,4 @@ func runServiceStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	return executor.Execute(ctx, "core_service_status", args_map)
-} 
+}

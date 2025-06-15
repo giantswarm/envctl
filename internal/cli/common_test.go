@@ -70,7 +70,7 @@ func TestCheckServerRunning_WithMockServer(t *testing.T) {
 			// Test with the mock server by temporarily changing the endpoint
 			// This is a simplified test - in practice we'd need dependency injection
 			// or a more sophisticated mocking approach
-			
+
 			// For now, just test that the function exists and can be called
 			err := CheckServerRunning()
 			// The actual result depends on whether a real server is running
@@ -165,4 +165,4 @@ func TestFormatWarning(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
-} 
+}

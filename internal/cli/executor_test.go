@@ -30,7 +30,7 @@ func TestNewToolExecutor(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			executor, err := NewToolExecutor(tt.options)
-			
+
 			// The test can pass or fail depending on whether the server is running
 			// This is expected behavior since NewToolExecutor checks server health
 			if err != nil {
@@ -60,7 +60,7 @@ func TestExecutorOptions_Structure(t *testing.T) {
 		Format: OutputFormatJSON,
 		Quiet:  true,
 	}
-	
+
 	assert.Equal(t, OutputFormatJSON, options.Format)
 	assert.True(t, options.Quiet)
 }
@@ -71,7 +71,7 @@ func TestToolExecutor_Structure(t *testing.T) {
 		Format: OutputFormatTable,
 		Quiet:  false,
 	}
-	
+
 	// We can't test NewToolExecutor without a server, but we can test the structure
 	assert.Equal(t, OutputFormatTable, options.Format)
 	assert.False(t, options.Quiet)
@@ -87,7 +87,7 @@ func TestToolExecutor_Methods_Exist(t *testing.T) {
 			Quiet:  false,
 		},
 	}
-	
+
 	// Test that methods exist and have correct signatures
 	assert.NotNil(t, executor.Connect)
 	assert.NotNil(t, executor.Close)
@@ -105,9 +105,9 @@ func TestToolExecutor_Close(t *testing.T) {
 			Quiet:  false,
 		},
 	}
-	
+
 	// Should not panic when closing unconnected executor
 	assert.NotPanics(t, func() {
 		executor.Close()
 	})
-} 
+}

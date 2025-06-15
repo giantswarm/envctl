@@ -111,16 +111,16 @@ type ServiceManagerHandler interface {
 	StartService(label string) error
 	StopService(label string) error
 	RestartService(label string) error
-	
+
 	// Service information and status
 	GetServiceStatus(label string) (*ServiceStatus, error)
 	GetAllServices() []ServiceStatus
 	GetService(labelOrServiceID string) (*ServiceClassInstanceInfo, error) // Get detailed service info by label or serviceID
-	
+
 	// ServiceClass instance creation and deletion (only for ServiceClass-based services)
 	CreateService(ctx context.Context, req CreateServiceClassRequest) (*ServiceClassInstanceInfo, error)
 	DeleteService(ctx context.Context, labelOrServiceID string) error // Delete by label or serviceID
-	
+
 	// Event subscriptions
 	SubscribeToStateChanges() <-chan ServiceStateChangedEvent
 	SubscribeToServiceInstanceEvents() <-chan ServiceClassInstanceEvent

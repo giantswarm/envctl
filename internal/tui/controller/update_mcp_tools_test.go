@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"context"
 	"envctl/internal/api"
 	"envctl/internal/tui/model"
 	"errors"
@@ -92,7 +91,6 @@ func TestMKeyPressTriggersToolsFetch(t *testing.T) {
 				State: "Running",
 			},
 		},
-		MCPServiceAPI: &mockMCPServiceAPI{},
 	}
 
 	// Create key message for "M"
@@ -110,28 +108,6 @@ func TestMKeyPressTriggersToolsFetch(t *testing.T) {
 	// Verify a batch command was returned
 	assert.NotNil(t, cmd)
 
-	// Execute the command to verify it creates the right messages
-	// Note: In a real test, we'd need to mock the MCPServiceAPI
+	// Note: In a real test, we'd need to mock the aggregator API
 	// and verify that GetTools is called for running servers only
-}
-
-// mockMCPServiceAPI is a simple mock for testing
-type mockMCPServiceAPI struct {
-	tools       []api.MCPTool
-	getToolsErr error
-}
-
-func (m *mockMCPServiceAPI) GetServerInfo(ctx context.Context, label string) (*api.MCPServerInfo, error) {
-	return nil, nil
-}
-
-func (m *mockMCPServiceAPI) ListServers(ctx context.Context) ([]*api.MCPServerInfo, error) {
-	return nil, nil
-}
-
-func (m *mockMCPServiceAPI) GetTools(ctx context.Context, serverName string) ([]api.MCPTool, error) {
-	if m.getToolsErr != nil {
-		return nil, m.getToolsErr
-	}
-	return m.tools, nil
 }

@@ -44,9 +44,6 @@ func TestInitializeServices(t *testing.T) {
 				if s.OrchestratorAPI == nil {
 					t.Error("OrchestratorAPI should not be nil")
 				}
-				if s.MCPAPI == nil {
-					t.Error("MCPAPI should not be nil")
-				}
 				if s.AggregatorAPI == nil {
 					t.Error("AggregatorAPI should not be nil")
 				}
@@ -158,7 +155,6 @@ func TestServices_Creation(t *testing.T) {
 	// Test that services are created
 	assert.NotNil(t, services.Orchestrator)
 	assert.NotNil(t, services.OrchestratorAPI)
-	assert.NotNil(t, services.MCPAPI)
 	assert.NotNil(t, services.AggregatorAPI)
 	assert.NotNil(t, services.ConfigAPI)
 }

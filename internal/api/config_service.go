@@ -57,11 +57,11 @@ func (c *configServiceAPI) GetMCPServers(ctx context.Context) ([]MCPServerDefini
 	if handler == nil {
 		return nil, fmt.Errorf("MCP server manager not registered")
 	}
-	
+
 	// Convert MCPServerConfigInfo to MCPServerDefinition
 	configInfos := handler.ListMCPServers()
 	definitions := make([]MCPServerDefinition, len(configInfos))
-	
+
 	for i, info := range configInfos {
 		// Get detailed definition
 		if def, err := handler.GetMCPServer(info.Name); err == nil {
@@ -80,7 +80,7 @@ func (c *configServiceAPI) GetMCPServers(ctx context.Context) ([]MCPServerDefini
 			}
 		}
 	}
-	
+
 	return definitions, nil
 }
 

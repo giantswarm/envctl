@@ -140,4 +140,4 @@ func runMCPServerAvailable(cmd *cobra.Command, args []string) error {
 	}
 
 	return executor.Execute(ctx, "core_mcpserver_available", args_map)
-} 
+}

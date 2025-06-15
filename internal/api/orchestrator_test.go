@@ -326,6 +326,37 @@ func (m *mockOrchestratorHandler) SubscribeToServiceInstanceEvents() <-chan Serv
 	return eventChan
 }
 
+// Add missing ServiceManagerHandler methods
+func (m *mockOrchestratorHandler) GetService(labelOrServiceID string) (*ServiceClassInstanceInfo, error) {
+	return &ServiceClassInstanceInfo{
+		ServiceID:        "test-service-id",
+		Label:            labelOrServiceID,
+		ServiceClassName: "test-class",
+		ServiceClassType: "test",
+		State:            "running",
+		Health:           "healthy",
+		CreatedAt:        time.Now(),
+		ServiceData:      make(map[string]interface{}),
+	}, nil
+}
+
+func (m *mockOrchestratorHandler) CreateService(ctx context.Context, req CreateServiceClassRequest) (*ServiceClassInstanceInfo, error) {
+	return &ServiceClassInstanceInfo{
+		ServiceID:        "test-service-id",
+		Label:            req.Label,
+		ServiceClassName: req.ServiceClassName,
+		ServiceClassType: "test",
+		State:            "running",
+		Health:           "healthy",
+		CreatedAt:        time.Now(),
+		ServiceData:      make(map[string]interface{}),
+	}, nil
+}
+
+func (m *mockOrchestratorHandler) DeleteService(ctx context.Context, labelOrServiceID string) error {
+	return nil
+}
+
 func TestNewOrchestratorAPI(t *testing.T) {
 	// Setup mock handlers
 	registry := newMockServiceRegistryHandler()
@@ -372,9 +403,9 @@ func TestOrchestratorAPI_StartService(t *testing.T) {
 			// Setup mock handlers
 			mockOrch := newMockOrchestratorHandler()
 			mockOrch.startErr = tt.startError
-			RegisterOrchestrator(mockOrch)
+			RegisterServiceManager(mockOrch)
 			defer func() {
-				RegisterOrchestrator(nil)
+				RegisterServiceManager(nil)
 			}()
 
 			api := NewOrchestratorAPI()
@@ -414,9 +445,9 @@ func TestOrchestratorAPI_StopService(t *testing.T) {
 			// Setup mock handlers
 			mockOrch := newMockOrchestratorHandler()
 			mockOrch.stopErr = tt.stopError
-			RegisterOrchestrator(mockOrch)
+			RegisterServiceManager(mockOrch)
 			defer func() {
-				RegisterOrchestrator(nil)
+				RegisterServiceManager(nil)
 			}()
 
 			api := NewOrchestratorAPI()
@@ -456,9 +487,9 @@ func TestOrchestratorAPI_RestartService(t *testing.T) {
 			// Setup mock handlers
 			mockOrch := newMockOrchestratorHandler()
 			mockOrch.restartErr = tt.restartErr
-			RegisterOrchestrator(mockOrch)
+			RegisterServiceManager(mockOrch)
 			defer func() {
-				RegisterOrchestrator(nil)
+				RegisterServiceManager(nil)
 			}()
 
 			api := NewOrchestratorAPI()
@@ -524,9 +555,9 @@ func TestOrchestratorAPI_GetServiceStatus(t *testing.T) {
 func TestOrchestratorAPI_SubscribeToStateChanges(t *testing.T) {
 	// Setup mock handlers
 	mockOrch := newMockOrchestratorHandler()
-	RegisterOrchestrator(mockOrch)
+	RegisterServiceManager(mockOrch)
 	defer func() {
-		RegisterOrchestrator(nil)
+		RegisterServiceManager(nil)
 	}()
 
 	api := NewOrchestratorAPI()

@@ -295,7 +295,7 @@ func (m *Model) RefreshServiceData() error {
 	// Refresh MCP servers - get them from the service registry instead
 	if registry := api.GetServiceRegistry(); registry != nil {
 		mcpServices := registry.GetByType(api.TypeMCPServer)
-		
+
 		// Convert service info to MCPServerInfo
 		newMCPServers := make(map[string]*api.MCPServerInfo)
 		for _, service := range mcpServices {
@@ -305,7 +305,7 @@ func (m *Model) RefreshServiceData() error {
 				Health:  string(service.GetHealth()),
 				Enabled: true, // Assume enabled if it's in the registry
 			}
-			
+
 			// Get additional info from service data if available
 			if data := service.GetServiceData(); data != nil {
 				if name, ok := data["name"].(string); ok {
@@ -318,15 +318,15 @@ func (m *Model) RefreshServiceData() error {
 					mcpInfo.Enabled = enabled
 				}
 			}
-			
+
 			// Get error if any
 			if err := service.GetLastError(); err != nil {
 				mcpInfo.Error = err.Error()
 			}
-			
+
 			newMCPServers[service.GetLabel()] = mcpInfo
 		}
-		
+
 		// Update order - add any new MCP servers that aren't in the order yet
 		existingMCPInOrder := make(map[string]bool)
 		for _, name := range m.MCPServerOrder {

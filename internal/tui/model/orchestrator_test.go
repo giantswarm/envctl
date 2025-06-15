@@ -46,7 +46,6 @@ func TestStartOrchestrator(t *testing.T) {
 
 			// Create APIs
 			orchestratorAPI := api.NewOrchestratorAPI()
-			mcpAPI := api.NewMCPServiceAPI()
 			k8sAPI := api.NewK8sServiceAPI()
 
 			// Clean up handlers after test
@@ -60,7 +59,6 @@ func TestStartOrchestrator(t *testing.T) {
 				Orchestrator:       orch,
 				OrchestratorAPI:    orchestratorAPI,
 				K8sServiceAPI:      k8sAPI,
-				MCPServiceAPI:      mcpAPI,
 				K8sConnections:     make(map[string]*api.K8sConnectionInfo),
 				MCPServers:         make(map[string]*api.MCPServerInfo),
 				K8sConnectionOrder: []string{},

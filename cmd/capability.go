@@ -140,4 +140,4 @@ func runCapabilityAvailable(cmd *cobra.Command, args []string) error {
 	}
 
 	return executor.Execute(ctx, "core_capability_available", args_map)
-} 
+}

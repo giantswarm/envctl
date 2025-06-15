@@ -78,4 +78,4 @@ func init() {
 	serveCmd.Flags().BoolVar(&serveNoTUI, "no-tui", false, "Disable TUI and run services in the background")
 	serveCmd.Flags().BoolVar(&serveDebug, "debug", false, "Enable general debug logging")
 	serveCmd.Flags().BoolVar(&serveYolo, "yolo", false, "Disable denylist for destructive tool calls (use with caution)")
-} 
+}

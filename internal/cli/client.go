@@ -175,4 +175,4 @@ func (c *CLIClient) initialize(ctx context.Context) error {
 	}
 
 	return nil
-} 
+}

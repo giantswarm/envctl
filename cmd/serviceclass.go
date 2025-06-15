@@ -140,4 +140,4 @@ func runServiceClassAvailable(cmd *cobra.Command, args []string) error {
 	}
 
 	return executor.Execute(ctx, "core_serviceclass_available", args_map)
-} 
+}

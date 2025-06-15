@@ -299,4 +299,4 @@ func readWorkflowFile(filename string) (string, error) {
 	}
 
 	return string(content), nil
-} 
+}

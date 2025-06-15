@@ -43,35 +43,13 @@ func (m *mockPortForwardServiceAPI) GetForwardInfo(ctx context.Context, label st
 	return nil, nil
 }
 
-// Mock MCPServiceAPI for testing
-type mockMCPServiceAPI struct {
-	listServersFunc func(ctx context.Context) ([]*api.MCPServerInfo, error)
-}
-
-func (m *mockMCPServiceAPI) ListServers(ctx context.Context) ([]*api.MCPServerInfo, error) {
-	if m.listServersFunc != nil {
-		return m.listServersFunc(ctx)
-	}
-	return []*api.MCPServerInfo{}, nil
-}
-
-func (m *mockMCPServiceAPI) GetServerInfo(ctx context.Context, label string) (*api.MCPServerInfo, error) {
-	return nil, nil
-}
-
-func (m *mockMCPServiceAPI) GetTools(ctx context.Context, serverName string) ([]api.MCPTool, error) {
-	return nil, nil
-}
-
 func TestRefreshServiceData(t *testing.T) {
 	tests := []struct {
 		name           string
 		k8sConnections []*api.K8sConnectionInfo
 		portForwards   []*api.PortForwardServiceInfo
-		mcpServers     []*api.MCPServerInfo
 		k8sError       error
 		pfError        error
-		mcpError       error
 		wantError      bool
 	}{
 		{
@@ -83,10 +61,6 @@ func TestRefreshServiceData(t *testing.T) {
 			portForwards: []*api.PortForwardServiceInfo{
 				{Label: "pf1", State: "running"},
 				{Label: "pf2", State: "stopped"},
-			},
-			mcpServers: []*api.MCPServerInfo{
-				{Label: "mcp1", Name: "mcp1"},
-				{Label: "mcp2", Name: "mcp2"},
 			},
 			wantError: false,
 		},
@@ -104,21 +78,9 @@ func TestRefreshServiceData(t *testing.T) {
 			wantError: true,
 		},
 		{
-			name: "mcp servers error",
-			k8sConnections: []*api.K8sConnectionInfo{
-				{Label: "k8s1", Health: "healthy"},
-			},
-			portForwards: []*api.PortForwardServiceInfo{
-				{Label: "pf1", State: "running"},
-			},
-			mcpError:  errors.New("mcp error"),
-			wantError: true,
-		},
-		{
 			name:           "empty results",
 			k8sConnections: []*api.K8sConnectionInfo{},
 			portForwards:   []*api.PortForwardServiceInfo{},
-			mcpServers:     []*api.MCPServerInfo{},
 			wantError:      false,
 		},
 	}
@@ -136,11 +98,7 @@ func TestRefreshServiceData(t *testing.T) {
 						return tt.portForwards, tt.pfError
 					},
 				},
-				MCPServiceAPI: &mockMCPServiceAPI{
-					listServersFunc: func(ctx context.Context) ([]*api.MCPServerInfo, error) {
-						return tt.mcpServers, tt.mcpError
-					},
-				},
+				OrchestratorAPI:    &mockOrchestratorAPI{},
 				K8sConnections:     make(map[string]*api.K8sConnectionInfo),
 				PortForwards:       make(map[string]*api.PortForwardServiceInfo),
 				MCPServers:         make(map[string]*api.MCPServerInfo),
@@ -177,16 +135,6 @@ func TestRefreshServiceData(t *testing.T) {
 					}
 				}
 
-				// Verify MCP servers
-				if len(m.MCPServers) != len(tt.mcpServers) {
-					t.Errorf("MCPServers count = %v, want %v", len(m.MCPServers), len(tt.mcpServers))
-				}
-				for _, mcp := range tt.mcpServers {
-					if _, exists := m.MCPServers[mcp.Label]; !exists {
-						t.Errorf("MCPServer %s not found", mcp.Label)
-					}
-				}
-
 				// Verify ordering is preserved
 				if len(m.K8sConnectionOrder) != len(tt.k8sConnections) {
 					t.Errorf("K8sConnectionOrder length = %v, want %v", len(m.K8sConnectionOrder), len(tt.k8sConnections))
@@ -194,197 +142,7 @@ func TestRefreshServiceData(t *testing.T) {
 				if len(m.PortForwardOrder) != len(tt.portForwards) {
 					t.Errorf("PortForwardOrder length = %v, want %v", len(m.PortForwardOrder), len(tt.portForwards))
 				}
-				if len(m.MCPServerOrder) != len(tt.mcpServers) {
-					t.Errorf("MCPServerOrder length = %v, want %v", len(m.MCPServerOrder), len(tt.mcpServers))
-				}
 			}
 		})
-	}
-}
-
-func TestRefreshServiceData_PreservesOrder(t *testing.T) {
-	// Test that subsequent refreshes preserve the original order
-	m := &Model{
-		K8sServiceAPI: &mockK8sServiceAPI{
-			listConnectionsFunc: func(ctx context.Context) ([]*api.K8sConnectionInfo, error) {
-				return []*api.K8sConnectionInfo{
-					{Label: "k8s1"},
-					{Label: "k8s2"},
-				}, nil
-			},
-		},
-		PortForwardAPI: &mockPortForwardServiceAPI{
-			listForwardsFunc: func(ctx context.Context) ([]*api.PortForwardServiceInfo, error) {
-				return []*api.PortForwardServiceInfo{
-					{Label: "pf1"},
-					{Label: "pf2"},
-				}, nil
-			},
-		},
-		MCPServiceAPI: &mockMCPServiceAPI{
-			listServersFunc: func(ctx context.Context) ([]*api.MCPServerInfo, error) {
-				return []*api.MCPServerInfo{
-					{Label: "mcp1", Name: "mcp1"},
-					{Label: "mcp2", Name: "mcp2"},
-				}, nil
-			},
-		},
-		K8sConnections:     make(map[string]*api.K8sConnectionInfo),
-		PortForwards:       make(map[string]*api.PortForwardServiceInfo),
-		MCPServers:         make(map[string]*api.MCPServerInfo),
-		K8sConnectionOrder: []string{},
-		PortForwardOrder:   []string{},
-		MCPServerOrder:     []string{},
-	}
-
-	// First refresh
-	err := m.RefreshServiceData()
-	if err != nil {
-		t.Fatalf("First RefreshServiceData() error = %v", err)
-	}
-
-	// Store original order
-	origK8sOrder := make([]string, len(m.K8sConnectionOrder))
-	copy(origK8sOrder, m.K8sConnectionOrder)
-
-	origPFOrder := make([]string, len(m.PortForwardOrder))
-	copy(origPFOrder, m.PortForwardOrder)
-
-	origMCPOrder := make([]string, len(m.MCPServerOrder))
-	copy(origMCPOrder, m.MCPServerOrder)
-
-	// Update APIs to return different order
-	m.K8sServiceAPI = &mockK8sServiceAPI{
-		listConnectionsFunc: func(ctx context.Context) ([]*api.K8sConnectionInfo, error) {
-			return []*api.K8sConnectionInfo{
-				{Label: "k8s2"}, // Swapped order
-				{Label: "k8s1"},
-			}, nil
-		},
-	}
-
-	// Second refresh
-	err = m.RefreshServiceData()
-	if err != nil {
-		t.Fatalf("Second RefreshServiceData() error = %v", err)
-	}
-
-	// Verify order is preserved
-	for i, label := range origK8sOrder {
-		if m.K8sConnectionOrder[i] != label {
-			t.Errorf("K8sConnectionOrder[%d] = %v, want %v", i, m.K8sConnectionOrder[i], label)
-		}
-	}
-}
-
-func TestRefreshServiceData_AddsNewServices(t *testing.T) {
-	// Test that new services are added to order arrays when they appear after initialization
-	m := &Model{
-		K8sServiceAPI: &mockK8sServiceAPI{
-			listConnectionsFunc: func(ctx context.Context) ([]*api.K8sConnectionInfo, error) {
-				// First return only one connection
-				return []*api.K8sConnectionInfo{
-					{Label: "k8s1"},
-				}, nil
-			},
-		},
-		PortForwardAPI: &mockPortForwardServiceAPI{
-			listForwardsFunc: func(ctx context.Context) ([]*api.PortForwardServiceInfo, error) {
-				// First return empty
-				return []*api.PortForwardServiceInfo{}, nil
-			},
-		},
-		MCPServiceAPI: &mockMCPServiceAPI{
-			listServersFunc: func(ctx context.Context) ([]*api.MCPServerInfo, error) {
-				// First return only one server
-				return []*api.MCPServerInfo{
-					{Label: "mcp1", Name: "mcp1"},
-				}, nil
-			},
-		},
-		K8sConnections:     make(map[string]*api.K8sConnectionInfo),
-		PortForwards:       make(map[string]*api.PortForwardServiceInfo),
-		MCPServers:         make(map[string]*api.MCPServerInfo),
-		K8sConnectionOrder: []string{},
-		PortForwardOrder:   []string{},
-		MCPServerOrder:     []string{},
-	}
-
-	// First refresh - should add k8s1 and mcp1, port forwards should be empty
-	err := m.RefreshServiceData()
-	if err != nil {
-		t.Fatalf("First RefreshServiceData() error = %v", err)
-	}
-
-	// Verify initial state
-	if len(m.K8sConnectionOrder) != 1 || m.K8sConnectionOrder[0] != "k8s1" {
-		t.Errorf("Initial K8sConnectionOrder = %v, want [k8s1]", m.K8sConnectionOrder)
-	}
-	if len(m.PortForwardOrder) != 0 {
-		t.Errorf("Initial PortForwardOrder = %v, want []", m.PortForwardOrder)
-	}
-	if len(m.MCPServerOrder) != 1 || m.MCPServerOrder[0] != "mcp1" {
-		t.Errorf("Initial MCPServerOrder = %v, want [mcp1]", m.MCPServerOrder)
-	}
-
-	// Update APIs to return more services
-	m.K8sServiceAPI = &mockK8sServiceAPI{
-		listConnectionsFunc: func(ctx context.Context) ([]*api.K8sConnectionInfo, error) {
-			// Now return two connections
-			return []*api.K8sConnectionInfo{
-				{Label: "k8s1"},
-				{Label: "k8s2"},
-			}, nil
-		},
-	}
-	m.PortForwardAPI = &mockPortForwardServiceAPI{
-		listForwardsFunc: func(ctx context.Context) ([]*api.PortForwardServiceInfo, error) {
-			// Now return two port forwards
-			return []*api.PortForwardServiceInfo{
-				{Label: "pf1"},
-				{Label: "pf2"},
-			}, nil
-		},
-	}
-	m.MCPServiceAPI = &mockMCPServiceAPI{
-		listServersFunc: func(ctx context.Context) ([]*api.MCPServerInfo, error) {
-			// Now return two servers
-			return []*api.MCPServerInfo{
-				{Label: "mcp1", Name: "mcp1"},
-				{Label: "mcp2", Name: "mcp2"},
-			}, nil
-		},
-	}
-
-	// Second refresh - should add the new services
-	err = m.RefreshServiceData()
-	if err != nil {
-		t.Fatalf("Second RefreshServiceData() error = %v", err)
-	}
-
-	// Verify new services were added
-	if len(m.K8sConnectionOrder) != 2 {
-		t.Errorf("K8sConnectionOrder length = %v, want 2", len(m.K8sConnectionOrder))
-	}
-	if m.K8sConnectionOrder[0] != "k8s1" || m.K8sConnectionOrder[1] != "k8s2" {
-		t.Errorf("K8sConnectionOrder = %v, want [k8s1 k8s2]", m.K8sConnectionOrder)
-	}
-
-	if len(m.PortForwardOrder) != 2 {
-		t.Errorf("PortForwardOrder length = %v, want 2", len(m.PortForwardOrder))
-	}
-	// Port forwards should be added in the order they appear
-	expectedPF := []string{"pf1", "pf2"}
-	for i, pf := range expectedPF {
-		if i >= len(m.PortForwardOrder) || m.PortForwardOrder[i] != pf {
-			t.Errorf("PortForwardOrder[%d] = %v, want %v", i, m.PortForwardOrder[i], pf)
-		}
-	}
-
-	if len(m.MCPServerOrder) != 2 {
-		t.Errorf("MCPServerOrder length = %v, want 2", len(m.MCPServerOrder))
-	}
-	if m.MCPServerOrder[0] != "mcp1" || m.MCPServerOrder[1] != "mcp2" {
-		t.Errorf("MCPServerOrder = %v, want [mcp1 mcp2]", m.MCPServerOrder)
 	}
 }

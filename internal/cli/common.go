@@ -70,4 +70,4 @@ func FormatSuccess(msg string) string {
 // FormatWarning formats a warning message for CLI output
 func FormatWarning(msg string) string {
 	return fmt.Sprintf("⚠ %s", msg)
-} 
+}

@@ -212,4 +212,4 @@ func (e *ToolExecutor) formatSingleObjectAsTable(obj map[string]interface{}) {
 	for key, value := range obj {
 		fmt.Printf("%s\t%v\n", key, value)
 	}
-} 
+}
