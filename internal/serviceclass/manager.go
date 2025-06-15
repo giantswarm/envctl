@@ -60,7 +60,7 @@ func (m *ServiceClassManager) LoadServiceDefinitions() error {
 	validator := func(def ServiceClassDefinition) error {
 		return m.validateServiceClassDefinition(&def)
 	}
-	
+
 	definitions, errorCollection, err := config.LoadAndParseYAML[ServiceClassDefinition]("serviceclasses", validator)
 	if err != nil {
 		logging.Warn("ServiceClassManager", "Error loading service classes: %v", err)

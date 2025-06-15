@@ -12,13 +12,13 @@ import (
 
 // CapabilityManager manages capability definitions and their availability
 type CapabilityManager struct {
-	mu             sync.RWMutex
-	loader         *config.ConfigurationLoader
-	definitions    map[string]*CapabilityDefinition // capability name -> definition
-	toolChecker    config.ToolAvailabilityChecker
-	registry       *Registry
-	exposedTools   map[string]bool // Track which capability tools we've exposed
-	storage *config.DynamicStorage
+	mu           sync.RWMutex
+	loader       *config.ConfigurationLoader
+	definitions  map[string]*CapabilityDefinition // capability name -> definition
+	toolChecker  config.ToolAvailabilityChecker
+	registry     *Registry
+	exposedTools map[string]bool // Track which capability tools we've exposed
+	storage      *config.DynamicStorage
 }
 
 // NewCapabilityManager creates a new capability manager
@@ -29,12 +29,12 @@ func NewCapabilityManager(toolChecker config.ToolAvailabilityChecker, registry *
 	}
 
 	return &CapabilityManager{
-		loader:         loader,
-		definitions:    make(map[string]*CapabilityDefinition),
-		toolChecker:    toolChecker,
-		registry:       registry,
-		exposedTools:   make(map[string]bool),
-		storage: storage,
+		loader:       loader,
+		definitions:  make(map[string]*CapabilityDefinition),
+		toolChecker:  toolChecker,
+		registry:     registry,
+		exposedTools: make(map[string]bool),
+		storage:      storage,
 	}, nil
 }
 
@@ -247,8 +247,6 @@ func (cm *CapabilityManager) GetOperationForTool(toolName string) (*OperationDef
 
 	return nil, nil, fmt.Errorf("no operation found for tool %s", toolName)
 }
-
-
 
 // CreateCapability creates a new capability definition
 func (cm *CapabilityManager) CreateCapability(def *CapabilityDefinition) error {

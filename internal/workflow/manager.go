@@ -49,7 +49,7 @@ func (wm *WorkflowManager) LoadDefinitions() error {
 	validator := func(def WorkflowDefinition) error {
 		return wm.validateWorkflowDefinition(&def)
 	}
-	
+
 	definitions, errorCollection, err := config.LoadAndParseYAML[WorkflowDefinition]("workflows", validator)
 	if err != nil {
 		logging.Warn("WorkflowManager", "Error loading workflows: %v", err)
@@ -79,7 +79,7 @@ func (wm *WorkflowManager) validateWorkflowDefinition(def *WorkflowDefinition) e
 	if len(def.Steps) == 0 {
 		return fmt.Errorf("workflow must have at least one step")
 	}
-	
+
 	// Validate each step
 	for i, step := range def.Steps {
 		if step.ID == "" {
@@ -89,7 +89,7 @@ func (wm *WorkflowManager) validateWorkflowDefinition(def *WorkflowDefinition) e
 			return fmt.Errorf("step %d (%s): tool name cannot be empty", i, step.ID)
 		}
 	}
-	
+
 	return nil
 }
 

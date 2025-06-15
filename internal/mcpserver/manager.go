@@ -45,7 +45,7 @@ func (msm *MCPServerManager) LoadDefinitions() error {
 	validator := func(def MCPServerDefinition) error {
 		return msm.validateDefinition(&def)
 	}
-	
+
 	definitions, errorCollection, err := config.LoadAndParseYAML[MCPServerDefinition]("mcpservers", validator)
 	if err != nil {
 		logging.Warn("MCPServerManager", "Error loading MCP servers: %v", err)

@@ -285,8 +285,6 @@ func LoadAndParseYAML[T any](subDir string, validator func(T) error) ([]T, *Conf
 	return results, errorCollection, nil
 }
 
-
-
 // getValidationSuggestions returns context-aware suggestions based on the configuration type and error
 func getValidationSuggestions(subDir string, validationErr error) []string {
 	errorMsg := strings.ToLower(validationErr.Error())

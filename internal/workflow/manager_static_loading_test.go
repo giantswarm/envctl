@@ -43,20 +43,20 @@ func TestWorkflowManager_LoadDefinitions_Integration(t *testing.T) {
 	// Create a workflow manager with real storage
 	storage := config.NewDynamicStorage()
 	mockToolChecker := NewMockToolChecker()
-	
+
 	// Clean up any existing workflows first
 	existingWorkflows, _ := storage.List("workflows")
 	for _, name := range existingWorkflows {
 		storage.Delete("workflows", name)
 	}
-	
+
 	manager, err := NewWorkflowManager(storage, nil, mockToolChecker)
 	require.NoError(t, err)
-	
+
 	// Test that LoadDefinitions doesn't crash and can handle missing directories
 	err = manager.LoadDefinitions()
 	require.NoError(t, err)
-	
+
 	// Should start with no workflows
 	definitions := manager.ListDefinitions()
 	assert.Len(t, definitions, 0)
@@ -65,10 +65,10 @@ func TestWorkflowManager_LoadDefinitions_Integration(t *testing.T) {
 func TestWorkflowManager_ValidationFunction(t *testing.T) {
 	storage := config.NewDynamicStorage()
 	mockToolChecker := NewMockToolChecker()
-	
+
 	manager, err := NewWorkflowManager(storage, nil, mockToolChecker)
 	require.NoError(t, err)
-	
+
 	testCases := []struct {
 		name        string
 		workflow    WorkflowDefinition
@@ -132,7 +132,7 @@ func TestWorkflowManager_ValidationFunction(t *testing.T) {
 			errorMsg:    "tool name cannot be empty",
 		},
 	}
-	
+
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			err := manager.validateWorkflowDefinition(&tc.workflow)
@@ -149,16 +149,16 @@ func TestWorkflowManager_ValidationFunction(t *testing.T) {
 func TestWorkflowManager_DynamicStorage_Integration(t *testing.T) {
 	storage := config.NewDynamicStorage()
 	mockToolChecker := NewMockToolChecker()
-	
+
 	// Clean up any existing workflows first
 	existingWorkflows, _ := storage.List("workflows")
 	for _, name := range existingWorkflows {
 		storage.Delete("workflows", name)
 	}
-	
+
 	manager, err := NewWorkflowManager(storage, nil, mockToolChecker)
 	require.NoError(t, err)
-	
+
 	// Create a test workflow
 	testWorkflow := WorkflowDefinition{
 		Name:        "dynamic-test-workflow",
@@ -171,28 +171,28 @@ func TestWorkflowManager_DynamicStorage_Integration(t *testing.T) {
 			{ID: "step1", Tool: "test-tool", Args: map[string]interface{}{"param": "value"}},
 		},
 	}
-	
+
 	// Save to storage
 	data, err := yaml.Marshal(testWorkflow)
 	require.NoError(t, err)
 	err = storage.Save("workflows", "dynamic-test-workflow", data)
 	require.NoError(t, err)
-	
+
 	// Load definitions
 	err = manager.LoadDefinitions()
 	require.NoError(t, err)
-	
+
 	// Should have the dynamic workflow
 	definitions := manager.ListDefinitions()
 	require.Len(t, definitions, 1)
-	
+
 	loadedWorkflow := definitions[0]
 	assert.Equal(t, "dynamic-test-workflow", loadedWorkflow.Name)
 	assert.Equal(t, "Test workflow for storage", loadedWorkflow.Description)
 	assert.Len(t, loadedWorkflow.Steps, 1)
 	assert.Equal(t, "step1", loadedWorkflow.Steps[0].ID)
 	assert.Equal(t, "test-tool", loadedWorkflow.Steps[0].Tool)
-	
+
 	// Clean up
 	storage.Delete("workflows", "dynamic-test-workflow")
 }
@@ -200,23 +200,23 @@ func TestWorkflowManager_DynamicStorage_Integration(t *testing.T) {
 func TestWorkflowManager_InvalidDynamicWorkflow(t *testing.T) {
 	storage := config.NewDynamicStorage()
 	mockToolChecker := NewMockToolChecker()
-	
+
 	manager, err := NewWorkflowManager(storage, nil, mockToolChecker)
 	require.NoError(t, err)
-	
+
 	// Create an invalid workflow (no steps) with unique name
 	invalidWorkflow := WorkflowDefinition{
 		Name:        "invalid-workflow-test",
 		Description: "Invalid workflow with no steps",
 		Steps:       []WorkflowStep{}, // Empty steps - should fail validation
 	}
-	
+
 	// Save to storage
 	data, err := yaml.Marshal(invalidWorkflow)
 	require.NoError(t, err)
 	err = storage.Save("workflows", "invalid-workflow-test", data)
 	require.NoError(t, err)
-	
+
 	// Clean up any existing workflows first to ensure clean test
 	existingWorkflows, _ := storage.List("workflows")
 	for _, name := range existingWorkflows {
@@ -224,15 +224,15 @@ func TestWorkflowManager_InvalidDynamicWorkflow(t *testing.T) {
 			storage.Delete("workflows", name)
 		}
 	}
-	
+
 	// Load definitions - should skip invalid workflow
 	err = manager.LoadDefinitions()
 	require.NoError(t, err)
-	
+
 	// Should have no workflows (invalid one was skipped)
 	definitions := manager.ListDefinitions()
 	assert.Len(t, definitions, 0)
-	
+
 	// Clean up
 	storage.Delete("workflows", "invalid-workflow-test")
 }
@@ -240,16 +240,16 @@ func TestWorkflowManager_InvalidDynamicWorkflow(t *testing.T) {
 func TestWorkflowManager_MalformedYAML(t *testing.T) {
 	storage := config.NewDynamicStorage()
 	mockToolChecker := NewMockToolChecker()
-	
+
 	manager, err := NewWorkflowManager(storage, nil, mockToolChecker)
 	require.NoError(t, err)
-	
+
 	// Clean up any existing workflows first
 	existingWorkflows, _ := storage.List("workflows")
 	for _, name := range existingWorkflows {
 		storage.Delete("workflows", name)
 	}
-	
+
 	// Save malformed YAML to storage with unique name
 	malformedYAML := []byte(`
 name: malformed-workflow-test
@@ -259,18 +259,18 @@ steps:
     tool: test-tool
     args: {invalid: yaml: structure}
 `)
-	
+
 	err = storage.Save("workflows", "malformed-workflow-test", malformedYAML)
 	require.NoError(t, err)
-	
+
 	// Load definitions - should skip malformed workflow
 	err = manager.LoadDefinitions()
 	require.NoError(t, err)
-	
+
 	// Should have no workflows (malformed one was skipped)
 	definitions := manager.ListDefinitions()
 	assert.Len(t, definitions, 0)
-	
+
 	// Clean up
 	storage.Delete("workflows", "malformed-workflow-test")
 }
@@ -278,20 +278,20 @@ steps:
 func TestWorkflowManager_WorkflowAvailability(t *testing.T) {
 	storage := config.NewDynamicStorage()
 	mockToolChecker := NewMockToolChecker()
-	
+
 	// Clean up any existing workflows first
 	existingWorkflows, _ := storage.List("workflows")
 	for _, name := range existingWorkflows {
 		storage.Delete("workflows", name)
 	}
-	
+
 	// Set some tools as available
 	mockToolChecker.SetToolAvailable("available-tool", true)
 	mockToolChecker.SetToolAvailable("unavailable-tool", false)
-	
+
 	manager, err := NewWorkflowManager(storage, nil, mockToolChecker)
 	require.NoError(t, err)
-	
+
 	// Create workflows with different tool availability using unique names
 	availableWorkflow := WorkflowDefinition{
 		Name:        "available-workflow-test",
@@ -300,15 +300,15 @@ func TestWorkflowManager_WorkflowAvailability(t *testing.T) {
 			{ID: "step1", Tool: "available-tool"},
 		},
 	}
-	
+
 	unavailableWorkflow := WorkflowDefinition{
-		Name:        "unavailable-workflow-test", 
+		Name:        "unavailable-workflow-test",
 		Description: "Workflow with unavailable tools",
 		Steps: []WorkflowStep{
 			{ID: "step1", Tool: "unavailable-tool"},
 		},
 	}
-	
+
 	// Save both workflows
 	for _, wf := range []WorkflowDefinition{availableWorkflow, unavailableWorkflow} {
 		data, err := yaml.Marshal(wf)
@@ -316,25 +316,25 @@ func TestWorkflowManager_WorkflowAvailability(t *testing.T) {
 		err = storage.Save("workflows", wf.Name, data)
 		require.NoError(t, err)
 	}
-	
+
 	// Load definitions
 	err = manager.LoadDefinitions()
 	require.NoError(t, err)
-	
+
 	// Should have both workflows
 	definitions := manager.ListDefinitions()
 	require.Len(t, definitions, 2)
-	
+
 	// Test availability
 	assert.True(t, manager.IsAvailable("available-workflow-test"))
 	assert.False(t, manager.IsAvailable("unavailable-workflow-test"))
-	
+
 	// Test available definitions filter
 	availableDefinitions := manager.ListAvailableDefinitions()
 	require.Len(t, availableDefinitions, 1)
 	assert.Equal(t, "available-workflow-test", availableDefinitions[0].Name)
-	
+
 	// Clean up
 	storage.Delete("workflows", "available-workflow-test")
 	storage.Delete("workflows", "unavailable-workflow-test")
-} 
+}
