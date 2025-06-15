@@ -3,7 +3,7 @@ package mcpserver
 import (
 	"context"
 	"envctl/internal/containerizer"
-	"envctl/internal/mcpserver"
+	mcpserver "envctl/internal/mcpserver"
 	"envctl/internal/services"
 	"envctl/pkg/logging"
 	"fmt"

@@ -17,7 +17,7 @@ import (
 func TestGenerateMcpConfigJson(t *testing.T) {
 	tests := []struct {
 		name             string
-		mcpServerConfigs []config.MCPServerDefinition
+		mcpServerConfigs []api.MCPServerDefinition
 		mcpServers       map[string]*api.MCPServerInfo
 		aggregatorPort   int
 		expectedKeys     []string
@@ -26,10 +26,10 @@ func TestGenerateMcpConfigJson(t *testing.T) {
 	}{
 		{
 			name: "basic MCP server with runtime port",
-			mcpServerConfigs: []config.MCPServerDefinition{
+			mcpServerConfigs: []api.MCPServerDefinition{
 				{
 					Name:    "test-server",
-					Type:    config.MCPServerTypeLocalCommand,
+					Type:    string(config.MCPServerTypeLocalCommand),
 					Enabled: true,
 				},
 			},
@@ -45,10 +45,10 @@ func TestGenerateMcpConfigJson(t *testing.T) {
 		},
 		{
 			name: "disabled server should not appear",
-			mcpServerConfigs: []config.MCPServerDefinition{
+			mcpServerConfigs: []api.MCPServerDefinition{
 				{
 					Name:    "disabled-server",
-					Type:    config.MCPServerTypeLocalCommand,
+					Type:    string(config.MCPServerTypeLocalCommand),
 					Enabled: false,
 				},
 			},
@@ -58,20 +58,20 @@ func TestGenerateMcpConfigJson(t *testing.T) {
 		},
 		{
 			name: "multiple servers",
-			mcpServerConfigs: []config.MCPServerDefinition{
+			mcpServerConfigs: []api.MCPServerDefinition{
 				{
 					Name:    "server1",
-					Type:    config.MCPServerTypeLocalCommand,
+					Type:    string(config.MCPServerTypeLocalCommand),
 					Enabled: true,
 				},
 				{
 					Name:    "server2",
-					Type:    config.MCPServerTypeContainer,
+					Type:    string(config.MCPServerTypeContainer),
 					Enabled: true,
 				},
 				{
 					Name:    "server3",
-					Type:    config.MCPServerTypeLocalCommand,
+					Type:    string(config.MCPServerTypeLocalCommand),
 					Enabled: false, // This one should not appear
 				},
 			},
@@ -84,17 +84,17 @@ func TestGenerateMcpConfigJson(t *testing.T) {
 		},
 		{
 			name:             "no enabled servers",
-			mcpServerConfigs: []config.MCPServerDefinition{},
+			mcpServerConfigs: []api.MCPServerDefinition{},
 			mcpServers:       map[string]*api.MCPServerInfo{},
 			aggregatorPort:   8080,
 			expectEmpty:      true,
 		},
 		{
 			name: "custom aggregator port",
-			mcpServerConfigs: []config.MCPServerDefinition{
+			mcpServerConfigs: []api.MCPServerDefinition{
 				{
 					Name:    "test-server",
-					Type:    config.MCPServerTypeLocalCommand,
+					Type:    string(config.MCPServerTypeLocalCommand),
 					Enabled: true,
 				},
 			},
@@ -152,16 +152,16 @@ func TestGenerateMcpConfigJson(t *testing.T) {
 
 func TestGenerateMcpConfigJson_SpecificValues(t *testing.T) {
 	// Test specific values in the generated JSON
-	mcpServerConfigs := []config.MCPServerDefinition{
+	mcpServerConfigs := []api.MCPServerDefinition{
 		{
 			Name:    "test-server",
-			Type:    config.MCPServerTypeLocalCommand,
+			Type:    string(config.MCPServerTypeLocalCommand),
 			Command: []string{"test-command"},
 			Enabled: true,
 		},
 		{
 			Name:    "another-server",
-			Type:    config.MCPServerTypeContainer,
+			Type:    string(config.MCPServerTypeContainer),
 			Image:   "test-image:latest",
 			Enabled: true,
 		},
@@ -310,7 +310,7 @@ func TestPerformSwitchKubeContextCmd(t *testing.T) {
 
 func TestGenerateMcpConfigJson_EdgeCases(t *testing.T) {
 	t.Run("empty inputs", func(t *testing.T) {
-		result := GenerateMcpConfigJson([]config.MCPServerDefinition{}, map[string]*api.MCPServerInfo{}, 8080)
+		result := GenerateMcpConfigJson([]api.MCPServerDefinition{}, map[string]*api.MCPServerInfo{}, 8080)
 
 		var config map[string]interface{}
 		err := json.Unmarshal([]byte(result), &config)
@@ -321,10 +321,10 @@ func TestGenerateMcpConfigJson_EdgeCases(t *testing.T) {
 	})
 
 	t.Run("nil mcpServers map", func(t *testing.T) {
-		mcpServerConfigs := []config.MCPServerDefinition{
+		mcpServerConfigs := []api.MCPServerDefinition{
 			{
 				Name:    "test",
-				Type:    config.MCPServerTypeLocalCommand,
+				Type:    string(config.MCPServerTypeLocalCommand),
 				Enabled: true,
 			},
 		}
@@ -340,12 +340,11 @@ func TestGenerateMcpConfigJson_EdgeCases(t *testing.T) {
 	})
 
 	t.Run("container with multiple ports", func(t *testing.T) {
-		mcpServerConfigs := []config.MCPServerDefinition{
+		mcpServerConfigs := []api.MCPServerDefinition{
 			{
-				Name:           "multi-port",
-				Type:           config.MCPServerTypeContainer,
-				Enabled:        true,
-				ContainerPorts: []string{"8080:80", "9090:90", "3000:3000"},
+				Name:    "multi-port",
+				Type:    string(config.MCPServerTypeContainer),
+				Enabled: true,
 			},
 		}
 
@@ -365,10 +364,10 @@ func TestGenerateMcpConfigJson_EdgeCases(t *testing.T) {
 	})
 
 	t.Run("env var with different cases", func(t *testing.T) {
-		mcpServerConfigs := []config.MCPServerDefinition{
+		mcpServerConfigs := []api.MCPServerDefinition{
 			{
 				Name:    "env-test",
-				Type:    config.MCPServerTypeLocalCommand,
+				Type:    string(config.MCPServerTypeLocalCommand),
 				Enabled: true,
 				Env: map[string]string{
 					"server_url":    "http://localhost:1111",

@@ -46,7 +46,7 @@ func TestInitializeModel(t *testing.T) {
 			tuiConfig := TUIConfig{
 				DebugMode:        false,
 				ColorMode:        "auto",
-				MCPServerConfig:  cfg.MCPServers,
+				MCPServerConfig:  nil, // MCPServers removed
 				AggregatorConfig: cfg.Aggregator,
 			}
 
@@ -128,7 +128,7 @@ func TestModel_Init(t *testing.T) {
 	tuiConfig := TUIConfig{
 		DebugMode:        false,
 		ColorMode:        "auto",
-		MCPServerConfig:  cfg.MCPServers,
+		MCPServerConfig:  nil, // MCPServers removed
 		AggregatorConfig: cfg.Aggregator,
 	}
 
@@ -155,7 +155,7 @@ func TestModel_Update(t *testing.T) {
 	tuiConfig := TUIConfig{
 		DebugMode:        false,
 		ColorMode:        "auto",
-		MCPServerConfig:  cfg.MCPServers,
+		MCPServerConfig:  nil, // MCPServers removed
 		AggregatorConfig: cfg.Aggregator,
 	}
 
@@ -186,7 +186,7 @@ func TestModel_View(t *testing.T) {
 	tuiConfig := TUIConfig{
 		DebugMode:        false,
 		ColorMode:        "auto",
-		MCPServerConfig:  cfg.MCPServers,
+		MCPServerConfig:  nil, // MCPServers removed
 		AggregatorConfig: cfg.Aggregator,
 	}
 
@@ -243,7 +243,7 @@ func TestListenForStateChanges(t *testing.T) {
 	tuiConfig := TUIConfig{
 		DebugMode:        false,
 		ColorMode:        "auto",
-		MCPServerConfig:  cfg.MCPServers,
+		MCPServerConfig:  nil, // MCPServers removed
 		AggregatorConfig: cfg.Aggregator,
 	}
 
@@ -298,7 +298,7 @@ func TestListenForLogs(t *testing.T) {
 	tuiConfig := TUIConfig{
 		DebugMode:        false,
 		ColorMode:        "auto",
-		MCPServerConfig:  cfg.MCPServers,
+		MCPServerConfig:  nil, // MCPServers removed
 		AggregatorConfig: cfg.Aggregator,
 	}
 
@@ -343,29 +343,13 @@ func TestInitializeModel_WithConfig(t *testing.T) {
 	logChan := make(chan logging.LogEntry, 100)
 
 	// Test with configuration
-	cfg := config.EnvctlConfig{
-		MCPServers: []config.MCPServerDefinition{
-			{
-				Name:    "mcp1",
-				Type:    config.MCPServerTypeLocalCommand,
-				Command: []string{"mcp-server"},
-				Enabled: true,
-			},
-			{
-				Name:    "mcp2",
-				Type:    config.MCPServerTypeContainer,
-				Image:   "mcp-server:latest",
-				Enabled: false,
-			},
-		},
-	}
 
 	// Create TUIConfig
 	tuiConfig := TUIConfig{
 		DebugMode:        true,
 		ColorMode:        "auto",
-		MCPServerConfig:  cfg.MCPServers,
-		AggregatorConfig: cfg.Aggregator,
+		MCPServerConfig:  nil, // MCPServers removed
+		AggregatorConfig: config.AggregatorConfig{},
 	}
 
 	m, err := InitializeModel(tuiConfig, logChan)
@@ -374,8 +358,8 @@ func TestInitializeModel_WithConfig(t *testing.T) {
 	}
 
 	// Verify configuration is set
-	if len(m.MCPServerConfig) != 2 {
-		t.Errorf("MCPServerConfig length = %v, want 2", len(m.MCPServerConfig))
+	if len(m.MCPServerConfig) != 0 { // Changed from 2 to 0 as MCPServers removed
+		t.Errorf("MCPServerConfig length = %v, want 0", len(m.MCPServerConfig))
 	}
 
 	// Verify debug mode

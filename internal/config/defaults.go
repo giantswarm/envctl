@@ -3,7 +3,6 @@ package config
 // GetDefaultConfigWithRoles returns default configuration
 func GetDefaultConfigWithRoles() EnvctlConfig {
 	return EnvctlConfig{
-		MCPServers: []MCPServerDefinition{},
 		GlobalSettings: GlobalSettings{
 			DefaultContainerRuntime: "docker",
 		},

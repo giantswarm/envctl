@@ -2,7 +2,6 @@ package app
 
 import (
 	"envctl/internal/config"
-	"envctl/internal/orchestrator"
 	"envctl/internal/services"
 	"testing"
 
@@ -31,7 +30,6 @@ func TestInitializeServices(t *testing.T) {
 				NoTUI: false,
 				Debug: true,
 				EnvctlConfig: &config.EnvctlConfig{
-					MCPServers: []config.MCPServerDefinition{},
 					Aggregator: config.AggregatorConfig{
 						Enabled: false,
 						Port:    0,
@@ -63,9 +61,6 @@ func TestInitializeServices(t *testing.T) {
 				NoTUI: true,
 				Debug: false,
 				EnvctlConfig: &config.EnvctlConfig{
-					MCPServers: []config.MCPServerDefinition{
-						{Name: "test-mcp-server"},
-					},
 					Aggregator: config.AggregatorConfig{
 						Enabled: true,
 						Port:    8090,
@@ -86,9 +81,6 @@ func TestInitializeServices(t *testing.T) {
 				NoTUI: true,
 				Debug: false,
 				EnvctlConfig: &config.EnvctlConfig{
-					MCPServers: []config.MCPServerDefinition{
-						{Name: "test-mcp-server"},
-					},
 					Aggregator: config.AggregatorConfig{
 						Enabled: true,
 						Port:    0, // Should default to 8080
@@ -130,9 +122,6 @@ func TestInitializeServices_OrchestratorConfig(t *testing.T) {
 		NoTUI: true,
 		Debug: false,
 		EnvctlConfig: &config.EnvctlConfig{
-			MCPServers: []config.MCPServerDefinition{
-				{Name: "test-mcp"},
-			},
 			Aggregator: config.AggregatorConfig{
 				Port: 9090,
 			},
@@ -140,14 +129,16 @@ func TestInitializeServices_OrchestratorConfig(t *testing.T) {
 	}
 
 	// We can't easily test the full initialization without mocking orchestrator.New
-	// But we can verify that the config is passed correctly
-	expectedConfig := orchestrator.Config{
-		MCPServers: cfg.EnvctlConfig.MCPServers,
+	// The orchestrator now gets MCPServers from MCPServerManager, not from config
+	// This test verifies that the config structure is valid for services initialization
+	services, err := InitializeServices(cfg)
+	if err != nil {
+		t.Fatalf("Failed to initialize services: %v", err)
 	}
 
-	// Verify the expected config matches what we expect to be passed
-	if len(expectedConfig.MCPServers) != len(cfg.EnvctlConfig.MCPServers) {
-		t.Errorf("Expected %d MCPServers, got %d", len(cfg.EnvctlConfig.MCPServers), len(expectedConfig.MCPServers))
+	// Verify that services were created successfully
+	if services.Orchestrator == nil {
+		t.Error("Orchestrator should not be nil")
 	}
 }
 
@@ -157,7 +148,6 @@ func TestServices_Creation(t *testing.T) {
 		NoTUI: true,
 		Debug: false,
 		EnvctlConfig: &config.EnvctlConfig{
-			MCPServers: []config.MCPServerDefinition{},
 			Aggregator: config.AggregatorConfig{Enabled: false},
 		},
 	}

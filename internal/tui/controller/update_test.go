@@ -51,7 +51,7 @@ func createTestModel() (*model.Model, *testModelCleanup) {
 		MCPTools:           make(map[string][]api.MCPTool),
 		K8sConnectionOrder: []string{},
 		MCPServerOrder:     []string{},
-		MCPServerConfig:    []config.MCPServerDefinition{},
+		MCPServerConfig:    []api.MCPServerDefinition{},
 		// Don't set LogChannel or StateChangeEvents - they're not needed for most tests
 	}, cleanup
 }
@@ -522,7 +522,7 @@ func TestCycleFocus(t *testing.T) {
 		"mc-pane": {Label: "mc-pane", Context: "test-mc"},
 		"wc-pane": {Label: "wc-pane", Context: "test-wc"},
 	}
-	m.MCPServerConfig = []config.MCPServerDefinition{
+	m.MCPServerConfig = []api.MCPServerDefinition{
 		{Name: "mcp1", Enabled: true},
 		{Name: "mcp2", Enabled: true},
 	}

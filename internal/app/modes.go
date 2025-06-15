@@ -55,7 +55,7 @@ func runTUIMode(ctx context.Context, config *Config, services *Services) error {
 	p, err := controller.NewProgram(model.TUIConfig{
 		DebugMode:        config.Debug,
 		ColorMode:        "auto",
-		MCPServerConfig:  config.EnvctlConfig.MCPServers,
+		MCPServerConfig:  nil, /* TODO: Update TUI to use MCPServerManager API */
 		AggregatorConfig: config.EnvctlConfig.Aggregator,
 		Orchestrator:     services.Orchestrator,
 		OrchestratorAPI:  services.OrchestratorAPI,

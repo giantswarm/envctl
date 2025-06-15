@@ -446,18 +446,7 @@ func mergeConfigs(base, overlay EnvctlConfig) EnvctlConfig {
 	}
 	// Add merging for other GlobalSettings fields here if any
 
-	// Merge MCPServers
-	mcpServersMap := make(map[string]MCPServerDefinition)
-	for _, srv := range mergedConfig.MCPServers {
-		mcpServersMap[srv.Name] = srv
-	}
-	for _, srv := range overlay.MCPServers {
-		mcpServersMap[srv.Name] = srv // Replace if name exists, otherwise adds
-	}
-	mergedConfig.MCPServers = nil
-	for _, srv := range mcpServersMap {
-		mergedConfig.MCPServers = append(mergedConfig.MCPServers, srv)
-	}
+	// Note: MCPServers are no longer merged here - they are loaded from mcpservers/ directories
 
 	// Merge Aggregator settings
 	if overlay.Aggregator.Port != 0 {

@@ -177,4 +177,4 @@ func (msm *MCPServerManager) GetAllDefinitions() map[string]*MCPServerDefinition
 		result[name] = def
 	}
 	return result
-} 
+}

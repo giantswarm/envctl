@@ -41,4 +41,4 @@ func TestStartAndManageIndividualMcpServer(t *testing.T) {
 // TestPipeFails is no longer applicable since mark3labs/mcp-go handles pipe creation internally
 func TestPipeFails(t *testing.T) {
 	t.Skip("Skipping test - mark3labs/mcp-go handles pipe creation internally")
-} 
+}

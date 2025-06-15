@@ -24,8 +24,7 @@ serviceConfig:
         namespace: "{{ .namespace | default \"default\" }}"
         resourceType: "{{ .resource_type }}"
         resourceName: "{{ .resource_name }}"
-        localPort: "{{ .local_port }}"
-        targetPort: "{{ .remote_port }}"
+        ports: ["{{ .local_port }}:{{ .target_port }}"]
       responseMapping:
         serviceId: "$.id"
         status: "$.status"
@@ -34,13 +33,11 @@ serviceConfig:
           resource_type: "$.resourceType"
           resource_name: "$.resourceName"
           local_port: "$.localPort"
-          remote_port: "$.targetPort"
-          pid: "$.pid"
-    
+          remote_port: "$.targetPort"    
     stop:
-      tool: "x_kubernetes_stop_port_forward"
+      tool: "x_kubernetes_stop_port_forward_session"
       arguments:
-        id: "{{ .serviceId }}" # Note: .serviceId comes from the response mapping of the 'start' tool
+        sessionID: "{{ .serviceId }}"
       responseMapping:
         status: "$.status"
         
@@ -76,15 +73,17 @@ serviceConfig:
       toolParameter: "targetPort"
       required: true
 
-# The 'operations' block is a legacy concept and is no longer used for core lifecycle.
-# Service instantiation and management are now handled by the orchestrator via:
-# - `core_serviceclass_instance_create`
-# - `core_service_start` / `core_service_stop`
-# This section is left here as a reference for potentially building higher-level workflows,
-# but it is not required for the basic functionality of the ServiceClass.
-#
-# operations:
-#   ...
+# Parameter definitions for create operation
+  createParameters:
+    local_port:
+      toolParameter: "localPort"
+      default: "9090"
+      required: false
+  
+  # Parameters for other operations (empty for this ServiceClass)
+  deleteParameters: {}
+  statusParameters: {}
+  healthCheckParameters: {}
 
 # Metadata for additional information
 metadata:
@@ -92,3 +91,46 @@ metadata:
   category: "networking"
   icon: "🔌"
   tags: "port-forward, networking, kubernetes" 
+  
+# Usage examples and documentation
+documentation:
+  description: |
+    This ServiceClass provides easy access to Kubernetes pods and services
+    by setting up port forwarding to the them.
+    
+    Once the port forward is active, you can access it at:
+    http://localhost:<local_port>/
+    
+  examples:
+    - name: "Default promtheus connection"
+      description: "Connect to Mimir on default port 9090"
+      parameters:
+        local_port: "9090"
+        target_port: "9090"
+        namespace: "monitoring"
+
+# Validation rules for parameters
+validation:
+  rules:
+    - field: "local_port"
+      type: "port"
+      min: 1024
+      max: 65535
+      message: "Local port must be between 1024 and 65535"
+    - field: "target_port"
+      type: "port"
+      min: 1
+      max: 65535
+      message: "Remote port must be between 1 and 65535"
+    - field: "namespace"
+      type: "string"
+      pattern: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+      message: "Namespace must be a valid Kubernetes namespace name" 
+    - field: "resource_type"
+      type: "string"
+      pattern: "^(pod|service)$"
+      message: "Resource type must be either 'pod' or 'service'" 
+    - field: "resource_name"
+      type: "string"
+      pattern: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+      message: "Resource name must be a valid Kubernetes resource name" 

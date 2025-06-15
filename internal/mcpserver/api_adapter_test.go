@@ -168,4 +168,4 @@ func TestAdapterNilManager(t *testing.T) {
 	if path != "" {
 		t.Error("Expected empty path with nil manager")
 	}
-} 
+}

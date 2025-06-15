@@ -33,9 +33,7 @@ func TestStartOrchestrator(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create a real orchestrator
-			orchConfig := orchestrator.Config{
-				MCPServers: []config.MCPServerDefinition{},
-			}
+			orchConfig := orchestrator.Config{}
 			orch := orchestrator.New(orchConfig)
 			registry := orch.GetServiceRegistry()
 
@@ -96,15 +94,13 @@ func TestStartOrchestratorIntegration(t *testing.T) {
 	logChan := make(chan logging.LogEntry, 100)
 
 	// Test with minimal configuration
-	cfg := config.EnvctlConfig{
-		MCPServers: []config.MCPServerDefinition{},
-	}
+	cfg := config.EnvctlConfig{}
 
 	// Create TUIConfig
 	tuiConfig := TUIConfig{
 		DebugMode:        false,
 		ColorMode:        "auto",
-		MCPServerConfig:  cfg.MCPServers,
+		MCPServerConfig:  nil, // MCPServers removed
 		AggregatorConfig: cfg.Aggregator,
 	}
 

@@ -29,8 +29,8 @@ func TestConfigReloadIntegration(t *testing.T) {
 
 	// Create initial configuration
 	initialConfig := &config.EnvctlConfig{
-		MCPServers: []config.MCPServerDefinition{
-			{Name: "test-server", Type: config.MCPServerTypeLocalCommand},
+		GlobalSettings: config.GlobalSettings{
+			DefaultContainerRuntime: "docker",
 		},
 	}
 
@@ -49,14 +49,13 @@ func TestConfigReloadIntegration(t *testing.T) {
 	// Verify initial config
 	cfg, err := adapter.GetConfig(ctx)
 	assert.NoError(t, err)
-	assert.Len(t, cfg.MCPServers, 1)
-	assert.Equal(t, "test-server", cfg.MCPServers[0].Name)
+	// MCPServers are now managed by MCPServerManager, not verified here
+	assert.Equal(t, "docker", cfg.GlobalSettings.DefaultContainerRuntime)
 
 	// Modify the config file directly
 	modifiedConfig := &config.EnvctlConfig{
-		MCPServers: []config.MCPServerDefinition{
-			{Name: "test-server", Type: config.MCPServerTypeLocalCommand},
-			{Name: "new-server", Type: config.MCPServerTypeContainer},
+		GlobalSettings: config.GlobalSettings{
+			DefaultContainerRuntime: "podman",
 		},
 	}
 
@@ -76,8 +75,8 @@ func TestConfigReloadIntegration(t *testing.T) {
 	// Verify config has been reloaded
 	cfg, err = adapter.GetConfig(ctx)
 	assert.NoError(t, err)
-	assert.Len(t, cfg.MCPServers, 2)
-	assert.Equal(t, "new-server", cfg.MCPServers[1].Name)
+	// MCPServers are now managed by MCPServerManager, not verified here
+	assert.Equal(t, "podman", cfg.GlobalSettings.DefaultContainerRuntime)
 }
 
 func TestConfigReloadTool(t *testing.T) {
@@ -89,9 +88,7 @@ func TestConfigReloadTool(t *testing.T) {
 	configPath := filepath.Join(tmpDir, "config.yaml")
 
 	// Create initial configuration
-	initialConfig := &config.EnvctlConfig{
-		MCPServers: []config.MCPServerDefinition{},
-	}
+	initialConfig := &config.EnvctlConfig{}
 
 	// Write initial config
 	data, err := yaml.Marshal(initialConfig)

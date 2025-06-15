@@ -36,10 +36,10 @@ func LoadMCPServerDefinitions() ([]MCPServerDefinition, *config.ConfigurationErr
 
 	if errorCount > 0 {
 		logging.Warn("MCPServerLoader", "Loaded %d MCP server definitions with %d errors", successCount, errorCount)
-		
+
 		// Log detailed error summary for troubleshooting
 		logging.Warn("MCPServerLoader", "MCP server configuration errors:\n%s", errorCollection.GetSummary())
-		
+
 		// Log full error details for debugging
 		logging.Debug("MCPServerLoader", "Detailed error report:\n%s", errorCollection.GetDetailedReport())
 	} else {
@@ -77,7 +77,7 @@ func validateMCPServerDefinition(def MCPServerDefinition) error {
 
 	// Validate type
 	if def.Type != MCPServerTypeLocalCommand && def.Type != MCPServerTypeContainer {
-		return fmt.Errorf("invalid MCP server type: %s (must be %s or %s)", 
+		return fmt.Errorf("invalid MCP server type: %s (must be %s or %s)",
 			def.Type, MCPServerTypeLocalCommand, MCPServerTypeContainer)
 	}
 
@@ -108,4 +108,4 @@ func GetMCPServerConfigurationPaths() (userPath, projectPath string, err error) 
 	projectPath = fmt.Sprintf("%s/mcpservers", projectDir)
 
 	return userPath, projectPath, nil
-} 
+}

@@ -45,14 +45,31 @@ func (a *ConfigAdapter) GetConfig(ctx context.Context) (*config.EnvctlConfig, er
 	return a.config, nil
 }
 
-func (a *ConfigAdapter) GetMCPServers(ctx context.Context) ([]config.MCPServerDefinition, error) {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-
-	if a.config == nil {
-		return nil, fmt.Errorf("configuration not loaded")
+func (a *ConfigAdapter) GetMCPServers(ctx context.Context) ([]api.MCPServerDefinition, error) {
+	// Delegate to MCPServerManager API instead of reading from config file
+	mcpServerMgr := api.GetMCPServerManager()
+	if mcpServerMgr == nil {
+		return nil, fmt.Errorf("MCPServerManager not available")
 	}
-	return a.config.MCPServers, nil
+
+	// Get MCP servers from the manager
+	mcpServers := mcpServerMgr.ListMCPServers()
+
+	// Convert from API types to config types for backward compatibility
+	result := make([]api.MCPServerDefinition, len(mcpServers))
+	for i, mcpServer := range mcpServers {
+		result[i] = api.MCPServerDefinition{
+			Name:     mcpServer.Name,
+			Type:     mcpServer.Type,
+			Enabled:  mcpServer.Enabled,
+			Icon:     mcpServer.Icon,
+			Category: mcpServer.Category,
+			// Note: Some fields may not be available in the API type
+			// This is acceptable as we're transitioning to directory-based config
+		}
+	}
+
+	return result, nil
 }
 
 func (a *ConfigAdapter) GetAggregatorConfig(ctx context.Context) (*config.AggregatorConfig, error) {
@@ -76,28 +93,10 @@ func (a *ConfigAdapter) GetGlobalSettings(ctx context.Context) (*config.GlobalSe
 }
 
 // Update configuration
-func (a *ConfigAdapter) UpdateMCPServer(ctx context.Context, server config.MCPServerDefinition) error {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	if a.config == nil {
-		return fmt.Errorf("configuration not loaded")
-	}
-
-	// Find and update existing server or add new one
-	found := false
-	for i, existing := range a.config.MCPServers {
-		if existing.Name == server.Name {
-			a.config.MCPServers[i] = server
-			found = true
-			break
-		}
-	}
-	if !found {
-		a.config.MCPServers = append(a.config.MCPServers, server)
-	}
-
-	return a.saveConfig()
+func (a *ConfigAdapter) UpdateMCPServer(ctx context.Context, server api.MCPServerDefinition) error {
+	// MCPServers are now managed by MCPServerManager through directory-based configuration
+	// This method is deprecated and should use the MCPServerManager API instead
+	return fmt.Errorf("MCP server configuration has moved to directory-based management via MCPServerManager - use the mcpserver_* tools instead")
 }
 
 func (a *ConfigAdapter) UpdateAggregatorConfig(ctx context.Context, aggregator config.AggregatorConfig) error {
@@ -126,27 +125,9 @@ func (a *ConfigAdapter) UpdateGlobalSettings(ctx context.Context, settings confi
 
 // Delete configuration
 func (a *ConfigAdapter) DeleteMCPServer(ctx context.Context, name string) error {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	if a.config == nil {
-		return fmt.Errorf("configuration not loaded")
-	}
-
-	// Find and remove the server
-	newServers := make([]config.MCPServerDefinition, 0, len(a.config.MCPServers))
-	for _, server := range a.config.MCPServers {
-		if server.Name != name {
-			newServers = append(newServers, server)
-		}
-	}
-
-	if len(newServers) == len(a.config.MCPServers) {
-		return fmt.Errorf("MCP server %s not found", name)
-	}
-
-	a.config.MCPServers = newServers
-	return a.saveConfig()
+	// MCPServers are now managed by MCPServerManager through directory-based configuration
+	// This method is deprecated and should use the MCPServerManager API instead
+	return fmt.Errorf("MCP server configuration has moved to directory-based management via MCPServerManager - use the mcpserver_* tools instead")
 }
 
 // Save configuration
@@ -412,8 +393,8 @@ func (a *ConfigAdapter) handleConfigUpdateMCPServer(ctx context.Context, args ma
 		}, nil
 	}
 
-	// Convert to config.MCPServerDefinition
-	var server config.MCPServerDefinition
+	// Convert to api.MCPServerDefinition
+	var server api.MCPServerDefinition
 	if err := convertToStruct(serverData, &server); err != nil {
 		return &api.CallToolResult{
 			Content: []interface{}{fmt.Sprintf("Failed to parse server definition: %v", err)},

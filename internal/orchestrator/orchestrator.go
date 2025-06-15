@@ -78,7 +78,6 @@ type Orchestrator struct {
 	registry services.ServiceRegistry
 
 	// Configuration
-	mcpServers []config.MCPServerDefinition
 	aggregator config.AggregatorConfig
 	yolo       bool
 
@@ -103,7 +102,6 @@ type Orchestrator struct {
 
 // Config holds the configuration for the orchestrator.
 type Config struct {
-	MCPServers []config.MCPServerDefinition
 	Aggregator config.AggregatorConfig
 	Yolo       bool
 	ToolCaller ToolCaller // Optional: for ServiceClass-based services
@@ -115,7 +113,6 @@ func New(cfg Config) *Orchestrator {
 
 	return &Orchestrator{
 		registry:               registry,
-		mcpServers:             cfg.MCPServers,
 		aggregator:             cfg.Aggregator,
 		yolo:                   cfg.Yolo,
 		toolCaller:             cfg.ToolCaller,
@@ -174,10 +171,25 @@ func (o *Orchestrator) processServiceClassRequirements(ctx context.Context) erro
 		return nil
 	}
 
+	// Get MCPServerManager through API to access MCP server definitions
+	mcpServerMgr := api.GetMCPServerManager()
+	if mcpServerMgr == nil {
+		logging.Debug("Orchestrator", "MCPServerManager not available through API, skipping ServiceClass processing")
+		return nil
+	}
+
+	// Get all MCP server definitions from the manager
+	mcpServers := mcpServerMgr.ListMCPServers()
+
 	// Process each MCP Server to identify required ServiceClasses
-	for _, mcpServer := range o.mcpServers {
-		if err := o.processMCPServerServiceClasses(ctx, mcpServer, serviceClassMgr); err != nil {
-			logging.Error("Orchestrator", err, "Failed to process ServiceClasses for MCP Server: %s", mcpServer.Name)
+	for _, mcpServerInfo := range mcpServers {
+		// Only process enabled servers
+		if !mcpServerInfo.Enabled {
+			continue
+		}
+
+		if err := o.processMCPServerServiceClasses(ctx, mcpServerInfo, serviceClassMgr); err != nil {
+			logging.Error("Orchestrator", err, "Failed to process ServiceClasses for MCP Server: %s", mcpServerInfo.Name)
 			// Continue processing other servers
 		}
 	}
@@ -186,14 +198,14 @@ func (o *Orchestrator) processServiceClassRequirements(ctx context.Context) erro
 }
 
 // processMCPServerServiceClasses processes ServiceClass requirements for a single MCP Server
-func (o *Orchestrator) processMCPServerServiceClasses(ctx context.Context, mcpServer config.MCPServerDefinition, serviceClassMgr api.ServiceClassManagerHandler) error {
+func (o *Orchestrator) processMCPServerServiceClasses(ctx context.Context, mcpServerInfo api.MCPServerConfigInfo, serviceClassMgr api.ServiceClassManagerHandler) error {
 	// Extract ServiceClass requirements from MCP server configuration
 	// This logic will depend on how ServiceClasses are specified in the config
-	serviceClassNames := o.extractServiceClassNames(mcpServer)
+	serviceClassNames := o.extractServiceClassNames(mcpServerInfo)
 
 	for _, serviceClassName := range serviceClassNames {
 		// Check if we already have an instance for this service class + server combination
-		label := fmt.Sprintf("%s-%s", mcpServer.Name, serviceClassName)
+		label := fmt.Sprintf("%s-%s", mcpServerInfo.Name, serviceClassName)
 
 		o.mu.RLock()
 		_, exists := o.dynamicByLabel[label]
@@ -206,7 +218,7 @@ func (o *Orchestrator) processMCPServerServiceClasses(ctx context.Context, mcpSe
 
 		// Verify ServiceClass is available
 		if !serviceClassMgr.IsServiceClassAvailable(serviceClassName) {
-			logging.Warn("Orchestrator", "ServiceClass %s not available for MCP Server %s", serviceClassName, mcpServer.Name)
+			logging.Warn("Orchestrator", "ServiceClass %s not available for MCP Server %s", serviceClassName, mcpServerInfo.Name)
 			continue
 		}
 
@@ -214,11 +226,11 @@ func (o *Orchestrator) processMCPServerServiceClasses(ctx context.Context, mcpSe
 		req := CreateServiceRequest{
 			ServiceClassName: serviceClassName,
 			Label:            label,
-			Parameters:       o.buildServiceParameters(mcpServer, serviceClassName),
+			Parameters:       o.buildServiceParameters(mcpServerInfo, serviceClassName),
 		}
 
 		if _, err := o.CreateServiceClassInstance(ctx, req); err != nil {
-			logging.Error("Orchestrator", err, "Failed to create ServiceClass instance %s for MCP Server %s", serviceClassName, mcpServer.Name)
+			logging.Error("Orchestrator", err, "Failed to create ServiceClass instance %s for MCP Server %s", serviceClassName, mcpServerInfo.Name)
 			// Continue with other service classes
 		}
 	}
@@ -229,17 +241,17 @@ func (o *Orchestrator) processMCPServerServiceClasses(ctx context.Context, mcpSe
 // extractServiceClassNames extracts ServiceClass names from MCP Server configuration
 // This is a placeholder - the actual implementation will depend on how ServiceClasses
 // are specified in the MCP server configuration
-func (o *Orchestrator) extractServiceClassNames(mcpServer config.MCPServerDefinition) []string {
+func (o *Orchestrator) extractServiceClassNames(mcpServerInfo api.MCPServerConfigInfo) []string {
 	// For now, return empty slice - this will be implemented when we know
 	// how ServiceClasses are specified in the configuration
 	return []string{}
 }
 
 // buildServiceParameters builds parameters for ServiceClass instantiation based on MCP Server config
-func (o *Orchestrator) buildServiceParameters(mcpServer config.MCPServerDefinition, serviceClassName string) map[string]interface{} {
+func (o *Orchestrator) buildServiceParameters(mcpServerInfo api.MCPServerConfigInfo, serviceClassName string) map[string]interface{} {
 	return map[string]interface{}{
-		"mcpServerName": mcpServer.Name,
-		"mcpServerType": mcpServer.Type,
+		"mcpServerName": mcpServerInfo.Name,
+		"mcpServerType": mcpServerInfo.Type,
 		"serviceClass":  serviceClassName,
 		// Add other relevant parameters from MCP server config
 	}

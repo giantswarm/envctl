@@ -1,6 +1,10 @@
 envctl
 dist/
 .envctl/config.yaml
+.envctl/mcpservers/*.yaml
+.envctl/serviceclasses/*.yaml
+.envctl/capabilities/*.yaml
+.envctl/workflows/*.yaml
 .cursor/mcp.json
 
 # Added by Task Master AI

@@ -6,9 +6,8 @@ import (
 
 // EnvctlConfig is the top-level configuration structure for envctl.
 type EnvctlConfig struct {
-	MCPServers     []MCPServerDefinition `yaml:"mcpServers"`
-	GlobalSettings GlobalSettings        `yaml:"globalSettings"`
-	Aggregator     AggregatorConfig      `yaml:"aggregator"`
+	GlobalSettings GlobalSettings   `yaml:"globalSettings"`
+	Aggregator     AggregatorConfig `yaml:"aggregator"`
 }
 
 // GlobalSettings might include things like default log levels, container runtime preferences, etc.
@@ -69,7 +68,6 @@ type MCPServerDefinition struct {
 	HealthCheckCmd   []string          `yaml:"healthCheckCmd,omitempty"`   // Optional command to run inside container to check health
 	Entrypoint       []string          `yaml:"entrypoint,omitempty"`       // Optional container entrypoint override
 	ContainerUser    string            `yaml:"containerUser,omitempty"`    // Optional user to run container as
-
 }
 
 // AggregatorConfig defines the configuration for the MCP aggregator service.

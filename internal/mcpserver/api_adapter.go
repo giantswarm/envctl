@@ -385,4 +385,4 @@ func (a *Adapter) handleMCPServerUnregister(args map[string]interface{}) (*api.C
 
 	// TODO: Use UnregisterDefinition once it's implemented
 	return simpleError("MCP server unregistration not yet fully implemented")
-} 
+}

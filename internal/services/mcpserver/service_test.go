@@ -2,8 +2,7 @@ package mcpserver
 
 import (
 	"context"
-	"envctl/internal/config"
-	"envctl/internal/mcpserver"
+	mcpserver "envctl/internal/mcpserver"
 	"envctl/internal/services"
 	"testing"
 	"time"
@@ -14,23 +13,23 @@ import (
 func TestNewMCPServerService(t *testing.T) {
 	tests := []struct {
 		name   string
-		cfg    config.MCPServerDefinition
+		cfg    mcpserver.MCPServerDefinition
 		wantOk bool
 	}{
 		{
 			name: "basic local command server",
-			cfg: config.MCPServerDefinition{
+			cfg: mcpserver.MCPServerDefinition{
 				Name:    "test-server",
-				Type:    config.MCPServerTypeLocalCommand,
+				Type:    mcpserver.MCPServerTypeLocalCommand,
 				Command: []string{"test-command"},
 			},
 			wantOk: true,
 		},
 		{
 			name: "server with enabled flag",
-			cfg: config.MCPServerDefinition{
+			cfg: mcpserver.MCPServerDefinition{
 				Name:    "test-server",
-				Type:    config.MCPServerTypeLocalCommand,
+				Type:    mcpserver.MCPServerTypeLocalCommand,
 				Command: []string{"test-command"},
 				Enabled: true,
 			},
@@ -38,9 +37,9 @@ func TestNewMCPServerService(t *testing.T) {
 		},
 		{
 			name: "basic server creation",
-			cfg: config.MCPServerDefinition{
+			cfg: mcpserver.MCPServerDefinition{
 				Name:    "test",
-				Type:    config.MCPServerTypeLocalCommand,
+				Type:    mcpserver.MCPServerTypeLocalCommand,
 				Command: []string{"test"},
 			},
 			wantOk: true,
@@ -65,15 +64,15 @@ func TestNewMCPServerService(t *testing.T) {
 func TestMCPServerService_Start(t *testing.T) {
 	tests := []struct {
 		name      string
-		cfg       config.MCPServerDefinition
+		cfg       mcpserver.MCPServerDefinition
 		setupMock func(*testing.T) *mcpserver.StdioClient
 		wantErr   bool
 	}{
 		{
 			name: "successful start",
-			cfg: config.MCPServerDefinition{
+			cfg: mcpserver.MCPServerDefinition{
 				Name:    "test-server",
-				Type:    config.MCPServerTypeLocalCommand,
+				Type:    mcpserver.MCPServerTypeLocalCommand,
 				Command: []string{"test-command"},
 			},
 			setupMock: func(t *testing.T) *mcpserver.StdioClient {
@@ -84,17 +83,17 @@ func TestMCPServerService_Start(t *testing.T) {
 		},
 		{
 			name: "unsupported server type",
-			cfg: config.MCPServerDefinition{
+			cfg: mcpserver.MCPServerDefinition{
 				Name: "test-server",
-				Type: config.MCPServerTypeContainer,
+				Type: mcpserver.MCPServerTypeContainer,
 			},
 			wantErr: true,
 		},
 		{
 			name: "no command specified",
-			cfg: config.MCPServerDefinition{
+			cfg: mcpserver.MCPServerDefinition{
 				Name:    "test-server",
-				Type:    config.MCPServerTypeLocalCommand,
+				Type:    mcpserver.MCPServerTypeLocalCommand,
 				Command: []string{},
 			},
 			wantErr: true,
@@ -119,9 +118,9 @@ func TestMCPServerService_Start(t *testing.T) {
 }
 
 func TestMCPServerService_GetServiceData(t *testing.T) {
-	cfg := config.MCPServerDefinition{
+	cfg := mcpserver.MCPServerDefinition{
 		Name:    "test-server",
-		Type:    config.MCPServerTypeLocalCommand,
+		Type:    mcpserver.MCPServerTypeLocalCommand,
 		Command: []string{"test", "command"},
 		Icon:    "🔧",
 		Enabled: true,
@@ -134,13 +133,13 @@ func TestMCPServerService_GetServiceData(t *testing.T) {
 	assert.Equal(t, []string{"test", "command"}, data["command"])
 	assert.Equal(t, "🔧", data["icon"])
 	assert.Equal(t, true, data["enabled"])
-	assert.Equal(t, config.MCPServerTypeLocalCommand, data["type"])
+	assert.Equal(t, mcpserver.MCPServerTypeLocalCommand, data["type"])
 }
 
 func TestMCPServerService_CheckHealth(t *testing.T) {
-	service := NewMCPServerService(config.MCPServerDefinition{
+	service := NewMCPServerService(mcpserver.MCPServerDefinition{
 		Name:    "test-server",
-		Type:    config.MCPServerTypeLocalCommand,
+		Type:    mcpserver.MCPServerTypeLocalCommand,
 		Command: []string{"test-command"},
 	})
 
@@ -161,9 +160,9 @@ func TestMCPServerService_CheckHealth(t *testing.T) {
 }
 
 func TestMCPServerService_GetHealthCheckInterval(t *testing.T) {
-	service := NewMCPServerService(config.MCPServerDefinition{
+	service := NewMCPServerService(mcpserver.MCPServerDefinition{
 		Name:    "test-server",
-		Type:    config.MCPServerTypeLocalCommand,
+		Type:    mcpserver.MCPServerTypeLocalCommand,
 		Command: []string{"test", "command"},
 	})
 
@@ -177,9 +176,9 @@ func TestMCPServerService_GetHealthCheckInterval(t *testing.T) {
 
 func TestMCPServerService_UnsupportedServerType(t *testing.T) {
 	// Test that container type returns error (not yet supported)
-	service := NewMCPServerService(config.MCPServerDefinition{
+	service := NewMCPServerService(mcpserver.MCPServerDefinition{
 		Name:  "test-container",
-		Type:  config.MCPServerTypeContainer,
+		Type:  mcpserver.MCPServerTypeContainer,
 		Image: "test-image",
 	})
 
@@ -196,9 +195,9 @@ func TestMCPServerService_UnsupportedServerType(t *testing.T) {
 }
 
 func TestMCPServerService_Lifecycle(t *testing.T) {
-	service := NewMCPServerService(config.MCPServerDefinition{
+	service := NewMCPServerService(mcpserver.MCPServerDefinition{
 		Name:    "test-server",
-		Type:    config.MCPServerTypeLocalCommand,
+		Type:    mcpserver.MCPServerTypeLocalCommand,
 		Command: []string{"test-command"},
 	})
 

@@ -24,7 +24,6 @@ func TestNewApplication_ConfigValidation(t *testing.T) {
 				Debug: true,
 				// Pre-populate EnvctlConfig to avoid LoadConfig call
 				EnvctlConfig: &config.EnvctlConfig{
-					MCPServers: []config.MCPServerDefinition{},
 					Aggregator: config.AggregatorConfig{
 						Port:    8090,
 						Host:    "localhost",
@@ -42,7 +41,6 @@ func TestNewApplication_ConfigValidation(t *testing.T) {
 				Debug: false,
 				// Pre-populate EnvctlConfig to avoid LoadConfig call
 				EnvctlConfig: &config.EnvctlConfig{
-					MCPServers: []config.MCPServerDefinition{},
 					Aggregator: config.AggregatorConfig{
 						Port:    8090,
 						Host:    "localhost",
@@ -60,7 +58,6 @@ func TestNewApplication_ConfigValidation(t *testing.T) {
 				Debug: false,
 				// Pre-populate EnvctlConfig to avoid LoadConfig call
 				EnvctlConfig: &config.EnvctlConfig{
-					MCPServers: []config.MCPServerDefinition{},
 					Aggregator: config.AggregatorConfig{
 						Port:    8090,
 						Host:    "localhost",
@@ -111,7 +108,6 @@ func TestApplication_Structure(t *testing.T) {
 		NoTUI: false,
 		Debug: true,
 		EnvctlConfig: &config.EnvctlConfig{
-			MCPServers: []config.MCPServerDefinition{},
 			Aggregator: config.AggregatorConfig{
 				Port:    8090,
 				Host:    "localhost",
@@ -161,7 +157,6 @@ func TestApplication_ModeSelection(t *testing.T) {
 			cfg := &Config{
 				NoTUI: tt.noTUI,
 				EnvctlConfig: &config.EnvctlConfig{
-					MCPServers: []config.MCPServerDefinition{},
 					Aggregator: config.AggregatorConfig{
 						Port:    8090,
 						Host:    "localhost",
@@ -201,14 +196,6 @@ func TestConfig_WithEnvctlConfig(t *testing.T) {
 		NoTUI: true,
 		Debug: false,
 		EnvctlConfig: &config.EnvctlConfig{
-			MCPServers: []config.MCPServerDefinition{
-				{
-					Name:    "test-server",
-					Type:    config.MCPServerTypeLocalCommand,
-					Command: []string{"echo", "test"},
-					Enabled: true,
-				},
-			},
 			Aggregator: config.AggregatorConfig{
 				Port:    9090,
 				Host:    "0.0.0.0",
@@ -218,9 +205,6 @@ func TestConfig_WithEnvctlConfig(t *testing.T) {
 	}
 
 	// Verify configuration is accessible
-	if len(cfg.EnvctlConfig.MCPServers) != 1 {
-		t.Errorf("Expected 1 MCP server, got %d", len(cfg.EnvctlConfig.MCPServers))
-	}
 	if cfg.EnvctlConfig.Aggregator.Port != 9090 {
 		t.Errorf("Expected aggregator port 9090, got %d", cfg.EnvctlConfig.Aggregator.Port)
 	}
@@ -248,7 +232,6 @@ func TestConfigureLogging(t *testing.T) {
 				Debug: tt.debug,
 				// Pre-populate EnvctlConfig to avoid LoadConfig call
 				EnvctlConfig: &config.EnvctlConfig{
-					MCPServers: []config.MCPServerDefinition{},
 					Aggregator: config.AggregatorConfig{
 						Port:    8090,
 						Host:    "localhost",

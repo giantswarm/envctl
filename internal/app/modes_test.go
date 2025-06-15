@@ -33,7 +33,6 @@ func TestModeSelection(t *testing.T) {
 				NoTUI: tt.noTUI,
 				Debug: false,
 				EnvctlConfig: &config.EnvctlConfig{
-					MCPServers: []config.MCPServerDefinition{},
 					Aggregator: config.AggregatorConfig{},
 				},
 			}
@@ -71,7 +70,6 @@ func TestConfigValidation(t *testing.T) {
 				NoTUI: true,
 				Debug: false,
 				EnvctlConfig: &config.EnvctlConfig{
-					MCPServers: []config.MCPServerDefinition{},
 					Aggregator: config.AggregatorConfig{},
 				},
 			},
@@ -83,9 +81,6 @@ func TestConfigValidation(t *testing.T) {
 				NoTUI: false,
 				Debug: true,
 				EnvctlConfig: &config.EnvctlConfig{
-					MCPServers: []config.MCPServerDefinition{
-						{Name: "test-mcp", Enabled: true},
-					},
 					Aggregator: config.AggregatorConfig{
 						Port: 8080,
 						Host: "localhost",
@@ -105,9 +100,7 @@ func TestConfigValidation(t *testing.T) {
 
 			// Validate that the config has the expected structure
 			if tt.cfg.EnvctlConfig != nil {
-				if tt.cfg.EnvctlConfig.MCPServers == nil {
-					t.Error("MCPServers slice should not be nil")
-				}
+				// MCPServers are now managed by MCPServerManager, not validated here
 			}
 		})
 	}
@@ -137,7 +130,6 @@ func TestModeHandlerSelection(t *testing.T) {
 			cfg := &Config{
 				NoTUI: tt.noTUI,
 				EnvctlConfig: &config.EnvctlConfig{
-					MCPServers: []config.MCPServerDefinition{},
 					Aggregator: config.AggregatorConfig{},
 				},
 			}
@@ -163,7 +155,6 @@ func TestConfigDefaults(t *testing.T) {
 		NoTUI: false,
 		Debug: true,
 		EnvctlConfig: &config.EnvctlConfig{
-			MCPServers: []config.MCPServerDefinition{},
 			Aggregator: config.AggregatorConfig{
 				Port:    0, // Should get default
 				Host:    "",
@@ -175,10 +166,6 @@ func TestConfigDefaults(t *testing.T) {
 	// Verify the config structure is valid
 	if cfg.EnvctlConfig == nil {
 		t.Error("EnvctlConfig should not be nil")
-	}
-
-	if cfg.EnvctlConfig.MCPServers == nil {
-		t.Error("MCPServers should not be nil")
 	}
 
 	// Test that both CLI and TUI modes can be configured

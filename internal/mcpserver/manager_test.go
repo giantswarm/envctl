@@ -135,9 +135,9 @@ func TestMCPServerManager_ListDefinitions(t *testing.T) {
 		Enabled: true,
 	}
 	testDef2 := &MCPServerDefinition{
-		Name:  "server2",
-		Type:  MCPServerTypeContainer,
-		Image: "nginx:latest",
+		Name:    "server2",
+		Type:    MCPServerTypeContainer,
+		Image:   "nginx:latest",
 		Enabled: false,
 	}
 
@@ -169,9 +169,9 @@ func TestMCPServerManager_ListAvailableDefinitions(t *testing.T) {
 		Enabled: true,
 	}
 	testDef2 := &MCPServerDefinition{
-		Name:  "server2",
-		Type:  MCPServerTypeContainer,
-		Image: "nginx:latest",
+		Name:    "server2",
+		Type:    MCPServerTypeContainer,
+		Image:   "nginx:latest",
 		Enabled: false,
 	}
 
@@ -250,9 +250,9 @@ func TestMCPServerManager_GetAllDefinitions(t *testing.T) {
 		Enabled: true,
 	}
 	testDef2 := &MCPServerDefinition{
-		Name:  "server2",
-		Type:  MCPServerTypeContainer,
-		Image: "nginx:latest",
+		Name:    "server2",
+		Type:    MCPServerTypeContainer,
+		Image:   "nginx:latest",
 		Enabled: false,
 	}
 
@@ -268,4 +268,4 @@ func TestMCPServerManager_GetAllDefinitions(t *testing.T) {
 	// Verify it's a copy (modifying returned map shouldn't affect original)
 	delete(allDefs, "server1")
 	assert.Len(t, manager.definitions, 2) // Original should still have both
-} 
+}

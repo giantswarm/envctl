@@ -150,12 +150,12 @@ type MCPServiceHandler interface {
 type ConfigHandler interface {
 	// Get configuration
 	GetConfig(ctx context.Context) (*config.EnvctlConfig, error)
-	GetMCPServers(ctx context.Context) ([]config.MCPServerDefinition, error)
+	GetMCPServers(ctx context.Context) ([]MCPServerDefinition, error)
 	GetAggregatorConfig(ctx context.Context) (*config.AggregatorConfig, error)
 	GetGlobalSettings(ctx context.Context) (*config.GlobalSettings, error)
 
 	// Update configuration
-	UpdateMCPServer(ctx context.Context, server config.MCPServerDefinition) error
+	UpdateMCPServer(ctx context.Context, server MCPServerDefinition) error
 	UpdateAggregatorConfig(ctx context.Context, aggregator config.AggregatorConfig) error
 	UpdateGlobalSettings(ctx context.Context, settings config.GlobalSettings) error
 
@@ -246,15 +246,15 @@ type ServiceClassManagerHandler interface {
 
 // MCPServerConfigInfo provides information about a registered MCP server configuration
 type MCPServerConfigInfo struct {
-	Name        string `json:"name"`
-	Type        string `json:"type"`
-	Enabled     bool   `json:"enabled"`
-	Category    string `json:"category"`
-	Icon        string `json:"icon"`
-	Available   bool   `json:"available"`
-	Description string `json:"description,omitempty"`
+	Name        string   `json:"name"`
+	Type        string   `json:"type"`
+	Enabled     bool     `json:"enabled"`
+	Category    string   `json:"category"`
+	Icon        string   `json:"icon"`
+	Available   bool     `json:"available"`
+	Description string   `json:"description,omitempty"`
 	Command     []string `json:"command,omitempty"`
-	Image       string `json:"image,omitempty"`
+	Image       string   `json:"image,omitempty"`
 }
 
 // MCPServerDefinition represents an MCP server definition (lightweight version for API)

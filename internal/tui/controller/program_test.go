@@ -20,19 +20,11 @@ func TestNewProgram(t *testing.T) {
 		expectError bool
 	}{
 		{
-			name:      "valid configuration",
-			mcName:    "test-mc",
-			wcName:    "test-wc",
-			debugMode: false,
-			cfg: config.EnvctlConfig{
-				MCPServers: []config.MCPServerDefinition{
-					{
-						Name:    "test-mcp",
-						Type:    config.MCPServerTypeLocalCommand,
-						Enabled: true,
-					},
-				},
-			},
+			name:        "valid configuration",
+			mcName:      "test-mc",
+			wcName:      "test-wc",
+			debugMode:   false,
+			cfg:         config.EnvctlConfig{},
 			expectError: false,
 		},
 		{
@@ -52,22 +44,13 @@ func TestNewProgram(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name:      "with MCP servers",
+			name:      "with aggregator config",
 			mcName:    "test-mc",
 			wcName:    "test-wc",
 			debugMode: false,
 			cfg: config.EnvctlConfig{
-				MCPServers: []config.MCPServerDefinition{
-					{
-						Name:    "mcp1",
-						Type:    config.MCPServerTypeLocalCommand,
-						Enabled: true,
-					},
-					{
-						Name:    "mcp2",
-						Type:    config.MCPServerTypeContainer,
-						Enabled: false,
-					},
+				Aggregator: config.AggregatorConfig{
+					Port: 8080,
 				},
 			},
 			expectError: false,
@@ -84,7 +67,7 @@ func TestNewProgram(t *testing.T) {
 			tuiConfig := model.TUIConfig{
 				DebugMode:        tt.debugMode,
 				ColorMode:        "auto",
-				MCPServerConfig:  tt.cfg.MCPServers,
+				MCPServerConfig:  nil, // MCPServers removed
 				AggregatorConfig: tt.cfg.Aggregator,
 			}
 
@@ -107,11 +90,7 @@ func TestNewProgram(t *testing.T) {
 func TestNewProgram_Parameters(t *testing.T) {
 	// Test that parameters are properly passed through
 	debugMode := true
-	cfg := config.EnvctlConfig{
-		MCPServers: []config.MCPServerDefinition{
-			{Name: "test-mcp"},
-		},
-	}
+	cfg := config.EnvctlConfig{}
 
 	// Create a closed log channel
 	logChannel := make(chan logging.LogEntry)
@@ -121,7 +100,7 @@ func TestNewProgram_Parameters(t *testing.T) {
 	tuiConfig := model.TUIConfig{
 		DebugMode:        debugMode,
 		ColorMode:        "auto",
-		MCPServerConfig:  cfg.MCPServers,
+		MCPServerConfig:  nil, // MCPServers removed
 		AggregatorConfig: cfg.Aggregator,
 	}
 
@@ -147,15 +126,7 @@ func TestNewProgram_ConfigValidation(t *testing.T) {
 		},
 		{
 			name: "config with disabled MCP servers",
-			cfg: config.EnvctlConfig{
-				MCPServers: []config.MCPServerDefinition{
-					{
-						Name:    "disabled-mcp",
-						Type:    config.MCPServerTypeLocalCommand,
-						Enabled: false,
-					},
-				},
-			},
+			cfg:  config.EnvctlConfig{},
 		},
 	}
 
@@ -169,7 +140,7 @@ func TestNewProgram_ConfigValidation(t *testing.T) {
 			tuiConfig := model.TUIConfig{
 				DebugMode:        false,
 				ColorMode:        "auto",
-				MCPServerConfig:  tt.cfg.MCPServers,
+				MCPServerConfig:  nil, // MCPServers removed
 				AggregatorConfig: tt.cfg.Aggregator,
 			}
 

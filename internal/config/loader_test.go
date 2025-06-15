@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -48,10 +47,8 @@ func TestLoadConfig_DefaultOnly(t *testing.T) {
 	assert.NoError(t, err)
 
 	// DeepEqual might be too strict if order changes in slices, but for default config it should be stable.
-	// For MCPServers and PortForwards, we might need to compare them in a more order-insensitive way
-	// if the merge logic or GetDefaultConfig doesn't guarantee order.
 	assert.True(t, reflect.DeepEqual(tc.GlobalSettings, loadedConfig.GlobalSettings), "GlobalSettings should match default")
-	assert.ElementsMatch(t, tc.MCPServers, loadedConfig.MCPServers, "MCPServers should match default")
+	// MCPServers are now managed by MCPServerManager, not loaded via config system
 	// Port forwards and clusters have been removed as part of the generic orchestrator refactoring
 }
 
@@ -82,20 +79,7 @@ func TestLoadConfig_UserOverride(t *testing.T) {
 		GlobalSettings: GlobalSettings{
 			DefaultContainerRuntime: "podman",
 		},
-		MCPServers: []MCPServerDefinition{
-			{
-				Name:    "kubernetes", // Override existing
-				Type:    MCPServerTypeContainer,
-				Image:   "my-custom-kube-api:latest",
-				Enabled: true,
-			},
-			{
-				Name:    "new-server", // Add new
-				Type:    MCPServerTypeLocalCommand,
-				Command: []string{"echo", "hello"},
-				Enabled: true,
-			},
-		},
+		// MCPServers removed - now managed by MCPServerManager via directory-based config
 	}
 	createTempConfigFile(t, userConfDir, configFileName, userOverride)
 
@@ -105,25 +89,7 @@ func TestLoadConfig_UserOverride(t *testing.T) {
 	// Check global settings override
 	assert.Equal(t, "podman", loadedConfig.GlobalSettings.DefaultContainerRuntime)
 
-	// Check MCPServers override and addition
-	// Default has 0 servers (minimal defaults)
-	// User config adds 2 servers: kubernetes and new-server
-	// Total: 0 + 2 = 2 servers
-	assert.Len(t, loadedConfig.MCPServers, 2)
-	foundKube := false
-	foundNewServer := false
-	for _, srv := range loadedConfig.MCPServers {
-		if srv.Name == "kubernetes" {
-			assert.Equal(t, MCPServerTypeContainer, srv.Type)
-			assert.Equal(t, "my-custom-kube-api:latest", srv.Image)
-			foundKube = true
-		}
-		if srv.Name == "new-server" {
-			foundNewServer = true
-		}
-	}
-	assert.True(t, foundKube, "Added kubernetes server not found")
-	assert.True(t, foundNewServer, "New server not found")
+	// MCPServers are now managed by MCPServerManager, not tested here
 }
 
 func TestLoadConfig_ProjectOverride(t *testing.T) {
@@ -148,9 +114,7 @@ func TestLoadConfig_ProjectOverride(t *testing.T) {
 
 	projectOverride := EnvctlConfig{
 		GlobalSettings: GlobalSettings{DefaultContainerRuntime: "cri-o"},
-		MCPServers: []MCPServerDefinition{
-			{Name: "kubernetes", Command: []string{"kubectl", "proxy"}, Type: MCPServerTypeLocalCommand, Enabled: true},
-		},
+		// MCPServers removed - now managed by MCPServerManager via directory-based config
 	}
 	createTempConfigFile(t, projectConfDir, configFileName, projectOverride)
 
@@ -158,14 +122,7 @@ func TestLoadConfig_ProjectOverride(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "cri-o", loadedConfig.GlobalSettings.DefaultContainerRuntime)
 
-	foundKubeProject := false
-	for _, srv := range loadedConfig.MCPServers {
-		if srv.Name == "kubernetes" {
-			assert.Contains(t, strings.Join(srv.Command, " "), "kubectl proxy")
-			foundKubeProject = true
-		}
-	}
-	assert.True(t, foundKubeProject, "Project overridden kubernetes server not found or incorrect")
+	// MCPServers are now managed by MCPServerManager, not tested here
 }
 
 func TestLoadConfig_ContextResolution(t *testing.T) {

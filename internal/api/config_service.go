@@ -13,12 +13,12 @@ type ConfigServiceAPI interface {
 	GetConfig(ctx context.Context) (*config.EnvctlConfig, error)
 
 	// Get specific configuration sections
-	GetMCPServers(ctx context.Context) ([]config.MCPServerDefinition, error)
+	GetMCPServers(ctx context.Context) ([]MCPServerDefinition, error)
 	GetAggregatorConfig(ctx context.Context) (*config.AggregatorConfig, error)
 	GetGlobalSettings(ctx context.Context) (*config.GlobalSettings, error)
 
 	// Update configuration sections
-	UpdateMCPServer(ctx context.Context, server config.MCPServerDefinition) error
+	UpdateMCPServer(ctx context.Context, server MCPServerDefinition) error
 	UpdateAggregatorConfig(ctx context.Context, aggregator config.AggregatorConfig) error
 	UpdateGlobalSettings(ctx context.Context, settings config.GlobalSettings) error
 
@@ -52,7 +52,7 @@ func (c *configServiceAPI) GetConfig(ctx context.Context) (*config.EnvctlConfig,
 }
 
 // GetMCPServers returns all MCP server definitions
-func (c *configServiceAPI) GetMCPServers(ctx context.Context) ([]config.MCPServerDefinition, error) {
+func (c *configServiceAPI) GetMCPServers(ctx context.Context) ([]MCPServerDefinition, error) {
 	handler := GetConfigHandler()
 	if handler == nil {
 		return nil, fmt.Errorf("config handler not registered")
@@ -79,7 +79,7 @@ func (c *configServiceAPI) GetGlobalSettings(ctx context.Context) (*config.Globa
 }
 
 // UpdateMCPServer updates or adds an MCP server definition
-func (c *configServiceAPI) UpdateMCPServer(ctx context.Context, server config.MCPServerDefinition) error {
+func (c *configServiceAPI) UpdateMCPServer(ctx context.Context, server MCPServerDefinition) error {
 	handler := GetConfigHandler()
 	if handler == nil {
 		return fmt.Errorf("config handler not registered")

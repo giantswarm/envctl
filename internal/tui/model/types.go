@@ -37,7 +37,7 @@ const (
 type TUIConfig struct {
 	DebugMode        bool
 	ColorMode        string
-	MCPServerConfig  []config.MCPServerDefinition
+	MCPServerConfig  []api.MCPServerDefinition
 	AggregatorConfig config.AggregatorConfig
 	Orchestrator     *orchestrator.Orchestrator
 	OrchestratorAPI  api.OrchestratorAPI
@@ -193,7 +193,7 @@ type Model struct {
 	MCPServerOrder     []string
 
 	// Configuration
-	MCPServerConfig  []config.MCPServerDefinition
+	MCPServerConfig  []api.MCPServerDefinition
 	AggregatorConfig config.AggregatorConfig
 
 	// UI State & Output

@@ -100,16 +100,16 @@ func TestLoadMCPServerDefinitions_EmptyDirectories(t *testing.T) {
 	// Since we can't easily mock the config paths in this basic test,
 	// we just verify the function doesn't panic and returns expected structure
 	definitions, errorCollection, err := LoadMCPServerDefinitions()
-	
+
 	// Should not return an error for empty directories
 	require.NoError(t, err)
-	
+
 	// Definitions may be nil or empty when no files exist, both are valid
 	if definitions != nil {
 		// If not nil, should be a valid slice (possibly empty)
 		assert.GreaterOrEqual(t, len(definitions), 0)
 	}
-	
+
 	// ErrorCollection may be nil when there are no errors
 	if errorCollection != nil {
 		assert.False(t, errorCollection.HasErrors())

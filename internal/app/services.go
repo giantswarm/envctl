@@ -75,33 +75,10 @@ func (a *aggregatorToolChecker) GetAvailableTools() []string {
 	return []string{}
 }
 
-// convertMCPServerDefinition converts config.MCPServerDefinition to mcpserver.MCPServerDefinition
-func convertMCPServerDefinition(cfg config.MCPServerDefinition) mcpserverPkg.MCPServerDefinition {
-	return mcpserverPkg.MCPServerDefinition{
-		Name:                cfg.Name,
-		Type:                mcpserverPkg.MCPServerType(cfg.Type),
-		Enabled:             cfg.Enabled,
-		Icon:                cfg.Icon,
-		Category:            cfg.Category,
-		HealthCheckInterval: cfg.HealthCheckInterval,
-		ToolPrefix:          cfg.ToolPrefix,
-		Command:             cfg.Command,
-		Env:                 cfg.Env,
-		Image:               cfg.Image,
-		ContainerPorts:      cfg.ContainerPorts,
-		ContainerEnv:        cfg.ContainerEnv,
-		ContainerVolumes:    cfg.ContainerVolumes,
-		HealthCheckCmd:      cfg.HealthCheckCmd,
-		Entrypoint:          cfg.Entrypoint,
-		ContainerUser:       cfg.ContainerUser,
-	}
-}
-
 // InitializeServices creates and registers all required services
 func InitializeServices(cfg *Config) (*Services, error) {
 	// Create orchestrator without ToolCaller initially
 	orchConfig := orchestrator.Config{
-		MCPServers: cfg.EnvctlConfig.MCPServers,
 		Aggregator: cfg.EnvctlConfig.Aggregator,
 		Yolo:       cfg.Yolo,
 		ToolCaller: nil, // Will be set up after aggregator is available
@@ -206,6 +183,22 @@ func InitializeServices(cfg *Config) (*Services, error) {
 		logging.Warn("Services", "Failed to load Workflow definitions: %v", err)
 	}
 
+	// Initialize and register MCPServer manager (new unified configuration approach)
+	mcpServerManager, err := mcpserverPkg.NewMCPServerManager()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create MCP server manager: %w", err)
+	}
+
+	// Create and register MCPServer adapter
+	mcpServerAdapter := mcpserverPkg.NewAdapter(mcpServerManager)
+	mcpServerAdapter.Register()
+
+	// Load MCP server definitions from directories
+	if err := mcpServerManager.LoadDefinitions(); err != nil {
+		// Log warning but don't fail - MCP servers are optional
+		logging.Warn("Services", "Failed to load MCP server definitions: %v", err)
+	}
+
 	// Step 2: Create APIs that use the registered handlers
 	orchestratorAPI := api.NewOrchestratorAPI()
 	mcpAPI := api.NewMCPServiceAPI()
@@ -215,10 +208,11 @@ func InitializeServices(cfg *Config) (*Services, error) {
 	configAPI := api.NewConfigServiceAPI()
 
 	// Step 3: Create and register actual services
-	// Create MCP server services based on configuration
-	for _, mcpConfig := range cfg.EnvctlConfig.MCPServers {
-		if mcpConfig.Enabled {
-			mcpService := mcpserver.NewMCPServerService(convertMCPServerDefinition(mcpConfig))
+	// Create MCP server services using the new directory-based loading
+	mcpServerDefinitions := mcpServerManager.ListDefinitions()
+	for _, mcpDef := range mcpServerDefinitions {
+		if mcpDef.Enabled {
+			mcpService := mcpserver.NewMCPServerService(mcpDef)
 			if mcpService != nil {
 				registry.Register(mcpService)
 			}

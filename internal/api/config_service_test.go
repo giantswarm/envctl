@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"envctl/internal/config"
@@ -38,8 +39,9 @@ func (m *mockConfigHandler) GetConfig(ctx context.Context) (*config.EnvctlConfig
 	return m.config, nil
 }
 
-func (m *mockConfigHandler) GetMCPServers(ctx context.Context) ([]config.MCPServerDefinition, error) {
-	return m.config.MCPServers, nil
+func (m *mockConfigHandler) GetMCPServers(ctx context.Context) ([]MCPServerDefinition, error) {
+	// MCPServers are now managed by MCPServerManager, return empty slice for backward compatibility
+	return []MCPServerDefinition{}, nil
 }
 
 func (m *mockConfigHandler) GetAggregatorConfig(ctx context.Context) (*config.AggregatorConfig, error) {
@@ -50,20 +52,9 @@ func (m *mockConfigHandler) GetGlobalSettings(ctx context.Context) (*config.Glob
 	return &m.config.GlobalSettings, nil
 }
 
-func (m *mockConfigHandler) UpdateMCPServer(ctx context.Context, server config.MCPServerDefinition) error {
-	// Find and update or add
-	found := false
-	for i, s := range m.config.MCPServers {
-		if s.Name == server.Name {
-			m.config.MCPServers[i] = server
-			found = true
-			break
-		}
-	}
-	if !found {
-		m.config.MCPServers = append(m.config.MCPServers, server)
-	}
-	return nil
+func (m *mockConfigHandler) UpdateMCPServer(ctx context.Context, server MCPServerDefinition) error {
+	// MCPServers are now managed by MCPServerManager, return error
+	return fmt.Errorf("MCP server configuration has moved to directory-based management via MCPServerManager")
 }
 
 func (m *mockConfigHandler) UpdateAggregatorConfig(ctx context.Context, aggregator config.AggregatorConfig) error {
@@ -77,14 +68,8 @@ func (m *mockConfigHandler) UpdateGlobalSettings(ctx context.Context, settings c
 }
 
 func (m *mockConfigHandler) DeleteMCPServer(ctx context.Context, name string) error {
-	servers := []config.MCPServerDefinition{}
-	for _, s := range m.config.MCPServers {
-		if s.Name != name {
-			servers = append(servers, s)
-		}
-	}
-	m.config.MCPServers = servers
-	return nil
+	// MCPServers are now managed by MCPServerManager, return error
+	return fmt.Errorf("MCP server configuration has moved to directory-based management via MCPServerManager")
 }
 
 func (m *mockConfigHandler) SaveConfig(ctx context.Context) error {
@@ -98,11 +83,8 @@ func (m *mockConfigHandler) ReloadConfig(ctx context.Context) error {
 }
 
 func TestConfigServiceAPI(t *testing.T) {
-	// Create a mock config
+	// Create a mock config - MCPServers field removed as it no longer exists
 	mockCfg := &config.EnvctlConfig{
-		MCPServers: []config.MCPServerDefinition{
-			{Name: "test-server", Type: config.MCPServerTypeLocalCommand},
-		},
 		Aggregator: config.AggregatorConfig{
 			Port: 8080,
 		},
@@ -133,8 +115,8 @@ func TestConfigServiceAPI(t *testing.T) {
 	t.Run("GetMCPServers", func(t *testing.T) {
 		servers, err := api.GetMCPServers(ctx)
 		assert.NoError(t, err)
-		assert.Len(t, servers, 1)
-		assert.Equal(t, "test-server", servers[0].Name)
+		// MCPServers now managed by MCPServerManager, expect empty result
+		assert.Len(t, servers, 0)
 	})
 
 	t.Run("GetAggregatorConfig", func(t *testing.T) {
@@ -150,24 +132,29 @@ func TestConfigServiceAPI(t *testing.T) {
 	})
 
 	t.Run("UpdateMCPServer", func(t *testing.T) {
-		newServer := config.MCPServerDefinition{
+		newServer := MCPServerDefinition{
 			Name: "new-server",
-			Type: config.MCPServerTypeContainer,
+			Type: string(config.MCPServerTypeContainer),
 		}
 		err := api.UpdateMCPServer(ctx, newServer)
-		assert.NoError(t, err)
+		// Expect error since MCP servers moved to MCPServerManager
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "MCP server configuration has moved to directory-based management via MCPServerManager")
 
+		// Verify servers list still empty
 		servers, _ := api.GetMCPServers(ctx)
-		assert.Len(t, servers, 2)
+		assert.Len(t, servers, 0)
 	})
 
 	t.Run("DeleteMCPServer", func(t *testing.T) {
 		err := api.DeleteMCPServer(ctx, "test-server")
-		assert.NoError(t, err)
+		// Expect error since MCP servers moved to MCPServerManager
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "MCP server configuration has moved to directory-based management via MCPServerManager")
 
+		// Verify servers list still empty
 		servers, _ := api.GetMCPServers(ctx)
-		assert.Len(t, servers, 1)
-		assert.Equal(t, "new-server", servers[0].Name)
+		assert.Len(t, servers, 0)
 	})
 
 	t.Run("SaveConfig", func(t *testing.T) {
