@@ -3,7 +3,6 @@ package workflow
 import (
 	"context"
 	"envctl/internal/api"
-	"envctl/internal/config"
 	"envctl/pkg/logging"
 	"fmt"
 	"strconv"
@@ -19,21 +18,15 @@ type Adapter struct {
 	toolCaller api.ToolCaller
 }
 
-// NewAdapter creates a new workflow adapter
-func NewAdapter(configDir string, toolCaller api.ToolCaller, toolChecker config.ToolAvailabilityChecker) (*Adapter, error) {
-	// Create workflow manager
-	manager, err := NewWorkflowManager(configDir, toolCaller, toolChecker)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create workflow manager: %w", err)
-	}
-
+// NewAdapter creates a new API adapter for the workflow manager
+func NewAdapter(manager *WorkflowManager, toolCaller api.ToolCaller) *Adapter {
 	return &Adapter{
 		manager:    manager,
 		toolCaller: toolCaller,
-	}, nil
+	}
 }
 
-// Register registers this adapter with the API
+// Register registers this adapter with the central API layer
 func (a *Adapter) Register() {
 	api.RegisterWorkflow(a)
 	logging.Info("WorkflowAdapter", "Registered workflow adapter with API")
@@ -141,8 +134,7 @@ func (a *Adapter) CreateWorkflow(yamlStr string) error {
 		return fmt.Errorf("failed to parse workflow YAML: %w", err)
 	}
 
-	// TODO: Implement workflow creation using DynamicStorage
-	return fmt.Errorf("workflow creation not yet implemented")
+	return a.manager.CreateWorkflow(wf)
 }
 
 // UpdateWorkflow updates an existing workflow
@@ -153,14 +145,12 @@ func (a *Adapter) UpdateWorkflow(name, yamlStr string) error {
 		return fmt.Errorf("failed to parse workflow YAML: %w", err)
 	}
 
-	// TODO: Implement workflow update using DynamicStorage
-	return fmt.Errorf("workflow update not yet implemented")
+	return a.manager.UpdateWorkflow(name, wf)
 }
 
 // DeleteWorkflow deletes a workflow
 func (a *Adapter) DeleteWorkflow(name string) error {
-	// TODO: Implement workflow deletion using DynamicStorage
-	return fmt.Errorf("workflow deletion not yet implemented")
+	return a.manager.DeleteWorkflow(name)
 }
 
 // ValidateWorkflow validates a workflow YAML
@@ -198,7 +188,6 @@ func (a *Adapter) Stop() {
 // ReloadWorkflows reloads workflow definitions from disk
 func (a *Adapter) ReloadWorkflows() error {
 	if a.manager != nil {
-		// TODO: Implement workflow reloading using DynamicStorage
 		return a.manager.LoadDefinitions()
 	}
 	return nil

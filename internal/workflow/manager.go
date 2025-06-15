@@ -9,10 +9,12 @@ import (
 	"envctl/pkg/logging"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"gopkg.in/yaml.v3"
 )
 
 // WorkflowManager manages workflows and their execution
 type WorkflowManager struct {
+	storage     *config.DynamicStorage         // Use the new DynamicStorage
 	workflows   map[string]*WorkflowDefinition // In-memory workflow storage
 	executor    *WorkflowExecutor
 	toolChecker config.ToolAvailabilityChecker
@@ -21,10 +23,11 @@ type WorkflowManager struct {
 }
 
 // NewWorkflowManager creates a new workflow manager
-func NewWorkflowManager(configDir string, toolCaller ToolCaller, toolChecker config.ToolAvailabilityChecker) (*WorkflowManager, error) {
+func NewWorkflowManager(storage *config.DynamicStorage, toolCaller ToolCaller, toolChecker config.ToolAvailabilityChecker) (*WorkflowManager, error) {
 	executor := NewWorkflowExecutor(toolCaller)
 
 	wm := &WorkflowManager{
+		storage:     storage,
 		workflows:   make(map[string]*WorkflowDefinition),
 		executor:    executor,
 		toolChecker: toolChecker,
@@ -33,9 +36,37 @@ func NewWorkflowManager(configDir string, toolCaller ToolCaller, toolChecker con
 	return wm, nil
 }
 
-// LoadDefinitions loads workflow definitions (implements common manager interface)
+// LoadDefinitions loads workflow definitions from storage
 func (wm *WorkflowManager) LoadDefinitions() error {
-	// TODO: Implement loading from DynamicStorage
+	wm.mu.Lock()
+	defer wm.mu.Unlock()
+
+	names, err := wm.storage.List("workflows")
+	if err != nil {
+		return fmt.Errorf("failed to list workflows: %w", err)
+	}
+
+	// Clear existing in-memory workflows
+	wm.workflows = make(map[string]*WorkflowDefinition)
+
+	for _, name := range names {
+		data, err := wm.storage.Load("workflows", name)
+		if err != nil {
+			logging.Warn("WorkflowManager", "Failed to load workflow %s: %v", name, err)
+			continue
+		}
+
+		var wf WorkflowDefinition
+		if err := yaml.Unmarshal(data, &wf); err != nil {
+			logging.Warn("WorkflowManager", "Failed to parse workflow %s: %v", name, err)
+			continue
+		}
+		// The name from the filesystem is the source of truth
+		wf.Name = name
+		wm.workflows[name] = &wf
+	}
+
+	logging.Info("WorkflowManager", "Loaded %d workflows", len(wm.workflows))
 	return nil
 }
 
@@ -201,4 +232,73 @@ func (wm *WorkflowManager) workflowToTool(workflow WorkflowDefinition) mcp.Tool 
 		Description: workflow.Description,
 		InputSchema: inputSchema,
 	}
+}
+
+// CreateWorkflow creates and persists a new workflow
+func (wm *WorkflowManager) CreateWorkflow(wf WorkflowDefinition) error {
+	wm.mu.Lock()
+	defer wm.mu.Unlock()
+
+	if _, exists := wm.workflows[wf.Name]; exists {
+		return fmt.Errorf("workflow '%s' already exists", wf.Name)
+	}
+
+	data, err := yaml.Marshal(wf)
+	if err != nil {
+		return fmt.Errorf("failed to marshal workflow %s: %w", wf.Name, err)
+	}
+
+	if err := wm.storage.Save("workflows", wf.Name, data); err != nil {
+		return fmt.Errorf("failed to save workflow %s: %w", wf.Name, err)
+	}
+
+	// Add to in-memory store after successful save
+	wm.workflows[wf.Name] = &wf
+	logging.Info("WorkflowManager", "Created workflow %s", wf.Name)
+	return nil
+}
+
+// UpdateWorkflow updates and persists an existing workflow
+func (wm *WorkflowManager) UpdateWorkflow(name string, wf WorkflowDefinition) error {
+	wm.mu.Lock()
+	defer wm.mu.Unlock()
+
+	if _, exists := wm.workflows[name]; !exists {
+		return fmt.Errorf("workflow '%s' not found", name)
+	}
+	// Ensure the name in the object matches the name being updated
+	wf.Name = name
+
+	data, err := yaml.Marshal(wf)
+	if err != nil {
+		return fmt.Errorf("failed to marshal workflow %s: %w", name, err)
+	}
+
+	if err := wm.storage.Save("workflows", name, data); err != nil {
+		return fmt.Errorf("failed to save workflow %s: %w", name, err)
+	}
+
+	// Update in-memory store after successful save
+	wm.workflows[name] = &wf
+	logging.Info("WorkflowManager", "Updated workflow %s", name)
+	return nil
+}
+
+// DeleteWorkflow deletes a workflow from memory and storage
+func (wm *WorkflowManager) DeleteWorkflow(name string) error {
+	wm.mu.Lock()
+	defer wm.mu.Unlock()
+
+	if _, exists := wm.workflows[name]; !exists {
+		return fmt.Errorf("workflow '%s' not found", name)
+	}
+
+	if err := wm.storage.Delete("workflows", name); err != nil {
+		return fmt.Errorf("failed to delete workflow %s from storage: %w", name, err)
+	}
+
+	// Delete from in-memory store after successful deletion from storage
+	delete(wm.workflows, name)
+	logging.Info("WorkflowManager", "Deleted workflow %s", name)
+	return nil
 }

@@ -151,24 +151,23 @@ func InitializeServices(cfg *Config) (*Services, error) {
 		logging.Warn("Services", "Failed to load Capability definitions: %v", err)
 	}
 
-	// Initialize and register Workflow adapter
-	// Auto-detect config directory for workflow adapter
-	configDir, err := config.GetUserConfigDir()
-	if err != nil {
-		// Fallback to empty string if auto-detection fails
-		configDir = ""
-	}
+	// Initialize DynamicStorage, which will be used by multiple managers
+	storage := config.NewDynamicStorage()
 
 	// Create and register Workflow adapter
-	// Note: We'll need to pass a ToolCaller when it becomes available
-	workflowAdapter, err := workflow.NewAdapter(configDir, nil, toolChecker) // ToolCaller will be set later
+	workflowManager, err := workflow.NewWorkflowManager(storage, nil, toolChecker) // ToolCaller will be set later
 	if err != nil {
-		return nil, fmt.Errorf("failed to create Workflow adapter: %w", err)
+		return nil, fmt.Errorf("failed to create Workflow manager: %w", err)
 	}
+
+	workflowAdapter := workflow.NewAdapter(workflowManager, nil) // ToolCaller will be set later
 	workflowAdapter.Register()
 
-	// Load Workflow definitions (TODO: Implement loading from DynamicStorage)
-	logging.Info("Services", "Workflow storage removed - definitions will be loaded from DynamicStorage in future")
+	// Load Workflow definitions
+	if err := workflowManager.LoadDefinitions(); err != nil {
+		// Log warning but don't fail - Workflow is optional
+		logging.Warn("Services", "Failed to load Workflow definitions: %v", err)
+	}
 
 	// Initialize and register MCPServer manager (new unified configuration approach)
 	mcpServerManager, err := mcpserverPkg.NewMCPServerManager()
