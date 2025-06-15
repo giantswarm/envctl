@@ -23,6 +23,61 @@
 //     - Allows teams to share configuration via version control
 //     - Note: This file is git-ignored by default
 //
+// # Entity Storage System
+//
+// The Storage system provides generic YAML-based persistence for entity definitions
+// including workflows, capabilities, serviceclasses, and mcpservers. This unified
+// storage system allows users to create, modify, and manage entities through both
+// API operations and direct file manipulation.
+//
+// ## Storage Locations
+//
+// Entities are stored in YAML files in type-specific subdirectories:
+//   - User directory: ~/.config/envctl/{entityType}/
+//   - Project directory: .envctl/{entityType}/
+//
+// Where {entityType} is one of: workflows, capabilities, serviceclasses, mcpservers
+//
+// ## Storage Precedence
+//
+// The storage system follows a consistent precedence model:
+//  1. Project entities override user entities with the same name
+//  2. When saving, entities are saved to project directory if .envctl/ exists
+//  3. Otherwise, entities are saved to user directory
+//
+// ## Supported Operations
+//
+// The Storage interface provides CRUD operations:
+//   - Save: Store entity data as YAML file
+//   - Load: Retrieve entity data from file
+//   - Delete: Remove entity file from both locations
+//   - List: Get all available entity names (merged from both locations)
+//
+// ## File Format
+//
+// All entities are stored as YAML files with .yaml extension.
+// Filenames are automatically sanitized to ensure filesystem compatibility.
+//
+// ## Usage Example
+//
+//	// Create storage instance
+//	storage := config.NewStorage()
+//
+//	// Save a workflow
+//	workflowYAML := []byte(`name: "my-workflow"
+//	description: "Example workflow"
+//	steps: []`)
+//	err := storage.Save("workflows", "my-workflow", workflowYAML)
+//
+//	// Load the workflow
+//	data, err := storage.Load("workflows", "my-workflow")
+//
+//	// List all workflows
+//	names, err := storage.List("workflows")
+//
+//	// Delete the workflow
+//	err = storage.Delete("workflows", "my-workflow")
+//
 // # Configuration Structure
 //
 // The configuration file uses YAML format with the following main sections:
