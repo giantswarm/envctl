@@ -67,8 +67,7 @@ func (a *Adapter) ExecuteWorkflow(ctx context.Context, workflowName string, args
 
 // GetWorkflows returns information about all workflows
 func (a *Adapter) GetWorkflows() []api.WorkflowInfo {
-	storage := a.manager.GetStorage()
-	workflows := storage.ListWorkflows()
+	workflows := a.manager.ListDefinitions()
 	infos := make([]api.WorkflowInfo, 0, len(workflows))
 
 	for _, wf := range workflows {
@@ -84,10 +83,9 @@ func (a *Adapter) GetWorkflows() []api.WorkflowInfo {
 
 // GetWorkflow returns a specific workflow definition
 func (a *Adapter) GetWorkflow(name string) (*api.WorkflowDefinition, error) {
-	storage := a.manager.GetStorage()
-	workflow, err := storage.GetWorkflow(name)
-	if err != nil {
-		return nil, err
+	workflow, exists := a.manager.GetDefinition(name)
+	if !exists {
+		return nil, fmt.Errorf("workflow %s not found", name)
 	}
 
 	// Convert workflow.WorkflowConfig to api.WorkflowDefinition
@@ -143,8 +141,8 @@ func (a *Adapter) CreateWorkflow(yamlStr string) error {
 		return fmt.Errorf("failed to parse workflow YAML: %w", err)
 	}
 
-	storage := a.manager.GetStorage()
-	return storage.CreateWorkflow(wf)
+	// TODO: Implement workflow creation using DynamicStorage
+	return fmt.Errorf("workflow creation not yet implemented")
 }
 
 // UpdateWorkflow updates an existing workflow
@@ -155,14 +153,14 @@ func (a *Adapter) UpdateWorkflow(name, yamlStr string) error {
 		return fmt.Errorf("failed to parse workflow YAML: %w", err)
 	}
 
-	storage := a.manager.GetStorage()
-	return storage.UpdateWorkflow(name, wf)
+	// TODO: Implement workflow update using DynamicStorage
+	return fmt.Errorf("workflow update not yet implemented")
 }
 
 // DeleteWorkflow deletes a workflow
 func (a *Adapter) DeleteWorkflow(name string) error {
-	storage := a.manager.GetStorage()
-	return storage.DeleteWorkflow(name)
+	// TODO: Implement workflow deletion using DynamicStorage
+	return fmt.Errorf("workflow deletion not yet implemented")
 }
 
 // ValidateWorkflow validates a workflow YAML
@@ -200,9 +198,8 @@ func (a *Adapter) Stop() {
 // ReloadWorkflows reloads workflow definitions from disk
 func (a *Adapter) ReloadWorkflows() error {
 	if a.manager != nil {
-		// Get the storage and reload workflows
-		storage := a.manager.GetStorage()
-		return storage.LoadWorkflows()
+		// TODO: Implement workflow reloading using DynamicStorage
+		return a.manager.LoadDefinitions()
 	}
 	return nil
 }

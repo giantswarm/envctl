@@ -13,7 +13,7 @@ import (
 
 // WorkflowManager manages workflows and their execution
 type WorkflowManager struct {
-	storage     *WorkflowStorage
+	workflows   map[string]*WorkflowDefinition // In-memory workflow storage
 	executor    *WorkflowExecutor
 	toolChecker config.ToolAvailabilityChecker
 	mu          sync.RWMutex
@@ -22,28 +22,21 @@ type WorkflowManager struct {
 
 // NewWorkflowManager creates a new workflow manager
 func NewWorkflowManager(configDir string, toolCaller ToolCaller, toolChecker config.ToolAvailabilityChecker) (*WorkflowManager, error) {
-	storage, err := NewWorkflowStorage(configDir)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create workflow storage: %w", err)
-	}
-
 	executor := NewWorkflowExecutor(toolCaller)
 
 	wm := &WorkflowManager{
-		storage:     storage,
+		workflows:   make(map[string]*WorkflowDefinition),
 		executor:    executor,
 		toolChecker: toolChecker,
 	}
-
-	// Start watching for changes
-	go wm.watchChanges()
 
 	return wm, nil
 }
 
 // LoadDefinitions loads workflow definitions (implements common manager interface)
 func (wm *WorkflowManager) LoadDefinitions() error {
-	return wm.storage.LoadWorkflows()
+	// TODO: Implement loading from DynamicStorage
+	return nil
 }
 
 // GetDefinition returns a workflow definition by name (implements common manager interface)
@@ -51,8 +44,8 @@ func (wm *WorkflowManager) GetDefinition(name string) (WorkflowDefinition, bool)
 	wm.mu.RLock()
 	defer wm.mu.RUnlock()
 
-	workflow, err := wm.storage.GetWorkflow(name)
-	if err != nil {
+	workflow, exists := wm.workflows[name]
+	if !exists {
 		return WorkflowDefinition{}, false
 	}
 	return *workflow, true
@@ -63,7 +56,11 @@ func (wm *WorkflowManager) ListDefinitions() []WorkflowDefinition {
 	wm.mu.RLock()
 	defer wm.mu.RUnlock()
 
-	return wm.storage.ListWorkflows()
+	workflows := make([]WorkflowDefinition, 0, len(wm.workflows))
+	for _, wf := range wm.workflows {
+		workflows = append(workflows, *wf)
+	}
+	return workflows
 }
 
 // ListAvailableDefinitions returns only workflow definitions that have all required tools available
@@ -71,12 +68,10 @@ func (wm *WorkflowManager) ListAvailableDefinitions() []WorkflowDefinition {
 	wm.mu.RLock()
 	defer wm.mu.RUnlock()
 
-	workflows := wm.storage.ListWorkflows()
 	var available []WorkflowDefinition
-
-	for _, workflow := range workflows {
-		if wm.isWorkflowAvailable(&workflow) {
-			available = append(available, workflow)
+	for _, wf := range wm.workflows {
+		if wm.isWorkflowAvailable(wf) {
+			available = append(available, *wf)
 		}
 	}
 
@@ -88,8 +83,8 @@ func (wm *WorkflowManager) IsAvailable(name string) bool {
 	wm.mu.RLock()
 	defer wm.mu.RUnlock()
 
-	workflow, err := wm.storage.GetWorkflow(name)
-	if err != nil {
+	workflow, exists := wm.workflows[name]
+	if !exists {
 		return false
 	}
 
@@ -137,13 +132,12 @@ func (wm *WorkflowManager) GetWorkflows() []mcp.Tool {
 	wm.mu.RLock()
 	defer wm.mu.RUnlock()
 
-	workflows := wm.storage.ListWorkflows()
-	tools := make([]mcp.Tool, 0, len(workflows))
+	tools := make([]mcp.Tool, 0, len(wm.workflows))
 
-	for _, wf := range workflows {
+	for _, wf := range wm.workflows {
 		// Only include workflows that have all required tools available
-		if wm.isWorkflowAvailable(&wf) {
-			tool := wm.workflowToTool(wf)
+		if wm.isWorkflowAvailable(wf) {
+			tool := wm.workflowToTool(*wf)
 			tools = append(tools, tool)
 		}
 	}
@@ -156,9 +150,9 @@ func (wm *WorkflowManager) ExecuteWorkflow(ctx context.Context, name string, arg
 	wm.mu.RLock()
 	defer wm.mu.RUnlock()
 
-	workflow, err := wm.storage.GetWorkflow(name)
-	if err != nil {
-		return nil, fmt.Errorf("workflow not found: %w", err)
+	workflow, exists := wm.workflows[name]
+	if !exists {
+		return nil, fmt.Errorf("workflow %s not found", name)
 	}
 
 	// Check if workflow is available before execution
@@ -169,40 +163,11 @@ func (wm *WorkflowManager) ExecuteWorkflow(ctx context.Context, name string, arg
 	return wm.executor.ExecuteWorkflow(ctx, workflow, args)
 }
 
-// watchChanges monitors for workflow file changes
-func (wm *WorkflowManager) watchChanges() {
-	changeChannel := wm.storage.GetChangeChannel()
-
-	for {
-		select {
-		case <-changeChannel:
-			logging.Debug("WorkflowManager", "Workflows changed, reloading")
-
-			wm.mu.Lock()
-			if wm.stopped {
-				wm.mu.Unlock()
-				return
-			}
-
-			// Reload workflows
-			if err := wm.storage.LoadWorkflows(); err != nil {
-				logging.Error("WorkflowManager", err, "Failed to reload workflows")
-			}
-			wm.mu.Unlock()
-		}
-	}
-}
-
 // Stop gracefully stops the workflow manager
 func (wm *WorkflowManager) Stop() {
 	wm.mu.Lock()
 	wm.stopped = true
 	wm.mu.Unlock()
-}
-
-// GetStorage returns the workflow storage for management tools
-func (wm *WorkflowManager) GetStorage() *WorkflowStorage {
-	return wm.storage
 }
 
 // workflowToTool converts a workflow definition to an MCP tool
