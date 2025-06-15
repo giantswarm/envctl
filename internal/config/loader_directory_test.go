@@ -153,8 +153,9 @@ func TestLoadAndParseYAML(t *testing.T) {
 		return nil
 	}
 
-	configs, err := LoadAndParseYAML[TestConfig]("workflows", validator)
+	configs, errorCollection, err := LoadAndParseYAML[TestConfig]("workflows", validator)
 	require.NoError(t, err)
+	require.False(t, errorCollection.HasErrors(), "Expected no validation errors but got: %s", errorCollection.GetSummary())
 
 	// Should have 2 configs
 	assert.Len(t, configs, 2)
@@ -204,8 +205,9 @@ func TestConfigurationLoader_MissingDirectories(t *testing.T) {
 	assert.Len(t, files, 0) // Should return empty slice, not error
 
 	// Test LoadAndParseYAML with missing directories
-	configs, err := LoadAndParseYAML[TestConfig]("capabilities", nil)
+	configs, errorCollection, err := LoadAndParseYAML[TestConfig]("capabilities", nil)
 	require.NoError(t, err)
+	require.False(t, errorCollection.HasErrors(), "Expected no validation errors but got: %s", errorCollection.GetSummary())
 	assert.Len(t, configs, 0)
 }
 

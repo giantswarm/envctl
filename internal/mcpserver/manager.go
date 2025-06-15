@@ -38,85 +38,39 @@ func NewMCPServerManager(storage *config.DynamicStorage) (*MCPServerManager, err
 	}, nil
 }
 
-// LoadDefinitions loads all MCP server definitions from files and dynamic storage
-// Definitions from dynamic storage will override file-based ones with the same name
+// LoadDefinitions loads all MCP server definitions from YAML files.
+// All MCP servers are just YAML files, regardless of how they were created.
 func (msm *MCPServerManager) LoadDefinitions() error {
-	// 1. Load from YAML files and dynamic storage without holding a lock.
-	// This prevents deadlocks during I/O.
+	// Load all MCP server YAML files from user and project directories
 	validator := func(def MCPServerDefinition) error {
 		return msm.validateDefinition(&def)
 	}
-	fileDefs, errorCollection, err := config.LoadAndParseYAMLWithErrors[MCPServerDefinition]("mcpservers", validator)
+	
+	definitions, errorCollection, err := config.LoadAndParseYAML[MCPServerDefinition]("mcpservers", validator)
 	if err != nil {
-		// Log as a warning and continue, allowing the app to start with what it can load.
-		logging.Warn("MCPServerManager", "Error loading file-based MCP servers: %v", err)
+		logging.Warn("MCPServerManager", "Error loading MCP servers: %v", err)
+		return err
 	}
 
-	dynamicDefs := make(map[string]*MCPServerDefinition)
-	dynamicNames, err := msm.storage.List("mcpservers")
-	if err != nil {
-		logging.Warn("MCPServerManager", "Could not list MCP servers from dynamic storage: %v", err)
-	} else {
-		for _, name := range dynamicNames {
-			data, err := msm.storage.Load("mcpservers", name)
-			if err != nil {
-				logging.Warn("MCPServerManager", "Failed to load MCP server '%s': %v", name, err)
-				continue
-			}
-
-			var mcpDef MCPServerDefinition
-			if err := yaml.Unmarshal(data, &mcpDef); err != nil {
-				logging.Warn("MCPServerManager", "Failed to parse MCP server '%s': %v", name, err)
-				continue
-			}
-			mcpDef.Name = name // Name from storage is the source of truth
-			dynamicDefs[name] = &mcpDef
-		}
+	// Log any validation errors but continue with valid definitions
+	if errorCollection != nil && errorCollection.HasErrors() {
+		logging.Warn("MCPServerManager", "Some MCP server files had errors:\n%s", errorCollection.GetSummary())
 	}
 
-	// 2. Now, acquire a single lock to update the in-memory state.
+	// Acquire lock to update in-memory state
 	msm.mu.Lock()
 	defer msm.mu.Unlock()
 
 	// Clear the old definitions
 	msm.definitions = make(map[string]*MCPServerDefinition)
 
-	// Add file-based definitions first
-	for i := range fileDefs {
-		def := fileDefs[i] // Important: take a copy
+	// Add all valid definitions to in-memory store
+	for i := range definitions {
+		def := definitions[i] // Important: take a copy
 		msm.definitions[def.Name] = &def
 	}
-	logging.Info("MCPServerManager", "Loaded %d MCP servers from files", len(fileDefs))
 
-	// Add/overwrite with dynamic definitions
-	for name, def := range dynamicDefs {
-		msm.definitions[name] = def
-	}
-	logging.Info("MCPServerManager", "Loaded/updated %d MCP servers from DynamicStorage", len(dynamicDefs))
-
-	// Handle configuration errors with detailed reporting
-	if errorCollection != nil && errorCollection.HasErrors() {
-		errorCount := errorCollection.Count()
-		successCount := len(fileDefs)
-
-		// Log comprehensive error information
-		logging.Warn("MCPServerManager", "MCP server loading completed with %d errors (loaded %d successfully)",
-			errorCount, successCount)
-
-		// Log detailed error summary for troubleshooting
-		logging.Warn("MCPServerManager", "MCP server configuration errors:\n%s",
-			errorCollection.GetSummary())
-
-		// Log full error details for debugging
-		logging.Debug("MCPServerManager", "Detailed error report:\n%s",
-			errorCollection.GetDetailedReport())
-
-		// For MCP servers, we allow graceful degradation - return success with warnings
-		// This enables the application to continue with working MCP server definitions
-		logging.Info("MCPServerManager", "MCP server manager initialized with %d valid definitions (graceful degradation enabled)",
-			successCount)
-	}
-
+	logging.Info("MCPServerManager", "Loaded %d MCP servers from YAML files", len(definitions))
 	return nil
 }
 
@@ -285,8 +239,10 @@ func (msm *MCPServerManager) CreateMCPServer(def MCPServerDefinition) error {
 		return fmt.Errorf("failed to save MCP server %s: %w", def.Name, err)
 	}
 
+	// Add to in-memory store after successful save
 	msm.definitions[def.Name] = &def
-	logging.Info("MCPServerManager", "Created MCP server %s", def.Name)
+
+	logging.Info("MCPServerManager", "Created MCP server %s (type: %s)", def.Name, def.Type)
 	return nil
 }
 
@@ -313,8 +269,10 @@ func (msm *MCPServerManager) UpdateMCPServer(name string, def MCPServerDefinitio
 		return fmt.Errorf("failed to save MCP server %s: %w", name, err)
 	}
 
+	// Update in-memory store after successful save
 	msm.definitions[name] = &def
-	logging.Info("MCPServerManager", "Updated MCP server %s", name)
+
+	logging.Info("MCPServerManager", "Updated MCP server %s (type: %s)", name, def.Type)
 	return nil
 }
 
@@ -335,7 +293,9 @@ func (msm *MCPServerManager) DeleteMCPServer(name string) error {
 		}
 	}
 
+	// Remove from in-memory store after successful deletion
 	delete(msm.definitions, name)
+
 	logging.Info("MCPServerManager", "Deleted MCP server %s", name)
 	return nil
 }

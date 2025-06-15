@@ -25,7 +25,7 @@ func LoadMCPServerDefinitions() ([]MCPServerDefinition, *config.ConfigurationErr
 	logging.Info("MCPServerLoader", "Loading MCP server definitions from mcpservers/ directory")
 
 	// Load and parse YAML files with enhanced error handling
-	definitions, errorCollection, err := config.LoadAndParseYAMLWithErrors[MCPServerDefinition]("mcpservers", validateMCPServerDefinition)
+	definitions, errorCollection, err := config.LoadAndParseYAML[MCPServerDefinition]("mcpservers", validateMCPServerDefinition)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to load MCP server definitions: %w", err)
 	}

@@ -36,8 +36,8 @@ func NewWorkflowManager(storage *config.DynamicStorage, toolCaller ToolCaller, t
 	return wm, nil
 }
 
-// LoadDefinitions loads all workflow definitions from files and dynamic storage.
-// Definitions from dynamic storage will override file-based ones with the same name.
+// LoadDefinitions loads all workflow definitions from YAML files.
+// All workflows are just YAML files, regardless of how they were created.
 func (wm *WorkflowManager) LoadDefinitions() error {
 	wm.mu.Lock()
 	defer wm.mu.Unlock()
@@ -45,36 +45,51 @@ func (wm *WorkflowManager) LoadDefinitions() error {
 	// Clear existing in-memory workflows
 	wm.workflows = make(map[string]*WorkflowDefinition)
 
-	// Note: The original file-based loading logic was complex and part of the
-	// removed WorkflowStorage. For this refactoring, we will only load from
-	// the new DynamicStorage, as per the goal to centralize storage logic.
-	// The original PRD mentioned refactoring existing tools, and the old loading
-	// is part of that. A future migration step could move file-based definitions
-	// into the dynamic storage format if needed.
-
-	names, err := wm.storage.List("workflows")
+	// Load all workflow YAML files from user and project directories
+	validator := func(def WorkflowDefinition) error {
+		return wm.validateWorkflowDefinition(&def)
+	}
+	
+	definitions, errorCollection, err := config.LoadAndParseYAML[WorkflowDefinition]("workflows", validator)
 	if err != nil {
-		return fmt.Errorf("failed to list workflows from dynamic storage: %w", err)
+		logging.Warn("WorkflowManager", "Error loading workflows: %v", err)
+		return err
 	}
 
-	for _, name := range names {
-		data, err := wm.storage.Load("workflows", name)
-		if err != nil {
-			logging.Warn("WorkflowManager", "Failed to load workflow '%s': %v", name, err)
-			continue
-		}
-
-		var wf WorkflowDefinition
-		if err := yaml.Unmarshal(data, &wf); err != nil {
-			logging.Warn("WorkflowManager", "Failed to parse workflow '%s': %v", name, err)
-			continue
-		}
-		// The name from the filesystem is the source of truth
-		wf.Name = name
-		wm.workflows[name] = &wf
+	// Log any validation errors but continue with valid definitions
+	if errorCollection.HasErrors() {
+		logging.Warn("WorkflowManager", "Some workflow files had errors:\n%s", errorCollection.GetSummary())
 	}
 
-	logging.Info("WorkflowManager", "Loaded %d workflows from DynamicStorage", len(wm.workflows))
+	// Add all valid definitions to in-memory store
+	for i := range definitions {
+		def := definitions[i] // Important: take a copy
+		wm.workflows[def.Name] = &def
+	}
+
+	logging.Info("WorkflowManager", "Loaded %d workflows from YAML files", len(definitions))
+	return nil
+}
+
+// validateWorkflowDefinition performs basic validation on a workflow definition
+func (wm *WorkflowManager) validateWorkflowDefinition(def *WorkflowDefinition) error {
+	if def.Name == "" {
+		return fmt.Errorf("workflow name cannot be empty")
+	}
+	if len(def.Steps) == 0 {
+		return fmt.Errorf("workflow must have at least one step")
+	}
+	
+	// Validate each step
+	for i, step := range def.Steps {
+		if step.ID == "" {
+			return fmt.Errorf("step %d: step ID cannot be empty", i)
+		}
+		if step.Tool == "" {
+			return fmt.Errorf("step %d (%s): tool name cannot be empty", i, step.ID)
+		}
+	}
+	
 	return nil
 }
 
@@ -251,6 +266,11 @@ func (wm *WorkflowManager) CreateWorkflow(wf WorkflowDefinition) error {
 		return fmt.Errorf("workflow '%s' already exists", wf.Name)
 	}
 
+	// Validate before saving
+	if err := wm.validateWorkflowDefinition(&wf); err != nil {
+		return fmt.Errorf("workflow validation failed: %w", err)
+	}
+
 	data, err := yaml.Marshal(wf)
 	if err != nil {
 		return fmt.Errorf("failed to marshal workflow %s: %w", wf.Name, err)
@@ -262,12 +282,11 @@ func (wm *WorkflowManager) CreateWorkflow(wf WorkflowDefinition) error {
 
 	// Add to in-memory store after successful save
 	wm.workflows[wf.Name] = &wf
-	logging.Info("WorkflowManager", "Created workflow %s", wf.Name)
+	logging.Info("WorkflowManager", "Created workflow %s with tool name: action_%s", wf.Name, wf.Name)
 	return nil
 }
 
-// UpdateWorkflow updates and persists an existing workflow.
-// It allows updating any workflow, regardless of its origin.
+// UpdateWorkflow updates and persists an existing workflow
 func (wm *WorkflowManager) UpdateWorkflow(name string, wf WorkflowDefinition) error {
 	wm.mu.Lock()
 	defer wm.mu.Unlock()
@@ -277,6 +296,11 @@ func (wm *WorkflowManager) UpdateWorkflow(name string, wf WorkflowDefinition) er
 	}
 	// Ensure the name in the object matches the name being updated
 	wf.Name = name
+
+	// Validate before saving
+	if err := wm.validateWorkflowDefinition(&wf); err != nil {
+		return fmt.Errorf("workflow validation failed: %w", err)
+	}
 
 	data, err := yaml.Marshal(wf)
 	if err != nil {
@@ -289,12 +313,11 @@ func (wm *WorkflowManager) UpdateWorkflow(name string, wf WorkflowDefinition) er
 
 	// Update in-memory store after successful save
 	wm.workflows[name] = &wf
-	logging.Info("WorkflowManager", "Updated workflow %s", name)
+	logging.Info("WorkflowManager", "Updated workflow %s with tool name: action_%s", name, name)
 	return nil
 }
 
-// DeleteWorkflow deletes a workflow from memory and storage.
-// It allows deleting any workflow, regardless of its origin.
+// DeleteWorkflow deletes a workflow from memory and storage
 func (wm *WorkflowManager) DeleteWorkflow(name string) error {
 	wm.mu.Lock()
 	defer wm.mu.Unlock()
@@ -309,6 +332,6 @@ func (wm *WorkflowManager) DeleteWorkflow(name string) error {
 
 	// Delete from in-memory store after successful deletion from storage
 	delete(wm.workflows, name)
-	logging.Info("WorkflowManager", "Deleted workflow %s", name)
+	logging.Info("WorkflowManager", "Deleted workflow %s (was tool: action_%s)", name, name)
 	return nil
 }

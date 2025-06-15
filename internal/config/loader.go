@@ -190,9 +190,9 @@ func (cl *ConfigurationLoader) loadFilesFromDirectory(dirPath, source string) ([
 	return result, nil
 }
 
-// LoadAndParseYAMLWithErrors is a generic utility for loading and parsing YAML files into any type
+// LoadAndParseYAML is a generic utility for loading and parsing YAML files into any type
 // with comprehensive error collection and graceful degradation.
-func LoadAndParseYAMLWithErrors[T any](subDir string, validator func(T) error) ([]T, *ConfigurationErrorCollection, error) {
+func LoadAndParseYAML[T any](subDir string, validator func(T) error) ([]T, *ConfigurationErrorCollection, error) {
 	loader, err := NewConfigurationLoader()
 	if err != nil {
 		return nil, nil, err
@@ -285,26 +285,7 @@ func LoadAndParseYAMLWithErrors[T any](subDir string, validator func(T) error) (
 	return results, errorCollection, nil
 }
 
-// LoadAndParseYAML is the original function maintained for backward compatibility
-// It now uses the enhanced error handling but only returns the first error for compatibility
-func LoadAndParseYAML[T any](subDir string, validator func(T) error) ([]T, error) {
-	results, errorCollection, err := LoadAndParseYAMLWithErrors[T](subDir, validator)
-	if err != nil {
-		return nil, err
-	}
 
-	// For backward compatibility, return the first error if any exist
-	if errorCollection.HasErrors() {
-		// Log all errors for visibility
-		logging.Warn("ConfigurationLoader", "Configuration errors encountered:\n%s",
-			errorCollection.GetSummary())
-
-		// Return first error to maintain backward compatibility
-		return results, errorCollection.Errors[0]
-	}
-
-	return results, nil
-}
 
 // getValidationSuggestions returns context-aware suggestions based on the configuration type and error
 func getValidationSuggestions(subDir string, validationErr error) []string {

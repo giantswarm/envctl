@@ -53,65 +53,42 @@ func NewServiceClassManager(toolChecker config.ToolAvailabilityChecker, storage 
 	}, nil
 }
 
-// LoadServiceDefinitions loads all service class definitions from files and dynamic storage.
-// Definitions from dynamic storage will override file-based ones with the same name.
+// LoadServiceDefinitions loads all service class definitions from YAML files.
+// All service classes are just YAML files, regardless of how they were created.
 func (m *ServiceClassManager) LoadServiceDefinitions() error {
-	// 1. Load from YAML files and dynamic storage without holding a lock.
-	// This prevents deadlocks during I/O.
+	// Load all service class YAML files from user and project directories
 	validator := func(def ServiceClassDefinition) error {
 		return m.validateServiceClassDefinition(&def)
 	}
-	fileDefs, _, err := config.LoadAndParseYAMLWithErrors[ServiceClassDefinition]("serviceclasses", validator)
+	
+	definitions, errorCollection, err := config.LoadAndParseYAML[ServiceClassDefinition]("serviceclasses", validator)
 	if err != nil {
-		// Log as a warning and continue, allowing the app to start with what it can load.
-		logging.Warn("ServiceClassManager", "Error loading file-based service classes: %v", err)
+		logging.Warn("ServiceClassManager", "Error loading service classes: %v", err)
+		return err
 	}
 
-	dynamicDefs := make(map[string]*ServiceClassDefinition)
-	dynamicNames, err := m.storage.List("serviceclasses")
-	if err != nil {
-		logging.Warn("ServiceClassManager", "Could not list service classes from dynamic storage: %v", err)
-	} else {
-		for _, name := range dynamicNames {
-			data, err := m.storage.Load("serviceclasses", name)
-			if err != nil {
-				logging.Warn("ServiceClassManager", "Failed to load service class '%s': %v", name, err)
-				continue
-			}
-
-			var sc ServiceClassDefinition
-			if err := yaml.Unmarshal(data, &sc); err != nil {
-				logging.Warn("ServiceClassManager", "Failed to parse service class '%s': %v", name, err)
-				continue
-			}
-			sc.Name = name // Name from storage is the source of truth
-			dynamicDefs[name] = &sc
-		}
+	// Log any validation errors but continue with valid definitions
+	if errorCollection.HasErrors() {
+		logging.Warn("ServiceClassManager", "Some service class files had errors:\n%s", errorCollection.GetSummary())
 	}
 
-	// 2. Now, acquire a single lock to update the in-memory state.
+	// Acquire lock to update in-memory state
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	// Clear the old definitions
 	m.definitions = make(map[string]*ServiceClassDefinition)
 
-	// Add file-based definitions first
-	for i := range fileDefs {
-		def := fileDefs[i] // Important: take a copy
+	// Add all valid definitions to in-memory store
+	for i := range definitions {
+		def := definitions[i] // Important: take a copy
 		m.definitions[def.Name] = &def
 	}
-	logging.Info("ServiceClassManager", "Loaded %d service classes from files", len(fileDefs))
 
-	// Add/overwrite with dynamic definitions
-	for name, def := range dynamicDefs {
-		m.definitions[name] = def
-	}
-	logging.Info("ServiceClassManager", "Loaded/updated %d service classes from DynamicStorage", len(dynamicDefs))
-
-	// 3. Update availability while still under the lock.
+	// Update availability
 	m.updateServiceAvailability()
 
+	logging.Info("ServiceClassManager", "Loaded %d service classes from YAML files", len(definitions))
 	return nil
 }
 
@@ -124,6 +101,11 @@ func (m *ServiceClassManager) CreateServiceClass(sc ServiceClassDefinition) erro
 		return fmt.Errorf("service class '%s' already exists", sc.Name)
 	}
 
+	// Validate before saving
+	if err := m.validateServiceClassDefinition(&sc); err != nil {
+		return fmt.Errorf("service class validation failed: %w", err)
+	}
+
 	data, err := yaml.Marshal(sc)
 	if err != nil {
 		return fmt.Errorf("failed to marshal service class %s: %w", sc.Name, err)
@@ -133,10 +115,11 @@ func (m *ServiceClassManager) CreateServiceClass(sc ServiceClassDefinition) erro
 		return fmt.Errorf("failed to save service class %s: %w", sc.Name, err)
 	}
 
+	// Add to in-memory store after successful save
 	m.definitions[sc.Name] = &sc
-	logging.Info("ServiceClassManager", "Created service class %s", sc.Name)
-	// Refresh availability after creating
-	m.RefreshAvailability()
+	m.updateServiceAvailability()
+
+	logging.Info("ServiceClassManager", "Created service class %s (type: %s)", sc.Name, sc.Type)
 	return nil
 }
 
@@ -150,6 +133,11 @@ func (m *ServiceClassManager) UpdateServiceClass(name string, sc ServiceClassDef
 	}
 	sc.Name = name
 
+	// Validate before saving
+	if err := m.validateServiceClassDefinition(&sc); err != nil {
+		return fmt.Errorf("service class validation failed: %w", err)
+	}
+
 	data, err := yaml.Marshal(sc)
 	if err != nil {
 		return fmt.Errorf("failed to marshal service class %s: %w", name, err)
@@ -159,10 +147,11 @@ func (m *ServiceClassManager) UpdateServiceClass(name string, sc ServiceClassDef
 		return fmt.Errorf("failed to save service class %s: %w", name, err)
 	}
 
+	// Update in-memory store after successful save
 	m.definitions[name] = &sc
-	logging.Info("ServiceClassManager", "Updated service class %s", name)
-	// Refresh availability after update
-	m.RefreshAvailability()
+	m.updateServiceAvailability()
+
+	logging.Info("ServiceClassManager", "Updated service class %s (type: %s)", name, sc.Type)
 	return nil
 }
 
@@ -183,10 +172,11 @@ func (m *ServiceClassManager) DeleteServiceClass(name string) error {
 		}
 	}
 
+	// Remove from in-memory store after successful deletion
 	delete(m.definitions, name)
+	m.updateServiceAvailability()
+
 	logging.Info("ServiceClassManager", "Deleted service class %s", name)
-	// Refresh availability after delete
-	m.RefreshAvailability()
 	return nil
 }
 

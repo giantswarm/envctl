@@ -38,8 +38,8 @@ func NewCapabilityManager(toolChecker config.ToolAvailabilityChecker, registry *
 	}, nil
 }
 
-// LoadDefinitions loads all capability definitions using layered configuration loading
-// with enhanced error handling and graceful degradation
+// LoadDefinitions loads all capability definitions using the unified configuration loading.
+// All capabilities are just YAML files, regardless of how they were created.
 func (cm *CapabilityManager) LoadDefinitions() error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
@@ -48,69 +48,30 @@ func (cm *CapabilityManager) LoadDefinitions() error {
 	cm.definitions = make(map[string]*CapabilityDefinition)
 	cm.exposedTools = make(map[string]bool)
 
-	// Load capability definitions using the enhanced configuration loader
-	definitions, errorCollection, err := config.LoadAndParseYAMLWithErrors[CapabilityDefinition]("capabilities", func(def CapabilityDefinition) error {
+	// Load all capability YAML files from user and project directories
+	definitions, errorCollection, err := config.LoadAndParseYAML[CapabilityDefinition]("capabilities", func(def CapabilityDefinition) error {
 		return cm.validateDefinition(&def)
 	})
 	if err != nil {
 		return fmt.Errorf("failed to load capability definitions: %w", err)
 	}
 
-	logging.Info("CapabilityManager", "Loading %d capability definitions from files", len(definitions))
-
-	// Process file-based definitions first
-	for _, def := range definitions {
-		cm.definitions[def.Name] = &def
-		logging.Info("CapabilityManager", "Loaded file-based capability definition: %s (type: %s)", def.Name, def.Type)
+	// Log any validation errors but continue with valid definitions
+	if errorCollection.HasErrors() {
+		logging.Warn("CapabilityManager", "Some capability files had errors:\n%s", errorCollection.GetSummary())
 	}
 
-	// Load dynamic definitions if DynamicStorage is available
-	if cm.dynamicStorage != nil {
-		dynamicCapabilities, err := cm.loadDynamicDefinitions()
-		if err != nil {
-			logging.Error("CapabilityManager", err, "Failed to load dynamic capability definitions, continuing with file-based only")
-		} else {
-			// Dynamic definitions override file-based ones
-			for name, def := range dynamicCapabilities {
-				if _, exists := cm.definitions[name]; exists {
-					logging.Info("CapabilityManager", "Dynamic definition overriding file-based definition: %s", name)
-				} else {
-					logging.Info("CapabilityManager", "Loaded dynamic capability definition: %s (type: %s)", def.Name, def.Type)
-				}
-				cm.definitions[name] = def
-			}
-			logging.Info("CapabilityManager", "Loaded %d dynamic capability definitions", len(dynamicCapabilities))
-		}
+	// Add all valid definitions to in-memory store
+	for i := range definitions {
+		def := definitions[i] // Important: take a copy
+		cm.definitions[def.Name] = &def
+		logging.Info("CapabilityManager", "Loaded capability definition: %s (type: %s)", def.Name, def.Type)
 	}
 
 	// Check which capabilities can be exposed
 	cm.updateAvailableCapabilities()
 
-	// Handle configuration errors with detailed reporting
-	if errorCollection.HasErrors() {
-		errorCount := errorCollection.Count()
-		successCount := len(definitions)
-
-		// Log comprehensive error information
-		logging.Warn("CapabilityManager", "Capability loading completed with %d errors (loaded %d successfully)",
-			errorCount, successCount)
-
-		// Log detailed error summary for troubleshooting
-		logging.Warn("CapabilityManager", "Capability configuration errors:\n%s",
-			errorCollection.GetSummary())
-
-		// Log full error details for debugging
-		logging.Debug("CapabilityManager", "Detailed error report:\n%s",
-			errorCollection.GetDetailedReport())
-
-		// For Capability, we allow graceful degradation - return success with warnings
-		// This enables the application to continue with working Capability definitions
-		logging.Info("CapabilityManager", "Capability manager initialized with %d valid definitions (graceful degradation enabled)",
-			successCount)
-
-		return nil // Return success to allow graceful degradation
-	}
-
+	logging.Info("CapabilityManager", "Loaded %d capability definitions from YAML files", len(definitions))
 	return nil
 }
 
@@ -287,47 +248,15 @@ func (cm *CapabilityManager) GetOperationForTool(toolName string) (*OperationDef
 	return nil, nil, fmt.Errorf("no operation found for tool %s", toolName)
 }
 
-// loadDynamicDefinitions loads capability definitions from dynamic storage
-func (cm *CapabilityManager) loadDynamicDefinitions() (map[string]*CapabilityDefinition, error) {
-	definitions := make(map[string]*CapabilityDefinition)
 
-	// List all capability files in dynamic storage
-	files, err := cm.dynamicStorage.List("capabilities")
-	if err != nil {
-		return nil, fmt.Errorf("failed to list dynamic capability files: %w", err)
-	}
 
-	for _, filename := range files {
-		// Read the capability file
-		data, err := cm.dynamicStorage.Load("capabilities", filename)
-		if err != nil {
-			logging.Error("CapabilityManager", err, "Failed to load dynamic capability file: %s", filename)
-			continue
-		}
-
-		// Parse the YAML content
-		var def CapabilityDefinition
-		if err := yaml.Unmarshal(data, &def); err != nil {
-			logging.Error("CapabilityManager", err, "Failed to parse dynamic capability file: %s", filename)
-			continue
-		}
-
-		// Validate the definition
-		if err := cm.validateDefinition(&def); err != nil {
-			logging.Error("CapabilityManager", err, "Invalid dynamic capability definition: %s", filename)
-			continue
-		}
-
-		definitions[def.Name] = &def
-	}
-
-	return definitions, nil
-}
-
-// CreateCapability creates a new capability definition in dynamic storage
+// CreateCapability creates a new capability definition
 func (cm *CapabilityManager) CreateCapability(def *CapabilityDefinition) error {
-	if cm.dynamicStorage == nil {
-		return fmt.Errorf("dynamic storage not available")
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	if _, exists := cm.definitions[def.Name]; exists {
+		return fmt.Errorf("capability '%s' already exists", def.Name)
 	}
 
 	// Validate the definition
@@ -338,30 +267,28 @@ func (cm *CapabilityManager) CreateCapability(def *CapabilityDefinition) error {
 	// Serialize to YAML
 	data, err := yaml.Marshal(def)
 	if err != nil {
-		return fmt.Errorf("failed to marshal capability definition: %w", err)
+		return fmt.Errorf("failed to marshal capability definition %s: %w", def.Name, err)
 	}
 
-	// Save to dynamic storage
-	filename := fmt.Sprintf("%s.yaml", def.Name)
-	if err := cm.dynamicStorage.Save("capabilities", filename, data); err != nil {
-		return fmt.Errorf("failed to save capability definition: %w", err)
+	// Save to storage
+	if err := cm.dynamicStorage.Save("capabilities", def.Name, data); err != nil {
+		return fmt.Errorf("failed to save capability definition %s: %w", def.Name, err)
 	}
 
-	// Register in memory
-	cm.RegisterDefinition(def)
+	// Add to in-memory store after successful save
+	cm.definitions[def.Name] = def
+	cm.updateAvailableCapabilities()
 
-	logging.Info("CapabilityManager", "Created dynamic capability definition: %s", def.Name)
+	logging.Info("CapabilityManager", "Created capability definition: %s (type: %s)", def.Name, def.Type)
 	return nil
 }
 
-// UpdateCapability updates an existing capability definition in dynamic storage
+// UpdateCapability updates an existing capability definition
 func (cm *CapabilityManager) UpdateCapability(def *CapabilityDefinition) error {
-	if cm.dynamicStorage == nil {
-		return fmt.Errorf("dynamic storage not available")
-	}
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
 
-	// Check if capability exists
-	if _, exists := cm.GetDefinition(def.Name); !exists {
+	if _, exists := cm.definitions[def.Name]; !exists {
 		return fmt.Errorf("capability '%s' not found", def.Name)
 	}
 
@@ -373,43 +300,41 @@ func (cm *CapabilityManager) UpdateCapability(def *CapabilityDefinition) error {
 	// Serialize to YAML
 	data, err := yaml.Marshal(def)
 	if err != nil {
-		return fmt.Errorf("failed to marshal capability definition: %w", err)
+		return fmt.Errorf("failed to marshal capability definition %s: %w", def.Name, err)
 	}
 
-	// Save to dynamic storage
-	filename := fmt.Sprintf("%s.yaml", def.Name)
-	if err := cm.dynamicStorage.Save("capabilities", filename, data); err != nil {
-		return fmt.Errorf("failed to save capability definition: %w", err)
+	// Save to storage
+	if err := cm.dynamicStorage.Save("capabilities", def.Name, data); err != nil {
+		return fmt.Errorf("failed to save capability definition %s: %w", def.Name, err)
 	}
 
-	// Update in memory
-	cm.UpdateDefinition(def)
+	// Update in-memory store after successful save
+	cm.definitions[def.Name] = def
+	cm.updateAvailableCapabilities()
 
-	logging.Info("CapabilityManager", "Updated dynamic capability definition: %s", def.Name)
+	logging.Info("CapabilityManager", "Updated capability definition: %s (type: %s)", def.Name, def.Type)
 	return nil
 }
 
-// DeleteCapability deletes a capability definition from dynamic storage
+// DeleteCapability deletes a capability definition
 func (cm *CapabilityManager) DeleteCapability(name string) error {
-	if cm.dynamicStorage == nil {
-		return fmt.Errorf("dynamic storage not available")
-	}
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
 
-	// Check if capability exists
-	if _, exists := cm.GetDefinition(name); !exists {
+	if _, exists := cm.definitions[name]; !exists {
 		return fmt.Errorf("capability '%s' not found", name)
 	}
 
-	// Delete from dynamic storage
-	filename := fmt.Sprintf("%s.yaml", name)
-	if err := cm.dynamicStorage.Delete("capabilities", filename); err != nil {
-		return fmt.Errorf("failed to delete capability definition: %w", err)
+	// Delete from storage
+	if err := cm.dynamicStorage.Delete("capabilities", name); err != nil {
+		return fmt.Errorf("failed to delete capability definition %s: %w", name, err)
 	}
 
-	// Remove from memory
-	cm.UnregisterDefinition(name)
+	// Remove from in-memory store after successful deletion
+	delete(cm.definitions, name)
+	cm.updateAvailableCapabilities()
 
-	logging.Info("CapabilityManager", "Deleted dynamic capability definition: %s", name)
+	logging.Info("CapabilityManager", "Deleted capability definition: %s", name)
 	return nil
 }
 
