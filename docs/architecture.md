@@ -2,22 +2,195 @@
 
 ## Table of Contents
 1. [Introduction](#introduction)
-2. [System Overview](#system-overview)
-3. [Core Components](#core-components)
-4. [ServiceClass Architecture](#serviceclass-architecture)
-5. [Service Types](#service-types)
-6. [Dependency Management](#dependency-management)
-7. [State Management](#state-management)
-8. [Message Flow](#message-flow)
-9. [Health Monitoring](#health-monitoring)
-10. [Error Handling](#error-handling)
-11. [Design Principles](#design-principles)
+2. [CLI Architecture](#cli-architecture)
+3. [System Overview](#system-overview)
+4. [Core Components](#core-components)
+5. [ServiceClass Architecture](#serviceclass-architecture)
+6. [Service Types](#service-types)
+7. [Dependency Management](#dependency-management)
+8. [State Management](#state-management)
+9. [Message Flow](#message-flow)
+10. [Health Monitoring](#health-monitoring)
+11. [Error Handling](#error-handling)
+12. [Design Principles](#design-principles)
 
 ## Introduction
 
 envctl is a sophisticated service orchestration tool designed to manage Kubernetes connections, port forwards, and MCP (Model Context Protocol) servers. It provides both a Terminal User Interface (TUI) and non-TUI modes for managing these services with proper dependency tracking and health monitoring.
 
 The architecture has been redesigned around a **ServiceClass** system that enables dynamic, configuration-driven service instantiation and management. This allows for flexible service definitions through YAML configurations and programmatic service creation.
+
+## CLI Architecture
+
+envctl provides a hierarchical command-line interface that maps directly to the underlying resource management system. The CLI is built around two main operational modes and five core resource types.
+
+### Operational Modes
+
+#### 1. Server Mode (`envctl serve`)
+The primary mode that starts the envctl aggregator server:
+
+```bash
+# Interactive TUI mode (default)
+envctl serve
+
+# CLI mode for automation
+envctl serve --no-tui
+
+# Debug mode
+envctl serve --debug
+
+# Disable safety restrictions (use with caution)
+envctl serve --yolo
+```
+
+**Responsibilities:**
+- Start the MCP aggregator server
+- Load configuration from YAML files
+- Initialize configured services (K8s connections, port forwards, MCP servers)
+- Launch TUI or run in background mode
+- Provide unified MCP interface for AI assistants
+
+#### 2. Debug Mode (`envctl debug`)
+MCP client mode for debugging and testing:
+
+```bash
+# Basic debugging mode
+envctl debug
+
+# Interactive REPL for tool testing
+envctl debug --repl
+
+# Run as MCP server for AI integration
+envctl debug --mcp-server
+```
+
+### Resource Management Commands
+
+Once the aggregator server is running, envctl provides hierarchical commands for managing five core resource types:
+
+#### 1. Service Management (`envctl service`)
+Manage runtime service instances:
+
+```bash
+envctl service list                    # List all services with status
+envctl service start <service-name>    # Start a specific service
+envctl service stop <service-name>     # Stop a service
+envctl service restart <service-name>  # Restart a service
+envctl service status <service-name>   # Get detailed service status
+```
+
+#### 2. ServiceClass Management (`envctl serviceclass`)
+Manage ServiceClass definitions and availability:
+
+```bash
+envctl serviceclass list               # List all ServiceClass definitions
+envctl serviceclass get <name>         # Get ServiceClass details
+envctl serviceclass available <name>   # Check if ServiceClass is available
+```
+
+#### 3. MCP Server Management (`envctl mcpserver`)
+Manage MCP server definitions:
+
+```bash
+envctl mcpserver list                  # List all MCP server definitions
+envctl mcpserver get <name>            # Get MCP server details
+envctl mcpserver available <name>      # Check if MCP server is available
+```
+
+#### 4. Workflow Management (`envctl workflow`)
+Manage workflow definitions and execution:
+
+```bash
+envctl workflow list                   # List all workflows
+envctl workflow get <name>             # Get workflow details
+envctl workflow create <file>          # Create workflow from definition
+envctl workflow update <name> <file>   # Update existing workflow
+envctl workflow delete <name>          # Delete a workflow
+envctl workflow validate <file>        # Validate workflow definition
+```
+
+#### 5. Capability Management (`envctl capability`)
+Manage capability definitions:
+
+```bash
+envctl capability list                 # List all capabilities
+envctl capability get <name>           # Get capability details
+envctl capability available <name>     # Check if capability is available
+```
+
+### CLI Design Principles
+
+#### 1. Server-Client Architecture
+- **Server First**: All resource commands require the aggregator server to be running
+- **Unified Interface**: Single aggregator server provides access to all tools and resources
+- **Stateful Operations**: Server maintains state, clients are stateless
+
+#### 2. Hierarchical Command Structure
+- **Resource-Oriented**: Commands organized by resource type (service, serviceclass, etc.)
+- **Consistent Patterns**: Similar subcommands across resource types (list, get, available)
+- **Intuitive Grammar**: Natural command flow following `envctl <resource> <action>` pattern
+
+#### 3. Standardized Output and Flags
+- **Multiple Formats**: All commands support `--output` flag (table, json, yaml)
+- **Consistent Flags**: Standard flags across all commands (`--help`, `--quiet`, `--output`)
+- **Structured Data**: JSON/YAML output for automation and scripting
+
+#### 4. Configuration-Driven Operation
+- **No Direct Arguments**: Services and resources defined in configuration files
+- **Dynamic Discovery**: Commands discover available resources from running server
+- **Environment Awareness**: Configuration loading from user and project directories
+
+### CLI Implementation Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      CLI Commands (Cobra)                        │
+│  serve, debug, service, serviceclass, mcpserver, workflow, etc.  │
+└─────────────────────────────────────────────────────────────────┘
+                                   │
+                    ┌──────────────┴──────────────┐
+                    ▼                             ▼
+┌─────────────────────────────┐    ┌─────────────────────────────┐
+│     CLI Client Library      │    │        TUI System           │
+│   (MCP Client for Commands) │    │   (Bubble Tea Framework)    │
+└─────────────────────────────┘    └─────────────────────────────┘
+                    │                             │
+                    └──────────────┬──────────────┘
+                                   ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                   MCP Aggregator Server                          │
+│            (Tool Routing and Resource Management)                │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Key Components:**
+
+1. **CLI Commands**: Cobra-based command definitions with consistent patterns
+2. **CLI Client Library**: Reusable MCP client for connecting to aggregator server
+3. **TUI System**: Interactive terminal interface using Bubble Tea framework
+4. **MCP Aggregator Server**: Central server providing unified tool and resource access
+
+### Command Flow Architecture
+
+#### 1. Server Startup Flow
+```
+envctl serve → Configuration Loading → Service Initialization → 
+Aggregator Server Start → TUI Launch (if enabled) → Service Management
+```
+
+#### 2. Resource Command Flow
+```
+envctl <resource> <action> → CLI Client → MCP Aggregator → 
+Resource Handler → Service Registry → Response Formatting → CLI Output
+```
+
+#### 3. Debug Command Flow
+```
+envctl debug → MCP Client → Aggregator Connection → 
+Tool Discovery → Interactive REPL → Tool Execution → Response Display
+```
+
+This CLI architecture ensures consistent, discoverable, and powerful command-line interaction with the envctl system while maintaining separation between the user interface and the underlying service management system.
 
 ## System Overview
 

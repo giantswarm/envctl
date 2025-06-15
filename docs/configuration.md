@@ -424,6 +424,135 @@ steps:
 - **Validate Inputs**: Always validate user-provided parameters
 - **Principle of Least Privilege**: Configure minimal required permissions
 
+## CLI Management Commands
+
+Once configurations are defined, you can manage them using envctl's hierarchical CLI commands.
+
+### Starting the Server
+
+Before using any resource management commands, start the envctl server:
+
+```bash
+# Start with TUI
+envctl serve
+
+# Start in background for automation
+envctl serve --no-tui &
+```
+
+### Managing ServiceClasses
+
+```bash
+# List all ServiceClass definitions
+envctl serviceclass list
+
+# Get details about a specific ServiceClass
+envctl serviceclass get prometheus
+
+# Check if a ServiceClass is available (tools required are present)
+envctl serviceclass available prometheus
+```
+
+### Managing Services
+
+```bash
+# List all running services (both static and ServiceClass instances)
+envctl service list
+
+# Start/stop specific services
+envctl service start mc-prometheus
+envctl service stop kubernetes-mcp
+
+# Get detailed status of a service
+envctl service status prometheus
+
+# Restart a service
+envctl service restart mc-grafana
+```
+
+### Managing MCP Servers
+
+```bash
+# List all MCP server definitions
+envctl mcpserver list
+
+# Get details about an MCP server
+envctl mcpserver get kubernetes
+
+# Check if an MCP server is available
+envctl mcpserver available prometheus
+```
+
+### Managing Workflows
+
+```bash
+# List all workflow definitions
+envctl workflow list
+
+# Get details about a workflow
+envctl workflow get auth-flow
+
+# Create a new workflow from file
+envctl workflow create workflows/new-workflow.yaml
+
+# Validate a workflow before creating
+envctl workflow validate workflows/test-workflow.yaml
+
+# Update an existing workflow
+envctl workflow update auth-flow workflows/auth-flow-v2.yaml
+
+# Delete a workflow
+envctl workflow delete old-workflow
+```
+
+### Managing Capabilities
+
+```bash
+# List all capability definitions
+envctl capability list
+
+# Get details about a capability
+envctl capability get cluster-auth
+
+# Check if a capability is available
+envctl capability available cluster-auth
+```
+
+### Output Formats
+
+All commands support multiple output formats for automation:
+
+```bash
+# Table format (default)
+envctl service list
+
+# JSON format for scripting
+envctl service list --output json
+
+# YAML format
+envctl serviceclass list --output yaml
+
+# Quiet mode (minimal output)
+envctl mcpserver list --quiet
+```
+
+### Debugging Configuration Issues
+
+Use the debug command to troubleshoot configurations:
+
+```bash
+# Basic debugging - shows tool availability
+envctl debug
+
+# Interactive REPL for testing tools
+envctl debug --repl
+
+# In REPL mode, you can:
+# - list tools
+# - describe tool <tool-name>
+# - call tool <tool-name> {"arg": "value"}
+```
+
 ## Troubleshooting
 
 ### Common Issues

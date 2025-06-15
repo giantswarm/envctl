@@ -97,13 +97,13 @@ mv envctl /usr/local/bin/
 
 ## Usage 🎮
 
-The primary command is `envctl connect`:
+The primary command is `envctl serve`:
 
 ```
-envctl connect <management-cluster> [workload-cluster-shortname]
+envctl serve
 ```
 
-This command launches the interactive TUI by default, showing you real-time status of your clusters and port-forwards.
+This command starts the envctl aggregator server and launches the interactive TUI by default, showing you real-time status of your clusters and port-forwards.
 
 Other commands:
 
@@ -115,46 +115,78 @@ envctl version
 envctl self-update
 
 # Debug the MCP aggregator as a client
-envctl agent
+envctl debug
 
 # Launch interactive REPL mode for MCP testing
-envctl agent --repl
+envctl debug --repl
 
 # Use the CLI mode without TUI (for scripts or CI environments)
 # This mode will:
-# - Log into the specified cluster(s) via tsh
-# - Set the Kubernetes context
-# - Start port-forwarding for configured services
-# - Start configured MCP servers (if their executables are available)
+# - Start the aggregator server
+# - Start configured services (K8s connections, port forwards, MCP servers)
 # - Keep running until interrupted (Ctrl+C)
 # - All services stop when envctl exits
-envctl connect <management-cluster> [workload-cluster-shortname] --no-tui
+envctl serve --no-tui
 
 # Enable debug logging for troubleshooting
-envctl connect <management-cluster> --debug
+envctl serve --debug
 
 # Disable the safety denylist for destructive MCP tool calls (use with caution!)
 # By default, destructive tools like kubectl apply/delete, helm install/uninstall, etc. are blocked
 # This flag allows all MCP tools to be executed without restrictions
-envctl connect <management-cluster> --yolo
+envctl serve --yolo
 ```
 
-### Agent Command
+### Resource Management Commands
 
-The `agent` command acts as an MCP (Model Context Protocol) client for debugging and testing:
+Once the aggregator server is running (`envctl serve`), you can use these commands to manage resources:
+
+```
+# Service Management
+envctl service list                    # List all services with status
+envctl service start <service-name>    # Start a specific service
+envctl service stop <service-name>     # Stop a specific service
+envctl service restart <service-name>  # Restart a service
+envctl service status <service-name>   # Get detailed service status
+
+# ServiceClass Management
+envctl serviceclass list               # List all ServiceClass definitions
+envctl serviceclass get <name>         # Get ServiceClass details
+envctl serviceclass available <name>   # Check if ServiceClass is available
+
+# MCP Server Management
+envctl mcpserver list                  # List all MCP server definitions
+envctl mcpserver get <name>            # Get MCP server details
+envctl mcpserver available <name>      # Check if MCP server is available
+
+# Workflow Management
+envctl workflow list                   # List all workflows
+envctl workflow get <name>             # Get workflow details
+envctl workflow create <file>          # Create workflow from definition
+envctl workflow validate <file>        # Validate workflow definition
+
+# Capability Management
+envctl capability list                 # List all capabilities
+envctl capability get <name>           # Get capability details
+envctl capability available <name>     # Check if capability is available
+```
+
+### Debug Command
+
+The `debug` command acts as an MCP (Model Context Protocol) client for debugging and testing:
 
 ```bash
 # Basic mode - connects and monitors MCP servers
-envctl agent
+envctl debug
 
 # Interactive REPL mode for exploring MCP capabilities
-envctl agent --repl
+envctl debug --repl
 
 # Run as MCP server for AI assistant integration
-envctl agent --mcp-server
+envctl debug --mcp-server
 ```
 
-The agent command supports three modes:
+The debug command supports three modes:
 
 1. **Normal Mode** (default): Connects to the aggregator, lists tools, and waits for notifications
 2. **REPL Mode** (`--repl`): Provides an interactive interface to explore and execute tools
@@ -220,44 +252,58 @@ MCP> exit
 | Ctrl+C | Cancel current line |
 | Ctrl+D | Exit REPL |
 
-**Arguments for `connect`:**
+**Configuration-Based Operation:**
 
-*   `<management-cluster>`: (Required) The name of the Giant Swarm management cluster (e.g., `myinstallation`, `mycluster`).
-*   `[workload-cluster-shortname]`: (Optional) The *short* name of the workload cluster (e.g., `myworkloadcluster` for `myinstallation-myworkloadcluster`, `customerprod` for `mycluster-customerprod`).
+envctl operates based on configuration files that define clusters, services, port forwards, and MCP servers. Configuration is loaded from:
+- User config: `~/.config/envctl/config.yaml`
+- Project config: `./.envctl/config.yaml`
 
 **Examples:**
 
 > **Note**: The behavior described below assumes you have configured clusters, port forwards, and MCP servers in your config file. By default, `envctl` starts with no services configured.
 
-1.  **Connect to a Management Cluster only (with typical configuration):**
+1.  **Start with TUI (typical usage):**
 
     ```bash
-    envctl connect myinstallation
+    envctl serve
     ```
 
     With a typical Giant Swarm configuration, this would:
     *   Launch an interactive terminal UI
-    *   Log into `myinstallation` via `tsh kube login myinstallation`
-    *   Set the current Kubernetes context to `teleport.giantswarm.io-myinstallation`
+    *   Start the aggregator server
+    *   Connect to configured Kubernetes clusters via `tsh`
     *   Start any configured port forwards (e.g., Prometheus, Grafana, Alloy Metrics)
+    *   Start configured MCP servers
     *   Display cluster health and connection status
-    *   Allow management of port-forwards and contexts
+    *   Allow management of services through the TUI
 
-2.  **Connect to a Management and Workload Cluster (with typical configuration):**
+2.  **Start in CLI mode (for scripts/automation):**
 
     ```bash
-    envctl connect myinstallation myworkloadcluster
+    envctl serve --no-tui
     ```
 
     With a typical Giant Swarm configuration, this would:
-    *   Log into both management and workload clusters
-    *   Set appropriate Kubernetes contexts
-    *   Start port forwards based on your configuration
-    *   Launch the TUI to manage all services
+    *   Start the aggregator server in background
+    *   Connect to configured clusters
+    *   Start configured services (port forwards, MCP servers)
+    *   Print status summary and keep running until interrupted
+
+3.  **Use resource management commands:**
+
+    ```bash
+    # Start the server first
+    envctl serve --no-tui &
+    
+    # Then use management commands
+    envctl service list
+    envctl mcpserver status prometheus
+    envctl workflow validate my-workflow.yaml
+    ```
 
 ## Terminal User Interface 🖥️
 
-When running `envctl connect`, the Terminal User Interface (TUI) provides a visual dashboard to monitor and control your connections:
+When running `envctl serve`, the Terminal User Interface (TUI) provides a visual dashboard to monitor and control your connections:
 
 ![envctl TUI overview](docs/images/tui-overview.png)
 
@@ -379,10 +425,11 @@ echo "source <(./envctl completion bash)" >> ~/.bashrc
 source ~/.bashrc # Reload shell
 ```
 
-Now you can use TAB to complete cluster names:
+Now you can use TAB to complete commands and resource names:
 
 ```bash
-envctl connect myinstallation <TAB>      # Shows short names of workload clusters for myinstallation
+envctl service <TAB>                     # Shows service subcommands (list, start, stop, etc.)
+envctl mcpserver list <TAB>              # Shows available MCP servers
 ```
 
 ## Flexible Configuration via YAML ⚙️

@@ -10,6 +10,26 @@
 
 ## Common Issues
 
+### 0. CLI Commands Not Working
+
+**Symptom:**
+```
+Error: Failed to connect to envctl aggregator
+```
+
+**Cause:**
+envctl resource management commands require the aggregator server to be running.
+
+**Solution:**
+Start the envctl server first:
+```bash
+# Start with TUI
+envctl serve
+
+# Or start in background
+envctl serve --no-tui &
+```
+
 ### 1. Port Already in Use
 
 **Symptom:**
@@ -89,7 +109,7 @@ This is expected behavior. envctl maintains dependency relationships:
 
 Set the log level before starting envctl:
 ```bash
-envctl connect <mc> <wc> --debug
+envctl serve --debug
 ```
 
 ### 2. View Service Logs
@@ -123,6 +143,48 @@ Check service states in the TUI:
 - Yellow: Starting/Stopping
 - Red: Failed/Stopped
 - Gray: Stopped (dependency)
+
+### 5. CLI Resource Commands
+
+Use CLI commands to inspect and manage resources (requires server to be running):
+
+**Service Management:**
+```bash
+# List all services and their status
+envctl service list
+
+# Get detailed status of a specific service
+envctl service status <service-name>
+
+# Start/stop/restart services
+envctl service start <service-name>
+envctl service stop <service-name>
+envctl service restart <service-name>
+```
+
+**ServiceClass and MCP Server Inspection:**
+```bash
+# List ServiceClass definitions and availability
+envctl serviceclass list
+envctl serviceclass available <name>
+
+# List MCP servers and check availability
+envctl mcpserver list
+envctl mcpserver available <name>
+
+# Check capability status
+envctl capability list
+envctl capability available <name>
+```
+
+**Debug Mode:**
+```bash
+# Debug MCP connections and tools
+envctl debug
+
+# Interactive REPL for testing MCP tools
+envctl debug --repl
+```
 
 ## Service-Specific Issues
 
@@ -344,7 +406,7 @@ When reporting issues, include:
 
 3. **Debug logs:**
    ```bash
-   envctl connect <mc> <wc> --debug --no-tui 2>&1 | tee envctl.log
+   envctl serve --debug --no-tui 2>&1 | tee envctl.log
    ```
 
 4. **System information:**

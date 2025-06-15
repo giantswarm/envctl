@@ -24,26 +24,30 @@ make install
 
 ## Basic Usage
 
-### 1. Connect to a Cluster
+### 1. Start envctl
 
-Connect to a Management Cluster (MC) only:
+Start the envctl aggregator server with TUI:
 ```bash
-envctl connect <mc-name>
+envctl serve
 ```
 
-Connect to both MC and Workload Cluster (WC):
+Start in CLI mode (no TUI):
 ```bash
-envctl connect <mc-name> <wc-name>
+envctl serve --no-tui
 ```
 
 Example:
 ```bash
-envctl connect myinstallation mycluster
+# Start with interactive TUI
+envctl serve
+
+# Or start in background for automation
+envctl serve --no-tui &
 ```
 
 ### 2. Understanding the TUI
 
-When you run envctl, you'll see a Terminal User Interface (TUI) with several panels:
+When you run `envctl serve`, you'll see a Terminal User Interface (TUI) with several panels:
 
 ```
 ┌─ Cluster Info ─────────────────┐ ┌─ Cluster Info ─────────────────┐
@@ -122,20 +126,20 @@ Press `r` to restart a service. envctl will:
 
 ### 1. Access Prometheus
 ```bash
-# Start envctl
-envctl connect myinstallation
+# Start envctl with configured Prometheus port forward
+envctl serve
 
 # Prometheus will be available at http://localhost:8080
-# The mc-prometheus port forward is automatically created
+# The mc-prometheus port forward is automatically created based on config
 ```
 
 ### 2. Access Grafana
 ```bash
-# Start envctl
-envctl connect myinstallation
+# Start envctl with configured Grafana port forward
+envctl serve
 
 # Grafana will be available at http://localhost:3000
-# The mc-grafana port forward is automatically created
+# The mc-grafana port forward is automatically created based on config
 ```
 
 ### 3. Use MCP Servers
@@ -147,18 +151,36 @@ npm install -g @modelcontextprotocol/server-kubernetes
 npm install -g @modelcontextprotocol/server-prometheus
 npm install -g @modelcontextprotocol/server-grafana
 
-# Start envctl - MCP servers will start automatically
-envctl connect myinstallation
+# Start envctl - MCP servers will start automatically based on config
+envctl serve
 ```
 
-### 4. Work with Workload Clusters
+### 4. Manage Services
 ```bash
-# Connect to both MC and WC
-envctl connect myinstallation mycluster
+# Start the aggregator server
+envctl serve --no-tui &
 
-# This enables:
-# - Alloy metrics port forward from the WC
-# - Access to WC-specific services
+# List all services and their status
+envctl service list
+
+# Start/stop specific services
+envctl service start mc-prometheus
+envctl service stop kubernetes-mcp
+
+# Check service details
+envctl service status prometheus
+```
+
+### 5. Debug and Test MCP
+```bash
+# Start the aggregator server first
+envctl serve --no-tui &
+
+# Debug MCP connections
+envctl debug
+
+# Interactive REPL for testing tools
+envctl debug --repl
 ```
 
 ## Configuration
@@ -290,9 +312,10 @@ For advanced cluster configurations including multi-environment setups, see:
 ## Troubleshooting
 
 ### Service Won't Start
-1. Check the logs panel (press `L`)
-2. Verify dependencies are running
+1. Check the logs panel (press `L` in TUI)
+2. Verify dependencies are running: `envctl service list`
 3. Check if ports are already in use
+4. Use `envctl service status <name>` for detailed info
 
 ### Port Already in Use
 ```bash
@@ -300,6 +323,8 @@ For advanced cluster configurations including multi-environment setups, see:
 lsof -i :8080
 
 # Kill the process or change the port in config
+# Then restart the service
+envctl service restart mc-prometheus
 ```
 
 ### K8s Connection Failed
@@ -308,8 +333,9 @@ lsof -i :8080
    tsh status
    tsh kube ls
    ```
-2. Check cluster name spelling
+2. Check cluster configuration in `.envctl/config.yaml`
 3. Ensure you have access to the cluster
+4. Check service status: `envctl service status <cluster-connection>`
 
 ### MCP Server Not Found
 Install the required MCP server:
@@ -319,6 +345,19 @@ which mcp-server-prometheus
 
 # Install if missing
 npm install -g @modelcontextprotocol/server-prometheus
+
+# Check MCP server status
+envctl mcpserver list
+envctl mcpserver available prometheus
+```
+
+### Aggregator Server Not Running
+If resource commands fail, ensure the server is running:
+```bash
+# Check if aggregator is running
+envctl service list
+# If it fails, start the server
+envctl serve --no-tui &
 ```
 
 ## Tips and Tricks
