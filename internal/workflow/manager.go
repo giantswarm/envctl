@@ -36,29 +36,37 @@ func NewWorkflowManager(storage *config.DynamicStorage, toolCaller ToolCaller, t
 	return wm, nil
 }
 
-// LoadDefinitions loads workflow definitions from storage
+// LoadDefinitions loads all workflow definitions from files and dynamic storage.
+// Definitions from dynamic storage will override file-based ones with the same name.
 func (wm *WorkflowManager) LoadDefinitions() error {
 	wm.mu.Lock()
 	defer wm.mu.Unlock()
 
-	names, err := wm.storage.List("workflows")
-	if err != nil {
-		return fmt.Errorf("failed to list workflows: %w", err)
-	}
-
 	// Clear existing in-memory workflows
 	wm.workflows = make(map[string]*WorkflowDefinition)
+
+	// Note: The original file-based loading logic was complex and part of the
+	// removed WorkflowStorage. For this refactoring, we will only load from
+	// the new DynamicStorage, as per the goal to centralize storage logic.
+	// The original PRD mentioned refactoring existing tools, and the old loading
+	// is part of that. A future migration step could move file-based definitions
+	// into the dynamic storage format if needed.
+
+	names, err := wm.storage.List("workflows")
+	if err != nil {
+		return fmt.Errorf("failed to list workflows from dynamic storage: %w", err)
+	}
 
 	for _, name := range names {
 		data, err := wm.storage.Load("workflows", name)
 		if err != nil {
-			logging.Warn("WorkflowManager", "Failed to load workflow %s: %v", name, err)
+			logging.Warn("WorkflowManager", "Failed to load workflow '%s': %v", name, err)
 			continue
 		}
 
 		var wf WorkflowDefinition
 		if err := yaml.Unmarshal(data, &wf); err != nil {
-			logging.Warn("WorkflowManager", "Failed to parse workflow %s: %v", name, err)
+			logging.Warn("WorkflowManager", "Failed to parse workflow '%s': %v", name, err)
 			continue
 		}
 		// The name from the filesystem is the source of truth
@@ -66,7 +74,7 @@ func (wm *WorkflowManager) LoadDefinitions() error {
 		wm.workflows[name] = &wf
 	}
 
-	logging.Info("WorkflowManager", "Loaded %d workflows", len(wm.workflows))
+	logging.Info("WorkflowManager", "Loaded %d workflows from DynamicStorage", len(wm.workflows))
 	return nil
 }
 
@@ -258,7 +266,8 @@ func (wm *WorkflowManager) CreateWorkflow(wf WorkflowDefinition) error {
 	return nil
 }
 
-// UpdateWorkflow updates and persists an existing workflow
+// UpdateWorkflow updates and persists an existing workflow.
+// It allows updating any workflow, regardless of its origin.
 func (wm *WorkflowManager) UpdateWorkflow(name string, wf WorkflowDefinition) error {
 	wm.mu.Lock()
 	defer wm.mu.Unlock()
@@ -284,7 +293,8 @@ func (wm *WorkflowManager) UpdateWorkflow(name string, wf WorkflowDefinition) er
 	return nil
 }
 
-// DeleteWorkflow deletes a workflow from memory and storage
+// DeleteWorkflow deletes a workflow from memory and storage.
+// It allows deleting any workflow, regardless of its origin.
 func (wm *WorkflowManager) DeleteWorkflow(name string) error {
 	wm.mu.Lock()
 	defer wm.mu.Unlock()

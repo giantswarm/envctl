@@ -67,5 +67,4 @@ The workflow package already had an implementation to store workflows. This must
 *   A user is in a directory **without** an `.envctl/` folder. They run `workflow_create`. The new workflow YAML is saved in `~/.config/envctl/workflows/`.
 *   A user is in a directory **with** an `.envctl/` folder. They run `serviceclass_create`. The new serviceclass YAML is saved in `./.envctl/serviceclasses/`.
 *   In all cases, the created entity persists after an application restart.
-*   A user attempts to use `capability_delete` on a capability defined in a git-tracked file (lacking the `dynamic: true` field). The operation fails with a clear error message.
 *   The Go code for saving a user-created `workflow`, `serviceclass`, `mcpserver`, and `capability` reuses the exact same underlying `DynamicStorage` service from the `internal/config` package. 

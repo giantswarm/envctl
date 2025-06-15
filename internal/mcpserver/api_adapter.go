@@ -208,6 +208,28 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 				{Name: "name", Type: "string", Required: true, Description: "Name of the MCP server to remove"},
 			},
 		},
+		{
+			Name:        "mcpserver_create",
+			Description: "Create a new dynamic MCP server",
+			Parameters: []api.ParameterMetadata{
+				{Name: "yaml", Type: "string", Required: true, Description: "Full MCP server YAML definition"},
+			},
+		},
+		{
+			Name:        "mcpserver_update",
+			Description: "Update an existing MCP server",
+			Parameters: []api.ParameterMetadata{
+				{Name: "name", Type: "string", Required: true, Description: "Name of the MCP server to update"},
+				{Name: "yaml", Type: "string", Required: true, Description: "Updated MCP server YAML definition"},
+			},
+		},
+		{
+			Name:        "mcpserver_delete",
+			Description: "Delete an MCP server",
+			Parameters: []api.ParameterMetadata{
+				{Name: "name", Type: "string", Required: true, Description: "Name of the MCP server to delete"},
+			},
+		},
 	}
 }
 
@@ -230,6 +252,12 @@ func (a *Adapter) ExecuteTool(ctx context.Context, toolName string, args map[str
 		return a.handleMCPServerRegister(args)
 	case "mcpserver_unregister":
 		return a.handleMCPServerUnregister(args)
+	case "mcpserver_create":
+		return a.handleMCPServerCreate(args)
+	case "mcpserver_update":
+		return a.handleMCPServerUpdate(args)
+	case "mcpserver_delete":
+		return a.handleMCPServerDelete(args)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", toolName)
 	}
@@ -364,12 +392,18 @@ func (a *Adapter) handleMCPServerRegister(args map[string]interface{}) (*api.Cal
 	// Check if it already exists and merge flag
 	if _, exists := a.manager.GetDefinition(def.Name); exists && !merge {
 		return simpleError(fmt.Sprintf("MCP server '%s' already exists. Use merge=true to replace.", def.Name))
-	} else if exists {
+	} else if exists && merge {
 		logging.Info("MCPServerAdapter", "Replacing existing MCP server '%s'", def.Name)
+		if err := a.manager.UpdateMCPServer(def.Name, def); err != nil {
+			return simpleError(fmt.Sprintf("Failed to update MCP server: %v", err))
+		}
+	} else {
+		if err := a.manager.CreateMCPServer(def); err != nil {
+			return simpleError(fmt.Sprintf("Failed to create MCP server: %v", err))
+		}
 	}
 
-	// TODO: Use RegisterDefinition once it's implemented
-	return simpleError("MCP server registration not yet fully implemented")
+	return simpleOK(fmt.Sprintf("MCP server '%s' registered successfully", def.Name))
 }
 
 func (a *Adapter) handleMCPServerUnregister(args map[string]interface{}) (*api.CallToolResult, error) {
@@ -383,6 +417,93 @@ func (a *Adapter) handleMCPServerUnregister(args map[string]interface{}) (*api.C
 		return simpleError(fmt.Sprintf("MCP server '%s' not found", name))
 	}
 
-	// TODO: Use UnregisterDefinition once it's implemented
-	return simpleError("MCP server unregistration not yet fully implemented")
+	if err := a.manager.DeleteMCPServer(name); err != nil {
+		return simpleError(fmt.Sprintf("Failed to delete MCP server: %v", err))
+	}
+
+	return simpleOK(fmt.Sprintf("MCP server '%s' unregistered successfully", name))
+}
+
+func (a *Adapter) handleMCPServerCreate(args map[string]interface{}) (*api.CallToolResult, error) {
+	yamlStr, ok := args["yaml"].(string)
+	if !ok || yamlStr == "" {
+		return simpleError("yaml parameter is required")
+	}
+
+	// Parse the YAML
+	var def MCPServerDefinition
+	if err := yaml.Unmarshal([]byte(yamlStr), &def); err != nil {
+		return simpleError(fmt.Sprintf("Invalid YAML: %v", err))
+	}
+
+	// Validate the definition
+	if err := validateMCPServerDefinition(def); err != nil {
+		return simpleError(fmt.Sprintf("Invalid MCP server definition: %v", err))
+	}
+
+	// Check if it already exists
+	if _, exists := a.manager.GetDefinition(def.Name); exists {
+		return simpleError(fmt.Sprintf("MCP server '%s' already exists", def.Name))
+	}
+
+	// Create the new MCP server
+	if err := a.manager.CreateMCPServer(def); err != nil {
+		return simpleError(fmt.Sprintf("Failed to create MCP server: %v", err))
+	}
+
+	return simpleOK(fmt.Sprintf("MCP server '%s' created successfully", def.Name))
+}
+
+func (a *Adapter) handleMCPServerUpdate(args map[string]interface{}) (*api.CallToolResult, error) {
+	name, ok := args["name"].(string)
+	if !ok || name == "" {
+		return simpleError("name parameter is required")
+	}
+
+	yamlStr, ok := args["yaml"].(string)
+	if !ok || yamlStr == "" {
+		return simpleError("yaml parameter is required")
+	}
+
+	// Parse the YAML
+	var def MCPServerDefinition
+	if err := yaml.Unmarshal([]byte(yamlStr), &def); err != nil {
+		return simpleError(fmt.Sprintf("Invalid YAML: %v", err))
+	}
+
+	// Validate the definition
+	if err := validateMCPServerDefinition(def); err != nil {
+		return simpleError(fmt.Sprintf("Invalid MCP server definition: %v", err))
+	}
+
+	// Check if it exists
+	if _, exists := a.manager.GetDefinition(name); !exists {
+		return simpleError(fmt.Sprintf("MCP server '%s' not found", name))
+	}
+
+	// Update the MCP server
+	if err := a.manager.UpdateMCPServer(name, def); err != nil {
+		return simpleError(fmt.Sprintf("Failed to update MCP server: %v", err))
+	}
+
+	return simpleOK(fmt.Sprintf("MCP server '%s' updated successfully", name))
+}
+
+func (a *Adapter) handleMCPServerDelete(args map[string]interface{}) (*api.CallToolResult, error) {
+	name, ok := args["name"].(string)
+	if !ok || name == "" {
+		return simpleError("name parameter is required")
+	}
+
+	// Check if it exists
+	if _, exists := a.manager.GetDefinition(name); !exists {
+		return simpleError(fmt.Sprintf("MCP server '%s' not found", name))
+	}
+
+	// Delete the MCP server
+	if err := a.manager.DeleteMCPServer(name); err != nil {
+		return simpleError(fmt.Sprintf("Failed to delete MCP server: %v", err))
+	}
+
+	return simpleOK(fmt.Sprintf("MCP server '%s' deleted successfully", name))
 }

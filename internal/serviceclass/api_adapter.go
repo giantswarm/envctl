@@ -359,6 +359,28 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 				{Name: "name", Type: "string", Required: true, Description: "Name of the ServiceClass to remove"},
 			},
 		},
+		{
+			Name:        "serviceclass_create",
+			Description: "Create a new dynamic service class",
+			Parameters: []api.ParameterMetadata{
+				{Name: "yaml", Type: "string", Required: true, Description: "Full ServiceClass YAML definition"},
+			},
+		},
+		{
+			Name:        "serviceclass_update",
+			Description: "Update an existing service class",
+			Parameters: []api.ParameterMetadata{
+				{Name: "name", Type: "string", Required: true, Description: "Name of the ServiceClass to update"},
+				{Name: "yaml", Type: "string", Required: true, Description: "Updated ServiceClass YAML definition"},
+			},
+		},
+		{
+			Name:        "serviceclass_delete",
+			Description: "Delete a service class",
+			Parameters: []api.ParameterMetadata{
+				{Name: "name", Type: "string", Required: true, Description: "Name of the ServiceClass to delete"},
+			},
+		},
 	}
 }
 
@@ -381,6 +403,12 @@ func (a *Adapter) ExecuteTool(ctx context.Context, toolName string, args map[str
 		return a.handleServiceClassRegister(args)
 	case "serviceclass_unregister":
 		return a.handleServiceClassUnregister(args)
+	case "serviceclass_create":
+		return a.handleServiceClassCreate(args)
+	case "serviceclass_update":
+		return a.handleServiceClassUpdate(args)
+	case "serviceclass_delete":
+		return a.handleServiceClassDelete(args)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", toolName)
 	}
@@ -526,4 +554,57 @@ func (a *Adapter) handleServiceClassUnregister(args map[string]interface{}) (*ap
 		return simpleError(fmt.Sprintf("Unregister failed: %v", err))
 	}
 	return simpleOK(fmt.Sprintf("unregistered ServiceClass %s", name))
+}
+
+func (a *Adapter) handleServiceClassCreate(args map[string]interface{}) (*api.CallToolResult, error) {
+	yamlStr, ok := args["yaml"].(string)
+	if !ok || yamlStr == "" {
+		return simpleError("yaml parameter is required")
+	}
+
+	var def ServiceClassDefinition
+	if err := yaml.Unmarshal([]byte(yamlStr), &def); err != nil {
+		return simpleError(fmt.Sprintf("YAML parse error: %v", err))
+	}
+
+	if err := a.manager.CreateServiceClass(def); err != nil {
+		return simpleError(fmt.Sprintf("Create failed: %v", err))
+	}
+
+	return simpleOK(fmt.Sprintf("created service class %s", def.Name))
+}
+
+func (a *Adapter) handleServiceClassUpdate(args map[string]interface{}) (*api.CallToolResult, error) {
+	name, ok := args["name"].(string)
+	if !ok || name == "" {
+		return simpleError("name parameter is required")
+	}
+	yamlStr, ok := args["yaml"].(string)
+	if !ok || yamlStr == "" {
+		return simpleError("yaml parameter is required")
+	}
+
+	var def ServiceClassDefinition
+	if err := yaml.Unmarshal([]byte(yamlStr), &def); err != nil {
+		return simpleError(fmt.Sprintf("YAML parse error: %v", err))
+	}
+
+	if err := a.manager.UpdateServiceClass(name, def); err != nil {
+		return simpleError(fmt.Sprintf("Update failed: %v", err))
+	}
+
+	return simpleOK(fmt.Sprintf("updated service class %s", name))
+}
+
+func (a *Adapter) handleServiceClassDelete(args map[string]interface{}) (*api.CallToolResult, error) {
+	name, ok := args["name"].(string)
+	if !ok || name == "" {
+		return simpleError("name parameter is required")
+	}
+
+	if err := a.manager.DeleteServiceClass(name); err != nil {
+		return simpleError(fmt.Sprintf("Delete failed: %v", err))
+	}
+
+	return simpleOK(fmt.Sprintf("deleted service class %s", name))
 }

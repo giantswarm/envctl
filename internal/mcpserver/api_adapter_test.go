@@ -2,11 +2,13 @@ package mcpserver
 
 import (
 	"context"
+	"envctl/internal/config"
 	"testing"
 )
 
 func TestNewAdapter(t *testing.T) {
-	manager, err := NewMCPServerManager()
+	storage := config.NewDynamicStorage()
+	manager, err := NewMCPServerManager(storage)
 	if err != nil {
 		t.Fatalf("Failed to create MCP server manager: %v", err)
 	}
@@ -22,7 +24,8 @@ func TestNewAdapter(t *testing.T) {
 }
 
 func TestAdapterListMCPServers(t *testing.T) {
-	manager, err := NewMCPServerManager()
+	storage := config.NewDynamicStorage()
+	manager, err := NewMCPServerManager(storage)
 	if err != nil {
 		t.Fatalf("Failed to create MCP server manager: %v", err)
 	}
@@ -41,7 +44,8 @@ func TestAdapterListMCPServers(t *testing.T) {
 }
 
 func TestAdapterGetMCPServer(t *testing.T) {
-	manager, err := NewMCPServerManager()
+	storage := config.NewDynamicStorage()
+	manager, err := NewMCPServerManager(storage)
 	if err != nil {
 		t.Fatalf("Failed to create MCP server manager: %v", err)
 	}
@@ -59,7 +63,8 @@ func TestAdapterGetMCPServer(t *testing.T) {
 }
 
 func TestAdapterIsMCPServerAvailable(t *testing.T) {
-	manager, err := NewMCPServerManager()
+	storage := config.NewDynamicStorage()
+	manager, err := NewMCPServerManager(storage)
 	if err != nil {
 		t.Fatalf("Failed to create MCP server manager: %v", err)
 	}
@@ -74,7 +79,8 @@ func TestAdapterIsMCPServerAvailable(t *testing.T) {
 }
 
 func TestAdapterGetTools(t *testing.T) {
-	manager, err := NewMCPServerManager()
+	storage := config.NewDynamicStorage()
+	manager, err := NewMCPServerManager(storage)
 	if err != nil {
 		t.Fatalf("Failed to create MCP server manager: %v", err)
 	}
@@ -96,6 +102,9 @@ func TestAdapterGetTools(t *testing.T) {
 		"mcpserver_definitions_path",
 		"mcpserver_register",
 		"mcpserver_unregister",
+		"mcpserver_create",
+		"mcpserver_update",
+		"mcpserver_delete",
 	}
 
 	if len(tools) != len(expectedTools) {
@@ -110,7 +119,8 @@ func TestAdapterGetTools(t *testing.T) {
 }
 
 func TestAdapterExecuteTool(t *testing.T) {
-	manager, err := NewMCPServerManager()
+	storage := config.NewDynamicStorage()
+	manager, err := NewMCPServerManager(storage)
 	if err != nil {
 		t.Fatalf("Failed to create MCP server manager: %v", err)
 	}

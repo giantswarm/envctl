@@ -6,31 +6,35 @@ import (
 
 	"envctl/internal/config"
 	"envctl/pkg/logging"
+
+	"gopkg.in/yaml.v3"
 )
 
 // CapabilityManager manages capability definitions and their availability
 type CapabilityManager struct {
-	mu           sync.RWMutex
-	loader       *config.ConfigurationLoader
-	definitions  map[string]*CapabilityDefinition // capability name -> definition
-	toolChecker  config.ToolAvailabilityChecker
-	registry     *Registry
-	exposedTools map[string]bool // Track which capability tools we've exposed
+	mu             sync.RWMutex
+	loader         *config.ConfigurationLoader
+	definitions    map[string]*CapabilityDefinition // capability name -> definition
+	toolChecker    config.ToolAvailabilityChecker
+	registry       *Registry
+	exposedTools   map[string]bool // Track which capability tools we've exposed
+	dynamicStorage *config.DynamicStorage
 }
 
 // NewCapabilityManager creates a new capability manager
-func NewCapabilityManager(toolChecker config.ToolAvailabilityChecker, registry *Registry) (*CapabilityManager, error) {
+func NewCapabilityManager(toolChecker config.ToolAvailabilityChecker, registry *Registry, dynamicStorage *config.DynamicStorage) (*CapabilityManager, error) {
 	loader, err := config.NewConfigurationLoader()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create configuration loader: %w", err)
 	}
 
 	return &CapabilityManager{
-		loader:       loader,
-		definitions:  make(map[string]*CapabilityDefinition),
-		toolChecker:  toolChecker,
-		registry:     registry,
-		exposedTools: make(map[string]bool),
+		loader:         loader,
+		definitions:    make(map[string]*CapabilityDefinition),
+		toolChecker:    toolChecker,
+		registry:       registry,
+		exposedTools:   make(map[string]bool),
+		dynamicStorage: dynamicStorage,
 	}, nil
 }
 
@@ -52,12 +56,31 @@ func (cm *CapabilityManager) LoadDefinitions() error {
 		return fmt.Errorf("failed to load capability definitions: %w", err)
 	}
 
-	logging.Info("CapabilityManager", "Loading %d capability definitions", len(definitions))
+	logging.Info("CapabilityManager", "Loading %d capability definitions from files", len(definitions))
 
-	// Process each definition
+	// Process file-based definitions first
 	for _, def := range definitions {
 		cm.definitions[def.Name] = &def
-		logging.Info("CapabilityManager", "Loaded capability definition: %s (type: %s)", def.Name, def.Type)
+		logging.Info("CapabilityManager", "Loaded file-based capability definition: %s (type: %s)", def.Name, def.Type)
+	}
+
+	// Load dynamic definitions if DynamicStorage is available
+	if cm.dynamicStorage != nil {
+		dynamicCapabilities, err := cm.loadDynamicDefinitions()
+		if err != nil {
+			logging.Error("CapabilityManager", err, "Failed to load dynamic capability definitions, continuing with file-based only")
+		} else {
+			// Dynamic definitions override file-based ones
+			for name, def := range dynamicCapabilities {
+				if _, exists := cm.definitions[name]; exists {
+					logging.Info("CapabilityManager", "Dynamic definition overriding file-based definition: %s", name)
+				} else {
+					logging.Info("CapabilityManager", "Loaded dynamic capability definition: %s (type: %s)", def.Name, def.Type)
+				}
+				cm.definitions[name] = def
+			}
+			logging.Info("CapabilityManager", "Loaded %d dynamic capability definitions", len(dynamicCapabilities))
+		}
 	}
 
 	// Check which capabilities can be exposed
@@ -262,4 +285,157 @@ func (cm *CapabilityManager) GetOperationForTool(toolName string) (*OperationDef
 	}
 
 	return nil, nil, fmt.Errorf("no operation found for tool %s", toolName)
+}
+
+// loadDynamicDefinitions loads capability definitions from dynamic storage
+func (cm *CapabilityManager) loadDynamicDefinitions() (map[string]*CapabilityDefinition, error) {
+	definitions := make(map[string]*CapabilityDefinition)
+
+	// List all capability files in dynamic storage
+	files, err := cm.dynamicStorage.List("capabilities")
+	if err != nil {
+		return nil, fmt.Errorf("failed to list dynamic capability files: %w", err)
+	}
+
+	for _, filename := range files {
+		// Read the capability file
+		data, err := cm.dynamicStorage.Load("capabilities", filename)
+		if err != nil {
+			logging.Error("CapabilityManager", err, "Failed to load dynamic capability file: %s", filename)
+			continue
+		}
+
+		// Parse the YAML content
+		var def CapabilityDefinition
+		if err := yaml.Unmarshal(data, &def); err != nil {
+			logging.Error("CapabilityManager", err, "Failed to parse dynamic capability file: %s", filename)
+			continue
+		}
+
+		// Validate the definition
+		if err := cm.validateDefinition(&def); err != nil {
+			logging.Error("CapabilityManager", err, "Invalid dynamic capability definition: %s", filename)
+			continue
+		}
+
+		definitions[def.Name] = &def
+	}
+
+	return definitions, nil
+}
+
+// CreateCapability creates a new capability definition in dynamic storage
+func (cm *CapabilityManager) CreateCapability(def *CapabilityDefinition) error {
+	if cm.dynamicStorage == nil {
+		return fmt.Errorf("dynamic storage not available")
+	}
+
+	// Validate the definition
+	if err := cm.validateDefinition(def); err != nil {
+		return fmt.Errorf("invalid capability definition: %w", err)
+	}
+
+	// Serialize to YAML
+	data, err := yaml.Marshal(def)
+	if err != nil {
+		return fmt.Errorf("failed to marshal capability definition: %w", err)
+	}
+
+	// Save to dynamic storage
+	filename := fmt.Sprintf("%s.yaml", def.Name)
+	if err := cm.dynamicStorage.Save("capabilities", filename, data); err != nil {
+		return fmt.Errorf("failed to save capability definition: %w", err)
+	}
+
+	// Register in memory
+	cm.RegisterDefinition(def)
+
+	logging.Info("CapabilityManager", "Created dynamic capability definition: %s", def.Name)
+	return nil
+}
+
+// UpdateCapability updates an existing capability definition in dynamic storage
+func (cm *CapabilityManager) UpdateCapability(def *CapabilityDefinition) error {
+	if cm.dynamicStorage == nil {
+		return fmt.Errorf("dynamic storage not available")
+	}
+
+	// Check if capability exists
+	if _, exists := cm.GetDefinition(def.Name); !exists {
+		return fmt.Errorf("capability '%s' not found", def.Name)
+	}
+
+	// Validate the definition
+	if err := cm.validateDefinition(def); err != nil {
+		return fmt.Errorf("invalid capability definition: %w", err)
+	}
+
+	// Serialize to YAML
+	data, err := yaml.Marshal(def)
+	if err != nil {
+		return fmt.Errorf("failed to marshal capability definition: %w", err)
+	}
+
+	// Save to dynamic storage
+	filename := fmt.Sprintf("%s.yaml", def.Name)
+	if err := cm.dynamicStorage.Save("capabilities", filename, data); err != nil {
+		return fmt.Errorf("failed to save capability definition: %w", err)
+	}
+
+	// Update in memory
+	cm.UpdateDefinition(def)
+
+	logging.Info("CapabilityManager", "Updated dynamic capability definition: %s", def.Name)
+	return nil
+}
+
+// DeleteCapability deletes a capability definition from dynamic storage
+func (cm *CapabilityManager) DeleteCapability(name string) error {
+	if cm.dynamicStorage == nil {
+		return fmt.Errorf("dynamic storage not available")
+	}
+
+	// Check if capability exists
+	if _, exists := cm.GetDefinition(name); !exists {
+		return fmt.Errorf("capability '%s' not found", name)
+	}
+
+	// Delete from dynamic storage
+	filename := fmt.Sprintf("%s.yaml", name)
+	if err := cm.dynamicStorage.Delete("capabilities", filename); err != nil {
+		return fmt.Errorf("failed to delete capability definition: %w", err)
+	}
+
+	// Remove from memory
+	cm.UnregisterDefinition(name)
+
+	logging.Info("CapabilityManager", "Deleted dynamic capability definition: %s", name)
+	return nil
+}
+
+// RegisterDefinition adds a capability definition to the in-memory registry
+func (cm *CapabilityManager) RegisterDefinition(def *CapabilityDefinition) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	cm.definitions[def.Name] = def
+	cm.updateAvailableCapabilities()
+}
+
+// UpdateDefinition updates a capability definition in the in-memory registry
+func (cm *CapabilityManager) UpdateDefinition(def *CapabilityDefinition) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	cm.definitions[def.Name] = def
+	cm.updateAvailableCapabilities()
+}
+
+// UnregisterDefinition removes a capability definition from the in-memory registry
+func (cm *CapabilityManager) UnregisterDefinition(name string) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	delete(cm.definitions, name)
+	cm.updateAvailableCapabilities()
 }

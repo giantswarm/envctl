@@ -2,6 +2,7 @@ package aggregator
 
 import (
 	"context"
+	"envctl/internal/capability"
 	"envctl/internal/config"
 	"envctl/pkg/logging"
 	"fmt"
@@ -88,7 +89,7 @@ func (a *AggregatorServer) Start(ctx context.Context) error {
 		// Import capability package locally to avoid circular dependencies
 		capabilityAdapter := a.createCapabilityAdapter()
 		if capabilityAdapter != nil {
-			capabilityAdapter.Register()
+			// Do NOT register this adapter globally - it's for local aggregator use only
 			// Load capability definitions
 			if err := capabilityAdapter.LoadDefinitions(); err != nil {
 				logging.Warn("Aggregator", "Failed to load capability definitions: %v", err)
@@ -481,11 +482,18 @@ func (a *AggregatorServer) createCapabilityAdapter() interface {
 	Register()
 	LoadDefinitions() error
 } {
-	// Use the new unified pattern instead of the deprecated factory
-	// Note: For aggregator, we can't use the full manager pattern since we need different initialization
-	// This is acceptable since aggregator has a different lifecycle than main services
-	logging.Warn("Aggregator", "Capability adapter creation skipped - aggregator uses different initialization pattern")
-	return nil
+	// Create a DynamicStorage instance for the aggregator
+	storage := config.NewDynamicStorage()
+
+	// Create capability adapter with aggregator as tool checker, nil tool caller, and shared storage
+	adapter, err := capability.NewAdapter(a, nil, storage)
+	if err != nil {
+		logging.Error("Aggregator", err, "Failed to create capability adapter")
+		return nil
+	}
+
+	logging.Info("Aggregator", "Created capability adapter successfully")
+	return adapter
 }
 
 // createWorkflowAdapter creates a workflow adapter using the new unified pattern

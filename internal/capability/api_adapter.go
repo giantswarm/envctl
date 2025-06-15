@@ -6,6 +6,8 @@ import (
 	"envctl/internal/config"
 	"envctl/pkg/logging"
 	"fmt"
+
+	"gopkg.in/yaml.v3"
 )
 
 // Adapter adapts the capability system to implement api.CapabilityHandler
@@ -15,9 +17,9 @@ type Adapter struct {
 }
 
 // NewAdapter creates a new capability adapter
-func NewAdapter(toolChecker config.ToolAvailabilityChecker, workflowExecutor api.ToolCaller) (*Adapter, error) {
+func NewAdapter(toolChecker config.ToolAvailabilityChecker, workflowExecutor api.ToolCaller, dynamicStorage *config.DynamicStorage) (*Adapter, error) {
 	registry := GetRegistry()
-	manager, err := NewCapabilityManager(toolChecker, registry)
+	manager, err := NewCapabilityManager(toolChecker, registry, dynamicStorage)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create capability manager: %w", err)
 	}
@@ -62,6 +64,28 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 			Name:        "capability_load",
 			Description: "Reload capability definitions from disk",
 		},
+		{
+			Name:        "capability_create",
+			Description: "Create a new capability definition in dynamic storage",
+			Parameters: []api.ParameterMetadata{
+				{Name: "yamlContent", Type: "string", Required: true, Description: "YAML content of the capability definition"},
+			},
+		},
+		{
+			Name:        "capability_update",
+			Description: "Update an existing capability definition in dynamic storage",
+			Parameters: []api.ParameterMetadata{
+				{Name: "name", Type: "string", Required: true, Description: "Name of the capability to update"},
+				{Name: "yamlContent", Type: "string", Required: true, Description: "Updated YAML content of the capability definition"},
+			},
+		},
+		{
+			Name:        "capability_delete",
+			Description: "Delete a capability definition from dynamic storage",
+			Parameters: []api.ParameterMetadata{
+				{Name: "name", Type: "string", Required: true, Description: "Name of the capability to delete"},
+			},
+		},
 	}
 }
 
@@ -86,6 +110,28 @@ func (a *Adapter) ExecuteTool(ctx context.Context, toolName string, args map[str
 		return a.getDefinitionsPath(ctx)
 	case "capability_load":
 		return a.loadCapabilities(ctx)
+	case "capability_create":
+		yamlContent, ok := args["yamlContent"].(string)
+		if !ok {
+			return nil, fmt.Errorf("yamlContent parameter is required")
+		}
+		return a.handleCapabilityCreate(ctx, yamlContent)
+	case "capability_update":
+		name, ok := args["name"].(string)
+		if !ok {
+			return nil, fmt.Errorf("name parameter is required")
+		}
+		yamlContent, ok := args["yamlContent"].(string)
+		if !ok {
+			return nil, fmt.Errorf("yamlContent parameter is required")
+		}
+		return a.handleCapabilityUpdate(ctx, name, yamlContent)
+	case "capability_delete":
+		name, ok := args["name"].(string)
+		if !ok {
+			return nil, fmt.Errorf("name parameter is required")
+		}
+		return a.handleCapabilityDelete(ctx, name)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", toolName)
 	}
@@ -273,24 +319,35 @@ func (a *Adapter) loadCapabilities(ctx context.Context) (*api.CallToolResult, er
 // Legacy methods updated to work with CapabilityManager
 
 func (a *Adapter) createCapabilityDefinition(yamlContent, filename string) error {
-	// TODO: Implement capability creation for layered configuration system
-	// This would need to determine whether to write to user or project config
-	// and handle the layered override behavior appropriately
-	return fmt.Errorf("capability creation not yet supported with layered configuration")
+	// Parse the YAML content
+	var def CapabilityDefinition
+	if err := yaml.Unmarshal([]byte(yamlContent), &def); err != nil {
+		return fmt.Errorf("failed to parse YAML: %w", err)
+	}
+
+	// Create the capability using the manager
+	return a.manager.CreateCapability(&def)
 }
 
 func (a *Adapter) updateCapabilityDefinition(name, yamlContent string) error {
-	// TODO: Implement capability update for layered configuration system
-	// This would need to find the capability in either user or project config
-	// and update it appropriately
-	return fmt.Errorf("capability updates not yet supported with layered configuration")
+	// Parse the YAML content
+	var def CapabilityDefinition
+	if err := yaml.Unmarshal([]byte(yamlContent), &def); err != nil {
+		return fmt.Errorf("failed to parse YAML: %w", err)
+	}
+
+	// Ensure the name matches
+	if def.Name != name {
+		return fmt.Errorf("capability name in YAML (%s) does not match provided name (%s)", def.Name, name)
+	}
+
+	// Update the capability using the manager
+	return a.manager.UpdateCapability(&def)
 }
 
 func (a *Adapter) deleteCapabilityDefinition(name string) error {
-	// TODO: Implement capability deletion for layered configuration system
-	// This would need to find the capability in either user or project config
-	// and remove it appropriately
-	return fmt.Errorf("capability deletion not yet supported with layered configuration")
+	// Delete the capability using the manager
+	return a.manager.DeleteCapability(name)
 }
 
 // GetCapability returns a specific capability definition (implements CapabilityHandler interface)
@@ -317,4 +374,138 @@ func (a *Adapter) RefreshAvailability() {
 // GetDefinitionsPath returns the path where capability definitions are loaded from (implements CapabilityHandler interface)
 func (a *Adapter) GetDefinitionsPath() string {
 	return a.manager.GetDefinitionsPath()
+}
+
+// Handler methods for new CRUD tools
+
+func (a *Adapter) handleCapabilityCreate(ctx context.Context, yamlContent string) (*api.CallToolResult, error) {
+	// Parse and validate the YAML content
+	var def CapabilityDefinition
+	if err := yaml.Unmarshal([]byte(yamlContent), &def); err != nil {
+		return &api.CallToolResult{
+			Content: []interface{}{fmt.Sprintf("Failed to parse YAML: %v", err)},
+			IsError: true,
+		}, nil
+	}
+
+	// Validate that this is a dynamic capability
+	if def.Metadata == nil || def.Metadata["dynamic"] != "true" {
+		return &api.CallToolResult{
+			Content: []interface{}{"Capability must have 'dynamic: true' in metadata to be managed dynamically"},
+			IsError: true,
+		}, nil
+	}
+
+	// Create the capability
+	if err := a.manager.CreateCapability(&def); err != nil {
+		return &api.CallToolResult{
+			Content: []interface{}{fmt.Sprintf("Failed to create capability: %v", err)},
+			IsError: true,
+		}, nil
+	}
+
+	result := map[string]interface{}{
+		"action":  "created",
+		"name":    def.Name,
+		"type":    def.Type,
+		"version": def.Version,
+	}
+
+	return &api.CallToolResult{
+		Content: []interface{}{fmt.Sprintf("Successfully created capability: %s", def.Name), result},
+		IsError: false,
+	}, nil
+}
+
+func (a *Adapter) handleCapabilityUpdate(ctx context.Context, name, yamlContent string) (*api.CallToolResult, error) {
+	// Parse and validate the YAML content
+	var def CapabilityDefinition
+	if err := yaml.Unmarshal([]byte(yamlContent), &def); err != nil {
+		return &api.CallToolResult{
+			Content: []interface{}{fmt.Sprintf("Failed to parse YAML: %v", err)},
+			IsError: true,
+		}, nil
+	}
+
+	// Ensure the name matches
+	if def.Name != name {
+		return &api.CallToolResult{
+			Content: []interface{}{fmt.Sprintf("Capability name in YAML (%s) does not match provided name (%s)", def.Name, name)},
+			IsError: true,
+		}, nil
+	}
+
+	// Validate that this is a dynamic capability
+	if def.Metadata == nil || def.Metadata["dynamic"] != "true" {
+		return &api.CallToolResult{
+			Content: []interface{}{"Capability must have 'dynamic: true' in metadata to be managed dynamically"},
+			IsError: true,
+		}, nil
+	}
+
+	// Check if the existing capability allows dynamic updates
+	existing, exists := a.manager.GetDefinition(name)
+	if exists && (existing.Metadata == nil || existing.Metadata["dynamic"] != "true") {
+		return &api.CallToolResult{
+			Content: []interface{}{fmt.Sprintf("Cannot update non-dynamic capability '%s'. Only capabilities with 'dynamic: true' metadata can be modified", name)},
+			IsError: true,
+		}, nil
+	}
+
+	// Update the capability
+	if err := a.manager.UpdateCapability(&def); err != nil {
+		return &api.CallToolResult{
+			Content: []interface{}{fmt.Sprintf("Failed to update capability: %v", err)},
+			IsError: true,
+		}, nil
+	}
+
+	result := map[string]interface{}{
+		"action":  "updated",
+		"name":    def.Name,
+		"type":    def.Type,
+		"version": def.Version,
+	}
+
+	return &api.CallToolResult{
+		Content: []interface{}{fmt.Sprintf("Successfully updated capability: %s", def.Name), result},
+		IsError: false,
+	}, nil
+}
+
+func (a *Adapter) handleCapabilityDelete(ctx context.Context, name string) (*api.CallToolResult, error) {
+	// Check if the capability exists and allows dynamic deletion
+	existing, exists := a.manager.GetDefinition(name)
+	if !exists {
+		return &api.CallToolResult{
+			Content: []interface{}{fmt.Sprintf("Capability '%s' not found", name)},
+			IsError: true,
+		}, nil
+	}
+
+	// Validate that this is a dynamic capability
+	if existing.Metadata == nil || existing.Metadata["dynamic"] != "true" {
+		return &api.CallToolResult{
+			Content: []interface{}{fmt.Sprintf("Cannot delete non-dynamic capability '%s'. Only capabilities with 'dynamic: true' metadata can be modified", name)},
+			IsError: true,
+		}, nil
+	}
+
+	// Delete the capability
+	if err := a.manager.DeleteCapability(name); err != nil {
+		return &api.CallToolResult{
+			Content: []interface{}{fmt.Sprintf("Failed to delete capability: %v", err)},
+			IsError: true,
+		}, nil
+	}
+
+	result := map[string]interface{}{
+		"action": "deleted",
+		"name":   name,
+	}
+
+	return &api.CallToolResult{
+		Content: []interface{}{fmt.Sprintf("Successfully deleted capability: %s", name), result},
+		IsError: false,
+	}, nil
 }

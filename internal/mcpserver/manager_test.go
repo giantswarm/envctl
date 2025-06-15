@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"envctl/internal/config"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -8,7 +9,8 @@ import (
 )
 
 func TestNewMCPServerManager(t *testing.T) {
-	manager, err := NewMCPServerManager()
+	storage := config.NewDynamicStorage()
+	manager, err := NewMCPServerManager(storage)
 	require.NoError(t, err)
 	assert.NotNil(t, manager)
 	assert.NotNil(t, manager.loader)
@@ -17,7 +19,8 @@ func TestNewMCPServerManager(t *testing.T) {
 }
 
 func TestMCPServerManager_validateDefinition(t *testing.T) {
-	manager, err := NewMCPServerManager()
+	storage := config.NewDynamicStorage()
+	manager, err := NewMCPServerManager(storage)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -96,7 +99,8 @@ func TestMCPServerManager_validateDefinition(t *testing.T) {
 }
 
 func TestMCPServerManager_GetDefinition(t *testing.T) {
-	manager, err := NewMCPServerManager()
+	storage := config.NewDynamicStorage()
+	manager, err := NewMCPServerManager(storage)
 	require.NoError(t, err)
 
 	// Test getting non-existent definition
@@ -120,7 +124,8 @@ func TestMCPServerManager_GetDefinition(t *testing.T) {
 }
 
 func TestMCPServerManager_ListDefinitions(t *testing.T) {
-	manager, err := NewMCPServerManager()
+	storage := config.NewDynamicStorage()
+	manager, err := NewMCPServerManager(storage)
 	require.NoError(t, err)
 
 	// Test empty list
@@ -158,7 +163,8 @@ func TestMCPServerManager_ListDefinitions(t *testing.T) {
 }
 
 func TestMCPServerManager_ListAvailableDefinitions(t *testing.T) {
-	manager, err := NewMCPServerManager()
+	storage := config.NewDynamicStorage()
+	manager, err := NewMCPServerManager(storage)
 	require.NoError(t, err)
 
 	// Add some definitions
@@ -196,7 +202,8 @@ func TestMCPServerManager_ListAvailableDefinitions(t *testing.T) {
 }
 
 func TestMCPServerManager_IsAvailable(t *testing.T) {
-	manager, err := NewMCPServerManager()
+	storage := config.NewDynamicStorage()
+	manager, err := NewMCPServerManager(storage)
 	require.NoError(t, err)
 
 	// Test non-existent server
@@ -216,7 +223,8 @@ func TestMCPServerManager_IsAvailable(t *testing.T) {
 }
 
 func TestMCPServerManager_RefreshAvailability(t *testing.T) {
-	manager, err := NewMCPServerManager()
+	storage := config.NewDynamicStorage()
+	manager, err := NewMCPServerManager(storage)
 	require.NoError(t, err)
 
 	// This should not panic and should be a no-op for MCP servers
@@ -224,7 +232,8 @@ func TestMCPServerManager_RefreshAvailability(t *testing.T) {
 }
 
 func TestMCPServerManager_GetDefinitionsPath(t *testing.T) {
-	manager, err := NewMCPServerManager()
+	storage := config.NewDynamicStorage()
+	manager, err := NewMCPServerManager(storage)
 	require.NoError(t, err)
 
 	path := manager.GetDefinitionsPath()
@@ -235,7 +244,8 @@ func TestMCPServerManager_GetDefinitionsPath(t *testing.T) {
 }
 
 func TestMCPServerManager_GetAllDefinitions(t *testing.T) {
-	manager, err := NewMCPServerManager()
+	storage := config.NewDynamicStorage()
+	manager, err := NewMCPServerManager(storage)
 	require.NoError(t, err)
 
 	// Test empty map

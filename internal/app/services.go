@@ -116,7 +116,8 @@ func InitializeServices(cfg *Config) (*Services, error) {
 	toolChecker := &aggregatorToolChecker{serviceRegistry: registry}
 
 	// Create ServiceClass manager (now uses layered configuration loading)
-	serviceClassManager, err := serviceclass.NewServiceClassManager(toolChecker)
+	storage := config.NewDynamicStorage() // Create storage once
+	serviceClassManager, err := serviceclass.NewServiceClassManager(toolChecker, storage)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ServiceClass manager: %w", err)
 	}
@@ -131,28 +132,19 @@ func InitializeServices(cfg *Config) (*Services, error) {
 		logging.Warn("Services", "Failed to load ServiceClass definitions: %v", err)
 	}
 
-	// Initialize and register Capability manager
-	capabilityManager, err := capability.NewCapabilityManager(toolChecker, capability.NewRegistry())
-	if err != nil {
-		return nil, fmt.Errorf("failed to create Capability manager: %w", err)
-	}
-
-	// Create and register Capability adapter
+	// Initialize and register Capability adapter
 	// Note: We'll need to pass a ToolCaller when it becomes available
-	capabilityAdapter, err := capability.NewAdapter(toolChecker, nil) // ToolCaller will be set later
+	capabilityAdapter, err := capability.NewAdapter(toolChecker, nil, storage) // ToolCaller will be set later, pass shared storage
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Capability adapter: %w", err)
 	}
 	capabilityAdapter.Register()
 
-	// Load Capability definitions
-	if err := capabilityManager.LoadDefinitions(); err != nil {
+	// Load Capability definitions - will now load from both files and dynamic storage
+	if err := api.GetCapability().LoadDefinitions(); err != nil {
 		// Log warning but don't fail - Capability is optional
 		logging.Warn("Services", "Failed to load Capability definitions: %v", err)
 	}
-
-	// Initialize DynamicStorage, which will be used by multiple managers
-	storage := config.NewDynamicStorage()
 
 	// Create and register Workflow adapter
 	workflowManager, err := workflow.NewWorkflowManager(storage, nil, toolChecker) // ToolCaller will be set later
@@ -170,7 +162,7 @@ func InitializeServices(cfg *Config) (*Services, error) {
 	}
 
 	// Initialize and register MCPServer manager (new unified configuration approach)
-	mcpServerManager, err := mcpserverPkg.NewMCPServerManager()
+	mcpServerManager, err := mcpserverPkg.NewMCPServerManager(storage)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create MCP server manager: %w", err)
 	}
@@ -275,8 +267,10 @@ func InitializeServices(cfg *Config) (*Services, error) {
 								}
 
 								// Refresh Capability availability now that ToolCaller is available
-								capabilityManager.RefreshAvailability()
-								logging.Info("Bootstrap", "Refreshed Capability availability after ToolCaller setup")
+								if capabilityHandler := api.GetCapability(); capabilityHandler != nil {
+									capabilityHandler.RefreshAvailability()
+									logging.Info("Bootstrap", "Refreshed Capability availability after ToolCaller setup")
+								}
 							}
 						}
 					}
