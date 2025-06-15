@@ -1,0 +1,71 @@
+# PRD: Dynamic Entity Persistence
+
+**Author:** Gemini Pro
+**Date:** 2023-10-27
+**Status:** Final
+
+## 1. Overview
+
+This document outlines the requirements for implementing a persistence layer for all dynamic configuration entities: **Workflows, ServiceClasses, MCPServers, and Capabilities**. The goal is to save entities created via existing tools to the correct configuration layer (project or user) based on the current context, making them durable across application restarts.
+
+## 2. Core Architectural Principles
+
+The implementation of this persistence layer **MUST** adhere to the following principles to ensure a clean, maintainable, and consistent architecture across the entire application.
+
+- ✅ **Centralized Logic**: All logic related to configuration file paths, layered loading, and dynamic storage **MUST** reside exclusively within the `internal/config` package.
+- ✅ **NO DIFFERENCE**: All four entity packages (`workflow`, `serviceclass`, etc.) **MUST** use the identical, centralized storage pattern provided by the config package. They will contain no direct file I/O logic.
+- ✅ **Type Ownership**: Each entity package remains the definitive owner of its own data structures (types). The generic `DynamicStorage` service will be agnostic to the content it is saving, operating only on `[]byte`.
+- ✅ **Consistent Structure**: The directory layout for saved entities **MUST** be consistent for all types (e.g., `.../workflows/`, `.../serviceclasses/`) in both the user and project configuration directories.
+- ✅ **Maintainable**: By co-locating the storage and loading logic within `internal/config`, there will be a single, simple pattern to understand and maintain for all current and future dynamic entities.
+- ✅ **Breaking Change**: This tool hasn't been released. No backwards compatibility is needed. Breaking changes are fine.
+
+## 3. User Story
+
+As a power user of `envctl`, when I use a tool like `workflow_create` or `serviceclass_create`, I expect the created entity to be saved permanently. If I'm in a project directory with an `.envctl/` folder, it should be saved with the project; otherwise, it should be saved to my user profile. It must be available in subsequent sessions without needing to be recreated.
+
+## 4. Goals
+
+*   To ensure all entities created via the existing `_create`, `_update`, and `_delete` tools are persisted to disk in the correct location for all supported types: `workflows`, `serviceclasses`, `mcpservers`, `capabilities`.
+*   To implement a robust, centralized, and DRY storage mechanism within the `internal/config` package that correctly chooses between the project and user configuration directories.
+*   To use the existing layered configuration system without adding new directories.
+
+## 5. Non-Goals
+
+*   Creating new tools for entity management.
+*   A "creations" directory or any new configuration layers.
+*   A graphical user interface or a versioning system.
+
+## 6. Functional Requirements (FR)
+
+### FR-1: Context-Aware Storage Path
+
+A new generic storage service within `internal/config` will determine the correct save path for all dynamically created entities.
+*   **IF** a project configuration directory (`.envctl/`) exists in the current working directory, all created/updated entities MUST be saved to the appropriate subdirectory within it (e.g., `.envctl/workflows/`, `.envctl/serviceclasses/`).
+*   **ELSE** all created/updated entities MUST be saved to the user's global configuration directory (e.g., `~/.config/envctl/mcpservers/`).
+
+### FR-2: Backend Refactoring for Existing Tools
+
+The backend logic for the existing management tools in all four packages (`workflow`, `serviceclass`, `mcpserver`, `capability`) must be refactored. They must now use the new, context-aware storage service from `internal/config` to perform CRUD operations.
+
+### FR-3: All definitions can be changed
+
+The system must allow the modification or deletion of all statically-defined configurations as well.
+*   `_update` and `_delete` tool backends allow updating and deletion of definitions that existed during startup of the application
+
+### FR-4: Cleanup old storage implementation in the workflow package
+
+The workflow package already had an implementation to store workflows. This must be removed.
+
+## 7. Technical Requirements
+
+*   A new generic `DynamicStorage` service must be implemented in the `internal/config` package. It will be responsible for resolving the correct base path and performing file CRUD operations.
+*   The `config.LoadYAMLFiles` function does NOT need to change.
+*   The API adapters in the `workflow`, `serviceclass`, `mcpserver`, and `capability` packages must be modified. Their `ExecuteTool` methods for `_create`, `_update`, and `_delete` operations must be re-wired to use the new `DynamicStorage` service from `internal/config`.
+
+## 8. Acceptance Criteria
+
+*   A user is in a directory **without** an `.envctl/` folder. They run `workflow_create`. The new workflow YAML is saved in `~/.config/envctl/workflows/`.
+*   A user is in a directory **with** an `.envctl/` folder. They run `serviceclass_create`. The new serviceclass YAML is saved in `./.envctl/serviceclasses/`.
+*   In all cases, the created entity persists after an application restart.
+*   A user attempts to use `capability_delete` on a capability defined in a git-tracked file (lacking the `dynamic: true` field). The operation fails with a clear error message.
+*   The Go code for saving a user-created `workflow`, `serviceclass`, `mcpserver`, and `capability` reuses the exact same underlying `DynamicStorage` service from the `internal/config` package. 
