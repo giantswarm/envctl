@@ -19,7 +19,6 @@ type AggregatorService struct {
 	mu              sync.RWMutex
 	config          aggregator.AggregatorConfig
 	orchestratorAPI api.OrchestratorAPI
-	mcpAPI          api.MCPServiceAPI
 	serviceRegistry api.ServiceRegistryHandler
 	manager         *aggregator.AggregatorManager
 }
@@ -28,14 +27,12 @@ type AggregatorService struct {
 func NewAggregatorService(
 	config aggregator.AggregatorConfig,
 	orchestratorAPI api.OrchestratorAPI,
-	mcpAPI api.MCPServiceAPI,
 	serviceRegistry api.ServiceRegistryHandler,
 ) *AggregatorService {
 	return &AggregatorService{
 		BaseService:     services.NewBaseService("mcp-aggregator", services.ServiceType("Aggregator"), []string{}),
 		config:          config,
 		orchestratorAPI: orchestratorAPI,
-		mcpAPI:          mcpAPI,
 		serviceRegistry: serviceRegistry,
 	}
 }
@@ -52,13 +49,13 @@ func (s *AggregatorService) Start(ctx context.Context) error {
 	s.UpdateState(services.StateStarting, services.HealthUnknown, nil)
 
 	// Check if APIs are set
-	if s.orchestratorAPI == nil || s.mcpAPI == nil {
+	if s.orchestratorAPI == nil {
 		s.UpdateState(services.StateFailed, services.HealthUnhealthy, fmt.Errorf("APIs not set"))
 		return fmt.Errorf("aggregator APIs not set")
 	}
 
 	// Create the manager with APIs
-	s.manager = aggregator.NewAggregatorManager(s.config, s.orchestratorAPI, s.mcpAPI, s.serviceRegistry)
+	s.manager = aggregator.NewAggregatorManager(s.config, s.orchestratorAPI, s.serviceRegistry)
 
 	// Start the manager
 	if err := s.manager.Start(ctx); err != nil {

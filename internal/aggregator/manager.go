@@ -20,7 +20,6 @@ type AggregatorManager struct {
 
 	// External dependencies - now using APIs directly
 	orchestratorAPI api.OrchestratorAPI
-	mcpAPI          api.MCPServiceAPI
 	serviceRegistry api.ServiceRegistryHandler
 
 	// Components
@@ -36,13 +35,11 @@ type AggregatorManager struct {
 func NewAggregatorManager(
 	config AggregatorConfig,
 	orchestratorAPI api.OrchestratorAPI,
-	mcpAPI api.MCPServiceAPI,
 	serviceRegistry api.ServiceRegistryHandler,
 ) *AggregatorManager {
 	manager := &AggregatorManager{
 		config:          config,
 		orchestratorAPI: orchestratorAPI,
-		mcpAPI:          mcpAPI,
 		serviceRegistry: serviceRegistry,
 	}
 
@@ -66,7 +63,7 @@ func (am *AggregatorManager) Start(ctx context.Context) error {
 	}
 
 	// Check if APIs are available
-	if am.orchestratorAPI == nil || am.mcpAPI == nil {
+	if am.orchestratorAPI == nil {
 		am.aggregatorServer.Stop(am.ctx)
 		return fmt.Errorf("required APIs not available")
 	}

@@ -20,7 +20,6 @@ import (
 type Services struct {
 	Orchestrator    *orchestrator.Orchestrator
 	OrchestratorAPI api.OrchestratorAPI
-	MCPAPI          api.MCPServiceAPI
 	AggregatorAPI   api.AggregatorAPI
 	ConfigAPI       api.ConfigServiceAPI
 	AggregatorPort  int
@@ -103,10 +102,6 @@ func InitializeServices(cfg *Config) (*Services, error) {
 	// Register configuration adapter
 	configAdapter := NewConfigAdapter(cfg.EnvctlConfig, "") // Empty path means auto-detect
 	configAdapter.Register()
-
-	// Register service adapters
-	mcpAdapter := mcpserver.NewServiceAdapter()
-	mcpAdapter.Register()
 
 	// Initialize and register ServiceClass manager
 	// This needs to be done before orchestrator starts to handle ServiceClass-based services
@@ -201,9 +196,6 @@ func InitializeServices(cfg *Config) (*Services, error) {
 
 	// Step 2: Create APIs that use the registered handlers
 	orchestratorAPI := api.NewOrchestratorAPI()
-	mcpAPI := api.NewMCPServiceAPI()
-	// Register the MCP service API so mcp_server_* tools can work
-	api.SetMCPServiceAPI(mcpAPI)
 	aggregatorAPI := api.NewAggregatorAPI()
 	configAPI := api.NewConfigServiceAPI()
 
@@ -262,7 +254,6 @@ func InitializeServices(cfg *Config) (*Services, error) {
 			aggService := aggregatorService.NewAggregatorService(
 				aggConfig,
 				orchestratorAPI,
-				mcpAPI,
 				registryHandler,
 			)
 			registry.Register(aggService)
@@ -324,7 +315,6 @@ func InitializeServices(cfg *Config) (*Services, error) {
 	return &Services{
 		Orchestrator:    orch,
 		OrchestratorAPI: orchestratorAPI,
-		MCPAPI:          mcpAPI,
 		AggregatorAPI:   aggregatorAPI,
 		ConfigAPI:       configAPI,
 		AggregatorPort:  cfg.EnvctlConfig.Aggregator.Port,

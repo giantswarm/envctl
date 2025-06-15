@@ -26,7 +26,6 @@ func InitializeModel(cfg TUIConfig, logChannel <-chan logging.LogEntry) (*Model,
 		// Service Architecture
 		Orchestrator:    cfg.Orchestrator,
 		OrchestratorAPI: cfg.OrchestratorAPI,
-		MCPServiceAPI:   cfg.MCPServiceAPI,
 		PortForwardAPI:  cfg.PortForwardAPI,
 		K8sServiceAPI:   cfg.K8sServiceAPI,
 		AggregatorAPI:   cfg.AggregatorAPI,

@@ -292,3 +292,29 @@ func (a *Adapter) deleteCapabilityDefinition(name string) error {
 	// and remove it appropriately
 	return fmt.Errorf("capability deletion not yet supported with layered configuration")
 }
+
+// GetCapability returns a specific capability definition (implements CapabilityHandler interface)
+func (a *Adapter) GetCapability(name string) (interface{}, error) {
+	def, exists := a.manager.GetDefinition(name)
+	if !exists {
+		return nil, fmt.Errorf("capability '%s' not found", name)
+	}
+	return &def, nil
+}
+
+// LoadDefinitions reloads capability definitions from disk (implements CapabilityHandler interface)
+func (a *Adapter) LoadDefinitions() error {
+	return a.manager.LoadDefinitions()
+}
+
+// RefreshAvailability refreshes the availability status of all capabilities (implements CapabilityHandler interface)
+func (a *Adapter) RefreshAvailability() {
+	// The manager automatically checks availability when needed
+	// This method provides a way to force a refresh if needed in the future
+	logging.Debug("CapabilityAdapter", "Refreshing capability availability")
+}
+
+// GetDefinitionsPath returns the path where capability definitions are loaded from (implements CapabilityHandler interface)
+func (a *Adapter) GetDefinitionsPath() string {
+	return a.manager.GetDefinitionsPath()
+}

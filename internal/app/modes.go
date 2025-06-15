@@ -59,7 +59,6 @@ func runTUIMode(ctx context.Context, config *Config, services *Services) error {
 		AggregatorConfig: config.EnvctlConfig.Aggregator,
 		Orchestrator:     services.Orchestrator,
 		OrchestratorAPI:  services.OrchestratorAPI,
-		MCPServiceAPI:    services.MCPAPI,
 		AggregatorAPI:    services.AggregatorAPI,
 	}, logChan)
 	if err != nil {

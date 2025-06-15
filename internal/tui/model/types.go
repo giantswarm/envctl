@@ -41,7 +41,6 @@ type TUIConfig struct {
 	AggregatorConfig config.AggregatorConfig
 	Orchestrator     *orchestrator.Orchestrator
 	OrchestratorAPI  api.OrchestratorAPI
-	MCPServiceAPI    api.MCPServiceAPI
 	PortForwardAPI   api.PortForwardServiceAPI
 	K8sServiceAPI    api.K8sServiceAPI
 	AggregatorAPI    api.AggregatorAPI
@@ -170,7 +169,6 @@ type Model struct {
 	// Service Architecture Components
 	Orchestrator    *orchestrator.Orchestrator
 	OrchestratorAPI api.OrchestratorAPI
-	MCPServiceAPI   api.MCPServiceAPI
 	PortForwardAPI  api.PortForwardServiceAPI
 	K8sServiceAPI   api.K8sServiceAPI
 	AggregatorAPI   api.AggregatorAPI
@@ -240,7 +238,7 @@ type Model struct {
 // RefreshServiceData fetches the latest service data from APIs
 func (m *Model) RefreshServiceData() error {
 	// Skip if APIs are nil (e.g., in tests)
-	if m.K8sServiceAPI == nil || m.PortForwardAPI == nil || m.MCPServiceAPI == nil {
+	if m.K8sServiceAPI == nil || m.PortForwardAPI == nil || m.OrchestratorAPI == nil {
 		return nil
 	}
 
@@ -294,29 +292,53 @@ func (m *Model) RefreshServiceData() error {
 	}
 	m.PortForwards = newPortForwards
 
-	// Refresh MCP servers
-	mcpServers, err := m.MCPServiceAPI.ListServers(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to list MCP servers: %w", err)
-	}
-
-	// Update MCP servers while preserving order
-	newMCPServers := make(map[string]*api.MCPServerInfo)
-	for _, mcp := range mcpServers {
-		newMCPServers[mcp.Label] = mcp
-	}
-
-	// Update order - add any new MCP servers that aren't in the order yet
-	existingMCPInOrder := make(map[string]bool)
-	for _, name := range m.MCPServerOrder {
-		existingMCPInOrder[name] = true
-	}
-	for _, mcp := range mcpServers {
-		if !existingMCPInOrder[mcp.Label] {
-			m.MCPServerOrder = append(m.MCPServerOrder, mcp.Label)
+	// Refresh MCP servers - get them from the service registry instead
+	if registry := api.GetServiceRegistry(); registry != nil {
+		mcpServices := registry.GetByType(api.TypeMCPServer)
+		
+		// Convert service info to MCPServerInfo
+		newMCPServers := make(map[string]*api.MCPServerInfo)
+		for _, service := range mcpServices {
+			mcpInfo := &api.MCPServerInfo{
+				Label:   service.GetLabel(),
+				State:   string(service.GetState()),
+				Health:  string(service.GetHealth()),
+				Enabled: true, // Assume enabled if it's in the registry
+			}
+			
+			// Get additional info from service data if available
+			if data := service.GetServiceData(); data != nil {
+				if name, ok := data["name"].(string); ok {
+					mcpInfo.Name = name
+				}
+				if icon, ok := data["icon"].(string); ok {
+					mcpInfo.Icon = icon
+				}
+				if enabled, ok := data["enabled"].(bool); ok {
+					mcpInfo.Enabled = enabled
+				}
+			}
+			
+			// Get error if any
+			if err := service.GetLastError(); err != nil {
+				mcpInfo.Error = err.Error()
+			}
+			
+			newMCPServers[service.GetLabel()] = mcpInfo
 		}
+		
+		// Update order - add any new MCP servers that aren't in the order yet
+		existingMCPInOrder := make(map[string]bool)
+		for _, name := range m.MCPServerOrder {
+			existingMCPInOrder[name] = true
+		}
+		for _, service := range mcpServices {
+			if !existingMCPInOrder[service.GetLabel()] {
+				m.MCPServerOrder = append(m.MCPServerOrder, service.GetLabel())
+			}
+		}
+		m.MCPServers = newMCPServers
 	}
-	m.MCPServers = newMCPServers
 
 	// Refresh aggregator info
 	if m.AggregatorAPI != nil {

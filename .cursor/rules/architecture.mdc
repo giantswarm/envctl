@@ -97,7 +97,7 @@ Whenever you change Go code and want to test the new functionality, you **MUST**
 1.  **Restart the Service:**
     -   Run the development restart script to rebuild and restart the `envctl` service with your changes.
     -   ```bash
-      ./script/dev-restart.sh
+      ./scripts/dev-restart.sh
       ```
 
 2.  **Initial Log Check:**

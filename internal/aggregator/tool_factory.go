@@ -104,12 +104,12 @@ func (a *AggregatorServer) createToolsFromProviders() []server.ServerTool {
 		}
 	}
 
-	// Get MCP service handler and check if it's a ToolProvider
-	if mcpServiceHandler := api.GetMCPServiceHandler(); mcpServiceHandler != nil {
-		if provider, ok := mcpServiceHandler.(api.ToolProvider); ok {
+	// Get service class manager handler and check if it's a ToolProvider
+	if serviceClassHandler := api.GetServiceClassManager(); serviceClassHandler != nil {
+		if provider, ok := serviceClassHandler.(api.ToolProvider); ok {
 			for _, toolMeta := range provider.GetTools() {
 				// Apply appropriate prefix
-				mcpToolName := a.prefixToolName("mcp", toolMeta.Name)
+				mcpToolName := a.prefixToolName("serviceclass", toolMeta.Name)
 				a.toolManager.setActive(mcpToolName, true)
 
 				tool := server.ServerTool{
@@ -126,12 +126,12 @@ func (a *AggregatorServer) createToolsFromProviders() []server.ServerTool {
 		}
 	}
 
-	// Get service class manager handler and check if it's a ToolProvider
-	if serviceClassHandler := api.GetServiceClassManager(); serviceClassHandler != nil {
-		if provider, ok := serviceClassHandler.(api.ToolProvider); ok {
+	// Get MCP server manager handler and check if it's a ToolProvider
+	if mcpServerManagerHandler := api.GetMCPServerManager(); mcpServerManagerHandler != nil {
+		if provider, ok := mcpServerManagerHandler.(api.ToolProvider); ok {
 			for _, toolMeta := range provider.GetTools() {
 				// Apply appropriate prefix
-				mcpToolName := a.prefixToolName("serviceclass", toolMeta.Name)
+				mcpToolName := a.prefixToolName("mcpserver", toolMeta.Name)
 				a.toolManager.setActive(mcpToolName, true)
 
 				tool := server.ServerTool{
@@ -155,12 +155,13 @@ func (a *AggregatorServer) createToolsFromProviders() []server.ServerTool {
 func (a *AggregatorServer) prefixToolName(provider, toolName string) string {
 	// Define management tool patterns that should get core_ prefix
 	managementPatterns := []string{
-		"service_",      // orchestrator service management
-		"serviceclass_", // ServiceClass instance management
+		"service_",      // service management
+		"serviceclass_", // ServiceClass management
+		"mcpserver_",    // MCP server management
 		"workflow_",     // workflow management (not execution)
 		"capability_",   // capability management
 		"config_",       // configuration management
-		"mcp_",          // MCP server management
+		"mcp_",          // MCP service management
 	}
 
 	// Check if this is a management tool that should get core_ prefix

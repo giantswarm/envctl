@@ -805,18 +805,19 @@ func tickCmd() tea.Cmd {
 // fetchMCPTools returns a command to fetch tools for an MCP server
 func fetchMCPTools(m *model.Model, serverName string) tea.Cmd {
 	return func() tea.Msg {
-		ctx := context.Background()
-		tools, err := m.MCPServiceAPI.GetTools(ctx, serverName)
-		if err != nil {
-			return model.MCPToolsErrorMsg{
-				ServerName: serverName,
-				Error:      err,
-			}
-		}
-		return model.MCPToolsLoadedMsg{
+		// MCPServiceAPI has been removed - tools are now accessed through aggregator
+		// ctx := context.Background()
+		// tools, err := m.MCPServiceAPI.GetTools(ctx, serverName)
+		// if err != nil {
+		return model.MCPToolsErrorMsg{
 			ServerName: serverName,
-			Tools:      tools,
+			Error:      fmt.Errorf("MCP tools are now accessed through the aggregator API"),
 		}
+		// }
+		// return model.MCPToolsLoadedMsg{
+		// 	ServerName: serverName,
+		// 	Tools:      tools,
+		// }
 	}
 }
 

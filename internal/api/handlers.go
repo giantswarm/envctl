@@ -135,20 +135,6 @@ type AggregatorHandler interface {
 	GetPort() int
 }
 
-// MCPServiceHandler provides MCP service-specific functionality
-type MCPServiceHandler interface {
-	GetModelID() string
-	GetProvider() string
-	GetURL() string
-	GetClusterLabel() string
-	GetMCPTools() []MCPTool
-	GetResources() []MCPResource
-	ListServers(ctx context.Context) ([]*MCPServerInfo, error)
-	GetServerInfo(ctx context.Context, label string) (*MCPServerInfo, error)
-	GetServerTools(ctx context.Context, serverName string) ([]MCPTool, error)
-	ToolProvider
-}
-
 // ConfigHandler provides configuration management functionality
 type ConfigHandler interface {
 	// Get configuration
@@ -171,14 +157,18 @@ type ConfigHandler interface {
 
 // CapabilityHandler defines the interface for capability operations
 type CapabilityHandler interface {
-	// ExecuteCapability executes a capability operation
+	// Capability execution
 	ExecuteCapability(ctx context.Context, capabilityType, operation string, params map[string]interface{}) (*CallToolResult, error)
 
-	// IsCapabilityAvailable checks if a capability operation is available
+	// Capability information and availability
+	ListCapabilities() []CapabilityInfo
+	GetCapability(name string) (interface{}, error)
 	IsCapabilityAvailable(capabilityType, operation string) bool
 
-	// ListCapabilities returns information about all available capabilities
-	ListCapabilities() []CapabilityInfo
+	// Capability definition management
+	LoadDefinitions() error
+	RefreshAvailability()
+	GetDefinitionsPath() string
 
 	// Embed ToolProvider for tool generation
 	ToolProvider
@@ -255,6 +245,17 @@ type MCPServerConfigInfo struct {
 	Image       string   `json:"image,omitempty"`
 }
 
+// MCPServerInfo contains information about an MCP server (runtime status)
+type MCPServerInfo struct {
+	Label   string `json:"label"`
+	Name    string `json:"name"`
+	State   string `json:"state"`
+	Health  string `json:"health"`
+	Icon    string `json:"icon"`
+	Enabled bool   `json:"enabled"`
+	Error   string `json:"error,omitempty"`
+}
+
 // MCPServerDefinition represents an MCP server definition (lightweight version for API)
 type MCPServerDefinition struct {
 	Name        string            `json:"name"`
@@ -299,9 +300,6 @@ var (
 	capabilityHandler          CapabilityHandler
 	workflowHandler            WorkflowHandler
 
-	// Maps for service-specific handlers
-	mcpHandlers = make(map[string]MCPServiceHandler)
-
 	handlerMutex sync.RWMutex
 )
 
@@ -327,13 +325,6 @@ func RegisterAggregator(h AggregatorHandler) {
 	aggregatorHandler = h
 }
 
-// RegisterMCPService registers an MCP service handler
-func RegisterMCPService(label string, h MCPServiceHandler) {
-	handlerMutex.Lock()
-	defer handlerMutex.Unlock()
-	mcpHandlers[label] = h
-}
-
 // RegisterConfigHandler registers the configuration handler
 func RegisterConfigHandler(h ConfigHandler) {
 	handlerMutex.Lock()
@@ -344,15 +335,6 @@ func RegisterConfigHandler(h ConfigHandler) {
 // RegisterConfig registers a config handler (alias for RegisterConfigHandler)
 func RegisterConfig(h ConfigHandler) {
 	RegisterConfigHandler(h)
-}
-
-// RegisterMCPServiceHandler registers a global MCP service handler
-func RegisterMCPServiceHandler(h MCPServiceHandler) {
-	handlerMutex.Lock()
-	defer handlerMutex.Unlock()
-	logging.Debug("API", "Registering MCP service handler: %v", h != nil)
-	// Store it as a special global handler
-	mcpHandlers["__global__"] = h
 }
 
 // GetServiceRegistry returns the registered service registry handler
@@ -386,29 +368,6 @@ func GetConfigHandler() ConfigHandler {
 // GetConfig returns the registered config handler (alias for GetConfigHandler)
 func GetConfig() ConfigHandler {
 	return GetConfigHandler()
-}
-
-// GetMCPServiceHandler returns the global MCP service handler
-func GetMCPServiceHandler() MCPServiceHandler {
-	handlerMutex.RLock()
-	defer handlerMutex.RUnlock()
-	h, _ := mcpHandlers["__global__"]
-	return h
-}
-
-// GetMCPService returns a registered MCP service handler
-func GetMCPService(label string) (MCPServiceHandler, bool) {
-	handlerMutex.RLock()
-	defer handlerMutex.RUnlock()
-	h, ok := mcpHandlers[label]
-	return h, ok
-}
-
-// UnregisterMCPService removes an MCP service handler
-func UnregisterMCPService(label string) {
-	handlerMutex.Lock()
-	defer handlerMutex.Unlock()
-	delete(mcpHandlers, label)
 }
 
 // RegisterCapability registers the capability handler
