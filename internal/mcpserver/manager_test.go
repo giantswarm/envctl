@@ -54,7 +54,7 @@ func TestMCPServerManager_validateDefinition(t *testing.T) {
 				Command: []string{"echo", "hello"},
 			},
 			wantErr: true,
-			errMsg:  "MCP server name cannot be empty",
+			errMsg:  "field 'name': is required for MCP server",
 		},
 		{
 			name: "invalid type",
@@ -63,7 +63,7 @@ func TestMCPServerManager_validateDefinition(t *testing.T) {
 				Type: "invalid-type",
 			},
 			wantErr: true,
-			errMsg:  "invalid MCP server type",
+			errMsg:  "field 'type': must be one of: localCommand, container",
 		},
 		{
 			name: "local command without command",
@@ -72,7 +72,7 @@ func TestMCPServerManager_validateDefinition(t *testing.T) {
 				Type: MCPServerTypeLocalCommand,
 			},
 			wantErr: true,
-			errMsg:  "command is required for local command MCP servers",
+			errMsg:  "field 'command': is required for local command MCP servers",
 		},
 		{
 			name: "container without image",
@@ -81,7 +81,7 @@ func TestMCPServerManager_validateDefinition(t *testing.T) {
 				Type: MCPServerTypeContainer,
 			},
 			wantErr: true,
-			errMsg:  "image is required for container MCP servers",
+			errMsg:  "field 'image': is required for container MCP server",
 		},
 	}
 

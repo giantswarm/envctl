@@ -75,21 +75,61 @@ func (cm *CapabilityManager) LoadDefinitions() error {
 	return nil
 }
 
-// validateDefinition validates a capability definition
+// validateDefinition validates a capability definition with comprehensive checks
 func (cm *CapabilityManager) validateDefinition(def *CapabilityDefinition) error {
-	if def.Name == "" {
-		return fmt.Errorf("capability name is required")
-	}
-	if def.Type == "" {
-		return fmt.Errorf("capability type is required")
-	}
-	if len(def.Operations) == 0 {
-		return fmt.Errorf("at least one operation is required")
+	var errors config.ValidationErrors
+
+	// Validate entity name using common helper
+	if err := config.ValidateEntityName(def.Name, "capability"); err != nil {
+		errors = append(errors, err.(config.ValidationError))
 	}
 
-	// Validate the capability type (allow any non-empty string)
-	if !IsValidCapabilityType(def.Type) {
-		return fmt.Errorf("capability type cannot be empty")
+	// Validate type
+	if err := config.ValidateRequired("type", def.Type, "capability"); err != nil {
+		errors = append(errors, err.(config.ValidationError))
+	}
+
+	// Validate description (optional but recommended)
+	if def.Description != "" {
+		if err := config.ValidateMaxLength("description", def.Description, 500); err != nil {
+			errors = append(errors, err.(config.ValidationError))
+		}
+	}
+
+	// Validate operations
+	if len(def.Operations) == 0 {
+		errors.Add("operations", "must have at least one operation for capability")
+	} else {
+		// Validate each operation
+		for opName, op := range def.Operations {
+			if opName == "" {
+				errors.Add("operations", "operation name cannot be empty")
+				continue
+			}
+			
+			// Validate operation description
+			if op.Description == "" {
+				errors.Add(fmt.Sprintf("operations.%s.description", opName), "is required for capability operation")
+			} else if err := config.ValidateMaxLength(fmt.Sprintf("operations.%s.description", opName), op.Description, 300); err != nil {
+				errors = append(errors, err.(config.ValidationError))
+			}
+
+			// Validate required tools
+			for i, tool := range op.Requires {
+				if tool == "" {
+					errors.Add(fmt.Sprintf("operations.%s.requires[%d]", opName, i), "tool name cannot be empty")
+				}
+			}
+		}
+	}
+
+	// Validate the capability type using existing logic
+	if def.Type != "" && !IsValidCapabilityType(def.Type) {
+		errors.Add("type", "is not a valid capability type")
+	}
+
+	if errors.HasErrors() {
+		return config.FormatValidationError("capability", def.Name, errors)
 	}
 
 	return nil

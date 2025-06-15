@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
+	"time"
 
 	"envctl/internal/config"
 	"envctl/pkg/logging"
@@ -74,27 +76,69 @@ func (msm *MCPServerManager) LoadDefinitions() error {
 	return nil
 }
 
-// validateDefinition performs basic validation on an MCP server definition
+// validateDefinition performs comprehensive validation on an MCP server definition
 func (msm *MCPServerManager) validateDefinition(def *MCPServerDefinition) error {
-	if def.Name == "" {
-		return fmt.Errorf("MCP server name cannot be empty")
+	var errors config.ValidationErrors
+
+	// Validate entity name using common helper
+	if err := config.ValidateEntityName(def.Name, "MCP server"); err != nil {
+		errors = append(errors, err.(config.ValidationError))
 	}
 
 	// Validate type
-	if def.Type != MCPServerTypeLocalCommand && def.Type != MCPServerTypeContainer {
-		return fmt.Errorf("invalid MCP server type: %s", def.Type)
+	validTypes := []string{string(MCPServerTypeLocalCommand), string(MCPServerTypeContainer)}
+	if err := config.ValidateOneOf("type", string(def.Type), validTypes); err != nil {
+		errors = append(errors, err.(config.ValidationError))
+	}
+
+	// Validate icon (optional)
+	if def.Icon != "" {
+		if err := config.ValidateMaxLength("icon", def.Icon, 10); err != nil {
+			errors = append(errors, err.(config.ValidationError))
+		}
 	}
 
 	// Validate type-specific requirements
 	switch def.Type {
 	case MCPServerTypeLocalCommand:
 		if len(def.Command) == 0 {
-			return fmt.Errorf("command is required for local command MCP servers")
+			errors.Add("command", "is required for local command MCP servers")
+		} else {
+			// Validate command elements
+			for i, cmd := range def.Command {
+				if strings.TrimSpace(cmd) == "" {
+					errors.Add(fmt.Sprintf("command[%d]", i), "command element cannot be empty")
+				}
+			}
 		}
+		
+		// Note: Args are part of Command array, no separate validation needed
+
 	case MCPServerTypeContainer:
-		if def.Image == "" {
-			return fmt.Errorf("image is required for container MCP servers")
+		if err := config.ValidateRequired("image", def.Image, "container MCP server"); err != nil {
+			errors = append(errors, err.(config.ValidationError))
 		}
+		
+		// Validate environment variables if present
+		for key, value := range def.Env {
+			if key == "" {
+				errors.Add("env", "environment variable key cannot be empty")
+			}
+			if value == "" {
+				errors.Add(fmt.Sprintf("env.%s", key), "environment variable value cannot be empty")
+			}
+		}
+	}
+
+	// Validate health check interval if specified
+	if def.HealthCheckInterval != 0 {
+		if def.HealthCheckInterval < time.Second {
+			errors.Add("healthCheckInterval", "must be at least 1 second")
+		}
+	}
+
+	if errors.HasErrors() {
+		return config.FormatValidationError("MCP server", def.Name, errors)
 	}
 
 	return nil

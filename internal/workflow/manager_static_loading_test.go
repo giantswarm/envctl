@@ -95,7 +95,7 @@ func TestWorkflowManager_ValidationFunction(t *testing.T) {
 				},
 			},
 			expectError: true,
-			errorMsg:    "workflow name cannot be empty",
+			errorMsg:    "field 'name': is required for workflow",
 		},
 		{
 			name: "no steps",
@@ -105,7 +105,7 @@ func TestWorkflowManager_ValidationFunction(t *testing.T) {
 				Steps:       []WorkflowStep{},
 			},
 			expectError: true,
-			errorMsg:    "workflow must have at least one step",
+			errorMsg:    "field 'steps': must have at least one step for workflow",
 		},
 		{
 			name: "empty step ID",

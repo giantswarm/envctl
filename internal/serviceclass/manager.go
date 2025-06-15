@@ -283,24 +283,80 @@ func (scm *ServiceClassManager) GetAllDefinitions() map[string]*ServiceClassDefi
 	return result
 }
 
-// validateServiceClassDefinition performs basic validation on a service class definition
+// validateServiceClassDefinition performs comprehensive validation on a service class definition
 func (scm *ServiceClassManager) validateServiceClassDefinition(def *ServiceClassDefinition) error {
-	if def.Name == "" {
-		return fmt.Errorf("service class name cannot be empty")
-	}
-	if def.Type == "" {
-		return fmt.Errorf("service class type cannot be empty")
-	}
-	if def.Version == "" {
-		return fmt.Errorf("service class version cannot be empty")
+	var errors config.ValidationErrors
+
+	// Validate entity name using common helper
+	if err := config.ValidateEntityName(def.Name, "service class"); err != nil {
+		errors = append(errors, err.(config.ValidationError))
 	}
 
-	// Validate lifecycle tools if present
+	// Validate type
+	if err := config.ValidateRequired("type", def.Type, "service class"); err != nil {
+		errors = append(errors, err.(config.ValidationError))
+	}
+
+	// Validate version
+	if err := config.ValidateRequired("version", def.Version, "service class"); err != nil {
+		errors = append(errors, err.(config.ValidationError))
+	}
+
+	// Validate description (optional but recommended)
+	if def.Description != "" {
+		if err := config.ValidateMaxLength("description", def.Description, 500); err != nil {
+			errors = append(errors, err.(config.ValidationError))
+		}
+	}
+
+	// Validate service type (allow any non-empty string for custom service types)
+	if def.ServiceConfig.ServiceType != "" {
+		if err := config.ValidateMinLength("serviceConfig.serviceType", def.ServiceConfig.ServiceType, 1); err != nil {
+			errors = append(errors, err.(config.ValidationError))
+		}
+	}
+
+	// Validate lifecycle tools
 	if def.ServiceConfig.LifecycleTools.Start.Tool == "" {
-		return fmt.Errorf("start tool is required in lifecycle tools")
+		errors.Add("serviceConfig.lifecycleTools.start.tool", "is required for service class")
 	}
 	if def.ServiceConfig.LifecycleTools.Stop.Tool == "" {
-		return fmt.Errorf("stop tool is required in lifecycle tools")
+		errors.Add("serviceConfig.lifecycleTools.stop.tool", "is required for service class")
+	}
+
+	// Validate optional lifecycle tools if present
+	if def.ServiceConfig.LifecycleTools.Restart != nil && def.ServiceConfig.LifecycleTools.Restart.Tool == "" {
+		errors.Add("serviceConfig.lifecycleTools.restart.tool", "cannot be empty if restart is specified")
+	}
+	if def.ServiceConfig.LifecycleTools.HealthCheck != nil && def.ServiceConfig.LifecycleTools.HealthCheck.Tool == "" {
+		errors.Add("serviceConfig.lifecycleTools.healthCheck.tool", "cannot be empty if healthCheck is specified")
+	}
+	if def.ServiceConfig.LifecycleTools.Status != nil && def.ServiceConfig.LifecycleTools.Status.Tool == "" {
+		errors.Add("serviceConfig.lifecycleTools.status.tool", "cannot be empty if status is specified")
+	}
+
+	// Validate operations if present (for compatibility)
+	for opName, op := range def.Operations {
+		if opName == "" {
+			errors.Add("operations", "operation name cannot be empty")
+			continue
+		}
+		
+		// Validate operation description
+		if op.Description == "" {
+			errors.Add(fmt.Sprintf("operations.%s.description", opName), "is required for service class operation")
+		}
+
+		// Validate required tools
+		for i, tool := range op.Requires {
+			if tool == "" {
+				errors.Add(fmt.Sprintf("operations.%s.requires[%d]", opName, i), "tool name cannot be empty")
+			}
+		}
+	}
+
+	if errors.HasErrors() {
+		return config.FormatValidationError("service class", def.Name, errors)
 	}
 
 	return nil
