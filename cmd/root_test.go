@@ -69,7 +69,7 @@ func TestSubcommands(t *testing.T) {
 	// Test that subcommands are added
 	commands := rootCmd.Commands()
 
-	expectedCommands := []string{"version", "self-update", "connect"}
+	expectedCommands := []string{"version", "self-update", "serve"}
 	foundCommands := make(map[string]bool)
 
 	for _, cmd := range commands {

@@ -10,23 +10,23 @@ import (
 
 // noTUI controls whether to run in CLI mode (true) or TUI mode (false).
 // CLI mode is useful for scripting and CI/CD environments where interactive UI is not desired.
-var noTUI bool
+var serveNoTUI bool
 
 // debug enables verbose logging across the application.
 // This helps troubleshoot connection issues and understand service behavior.
-var debug bool
+var serveDebug bool
 
 // yolo disables the denylist for destructive tool calls.
 // When enabled, all MCP tools can be executed without restrictions.
-var yolo bool
+var serveYolo bool
 
-// connectCmdDef defines the connect command structure.
-// This is the main command of envctl that establishes connections to services
+// serveCmd defines the serve command structure.
+// This is the main command of envctl that starts the aggregator server
 // and sets up the necessary MCP servers for development.
-var connectCmdDef = &cobra.Command{
-	Use:   "connect",
-	Short: "Connect to Giant Swarm managed services with an interactive TUI or CLI mode.",
-	Long: `Connects to configured services and manages MCP servers for AI assistant access.
+var serveCmd = &cobra.Command{
+	Use:   "serve",
+	Short: "Start the envctl aggregator server with an interactive TUI or CLI mode.",
+	Long: `Starts the envctl aggregator server and manages MCP servers for AI assistant access.
 It can run in two modes:
 
 1. Interactive TUI Mode (default):
@@ -38,19 +38,22 @@ It can run in two modes:
    - Starts configured MCP servers and services in the background.
    - Prints a summary of actions and connection details to the console, then exits.
    - Useful for scripting or when a TUI is not desired. Services continue to run
-     until the 'envctl' process initiated by 'connect --no-tui' is terminated (e.g., Ctrl+C).
+     until the 'envctl' process initiated by 'serve --no-tui' is terminated (e.g., Ctrl+C).
+
+The aggregator server provides a unified MCP interface that other envctl commands can connect to.
+Use 'envctl service', 'envctl workflow', etc. to interact with the running server.
 
 Configuration:
   envctl loads configuration from .envctl/config.yaml in the current directory or user config directory.
-  Use 'envctl connect --help' for more information about configuration options.`,
+  Use 'envctl serve --help' for more information about configuration options.`,
 	Args: cobra.NoArgs, // No arguments required
-	RunE: runConnect,
+	RunE: runServe,
 }
 
-// runConnect is the main entry point for the connect command
-func runConnect(cmd *cobra.Command, args []string) error {
+// runServe is the main entry point for the serve command
+func runServe(cmd *cobra.Command, args []string) error {
 	// Create application configuration without cluster arguments
-	cfg := app.NewConfig(noTUI, debug, yolo)
+	cfg := app.NewConfig(serveNoTUI, serveDebug, serveYolo)
 
 	// Create and initialize the application
 	application, err := app.NewApplication(cfg)
@@ -66,13 +69,13 @@ func runConnect(cmd *cobra.Command, args []string) error {
 	return application.Run(ctx)
 }
 
-// init registers the connect command and its flags with the root command.
+// init registers the serve command and its flags with the root command.
 // This is called automatically when the package is imported.
 func init() {
-	rootCmd.AddCommand(connectCmdDef)
+	rootCmd.AddCommand(serveCmd)
 
 	// Register command flags
-	connectCmdDef.Flags().BoolVar(&noTUI, "no-tui", false, "Disable TUI and run services in the background")
-	connectCmdDef.Flags().BoolVar(&debug, "debug", false, "Enable general debug logging")
-	connectCmdDef.Flags().BoolVar(&yolo, "yolo", false, "Disable denylist for destructive tool calls (use with caution)")
-}
+	serveCmd.Flags().BoolVar(&serveNoTUI, "no-tui", false, "Disable TUI and run services in the background")
+	serveCmd.Flags().BoolVar(&serveDebug, "debug", false, "Enable general debug logging")
+	serveCmd.Flags().BoolVar(&serveYolo, "yolo", false, "Disable denylist for destructive tool calls (use with caution)")
+} 

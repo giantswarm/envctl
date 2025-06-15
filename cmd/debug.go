@@ -14,27 +14,27 @@ import (
 )
 
 var (
-	agentEndpoint  string
-	agentTimeout   time.Duration
-	agentVerbose   bool
-	agentNoColor   bool
-	agentJSONRPC   bool
-	agentREPL      bool
-	agentMCPServer bool
+	debugEndpoint  string
+	debugTimeout   time.Duration
+	debugVerbose   bool
+	debugNoColor   bool
+	debugJSONRPC   bool
+	debugREPL      bool
+	debugMCPServer bool
 )
 
-// agentCmd represents the agent command
-var agentCmd = &cobra.Command{
-	Use:   "agent",
-	Short: "Act as an MCP client to debug the aggregator SSE server",
-	Long: `The agent command connects to the MCP aggregator as a client agent, 
+// debugCmd represents the debug command
+var debugCmd = &cobra.Command{
+	Use:   "debug",
+	Short: "Debug the envctl aggregator server using an MCP client",
+	Long: `The debug command connects to the MCP aggregator as a client agent, 
 logs all JSON-RPC communication, and demonstrates dynamic tool updates.
 
 This is useful for debugging the aggregator's behavior, verifying that
 tools are properly aggregated, and ensuring that notifications work correctly
 when tools are added or removed.
 
-The agent can run in three modes:
+The debug command can run in three modes:
 1. Normal mode (default): Connects, lists tools, and waits for notifications
 2. REPL mode (--repl): Provides an interactive interface to explore and execute tools
 3. MCP Server mode (--mcp-server): Runs an MCP server that exposes REPL functionality via stdio
@@ -48,33 +48,35 @@ In REPL mode, you can:
 - Toggle notification display
 
 In MCP Server mode:
-- The agent acts as an MCP server using stdio transport
+- The debug command acts as an MCP server using stdio transport
 - It exposes all REPL functionality as MCP tools
 - It's designed for integration with AI assistants like Claude or Cursor
 - Configure it in your AI assistant's MCP settings
 
 By default, it connects to the aggregator endpoint configured in your
-envctl configuration file. You can override this with the --endpoint flag.`,
-	RunE: runAgent,
+envctl configuration file. You can override this with the --endpoint flag.
+
+Note: The aggregator server must be running (use 'envctl serve') before using this command.`,
+	RunE: runDebug,
 }
 
 func init() {
-	rootCmd.AddCommand(agentCmd)
+	rootCmd.AddCommand(debugCmd)
 
 	// Add flags
-	agentCmd.Flags().StringVar(&agentEndpoint, "endpoint", "", "SSE endpoint URL (default: from config)")
-	agentCmd.Flags().DurationVar(&agentTimeout, "timeout", 5*time.Minute, "Timeout for waiting for notifications")
-	agentCmd.Flags().BoolVar(&agentVerbose, "verbose", false, "Enable verbose logging (show keepalive messages)")
-	agentCmd.Flags().BoolVar(&agentNoColor, "no-color", false, "Disable colored output")
-	agentCmd.Flags().BoolVar(&agentJSONRPC, "json-rpc", false, "Enable full JSON-RPC message logging")
-	agentCmd.Flags().BoolVar(&agentREPL, "repl", false, "Start interactive REPL mode")
-	agentCmd.Flags().BoolVar(&agentMCPServer, "mcp-server", false, "Run as MCP server (stdio transport)")
+	debugCmd.Flags().StringVar(&debugEndpoint, "endpoint", "", "SSE endpoint URL (default: from config)")
+	debugCmd.Flags().DurationVar(&debugTimeout, "timeout", 5*time.Minute, "Timeout for waiting for notifications")
+	debugCmd.Flags().BoolVar(&debugVerbose, "verbose", false, "Enable verbose logging (show keepalive messages)")
+	debugCmd.Flags().BoolVar(&debugNoColor, "no-color", false, "Disable colored output")
+	debugCmd.Flags().BoolVar(&debugJSONRPC, "json-rpc", false, "Enable full JSON-RPC message logging")
+	debugCmd.Flags().BoolVar(&debugREPL, "repl", false, "Start interactive REPL mode")
+	debugCmd.Flags().BoolVar(&debugMCPServer, "mcp-server", false, "Run as MCP server (stdio transport)")
 
 	// Mark flags as mutually exclusive
-	agentCmd.MarkFlagsMutuallyExclusive("repl", "mcp-server")
+	debugCmd.MarkFlagsMutuallyExclusive("repl", "mcp-server")
 }
 
-func runAgent(cmd *cobra.Command, args []string) error {
+func runDebug(cmd *cobra.Command, args []string) error {
 	// Create context with signal handling
 	ctx, cancel := context.WithCancel(cmd.Context())
 	defer cancel()
@@ -84,21 +86,21 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-sigChan
-		if !agentMCPServer {
+		if !debugMCPServer {
 			fmt.Println("\nReceived interrupt signal, shutting down gracefully...")
 		}
 		cancel()
 	}()
 
 	// Determine endpoint
-	endpoint := agentEndpoint
+	endpoint := debugEndpoint
 	if endpoint == "" {
 		// Load configuration to get aggregator settings
 		cfg, err := config.LoadConfig()
 		if err != nil {
 			// Use default if config cannot be loaded
 			endpoint = "http://localhost:8080/sse"
-			if !agentMCPServer {
+			if !debugMCPServer {
 				fmt.Printf("Warning: Could not load config (%v), using default endpoint: %s\n", err, endpoint)
 			}
 		} else {
@@ -116,16 +118,16 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create logger
-	logger := agent.NewLogger(agentVerbose, !agentNoColor, agentJSONRPC)
+	logger := agent.NewLogger(debugVerbose, !debugNoColor, debugJSONRPC)
 
 	// Run in MCP Server mode if requested
-	if agentMCPServer {
+	if debugMCPServer {
 		server, err := agent.NewMCPServer(endpoint, logger, false)
 		if err != nil {
 			return fmt.Errorf("failed to create MCP server: %w", err)
 		}
 
-		logger.Info("Starting envctl agent MCP server (stdio transport)...")
+		logger.Info("Starting envctl debug MCP server (stdio transport)...")
 		logger.Info("Connecting to aggregator at: %s", endpoint)
 
 		if err := server.Start(ctx); err != nil {
@@ -138,7 +140,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	client := agent.NewClient(endpoint, logger)
 
 	// Run in REPL mode if requested
-	if agentREPL {
+	if debugREPL {
 		// REPL mode doesn't use timeout
 		repl := agent.NewREPL(client, logger)
 		if err := repl.Run(ctx); err != nil {
@@ -148,17 +150,17 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create timeout context for non-REPL mode
-	timeoutCtx, timeoutCancel := context.WithTimeout(ctx, agentTimeout)
+	timeoutCtx, timeoutCancel := context.WithTimeout(ctx, debugTimeout)
 	defer timeoutCancel()
 
 	// Run the agent in normal mode
 	if err := client.Run(timeoutCtx); err != nil {
 		if err == context.DeadlineExceeded {
-			logger.Info("Timeout reached after %v", agentTimeout)
+			logger.Info("Timeout reached after %v", debugTimeout)
 			return nil
 		}
-		return fmt.Errorf("agent error: %w", err)
+		return fmt.Errorf("debug error: %w", err)
 	}
 
 	return nil
-}
+} 
