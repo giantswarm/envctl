@@ -31,7 +31,7 @@ func (ve ValidationErrors) Error() string {
 	if len(ve) == 1 {
 		return ve[0].Error()
 	}
-	
+
 	var messages []string
 	for _, err := range ve {
 		messages = append(messages, err.Error())
@@ -124,15 +124,15 @@ func ValidateEntityName(name, entityType string) error {
 	if err := ValidateRequired("name", name, entityType); err != nil {
 		return err
 	}
-	
+
 	if err := ValidateMinLength("name", name, 1); err != nil {
 		return err
 	}
-	
+
 	if err := ValidateMaxLength("name", name, 100); err != nil {
 		return err
 	}
-	
+
 	// Check for invalid characters (basic validation)
 	if strings.Contains(name, " ") {
 		return ValidationError{
@@ -141,7 +141,7 @@ func ValidateEntityName(name, entityType string) error {
 			Message: "cannot contain spaces",
 		}
 	}
-	
+
 	return nil
 }
 
@@ -150,7 +150,7 @@ func FormatValidationError(entityType, entityName string, err error) error {
 	if err == nil {
 		return nil
 	}
-	
+
 	if entityName != "" {
 		return fmt.Errorf("validation failed for %s '%s': %w", entityType, entityName, err)
 	}
@@ -169,7 +169,7 @@ func ValidateMap(field string, value map[string]interface{}, required bool, enti
 		}
 		return nil
 	}
-	
+
 	if required && len(value) == 0 {
 		return ValidationError{
 			Field:   field,
@@ -177,6 +177,6 @@ func ValidateMap(field string, value map[string]interface{}, required bool, enti
 			Message: fmt.Sprintf("must not be empty for %s", entityType),
 		}
 	}
-	
+
 	return nil
-} 
+}

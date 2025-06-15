@@ -111,14 +111,14 @@ func (msm *MCPServerManager) validateDefinition(def *MCPServerDefinition) error 
 				}
 			}
 		}
-		
+
 		// Note: Args are part of Command array, no separate validation needed
 
 	case MCPServerTypeContainer:
 		if err := config.ValidateRequired("image", def.Image, "container MCP server"); err != nil {
 			errors = append(errors, err.(config.ValidationError))
 		}
-		
+
 		// Validate environment variables if present
 		for key, value := range def.Env {
 			if key == "" {

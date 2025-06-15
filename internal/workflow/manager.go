@@ -92,25 +92,25 @@ func (wm *WorkflowManager) validateWorkflowDefinition(def *WorkflowDefinition) e
 		errors.Add("steps", "must have at least one step for workflow")
 	} else {
 		stepIDs := make(map[string]bool)
-		
+
 		// Validate each step
 		for i, step := range def.Steps {
 			if step.ID == "" {
 				errors.Add(fmt.Sprintf("steps[%d].id", i), "step ID cannot be empty")
 				continue
 			}
-			
+
 			// Check for duplicate step IDs
 			if stepIDs[step.ID] {
 				errors.Add(fmt.Sprintf("steps[%d].id", i), fmt.Sprintf("duplicate step ID '%s'", step.ID))
 			}
 			stepIDs[step.ID] = true
-			
+
 			// Validate step tool
 			if step.Tool == "" {
 				errors.Add(fmt.Sprintf("steps[%d].tool", i), "tool name cannot be empty")
 			}
-			
+
 			// Note: WorkflowStep doesn't have a description field
 		}
 	}
@@ -121,21 +121,21 @@ func (wm *WorkflowManager) validateWorkflowDefinition(def *WorkflowDefinition) e
 		if err := config.ValidateOneOf("inputSchema.type", def.InputSchema.Type, validTypes); err != nil {
 			errors = append(errors, err.(config.ValidationError))
 		}
-		
+
 		// Validate required fields if specified
 		for i, required := range def.InputSchema.Required {
 			if required == "" {
 				errors.Add(fmt.Sprintf("inputSchema.required[%d]", i), "required field name cannot be empty")
 			}
 		}
-		
+
 		// Validate properties if specified
 		for propName, prop := range def.InputSchema.Properties {
 			if propName == "" {
 				errors.Add("inputSchema.properties", "property name cannot be empty")
 				continue
 			}
-			
+
 			if prop.Type == "" {
 				errors.Add(fmt.Sprintf("inputSchema.properties.%s.type", propName), "property type is required")
 			} else {

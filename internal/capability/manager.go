@@ -106,7 +106,7 @@ func (cm *CapabilityManager) validateDefinition(def *CapabilityDefinition) error
 				errors.Add("operations", "operation name cannot be empty")
 				continue
 			}
-			
+
 			// Validate operation description
 			if op.Description == "" {
 				errors.Add(fmt.Sprintf("operations.%s.description", opName), "is required for capability operation")

@@ -341,7 +341,7 @@ func (scm *ServiceClassManager) validateServiceClassDefinition(def *ServiceClass
 			errors.Add("operations", "operation name cannot be empty")
 			continue
 		}
-		
+
 		// Validate operation description
 		if op.Description == "" {
 			errors.Add(fmt.Sprintf("operations.%s.description", opName), "is required for service class operation")
