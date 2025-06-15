@@ -76,11 +76,15 @@ func (a *aggregatorToolChecker) GetAvailableTools() []string {
 
 // InitializeServices creates and registers all required services
 func InitializeServices(cfg *Config) (*Services, error) {
+	// Create storage for shared use across services including orchestrator persistence
+	storage := config.NewStorage()
+
 	// Create orchestrator without ToolCaller initially
 	orchConfig := orchestrator.Config{
 		Aggregator: cfg.EnvctlConfig.Aggregator,
 		Yolo:       cfg.Yolo,
 		ToolCaller: nil, // Will be set up after aggregator is available
+		Storage:    storage,
 	}
 
 	orch := orchestrator.New(orchConfig)
@@ -115,8 +119,7 @@ func InitializeServices(cfg *Config) (*Services, error) {
 	// Create the tool checker using the API handler
 	toolChecker := &aggregatorToolChecker{serviceRegistry: registry}
 
-	// Create ServiceClass manager (now uses layered configuration loading)
-	storage := config.NewStorage() // Create storage once
+	// Use the shared storage created earlier
 	serviceClassManager, err := serviceclass.NewServiceClassManager(toolChecker, storage)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ServiceClass manager: %w", err)

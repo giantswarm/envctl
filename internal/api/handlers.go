@@ -54,6 +54,12 @@ type CreateServiceClassRequest struct {
 	// Parameters for service creation
 	Parameters map[string]interface{} `json:"parameters"`
 
+	// Whether to persist this service instance definition to YAML files
+	Persist bool `json:"persist,omitempty"`
+
+	// Optional: Whether this instance should be started automatically on system startup
+	AutoStart bool `json:"autoStart,omitempty"`
+
 	// Override default timeouts (future use)
 	CreateTimeout *time.Duration `json:"createTimeout,omitempty"`
 	DeleteTimeout *time.Duration `json:"deleteTimeout,omitempty"`

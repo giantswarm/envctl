@@ -130,6 +130,8 @@ func (a *Adapter) CreateServiceClassInstance(ctx context.Context, req api.Create
 		ServiceClassName: req.ServiceClassName,
 		Label:            req.Label,
 		Parameters:       req.Parameters,
+		Persist:          req.Persist,
+		AutoStart:        req.AutoStart,
 		CreateTimeout:    req.CreateTimeout,
 		DeleteTimeout:    req.DeleteTimeout,
 	}
@@ -302,6 +304,18 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 					Type:        "object",
 					Required:    false,
 					Description: "Parameters for service creation",
+				},
+				{
+					Name:        "persist",
+					Type:        "boolean",
+					Required:    false,
+					Description: "Whether to persist this service instance definition to YAML files for automatic recreation on startup",
+				},
+				{
+					Name:        "autoStart",
+					Type:        "boolean",
+					Required:    false,
+					Description: "Whether this instance should be started automatically on system startup (only applies if persist is true)",
 				},
 			},
 		},
@@ -486,10 +500,16 @@ func (a *Adapter) handleServiceClassInstanceCreate(ctx context.Context, args map
 		parameters = make(map[string]interface{})
 	}
 
+	// Parse optional boolean parameters
+	persist, _ := args["persist"].(bool)
+	autoStart, _ := args["autoStart"].(bool)
+
 	req := api.CreateServiceClassRequest{
 		ServiceClassName: serviceClassName,
 		Label:            label,
 		Parameters:       parameters,
+		Persist:          persist,
+		AutoStart:        autoStart,
 	}
 
 	instance, err := a.CreateService(ctx, req)
