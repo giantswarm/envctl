@@ -112,7 +112,7 @@ Whenever you change Go code and want to test the new functionality, you **MUST**
     -   Start by listing the available tools to ensure your new features are registered.
     -   ```bash
       # Example: List all tools from the mcp-debug server
-      mcp_mcp-debug_call_tool(name="core_mcp_server_list_tools", arguments={ "serverName": "mcp-debug" })
+      mcp_mcp-debug_call_tool(name="core_mcpserver_list_tools", arguments={ "serverName": "mcp-debug" })
       ```
     -   Then, call the specific tools related to your changes to validate their behavior.
     -   ```bash

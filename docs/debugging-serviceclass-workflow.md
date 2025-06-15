@@ -32,7 +32,7 @@ core_service_list
 ### **1.2 Verify MCP Server Registration**
 ```bash
 # Check if all expected MCP servers are registered
-core_mcp_server_list
+core_mcpserver_list
 ```
 
 ### **1.3 Check ServiceClass Availability**

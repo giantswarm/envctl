@@ -118,8 +118,8 @@ func TestPrefixToolName_NewNamingConvention(t *testing.T) {
 		{
 			name:         "mcp management",
 			provider:     "mcp",
-			toolName:     "mcp_server_list",
-			expectedName: "core_mcp_server_list",
+			toolName:     "mcpserver_list",
+			expectedName: "core_mcpserver_list",
 			description:  "MCP management tools get core_ prefix",
 		},
 		{

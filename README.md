@@ -531,10 +531,10 @@ envctl exposes its own API functionality through MCP tools, allowing AI assistan
 - `x_cluster_switch` - Switch active cluster for a role
 - `x_cluster_active` - Get currently active cluster for a role
 
-**MCP Server Tools** (prefix: `x_mcp_server_*`):
-- `x_mcp_server_list` - List all MCP servers
-- `x_mcp_server_info` - Get detailed information about an MCP server
-- `x_mcp_server_tools` - List tools exposed by an MCP server
+**MCP Server Tools** (prefix: `x_mcpserver_*`):
+- `x_mcpserver_list` - List all MCP servers
+- `x_mcpserver_info` - Get detailed information about an MCP server
+- `x_mcpserver_tools` - List tools exposed by an MCP server
 
 **K8s Connection Tools** (prefix: `x_k8s_connection_*`):
 - `x_k8s_connection_list` - List all Kubernetes connections

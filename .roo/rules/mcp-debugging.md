@@ -26,7 +26,7 @@ mcp_mcp-debug_call_tool(name="core_service_list", arguments={})
 ### 2. Check MCP Server Registration
 Verify that all expected MCP servers are properly registered with the aggregator:
 ```
-mcp_mcp-debug_call_tool(name="core_mcp_server_list", arguments={})
+mcp_mcp-debug_call_tool(name="core_mcpserver_list", arguments={})
 ```
 
 ### 5. Troubleshoot Connection Issues
