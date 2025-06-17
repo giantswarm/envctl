@@ -1,7 +1,7 @@
-# Product Requirements Document: `gs-debug` Engine Testing & Hardening
+# Product Requirements Document: `envctl` Testing & Hardening
 
-**Author:** Gemini SRE Agent
-**Version:** 1.0
+**Author:** Timo Derstappen
+**Version:** 2.0
 **Date:** 2025-06-16
 **Status:** Draft
 
@@ -30,196 +30,338 @@ The `envctl` engine and its components are powerful but have exhibited stability
 
 ---
 
-## 3. Test Scope & Methodology
+## 3. Core Concepts Analysis
 
-This effort will focus on building a testsuite, tests and actual testing of the `envctl` engine through the lens of its highest-level concepts. 
+Based on deep code analysis, envctl operates on five fundamental concepts that form the architecture:
 
-**Methodology:**
+### 3.1 MCPServers
+**Definition:** External processes that expose tools via the Model Context Protocol (MCP).
 
-1.  **Inventory & Review:** Catalog all existing functionality of `Workflows`, `ServiceClasses`, `Services`, `Capabilities` and `MCPServers` found in `envctl`.
-2.  **Manual Validation:** Execute each workflow, service class, capability and mcpserver and service lifecycle manually to establish a baseline of current behavior, documenting all failures, bugs, and unexpected outcomes.
-3.  **Test Case Formalization:** Convert each manual validation step into a formal, written test case with clear preconditions, steps, and expected outcomes.
-4.  **Bug Remediation:** Address the bugs and issues uncovered during manual validation.
-5.  **Test Suite Automation:** Implement the formalized test cases into an automated testing framework.
+**Architecture:**
+- **Package:** `internal/mcpserver`
+- **Key Components:** 
+  - `MCPServerManager`: Loads and manages server definitions from YAML
+  - `StdioClient`: Handles communication with local command servers
+  - Container support for containerized MCP servers
+- **Lifecycle:** Load definitions → Start processes → Monitor health → Handle failures
+- **Configuration:** YAML-based definitions supporting both `localCommand` and `container` types
+- **State Management:** Process state tracking with discrete status updates
 
----
+**Current Test Coverage:** Unit tests for manager, loader, and client components. Integration tests missing.
 
-## 4. Test Cases
+### 3.2 Services
+**Definition:** Runtime instances managed by the orchestrator with lifecycle and dependency management.
 
-This section outlines the specific test cases to be implemented. We will first test the core functionality of each concept, then test specific instances and workflows.
+**Architecture:**
+- **Package:** `internal/services`
+- **Key Components:**
+  - `ServiceRegistry`: Central registry for all services
+  - `BaseService`: Common lifecycle management
+  - `GenericServiceInstance`: Dynamic ServiceClass-based instances
+- **States:** Unknown → Waiting → Starting → Running → Stopping → Stopped/Failed
+- **Health:** Unknown → Checking → Healthy/Unhealthy
+- **Integration:** API Service Locator Pattern with central registry
 
-### 4.1. Core Workflow Management Tests
+**Current Test Coverage:** Unit tests for registry and base service. Missing integration tests for state transitions.
 
-These tests validate the fundamental workflow management capabilities of the `gs-debug` engine.
+### 3.3 ServiceClasses
+**Definition:** YAML-based templates defining how to create and manage dynamic service instances.
 
-| Test Case ID | Component Target | Test Description | Expected Outcome |
-| :--- | :--- | :--- | :--- |
-| CORE-WF-01 | `core_workflow_create` | Create a valid workflow from YAML definition. | Workflow is created successfully. `core_workflow_list` includes the new workflow. |
-| CORE-WF-02 | `core_workflow_create` | Attempt to create a workflow with invalid YAML syntax. | The operation fails with a specific, helpful YAML parsing error, indicating the line and character of the issue. |
-| CORE-WF-03 | `core_workflow_create` | Attempt to create a workflow that references non-existent tools. | Workflow is created but validation shows missing tool dependencies. |
-| CORE-WF-04 | `core_workflow_get` | Retrieve details of an existing workflow. | Returns complete workflow definition including steps, parameters, and metadata. |
-| CORE-WF-05 | `core_workflow_list` | List all available workflows. | Returns comprehensive list of workflows with their availability status. |
-| CORE-WF-06 | `core_workflow_update` | Update an existing workflow with new definition. | Workflow is updated successfully. Changes are reflected in subsequent `get` calls. |
-| CORE-WF-07 | `core_workflow_delete` | Delete an existing workflow. | Workflow is removed. `core_workflow_list` no longer includes it. |
-| CORE-WF-08 | `core_workflow_validate` | Validate a workflow YAML definition without creating it. | Returns validation results indicating any syntax or dependency issues. |
-| CORE-WF-09 | `core_workflow_spec` | Get workflow specification and examples. | Returns complete specification documentation and example workflows. |
+**Architecture:**
+- **Package:** `internal/serviceclass`
+- **Key Components:**
+  - `ServiceClassManager`: Loads and validates ServiceClass definitions
+  - Template variable support for dynamic parameter mapping
+  - Lifecycle tool mappings (start/stop/health/status)
+- **Configuration:** YAML definitions with parameter validation and tool mappings
+- **Integration:** Tool availability checking and response mapping
 
-### 4.2. Core ServiceClass Management Tests
+**Current Test Coverage:** Good unit test coverage with integration tests. Missing behavioral validation.
 
-These tests validate the fundamental ServiceClass management capabilities.
+### 3.4 Capabilities
+**Definition:** Operation definitions with embedded workflows and tool requirements.
 
-| Test Case ID | Component Target | Test Description | Expected Outcome |
-| :--- | :--- | :--- | :--- |
-| CORE-SC-01 | `core_serviceclass_create` | Create a valid ServiceClass from YAML definition. | ServiceClass is created successfully. `core_serviceclass_list` includes the new ServiceClass. |
-| CORE-SC-02 | `core_serviceclass_create` | Attempt to create a ServiceClass that references non-existent tools. | ServiceClass is created but marked as `available: false`. `core_serviceclass_available` returns clear error about missing tools. |
-| CORE-SC-03 | `core_serviceclass_get` | Retrieve details of an existing ServiceClass. | Returns complete ServiceClass definition including lifecycle hooks, parameters, and tool dependencies. |
-| CORE-SC-04 | `core_serviceclass_list` | List all available ServiceClasses. | Returns comprehensive list with availability status for each ServiceClass. |
-| CORE-SC-05 | `core_serviceclass_available` | Check availability of a ServiceClass with all tools present vs. missing tools. | Returns `true` for valid ServiceClass, `false` with specific error for one with missing tools. |
-| CORE-SC-06 | `core_serviceclass_update` | Update an existing ServiceClass definition. | ServiceClass is updated successfully. Changes are reflected in subsequent operations. |
-| CORE-SC-07 | `core_serviceclass_delete` | Delete an existing ServiceClass. | ServiceClass is removed. `core_serviceclass_list` no longer includes it. |
-| CORE-SC-08 | `core_serviceclass_register` | Register a ServiceClass dynamically at runtime. | ServiceClass becomes available immediately without restart. |
-| CORE-SC-09 | `core_serviceclass_unregister` | Unregister a dynamically registered ServiceClass. | ServiceClass becomes unavailable immediately. |
-| CORE-SC-10 | `core_serviceclass_refresh` | Refresh availability status of all ServiceClasses. | All ServiceClass availability statuses are updated based on current tool availability. |
-| CORE-SC-11 | `core_serviceclass_load` | Load ServiceClass definitions from configured directory. | All ServiceClass files are loaded and become available. |
-| CORE-SC-12 | `core_serviceclass_definitions_path` | Get path where ServiceClass definitions are loaded from. | Returns correct path to ServiceClass definitions directory. |
+**Architecture:**
+- **Package:** `internal/capability`
+- **Key Components:**
+  - `CapabilityManager`: Loads capability definitions
+  - `Registry`: Manages capability registration and discovery
+  - `Resolver`: Resolves capability requirements to providers
+- **Workflow Integration:** Embedded workflows for complex operations
+- **Tool Requirements:** Dependency checking and validation
 
-### 4.3. Core Service Instance Management Tests
+**Current Test Coverage:** Unit tests for registry and resolver. Missing integration tests for workflow execution.
 
-These tests validate the service instance lifecycle management capabilities.
+### 3.5 Workflows
+**Definition:** Sequences of MCP tool calls with parameter templating and result chaining.
 
-| Test Case ID | Component Target | Test Description | Expected Outcome |
-| :--- | :--- | :--- | :--- |
-| CORE-SVC-01 | `core_service_create` | Create a service instance from a valid ServiceClass. | Service instance is created successfully. `core_service_list` shows the new service. |
-| CORE-SVC-02 | `core_service_create` | Create a service instance with persistence enabled. | Service instance is created and persisted. Survives engine restart. |
-| CORE-SVC-03 | `core_service_create` | Create a service instance with autoStart enabled. | Service instance is created, persisted, and automatically starts on engine restart. |
-| CORE-SVC-04 | `core_service_create` | Attempt to create service from non-existent ServiceClass. | Operation fails with clear error about missing ServiceClass. |
-| CORE-SVC-05 | `core_service_get` | Get detailed information about a service instance. | Returns complete service details including status, parameters, and runtime information. |
-| CORE-SVC-06 | `core_service_list` | List all service instances (static and ServiceClass-based). | Returns comprehensive list with current status for each service. |
-| CORE-SVC-07 | `core_service_start` | Start a stopped service instance. | Service transitions to running state. Status reflects the change. |
-| CORE-SVC-08 | `core_service_stop` | Stop a running service instance. | Service transitions to stopped state. Resources are cleaned up properly. |
-| CORE-SVC-09 | `core_service_restart` | Restart a service instance. | Service stops and starts successfully. State is properly reset. |
-| CORE-SVC-10 | `core_service_status` | Get status of a specific service instance. | Returns accurate current status and health information. |
-| CORE-SVC-11 | `core_service_delete` | Delete a service instance. | Service is stopped and removed. `core_service_list` no longer includes it. |
-| CORE-SVC-12 | `core_service_delete` | Attempt to delete a static service. | Operation fails with appropriate error message about static services. |
+**Architecture:**
+- **Package:** `internal/workflow`
+- **Key Components:**
+  - `WorkflowManager`: Loads and manages workflow definitions
+  - `WorkflowExecutor`: Executes workflow steps with templating
+- **Features:** Input validation, template variable resolution, step result chaining
+- **Schema Support:** JSON Schema validation for input parameters
 
-### 4.4. Core MCP Server Management Tests
+**Current Test Coverage:** Good unit test coverage. Missing integration tests for complex workflow scenarios.
 
-These tests validate the dynamic MCP server management capabilities.
+### 3.6 Orchestrator
+**Definition:** Central coordinator managing service lifecycle, dependencies, and ServiceClass instantiation.
 
-| Test Case ID | Component Target | Test Description | Expected Outcome |
-| :--- | :--- | :--- | :--- |
-| CORE-MCP-01 | `core_mcpserver_create` | Create a new MCP server definition from valid YAML. | MCP server is created successfully. `core_mcpserver_list` includes the new server. |
-| CORE-MCP-02 | `core_mcpserver_create` | Attempt to create MCP server with invalid YAML. | Operation fails with specific YAML parsing error. |
-| CORE-MCP-03 | `core_mcpserver_get` | Retrieve details of an existing MCP server. | Returns complete MCP server definition including tools and configuration. |
-| CORE-MCP-04 | `core_mcpserver_list` | List all MCP server definitions. | Returns comprehensive list with availability status for each server. |
-| CORE-MCP-05 | `core_mcpserver_available` | Check availability of an MCP server. | Returns accurate availability status based on server health. |
-| CORE-MCP-06 | `core_mcpserver_register` | Register an MCP server dynamically at runtime. | Server becomes available immediately without restart. Tools become accessible. |
-| CORE-MCP-07 | `core_mcpserver_unregister` | Unregister a dynamically registered MCP server. | Server becomes unavailable immediately. Tools are no longer accessible. |
-| CORE-MCP-08 | `core_mcpserver_update` | Update an existing MCP server definition. | Changes are applied correctly. Server behavior reflects new configuration. |
-| CORE-MCP-09 | `core_mcpserver_delete` | Delete a persisted MCP server definition. | MCP server definition is removed and no longer loads on restart. |
-| CORE-MCP-10 | `core_mcpserver_refresh` | Refresh availability status of all MCP servers. | All server availability statuses are updated based on current health. |
-| CORE-MCP-11 | `core_mcpserver_load` | Load MCP server definitions from configured directory. | All MCP server files are loaded and become available. |
-| CORE-MCP-12 | `core_mcpserver_definitions_path` | Get path where MCP server definitions are loaded from. | Returns correct path to MCP server definitions directory. |
+**Architecture:**
+- **Package:** `internal/orchestrator`
+- **Key Features:**
+  - Unified service registry for static and dynamic services
+  - ServiceClass-based service instantiation
+  - Dependency management and state coordination
+  - Persistence support for service definitions
 
-### 4.5. Core Capability Management Tests
-
-These tests validate the capability abstraction layer functionality.
-
-| Test Case ID | Component Target | Test Description | Expected Outcome |
-| :--- | :--- | :--- | :--- |
-| CORE-CAP-01 | `core_capability_create` | Create a new capability mapping from YAML definition. | Capability is created successfully. `core_capability_list` includes the new capability. |
-| CORE-CAP-02 | `core_capability_create` | Create capability that maps specific tool to generic API. | Capability is created. Generic API calls correctly invoke the underlying tool. |
-| CORE-CAP-03 | `core_capability_get` | Retrieve details of an existing capability. | Returns complete capability definition including tool mappings and parameters. |
-| CORE-CAP-04 | `core_capability_list` | List all capability definitions. | Returns comprehensive list of all available capabilities. |
-| CORE-CAP-05 | `core_capability_available` | Check availability of capability with existing vs. missing underlying tool. | Returns `true` for valid capability, `false` for one with missing tool. |
-| CORE-CAP-06 | `core_capability_update` | Update an existing capability to point to different tool. | Mapping is updated. Generic API calls now invoke the new tool. |
-| CORE-CAP-07 | `core_capability_delete` | Delete an existing capability. | Capability is removed. Generic API calls fail with "capability not found" error. |
-| CORE-CAP-08 | `core_capability_load` | Load capability definitions from configured directory. | All capability files are loaded and become available. |
-| CORE-CAP-09 | `core_capability_definitions_path` | Get path where capability definitions are loaded from. | Returns correct path to capability definitions directory. |
-
-### 4.6. Core Configuration Management Tests
-
-These tests validate the configuration management capabilities.
-
-| Test Case ID | Component Target | Test Description | Expected Outcome |
-| :--- | :--- | :--- | :--- |
-| CORE-CFG-01 | `core_config_get` | Get current envctl configuration. | Returns complete current configuration including all settings. |
-| CORE-CFG-02 | `core_config_get_global_settings` | Get global settings from configuration. | Returns global settings section of configuration. |
-| CORE-CFG-03 | `core_config_get_aggregator` | Get aggregator configuration. | Returns aggregator-specific configuration settings. |
-| CORE-CFG-04 | `core_config_update_global_settings` | Update global settings. | Settings are updated successfully. Changes persist across operations. |
-| CORE-CFG-05 | `core_config_update_aggregator` | Update aggregator configuration. | Aggregator settings are updated successfully. |
-| CORE-CFG-06 | `core_config_save` | Save current configuration to file. | Configuration is persisted to disk successfully. |
-| CORE-CFG-07 | `core_config_reload` | Reload configuration from file. | Configuration is reloaded from disk. Changes are applied. |
-
-### 4.7. ServiceClass Lifecycle Tests
-
-These tests will validate the entire lifecycle (`create`, `status`, `delete`, `healthcheck`) of our core `ServiceClasses`.
-
-| Test Case ID | ServiceClass Target | Test Description | Expected Outcome |
-| :--- | :--- | :--- | :--- |
-| SC-LC-01 | `workload-cluster-login` | Instantiate the service for a valid cluster. Check its status, verify context switch, and then delete it. | Service starts (`core_service_create`), context is switched, `kubectl` commands succeed, service deletes cleanly (`core_service_delete`). |
-| SC-LC-02 | `workload-cluster-login` | Attempt to instantiate with an invalid cluster name. | Service creation fails with a clear, user-friendly error message. |
-| SC-LC-03 | `prometheus-mcp-server` | Instantiate with a custom port. Verify the `PROMETHEUS_URL` env var is set correctly and the port-forward is active. | Service starts, env var is correct, health check passes (`core_service_status`), `x_prometheus_list_metrics` succeeds. |
-| SC-LC-04 | `prometheus-mcp-server` | Attempt to instantiate on a port that is already in use. | Service creation fails immediately with a "port already in use" error. |
-| SC-LC-05 | `mimir-prometheus` | Validate that the underlying `x_kubernetes_port_forward` is created and can be managed. | Service starts, `x_kubernetes_list_port_forward_sessions` shows the session, service deletes cleanly. |
-| SC-LC-06 | `workload-cluster-login` | Test the start/stop/restart lifecycle of a persisted service instance. | `core_service_stop` deactivates the service. `core_service_start` reactivates it. `core_service_restart` successfully cycles the service. The service persists after a `gs-debug` restart. |
-| SC-LC-07 | All | List all running service instances. | `core_service_list` returns a correct list of all active service instances with their status. |
-
-### 4.8. Workflow Execution Tests
-
-These tests will validate the end-to-end execution of our core SRE `Workflows`.
-
-| Test Case ID | Workflow Target | Test Description | Expected Outcome |
-| :--- | :--- | :--- | :--- |
-| WF-EX-01 | `setup-workload-cluster-monitoring` | Execute the full workflow against a test workload cluster. | All three services (`login`, `mimir`, `prometheus-mcp`) are created successfully and are healthy. Final status list shows all services running. |
-| WF-EX-02 | `setup-workload-cluster-monitoring` | Execute the workflow with an invalid `cluster_name`. | The workflow fails gracefully on the first step (`create_cluster_login_service`) with a clear error. No subsequent steps are run. |
-| WF-EX-03 | `auth-workflow` | Run the authentication workflow. | The workflow successfully authenticates via Teleport and sets the `kubectl` context without errors. |
-| WF-EX-04 | `discovery-workflow` | Run the discovery workflow to find pods in `kube-system`. | The workflow correctly lists pods from the `kube-system` namespace. |
-| WF-EX-05 | `aws-lb-controller-full-diagnosis` | Run against a cluster known to have the EIP/subnet mismatch issue. | The workflow correctly identifies the failing service and extracts the relevant error message from the logs. |
-
-### 4.9. MCP Server Lifecycle Tests (Real Examples)
-
-These tests validate the dynamic management of MCP server definitions using real examples from `.envctl/mcpservers/`.
-
-| Test Case ID | MCP Server Target | Test Description | Expected Outcome |
-| :--- | :--- | :--- | :--- |
-| MCP-LC-01 | `prometheus.yaml` | Create the Prometheus MCP server definition with command `["uv", "--directory", "/home/teemow/projects/prometheus-mcp-server", "run", "src/prometheus_mcp_server/main.py"]` and env vars `PROMETHEUS_URL` and `ORG_ID`. | MCP server is created successfully. `core_mcpserver_list` shows prometheus server as available. Tools like `x_prometheus_list_metrics` become accessible. |
-| MCP-LC-02 | `grafana.yaml` | Create the Grafana MCP server with command `["mcp-grafana"]` and `GRAFANA_URL` environment variable. | MCP server is created successfully. Grafana tools become available for incident management and monitoring. |
-| MCP-LC-03 | `kubernetes.yaml` | Register the Kubernetes MCP server dynamically at runtime. | Server becomes available immediately without restart. `core_mcpserver_available` returns true. Kubernetes tools become accessible. |
-| MCP-LC-04 | `flux.yaml` | Test the Flux MCP server lifecycle - create, register, then unregister. | Server registers successfully, Flux tools become available, then become unavailable after unregistering. |
-| MCP-LC-05 | `teleport.yaml` | Delete the Teleport MCP server definition from `.envctl/mcpservers/`. | MCP server definition is removed and no longer loads on restart. Teleport tools become unavailable. |
-| MCP-LC-06 | `capi.yaml` | Update the CAPI MCP server definition with new configuration. | Changes are applied correctly. CAPI tools reflect the new server configuration. |
-| MCP-LC-07 | `app.yaml` | Test availability check of App MCP server when underlying command exists vs. missing. | Returns `true` when command is available, `false` with clear error when command is missing. |
-
-### 4.10. Capability Definition & Mapping Tests (Real Examples)
-
-These tests ensure the `Capability` abstraction layer functions correctly using real examples from `.envctl/capabilities/`.
-
-| Test Case ID | Capability Target | Test Description | Expected Outcome |
-| :--- | :--- | :--- | :--- |
-| CAP-DM-01 | `portforward.yaml` | Create the port forwarding capability that maps `x_kubernetes_port_forward` to generic `create` and `stop` operations with embedded workflows. | Capability is created successfully. Generic `api_portforward_create` calls correctly invoke `x_kubernetes_port_forward` with proper parameter mapping (namespace, resource_type, resource_name, local_port, remote_port). |
-| CAP-DM-02 | `portforward.yaml` | Test the port forward capability's `create` operation with real parameters (e.g., namespace="kube-system", resource_type="pod", resource_name="test-pod", local_port=8080, remote_port=80). | Embedded workflow executes successfully. Port forward is created and accessible. Parameters are correctly templated into the underlying tool call. |
-| CAP-DM-03 | `teleport-auth.yaml` | Create the Teleport authentication capability that maps multiple Teleport tools (`x_teleport_kube`, `x_teleport_status`, `x_teleport_list_clusters`) to standardized auth operations. | Capability is created. Generic auth operations (`login`, `status`, `logout`, `list_clusters`) correctly invoke the appropriate Teleport tools with parameter mapping. |
-| CAP-DM-04 | `teleport-auth.yaml` | Test the `login` operation with real cluster parameter (e.g., cluster="gazelle-operations"). | Embedded workflow executes: checks status via `x_teleport_status`, then performs login via `x_teleport_kube` with correct cluster parameter templating. |
-| CAP-DM-05 | `portforward.yaml` | Test capability availability when `x_kubernetes_port_forward` tool exists vs. when it's missing. | Returns `true` when required tools are available, `false` with specific error about missing `x_kubernetes_port_forward` tool. |
-| CAP-DM-06 | `teleport-auth.yaml` | Update the Teleport auth capability to add a new operation or modify existing workflow steps. | Capability is updated successfully. New/modified operations work correctly with updated tool mappings. |
-| CAP-DM-07 | `portforward.yaml` | Delete the port forwarding capability. | Capability is removed. Attempts to call generic port forward operations fail with "capability not found" error. |
-| CAP-DM-08 | Both capabilities | Test parameter validation and workflow execution with invalid parameters. | Capabilities properly validate input parameters and return clear error messages for invalid inputs (e.g., missing required fields, invalid types). |
-
-
+**Current Test Coverage:** Basic unit tests. Missing comprehensive integration tests.
 
 ---
 
-## 5. Non-Functional Requirements
+## 4. Current Testing Landscape Analysis
 
-*   **Test Suite Performance:** The full test suite should complete in a reasonable amount of time (e.g., under 5 minutes).
-*   **CI/CD Integration:** The test suite must be integrated into the CI/CD pipeline to run on every commit to the `gs-debug` repository.
-*   **Documentation:** All test cases and the process for running the test suite must be clearly documented.
+### 4.1 Existing Test Patterns
+- **Unit Tests:** Good coverage for individual components
+- **Integration Tests:** Limited, focusing on configuration loading
+- **TUI Tests:** Golden file snapshots for UI consistency
+- **MCP Debug Tools:** Manual debugging via `mcp-debug` tools
+
+### 4.2 Testing Gaps Identified
+1. **End-to-End Behavioral Tests:** Missing comprehensive workflows testing all concepts together
+2. **ServiceClass Lifecycle Testing:** Limited testing of complete instantiation workflows
+3. **Error Scenario Coverage:** Insufficient testing of failure modes and recovery
+4. **Performance and Load Testing:** No stress testing of concurrent operations
+5. **Tool Integration Testing:** Limited testing of MCP tool interactions
+
+### 4.3 Current Debugging Infrastructure
+- **MCP Debug Tools:** Comprehensive set of debugging tools via `mcp-debug`
+- **Systematic Workflow:** 5-phase debugging process documented
+- **Service Health Monitoring:** Real-time health and state tracking
+- **Logging Infrastructure:** Structured logging with different levels
 
 ---
 
-## 6. Out of Scope (for V1)
+## 5. Technical Architecture for Testing
 
-*   **UI/Frontend Testing:** This effort is focused exclusively on the backend engine and its CLI/API interface.
-*   **Performance/Load Testing:** The initial focus is on correctness and reliability, not performance under load.
-*   **Testing of every single `x_*` tool:** We will focus on the tools used by our core abstractions, assuming that the underlying CLI tools they wrap are individually stable. 
+### 5.1 Test Suite Architecture
+**Command:** `envctl test`
+
+**Core Components:**
+1. **Test Runner Engine:** Orchestrates test execution and reporting
+2. **MCP Client Integration:** Uses MCP protocol to test the running aggregator
+3. **Behavioral Test Framework:** Supports BDD-style test specifications
+4. **Mock Infrastructure:** Provides controllable test environments
+5. **Assertion Framework:** Validates expected behaviors and states
+
+### 5.2 Test Categories
+
+#### 5.2.1 Behavioral Tests
+- **ServiceClass Lifecycle:** Complete instantiation, start, stop, and cleanup
+- **Workflow Execution:** Multi-step workflows with parameter templating
+- **Capability Resolution:** Tool requirement resolution and execution
+- **Service Dependencies:** Dependency chain validation and failure propagation
+- **Error Handling:** Graceful failure scenarios and recovery
+
+#### 5.2.2 Integration Tests  
+- **MCP Server Health:** Server startup, failure, and recovery scenarios
+- **Tool Availability:** Dynamic tool registration and availability checking
+- **State Consistency:** Service state synchronization across components
+- **Configuration Loading:** YAML definition loading and validation
+- **Persistence:** Service definition persistence and restoration
+
+#### 5.2.3 Load & Performance Tests
+- **Concurrent Operations:** Multiple ServiceClass instantiations
+- **Resource Limits:** Memory and CPU usage under load
+- **Tool Call Throughput:** MCP tool execution performance
+- **State Change Propagation:** Event processing performance
+
+### 5.3 Test Data Management
+- **Fixtures:** Pre-defined test configurations and scenarios
+- **Mock Services:** Controllable service implementations for testing
+- **Test Isolation:** Each test runs in isolated environment
+- **Cleanup Automation:** Automatic resource cleanup after tests
+
+---
+
+## 6. Development Roadmap
+
+### 6.1 Phase 1: Foundation & Analysis
+**MVP Requirements:**
+- Complete behavioral specification for all core concepts
+- Testability analysis of existing codebase
+- Test framework architecture design
+- Basic test runner implementation
+
+**Deliverables:**
+- Behavioral test specifications document
+- Testability gap analysis report
+- Test framework design document
+- `envctl test` command skeleton
+
+### 6.2 Phase 2: Core Test Infrastructure
+**Requirements:**
+- Implement test runner with MCP client integration
+- Create mock infrastructure for controlled testing
+- Develop assertion framework for state validation
+- Build test data fixtures and scenarios
+
+**Deliverables:**
+- Functional `envctl test` command
+- Mock MCP servers and services
+- Test fixture library
+- Basic behavioral test suite
+
+### 6.3 Phase 3: Comprehensive Test Coverage
+**Requirements:**
+- Implement all behavioral test scenarios
+- Add integration tests for component interactions
+- Create load and performance test suites
+- Enhance debugging and error reporting
+
+**Deliverables:**
+- Complete behavioral test coverage
+- Integration test suite
+- Performance test benchmarks
+- Enhanced debugging capabilities
+
+### 6.4 Phase 4: Validation & Hardening
+**Requirements:**
+- Execute comprehensive test suite against current codebase
+- Identify and fix discovered bugs
+- Optimize performance based on test results
+- Create documentation and runbooks
+
+**Deliverables:**
+- Bug fixes and stability improvements
+- Performance optimizations
+- Testing documentation
+- Operational runbooks
+
+---
+
+## 7. Logical Dependency Chain
+
+### 7.1 Foundation Layer
+1. **Behavioral Specifications:** Define expected behaviors for all concepts
+2. **Test Framework:** Build the testing infrastructure
+3. **Mock Infrastructure:** Create controllable test environment
+
+### 7.2 Implementation Layer
+4. **MCPServer Tests:** Validate server lifecycle and tool exposure
+5. **Service Tests:** Test service registry and lifecycle management
+6. **ServiceClass Tests:** Validate template processing and instantiation
+
+### 7.3 Integration Layer
+7. **Capability Tests:** Test operation execution and workflow integration
+8. **Workflow Tests:** Validate multi-step execution and templating
+9. **Orchestrator Tests:** Test service coordination and dependency management
+
+### 7.4 Validation Layer
+10. **End-to-End Tests:** Complete system validation scenarios
+11. **Performance Tests:** Load testing and resource optimization
+12. **Error Scenario Tests:** Failure mode validation and recovery
+
+---
+
+## 8. User Experience
+
+### 8.1 Developer Experience
+**Test Execution:**
+```bash
+# Run all tests
+envctl test
+
+# Run specific test category
+envctl test --category=behavioral
+envctl test --category=integration
+envctl test --category=performance
+
+# Run tests for specific concepts
+envctl test --concept=serviceclass
+envctl test --concept=workflow
+
+# Run with detailed output
+envctl test --verbose --debug
+```
+
+**Test Development:**
+- YAML-based test specifications for easy maintenance
+- Template support for parameterized test scenarios
+- Integration with existing `mcp-debug` tools for manual validation
+
+### 8.2 Test Output and Reporting
+- **Real-time Progress:** Live test execution feedback
+- **Detailed Reports:** Comprehensive test results with timings
+- **Failure Analysis:** Detailed error information and suggested fixes
+- **Performance Metrics:** Resource usage and timing information
+
+---
+
+## 9. Risks and Mitigations
+
+### 9.1 Technical Challenges
+**Risk:** Complex integration testing across multiple concepts
+**Mitigation:** Incremental implementation with isolation between test categories
+
+**Risk:** Test environment stability and reproducibility
+**Mitigation:** Comprehensive mock infrastructure and test isolation
+
+**Risk:** Performance impact of comprehensive testing
+**Mitigation:** Optimized test execution and parallel test running
+
+### 9.2 Resource Constraints
+**Risk:** Test suite execution time affecting development velocity
+**Mitigation:** Tiered testing approach with fast/slow test categories
+
+**Risk:** Maintenance overhead of extensive test suite
+**Mitigation:** Automated test generation and template-based specifications
+
+### 9.3 Implementation Risks
+**Risk:** Discovering fundamental architectural issues during testing
+**Mitigation:** Incremental validation with early architectural review
+
+**Risk:** Test suite becoming outdated as codebase evolves
+**Mitigation:** Integration with CI/CD pipeline and automated validation
+
+---
+
+## 10. Success Metrics
+
+### 10.1 Quality Metrics
+- **Test Coverage:** >90% coverage for all core concepts
+- **Bug Detection:** Identify and fix critical stability issues
+- **Regression Prevention:** Zero regression failures in CI/CD
+
+### 10.2 Performance Metrics
+- **Test Execution Time:** Complete suite runs in <10 minutes
+- **Resource Usage:** Tests run efficiently within resource constraints
+- **Reliability:** >99% test suite reliability and consistency
+
+### 10.3 Developer Experience Metrics
+- **Time to Debug:** Reduced debugging time with enhanced tooling
+- **Development Velocity:** Faster development with reliable test feedback
+- **Documentation Quality:** Comprehensive testing documentation and guides
+
+---
+
+## 11. Appendix
+
+### 11.1 Current Architecture Patterns
+- **API Service Locator Pattern:** Central API layer for inter-package communication
+- **Dependency Injection:** ToolCaller and other interfaces injected at runtime
+- **State Management:** Consistent state tracking across all service types
+- **Configuration-Driven:** YAML-based definitions for all dynamic components
+
+### 11.2 Existing Debug Infrastructure
+- **5-Phase Debugging Workflow:** Systematic approach to issue resolution
+- **MCP Debug Tools:** Comprehensive set of debugging commands
+- **Health Monitoring:** Real-time service health and state tracking
+- **Structured Logging:** Detailed logging with appropriate levels
+
+### 11.3 Testing Standards
+- **Minimum Coverage:** 80% unit test coverage for new code
+- **TUI Golden Files:** Snapshot testing for UI components
+- **Code Formatting:** Automated formatting with `goimports` and `go fmt`
+- **Integration Requirements:** All new features require integration tests
