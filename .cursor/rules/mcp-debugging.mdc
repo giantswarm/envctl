@@ -90,7 +90,7 @@ mcp_mcp-debug_call_tool(name="core_serviceclass_list", arguments={})
 mcp_mcp-debug_call_tool(name="core_serviceclass_available", arguments={"name": "<serviceclass-name>"})
 
 # Test instantiation with safe parameters
-mcp_mcp-debug_call_tool(name="core_serviceclass_instance_create", arguments={
+mcp_mcp-debug_call_tool(name="core_service_create", arguments={
   "serviceClassName": "<name>",
   "label": "debug-test",
   "parameters": {...}
@@ -117,8 +117,8 @@ mcp_mcp-debug_call_tool(name="core_service_status", arguments={"label": "<servic
 ### **Phase 5: Instance Management**
 ```bash
 # List and clean up test instances
-mcp_mcp-debug_call_tool(name="core_serviceclass_instance_list", arguments={})
-mcp_mcp-debug_call_tool(name="core_serviceclass_instance_delete", arguments={"instanceId": "debug-test"})
+mcp_mcp-debug_call_tool(name="core_service_list", arguments={})
+mcp_mcp-debug_call_tool(name="core_service_delete", arguments={"instanceId": "debug-test"})
 ```
 
 ## **Error Classification and Response**
@@ -192,7 +192,7 @@ mcp_mcp-debug_call_tool(name="core_serviceclass_available", arguments={"name": "
 ```bash
 # Test the modified ServiceClass
 mcp_mcp-debug_call_tool(name="core_serviceclass_available", arguments={"name": "<modified-serviceclass>"})
-mcp_mcp-debug_call_tool(name="core_serviceclass_instance_create", arguments={...})
+mcp_mcp-debug_call_tool(name="core_service_create", arguments={...})
 ```
 
 ### **Continuous Monitoring**
@@ -219,13 +219,13 @@ mcp_mcp-debug_call_tool(name="core_serviceclass_available", arguments={"name": "
 ### **Instance Management**
 ```bash
 # Safe test instance creation and cleanup
-mcp_mcp-debug_call_tool(name="core_serviceclass_instance_create", arguments={
+mcp_mcp-debug_call_tool(name="core_service_create", arguments={
   "serviceClassName": "<name>",
   "label": "debug-$(date +%s)",
   "parameters": {...}
 })
 # ... test operations ...
-mcp_mcp-debug_call_tool(name="core_serviceclass_instance_delete", arguments={"instanceId": "debug-$(date +%s)"})
+mcp_mcp-debug_call_tool(name="core_service_delete", arguments={"instanceId": "debug-$(date +%s)"})
 ```
 
 ## **Mandatory Workflow Adherence**

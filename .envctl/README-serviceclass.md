@@ -203,10 +203,10 @@ ServiceClasses expose their operations as API tools:
 
 For service-style ServiceClasses, the orchestrator provides instance management:
 
-- `core_serviceclass_instance_create` - Create service instance
-- `core_serviceclass_instance_list` - List service instances  
-- `core_serviceclass_instance_get` - Get instance details
-- `core_serviceclass_instance_delete` - Delete service instance
+- `core_service_create` - Create service instance
+- `core_service_list` - List service instances  
+- `core_service_get` - Get instance details
+- `core_service_delete` - Delete service instance
 
 ## Management Tools
 

@@ -61,6 +61,21 @@ Based on deep code analysis, envctl operates on five fundamental concepts that f
 - **States:** Unknown → Waiting → Starting → Running → Stopping → Stopped/Failed
 - **Health:** Unknown → Checking → Healthy/Unhealthy
 - **Integration:** API Service Locator Pattern with central registry
+- **Service Lifecycle Operations:**
+  - `core_service_start <label>`: Start a specific service
+  - `core_service_stop <label>`: Stop a specific service  
+  - `core_service_restart <label>`: Restart a specific service
+  - `core_service_list`: List all services with state and health
+  - `core_service_status <label>`: Get detailed service status
+- **ServiceClass Instance Management:**
+  - `core_service_create`: Create service instances from ServiceClass definitions
+  - `core_service_delete`: Remove ServiceClass-based instances
+  - `core_service_get`: Get detailed service instance information
+- **Service Coordination Features:**
+  - **Registry:** Static services and service instances are managed through the registry
+  - **Dependency Management:** Complex dependency chains across service types
+  - **State Synchronization:** Real-time state and health monitoring
+  - **Event Streaming:** Service state change notifications via subscription channels (not exposed via mcp)
 
 **Current Test Coverage:** Unit tests for registry and base service. Missing integration tests for state transitions.
 
@@ -120,22 +135,119 @@ Based on deep code analysis, envctl operates on five fundamental concepts that f
 
 ---
 
-## 4. Current Testing Landscape Analysis
+## 4. MCP Tool Exposure Architecture
 
-### 4.1 Existing Test Patterns
+All core concepts are exposed as MCP tools through the aggregator's dynamic tool generation system, enabling comprehensive API-driven testing and automation.
+
+### 4.1 Tool Generation Framework
+
+**Core Mechanism:**
+- Each concept implements the `ToolProvider` interface with `GetTools()` method
+- The aggregator automatically discovers and registers all tools from providers
+- Tools are dynamically generated with proper schemas and handlers
+- Tool names are prefixed based on function and provider type
+
+### 4.2 Tool Categories and Naming
+
+#### 4.2.1 Management Tools (core_ prefix)
+**Purpose:** Configuration and definition management for all core concepts
+
+**Service Management:**
+- `core_service_create/update/delete`: Service instance lifecycle
+- `core_service_list`: List all services with status
+- `core_service_start/stop/restart`: Service lifecycle control
+- `core_service_status`: Detailed service information
+
+**ServiceClass Management:**
+- `core_serviceclass_list`: List ServiceClass definitions
+- `core_serviceclass_get`: Get specific ServiceClass details
+- `core_serviceclass_available`: Check ServiceClass availability
+
+**Workflow Management:**
+- `core_workflow_list`: List workflow definitions
+- `core_workflow_get`: Get workflow details
+- `core_workflow_create/update/delete`: Workflow lifecycle
+- `core_workflow_validate`: Validate workflow YAML
+
+**Capability Management:**
+- `core_capability_list`: List capability definitions
+- `core_capability_get`: Get capability details
+- `core_capability_load/refresh`: Capability definition management
+
+**MCPServer Management:**
+- `core_mcpserver_list`: List MCP server definitions
+- `core_mcpserver_get`: Get MCP server details
+- `core_mcpserver_available`: Check server availability
+
+#### 4.2.2 Execution Tools (workflow_ and api_ prefixes)
+**Purpose:** Runtime operations and workflow execution
+
+**Workflow Execution:**
+- `workflow_<name>`: Execute specific workflows (transformed from `action_` tools)
+- Dynamic tool generation from workflow definitions
+- Parameter validation and schema enforcement
+
+**Capability Operations:**
+- `api_<operation>`: Execute capability operations
+- Direct capability tool exposure (e.g., `api_auth_login`, `api_cluster_connect`)
+- Tool requirement validation before execution
+
+#### 4.2.3 External Tools (x_ prefix)
+**Purpose:** Tools from external MCP servers
+
+**External MCP Server Tools:**
+- `x_<toolname>`: Tools from external MCP servers (e.g., `x_kubernetes_get`)
+- Configurable prefix system (default: `x_`)
+- Dynamic tool registration and availability checking
+
+### 4.3 Tool Discovery and Registration
+
+**Automatic Discovery:**
+1. Aggregator queries all registered API handlers for `ToolProvider` interface
+2. Each provider returns `ToolMetadata` array with tool specifications
+3. Tools are registered with appropriate prefixes and schemas
+4. Tool availability is checked against dependencies
+
+**Dynamic Updates:**
+- Tools are refreshed when providers update their offerings
+- Tool availability changes based on dependency status
+- Registry updates are monitored for real-time tool availability
+
+### 4.4 End-to-End Tool Integration
+
+**Testing Implications:**
+- All core functionality accessible via MCP tools
+- Comprehensive API coverage for automated testing
+- Consistent tool naming and parameter schemas
+- Built-in availability and dependency checking
+
+**Tool Execution Flow:**
+1. Client calls MCP tool via aggregator
+2. Aggregator routes to appropriate provider
+3. Provider validates parameters and dependencies
+4. Provider executes operation via internal logic
+5. Results returned with standardized response format
+
+---
+
+## 5. Current Testing Landscape Analysis
+
+### 5.1 Existing Test Patterns
 - **Unit Tests:** Good coverage for individual components
 - **Integration Tests:** Limited, focusing on configuration loading
 - **TUI Tests:** Golden file snapshots for UI consistency
 - **MCP Debug Tools:** Manual debugging via `mcp-debug` tools
 
-### 4.2 Testing Gaps Identified
+### 5.2 Testing Gaps Identified
 1. **End-to-End Behavioral Tests:** Missing comprehensive workflows testing all concepts together
 2. **ServiceClass Lifecycle Testing:** Limited testing of complete instantiation workflows
 3. **Error Scenario Coverage:** Insufficient testing of failure modes and recovery
 4. **Performance and Load Testing:** No stress testing of concurrent operations
 5. **Tool Integration Testing:** Limited testing of MCP tool interactions
+6. **Orchestrator Service Coordination:** Missing tests for complex service dependency scenarios
+7. **Tool Discovery and Registration:** No automated testing of tool generation and availability
 
-### 4.3 Current Debugging Infrastructure
+### 5.3 Current Debugging Infrastructure
 - **MCP Debug Tools:** Comprehensive set of debugging tools via `mcp-debug`
 - **Systematic Workflow:** 5-phase debugging process documented
 - **Service Health Monitoring:** Real-time health and state tracking
@@ -143,9 +255,9 @@ Based on deep code analysis, envctl operates on five fundamental concepts that f
 
 ---
 
-## 5. Technical Architecture for Testing
+## 6. Technical Architecture for Testing
 
-### 5.1 Test Suite Architecture
+### 6.1 Test Suite Architecture
 **Command:** `envctl test`
 
 **Core Components:**
@@ -155,29 +267,31 @@ Based on deep code analysis, envctl operates on five fundamental concepts that f
 4. **Mock Infrastructure:** Provides controllable test environments
 5. **Assertion Framework:** Validates expected behaviors and states
 
-### 5.2 Test Categories
+### 6.2 Test Categories
 
-#### 5.2.1 Behavioral Tests
+#### 6.2.1 Behavioral Tests
 - **ServiceClass Lifecycle:** Complete instantiation, start, stop, and cleanup
 - **Workflow Execution:** Multi-step workflows with parameter templating
 - **Capability Resolution:** Tool requirement resolution and execution
 - **Service Dependencies:** Dependency chain validation and failure propagation
 - **Error Handling:** Graceful failure scenarios and recovery
+- **Tool Discovery:** Automatic tool registration and availability checking
 
-#### 5.2.2 Integration Tests  
+#### 6.2.2 Integration Tests  
 - **MCP Server Health:** Server startup, failure, and recovery scenarios
 - **Tool Availability:** Dynamic tool registration and availability checking
 - **State Consistency:** Service state synchronization across components
 - **Configuration Loading:** YAML definition loading and validation
 - **Persistence:** Service definition persistence and restoration
+- **Orchestrator Coordination:** Service dependency and state management
 
-#### 5.2.3 Load & Performance Tests
+#### 6.2.3 Load & Performance Tests
 - **Concurrent Operations:** Multiple ServiceClass instantiations
 - **Resource Limits:** Memory and CPU usage under load
 - **Tool Call Throughput:** MCP tool execution performance
 - **State Change Propagation:** Event processing performance
 
-### 5.3 Test Data Management
+### 6.3 Test Data Management
 - **Fixtures:** Pre-defined test configurations and scenarios
 - **Mock Services:** Controllable service implementations for testing
 - **Test Isolation:** Each test runs in isolated environment
@@ -185,9 +299,9 @@ Based on deep code analysis, envctl operates on five fundamental concepts that f
 
 ---
 
-## 6. Development Roadmap
+## 7. Development Roadmap
 
-### 6.1 Phase 1: Foundation & Analysis
+### 7.1 Phase 1: Foundation & Analysis
 **MVP Requirements:**
 - Complete behavioral specification for all core concepts
 - Testability analysis of existing codebase
@@ -200,7 +314,7 @@ Based on deep code analysis, envctl operates on five fundamental concepts that f
 - Test framework design document
 - `envctl test` command skeleton
 
-### 6.2 Phase 2: Core Test Infrastructure
+### 7.2 Phase 2: Core Test Infrastructure
 **Requirements:**
 - Implement test runner with MCP client integration
 - Create mock infrastructure for controlled testing
@@ -213,7 +327,7 @@ Based on deep code analysis, envctl operates on five fundamental concepts that f
 - Test fixture library
 - Basic behavioral test suite
 
-### 6.3 Phase 3: Comprehensive Test Coverage
+### 7.3 Phase 3: Comprehensive Test Coverage
 **Requirements:**
 - Implement all behavioral test scenarios
 - Add integration tests for component interactions
@@ -226,7 +340,7 @@ Based on deep code analysis, envctl operates on five fundamental concepts that f
 - Performance test benchmarks
 - Enhanced debugging capabilities
 
-### 6.4 Phase 4: Validation & Hardening
+### 7.4 Phase 4: Validation & Hardening
 **Requirements:**
 - Execute comprehensive test suite against current codebase
 - Identify and fix discovered bugs
@@ -241,33 +355,33 @@ Based on deep code analysis, envctl operates on five fundamental concepts that f
 
 ---
 
-## 7. Logical Dependency Chain
+## 8. Logical Dependency Chain
 
-### 7.1 Foundation Layer
+### 8.1 Foundation Layer
 1. **Behavioral Specifications:** Define expected behaviors for all concepts
 2. **Test Framework:** Build the testing infrastructure
 3. **Mock Infrastructure:** Create controllable test environment
 
-### 7.2 Implementation Layer
+### 8.2 Implementation Layer
 4. **MCPServer Tests:** Validate server lifecycle and tool exposure
 5. **Service Tests:** Test service registry and lifecycle management
 6. **ServiceClass Tests:** Validate template processing and instantiation
 
-### 7.3 Integration Layer
+### 8.3 Integration Layer
 7. **Capability Tests:** Test operation execution and workflow integration
 8. **Workflow Tests:** Validate multi-step execution and templating
 9. **Orchestrator Tests:** Test service coordination and dependency management
 
-### 7.4 Validation Layer
+### 8.4 Validation Layer
 10. **End-to-End Tests:** Complete system validation scenarios
 11. **Performance Tests:** Load testing and resource optimization
 12. **Error Scenario Tests:** Failure mode validation and recovery
 
 ---
 
-## 8. User Experience
+## 9. User Experience
 
-### 8.1 Developer Experience
+### 9.1 Developer Experience
 **Test Execution:**
 ```bash
 # Run all tests
@@ -291,7 +405,7 @@ envctl test --verbose --debug
 - Template support for parameterized test scenarios
 - Integration with existing `mcp-debug` tools for manual validation
 
-### 8.2 Test Output and Reporting
+### 9.2 Test Output and Reporting
 - **Real-time Progress:** Live test execution feedback
 - **Detailed Reports:** Comprehensive test results with timings
 - **Failure Analysis:** Detailed error information and suggested fixes
@@ -299,9 +413,9 @@ envctl test --verbose --debug
 
 ---
 
-## 9. Risks and Mitigations
+## 10. Risks and Mitigations
 
-### 9.1 Technical Challenges
+### 10.1 Technical Challenges
 **Risk:** Complex integration testing across multiple concepts
 **Mitigation:** Incremental implementation with isolation between test categories
 
@@ -311,14 +425,14 @@ envctl test --verbose --debug
 **Risk:** Performance impact of comprehensive testing
 **Mitigation:** Optimized test execution and parallel test running
 
-### 9.2 Resource Constraints
+### 10.2 Resource Constraints
 **Risk:** Test suite execution time affecting development velocity
 **Mitigation:** Tiered testing approach with fast/slow test categories
 
 **Risk:** Maintenance overhead of extensive test suite
 **Mitigation:** Automated test generation and template-based specifications
 
-### 9.3 Implementation Risks
+### 10.3 Implementation Risks
 **Risk:** Discovering fundamental architectural issues during testing
 **Mitigation:** Incremental validation with early architectural review
 
@@ -327,40 +441,40 @@ envctl test --verbose --debug
 
 ---
 
-## 10. Success Metrics
+## 11. Success Metrics
 
-### 10.1 Quality Metrics
+### 11.1 Quality Metrics
 - **Test Coverage:** >90% coverage for all core concepts
 - **Bug Detection:** Identify and fix critical stability issues
 - **Regression Prevention:** Zero regression failures in CI/CD
 
-### 10.2 Performance Metrics
+### 11.2 Performance Metrics
 - **Test Execution Time:** Complete suite runs in <10 minutes
 - **Resource Usage:** Tests run efficiently within resource constraints
 - **Reliability:** >99% test suite reliability and consistency
 
-### 10.3 Developer Experience Metrics
+### 11.3 Developer Experience Metrics
 - **Time to Debug:** Reduced debugging time with enhanced tooling
 - **Development Velocity:** Faster development with reliable test feedback
 - **Documentation Quality:** Comprehensive testing documentation and guides
 
 ---
 
-## 11. Appendix
+## 12. Appendix
 
-### 11.1 Current Architecture Patterns
+### 12.1 Current Architecture Patterns
 - **API Service Locator Pattern:** Central API layer for inter-package communication
 - **Dependency Injection:** ToolCaller and other interfaces injected at runtime
 - **State Management:** Consistent state tracking across all service types
 - **Configuration-Driven:** YAML-based definitions for all dynamic components
 
-### 11.2 Existing Debug Infrastructure
+### 12.2 Existing Debug Infrastructure
 - **5-Phase Debugging Workflow:** Systematic approach to issue resolution
 - **MCP Debug Tools:** Comprehensive set of debugging commands
 - **Health Monitoring:** Real-time service health and state tracking
 - **Structured Logging:** Detailed logging with appropriate levels
 
-### 11.3 Testing Standards
+### 12.3 Testing Standards
 - **Minimum Coverage:** 80% unit test coverage for new code
 - **TUI Golden Files:** Snapshot testing for UI components
 - **Code Formatting:** Automated formatting with `goimports` and `go fmt`

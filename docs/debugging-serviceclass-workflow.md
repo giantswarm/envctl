@@ -73,7 +73,7 @@ core_serviceclass_get --name=portforward
 ### **2.3 Test ServiceClass Instantiation**
 ```bash
 # Try to create an instance (will fail gracefully if dependencies aren't met)
-core_serviceclass_instance_create \
+core_service_create \
   --serviceClassName=portforward \
   --label=test-debug \
   --parameters='{"namespace":"default","resource_type":"service","resource_name":"test","local_port":8080,"remote_port":80}'
@@ -135,13 +135,13 @@ core_serviceclass_available --name=portforward
 ### **5.1 List Active Instances**
 ```bash
 # See what ServiceClass instances are currently running
-core_serviceclass_instance_list
+core_service_list
 ```
 
 ### **5.2 Clean Up Test Instances**
 ```bash
 # Remove test instances
-core_serviceclass_instance_delete --instanceId=test-debug
+core_service_delete --instanceId=test-debug
 ```
 
 ## 🚨 **Common Issues & Solutions**
@@ -180,7 +180,7 @@ core_serviceclass_instance_delete --instanceId=test-debug
 **Solution:**
 1. Check if the service is actually running: `core_service_list`
 2. Test the forwarded port externally
-3. Check `core_serviceclass_instance_list` for active instances
+3. Check `core_service_list` for active instances
 
 ### **Issue 4: Resource Not Found**
 **Symptoms:**
@@ -243,7 +243,7 @@ x_kubernetes_kubectl_get --resourceType=services --namespace=kube-system
 # Found: coredns service available
 
 # 5. Test ServiceClass with real resource
-core_serviceclass_instance_create \
+core_service_create \
   --serviceClassName=portforward \
   --label=test-coredns \
   --parameters='{"namespace":"kube-system","resource_type":"service","resource_name":"coredns","local_port":"9053","remote_port":"53"}'

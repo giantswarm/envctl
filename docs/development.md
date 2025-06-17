@@ -566,7 +566,7 @@ core_serviceclass_list
 core_serviceclass_available --name=portforward
 
 # Create a ServiceClass instance
-core_serviceclass_instance_create \
+core_service_create \
   --serviceClassName=portforward \
   --label=test-pf \
   --parameters='{"namespace":"mimir","resourceType":"service","resourceName":"mimir-query-frontend","localPort":8080,"targetPort":8080}'
