@@ -25,6 +25,16 @@ func SetOsGetwd(fn func() (string, error)) {
 	osGetwd = fn
 }
 
+// GetOsUserHomeDir returns the current osUserHomeDir function (for testing)
+func GetOsUserHomeDir() func() (string, error) {
+	return osUserHomeDir
+}
+
+// SetOsUserHomeDir sets the osUserHomeDir function (for testing)
+func SetOsUserHomeDir(fn func() (string, error)) {
+	osUserHomeDir = fn
+}
+
 const (
 	userConfigDir    = ".config/envctl"
 	projectConfigDir = ".envctl"

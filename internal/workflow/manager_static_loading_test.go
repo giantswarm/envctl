@@ -40,7 +40,28 @@ func (mtc *MockToolChecker) SetToolAvailable(toolName string, available bool) {
 }
 
 func TestWorkflowManager_LoadDefinitions_Integration(t *testing.T) {
-	// Create a workflow manager with real storage
+	// Save original functions for proper cleanup
+	originalUserHomeDir := config.GetOsUserHomeDir()
+	originalGetwd := config.GetOsGetwd()
+	defer func() {
+		config.SetOsUserHomeDir(originalUserHomeDir)
+		config.SetOsGetwd(originalGetwd)
+	}()
+
+	// Create temporary directories for testing
+	tempDir := t.TempDir()
+	userDir := tempDir + "/user"
+	projectDir := tempDir + "/project"
+
+	// Mock functions to use temp directories
+	config.SetOsUserHomeDir(func() (string, error) {
+		return userDir, nil
+	})
+	config.SetOsGetwd(func() (string, error) {
+		return projectDir, nil
+	})
+
+	// Create a workflow manager with storage using mocked filesystem
 	storage := config.NewStorage()
 	mockToolChecker := NewMockToolChecker()
 
@@ -63,6 +84,27 @@ func TestWorkflowManager_LoadDefinitions_Integration(t *testing.T) {
 }
 
 func TestWorkflowManager_ValidationFunction(t *testing.T) {
+	// Save original functions for proper cleanup
+	originalUserHomeDir := config.GetOsUserHomeDir()
+	originalGetwd := config.GetOsGetwd()
+	defer func() {
+		config.SetOsUserHomeDir(originalUserHomeDir)
+		config.SetOsGetwd(originalGetwd)
+	}()
+
+	// Create temporary directories for testing
+	tempDir := t.TempDir()
+	userDir := tempDir + "/user"
+	projectDir := tempDir + "/project"
+
+	// Mock functions to use temp directories
+	config.SetOsUserHomeDir(func() (string, error) {
+		return userDir, nil
+	})
+	config.SetOsGetwd(func() (string, error) {
+		return projectDir, nil
+	})
+
 	storage := config.NewStorage()
 	mockToolChecker := NewMockToolChecker()
 
@@ -147,6 +189,27 @@ func TestWorkflowManager_ValidationFunction(t *testing.T) {
 }
 
 func TestWorkflowManager_Storage_Integration(t *testing.T) {
+	// Save original functions for proper cleanup
+	originalUserHomeDir := config.GetOsUserHomeDir()
+	originalGetwd := config.GetOsGetwd()
+	defer func() {
+		config.SetOsUserHomeDir(originalUserHomeDir)
+		config.SetOsGetwd(originalGetwd)
+	}()
+
+	// Create temporary directories for testing
+	tempDir := t.TempDir()
+	userDir := tempDir + "/user"
+	projectDir := tempDir + "/project"
+
+	// Mock functions to use temp directories
+	config.SetOsUserHomeDir(func() (string, error) {
+		return userDir, nil
+	})
+	config.SetOsGetwd(func() (string, error) {
+		return projectDir, nil
+	})
+
 	storage := config.NewStorage()
 	mockToolChecker := NewMockToolChecker()
 
@@ -198,6 +261,27 @@ func TestWorkflowManager_Storage_Integration(t *testing.T) {
 }
 
 func TestWorkflowManager_InvalidDynamicWorkflow(t *testing.T) {
+	// Save original functions for proper cleanup
+	originalUserHomeDir := config.GetOsUserHomeDir()
+	originalGetwd := config.GetOsGetwd()
+	defer func() {
+		config.SetOsUserHomeDir(originalUserHomeDir)
+		config.SetOsGetwd(originalGetwd)
+	}()
+
+	// Create temporary directories for testing
+	tempDir := t.TempDir()
+	userDir := tempDir + "/user"
+	projectDir := tempDir + "/project"
+
+	// Mock functions to use temp directories
+	config.SetOsUserHomeDir(func() (string, error) {
+		return userDir, nil
+	})
+	config.SetOsGetwd(func() (string, error) {
+		return projectDir, nil
+	})
+
 	storage := config.NewStorage()
 	mockToolChecker := NewMockToolChecker()
 
@@ -238,6 +322,27 @@ func TestWorkflowManager_InvalidDynamicWorkflow(t *testing.T) {
 }
 
 func TestWorkflowManager_MalformedYAML(t *testing.T) {
+	// Save original functions for proper cleanup
+	originalUserHomeDir := config.GetOsUserHomeDir()
+	originalGetwd := config.GetOsGetwd()
+	defer func() {
+		config.SetOsUserHomeDir(originalUserHomeDir)
+		config.SetOsGetwd(originalGetwd)
+	}()
+
+	// Create temporary directories for testing
+	tempDir := t.TempDir()
+	userDir := tempDir + "/user"
+	projectDir := tempDir + "/project"
+
+	// Mock functions to use temp directories
+	config.SetOsUserHomeDir(func() (string, error) {
+		return userDir, nil
+	})
+	config.SetOsGetwd(func() (string, error) {
+		return projectDir, nil
+	})
+
 	storage := config.NewStorage()
 	mockToolChecker := NewMockToolChecker()
 
@@ -276,6 +381,27 @@ steps:
 }
 
 func TestWorkflowManager_WorkflowAvailability(t *testing.T) {
+	// Save original functions for proper cleanup
+	originalUserHomeDir := config.GetOsUserHomeDir()
+	originalGetwd := config.GetOsGetwd()
+	defer func() {
+		config.SetOsUserHomeDir(originalUserHomeDir)
+		config.SetOsGetwd(originalGetwd)
+	}()
+
+	// Create temporary directories for testing
+	tempDir := t.TempDir()
+	userDir := tempDir + "/user"
+	projectDir := tempDir + "/project"
+
+	// Mock functions to use temp directories
+	config.SetOsUserHomeDir(func() (string, error) {
+		return userDir, nil
+	})
+	config.SetOsGetwd(func() (string, error) {
+		return projectDir, nil
+	})
+
 	storage := config.NewStorage()
 	mockToolChecker := NewMockToolChecker()
 
