@@ -27,6 +27,41 @@ var (
 	testParallel   int
 )
 
+// completeCategoryFlag provides shell completion for the category flag
+func completeCategoryFlag(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	return []string{"behavioral", "integration"}, cobra.ShellCompDirectiveDefault
+}
+
+// completeConceptFlag provides shell completion for the concept flag
+func completeConceptFlag(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	return []string{"serviceclass", "workflow", "mcpserver", "capability", "service"}, cobra.ShellCompDirectiveDefault
+}
+
+// completeScenarioFlag provides shell completion for the scenario flag by loading available scenarios
+func completeScenarioFlag(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	// Get the config path, use default if not specified
+	configPath := testConfigPath
+	if configPath == "" {
+		configPath = testing.GetDefaultScenarioPath()
+	}
+
+	// Create a loader to get available scenarios
+	loader := testing.NewTestScenarioLoader(false) // Don't enable debug for completion
+	scenarios, err := loader.LoadScenarios(configPath)
+	if err != nil {
+		// Return empty completion on error
+		return []string{}, cobra.ShellCompDirectiveDefault
+	}
+
+	// Extract scenario names
+	var scenarioNames []string
+	for _, scenario := range scenarios {
+		scenarioNames = append(scenarioNames, scenario.Name)
+	}
+
+	return scenarioNames, cobra.ShellCompDirectiveDefault
+}
+
 // testCmd represents the test command
 var testCmd = &cobra.Command{
 	Use:   "test",
@@ -98,6 +133,11 @@ func init() {
 	// Test execution control
 	testCmd.Flags().BoolVar(&testFailFast, "fail-fast", false, "Stop test execution on first failure")
 	testCmd.Flags().IntVar(&testParallel, "parallel", 1, "Number of parallel test workers (1-10)")
+
+	// Shell completion for test flags
+	_ = testCmd.RegisterFlagCompletionFunc("category", completeCategoryFlag)
+	_ = testCmd.RegisterFlagCompletionFunc("concept", completeConceptFlag)
+	_ = testCmd.RegisterFlagCompletionFunc("scenario", completeScenarioFlag)
 
 	// Validate parallel flag
 	testCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
