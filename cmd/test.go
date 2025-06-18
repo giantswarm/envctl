@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"context"
-	"envctl/internal/config"
+	"envctl/internal/cli"
 	"envctl/internal/testing"
 	"fmt"
 	"os"
@@ -126,28 +126,19 @@ func runTest(cmd *cobra.Command, args []string) error {
 	timeoutCtx, timeoutCancel := context.WithTimeout(ctx, testTimeout)
 	defer timeoutCancel()
 
-	// Determine endpoint
+	// Determine endpoint using the same logic as CLI commands
 	endpoint := testEndpoint
 	if endpoint == "" {
-		// Load configuration to get aggregator settings
-		cfg, err := config.LoadConfig()
+		// Use the same endpoint detection logic as CLI commands
+		detectedEndpoint, err := cli.DetectAggregatorEndpoint()
 		if err != nil {
-			// Use default if config cannot be loaded
-			endpoint = "http://localhost:8080/sse"
+			// Use fallback default that matches system defaults
+			endpoint = "http://localhost:8090/mcp"
 			if testVerbose {
-				fmt.Printf("Warning: Could not load config (%v), using default endpoint: %s\n", err, endpoint)
+				fmt.Printf("Warning: Could not detect endpoint (%v), using default: %s\n", err, endpoint)
 			}
 		} else {
-			// Build endpoint from config
-			host := cfg.Aggregator.Host
-			if host == "" {
-				host = "localhost"
-			}
-			port := cfg.Aggregator.Port
-			if port == 0 {
-				port = 8080
-			}
-			endpoint = fmt.Sprintf("http://%s:%d/sse", host, port)
+			endpoint = detectedEndpoint
 		}
 	}
 
