@@ -3,7 +3,7 @@ package cmd
 import (
 	"context"
 	"envctl/internal/agent"
-	"envctl/internal/config"
+	"envctl/internal/cli"
 	"fmt"
 	"os"
 	"os/signal"
@@ -64,7 +64,7 @@ func init() {
 	rootCmd.AddCommand(debugCmd)
 
 	// Add flags
-	debugCmd.Flags().StringVar(&debugEndpoint, "endpoint", "", "SSE endpoint URL (default: from config)")
+	debugCmd.Flags().StringVar(&debugEndpoint, "endpoint", "", "Aggregator MCP endpoint URL (default: from config)")
 	debugCmd.Flags().DurationVar(&debugTimeout, "timeout", 5*time.Minute, "Timeout for waiting for notifications")
 	debugCmd.Flags().BoolVar(&debugVerbose, "verbose", false, "Enable verbose logging (show keepalive messages)")
 	debugCmd.Flags().BoolVar(&debugNoColor, "no-color", false, "Disable colored output")
@@ -92,28 +92,19 @@ func runDebug(cmd *cobra.Command, args []string) error {
 		cancel()
 	}()
 
-	// Determine endpoint
+	// Determine endpoint using the same logic as CLI commands
 	endpoint := debugEndpoint
 	if endpoint == "" {
-		// Load configuration to get aggregator settings
-		cfg, err := config.LoadConfig()
+		// Use the same endpoint detection logic as CLI commands
+		detectedEndpoint, err := cli.DetectAggregatorEndpoint()
 		if err != nil {
-			// Use default if config cannot be loaded
-			endpoint = "http://localhost:8080/sse"
-			if !debugMCPServer {
-				fmt.Printf("Warning: Could not load config (%v), using default endpoint: %s\n", err, endpoint)
+			// Use fallback default that matches system defaults
+			endpoint = "http://localhost:8090/mcp"
+			if !debugMCPServer && debugVerbose {
+				fmt.Printf("Warning: Could not detect endpoint (%v), using default: %s\n", err, endpoint)
 			}
 		} else {
-			// Build endpoint from config
-			host := cfg.Aggregator.Host
-			if host == "" {
-				host = "localhost"
-			}
-			port := cfg.Aggregator.Port
-			if port == 0 {
-				port = 8080
-			}
-			endpoint = fmt.Sprintf("http://%s:%d/sse", host, port)
+			endpoint = detectedEndpoint
 		}
 	}
 
