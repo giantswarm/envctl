@@ -1,139 +1,118 @@
 ---
-description: 
+description: Architecture Principles
 globs: 
 alwaysApply: true
 ---
-# Architecture Principles
+- **Architectural principles**
+  - This document outlines the fundamental architectural principles and patterns for the `envctl` codebase. Adherence to these guidelines is **mandatory** to maintain a clean, decoupled, and testable system.
 
-This document outlines the fundamental architectural principles and patterns for the `envctl` codebase. Adherence to these guidelines is **mandatory** to maintain a clean, decoupled, and testable system.
+- **The API Service Locator Pattern**
+  - **All inter-package communication MUST go through the central API layer.** This is the most critical rule in our architecture. It prevents direct coupling between packages, enabling them to be developed, tested, and refactored independently.
 
----
+- **Core Concepts**
+  - **Central API:** The `internal/api` package acts as a service locator. It contains handlers for all core envctl functionality and also the tool definitions exposed by the aggregator package.
+  - **Interface-Driven:** Packages communicate using interfaces defined in `internal/api/handlers.go`. They do not know about each other's concrete implementations.
+  - **One-Way Dependency:** All packages can depend on `internal/api`, but `internal/api` depends on **no other package** in the project. This is crucial for preventing circular dependencies.
 
-## 1. The API Service Locator Pattern
+- **Define Interface in API:**
+  Add a new handler interface to `internal/api/handlers.go`.
+  ```go
+  // internal/api/handlers.go
+  type MyServiceHandler interface {
+      DoSomething(ctx context.Context) error
+  }
+  ```
+- **Implement Adapter in Service Package:**
+  In the package providing the functionality (e.g., `internal/myservice`), create an `api_adapter.go`. This adapter implements the interface and calls the package's internal logic.
+  ```go
+  // internal/myservice/api_adapter.go
+  type Adapter struct {
+      logic *ServiceLogic
+  }
+  func (a *Adapter) DoSomething(ctx context.Context) error {
+      return a.logic.performAction(ctx)
+  }
+  ```
+- **Register the Adapter:**
+  Implement a `Register()` method on the adapter that calls the registration function in the `api` package.
+  ```go
+  // internal/myservice/api_adapter.go
+  func (a *Adapter) Register() {
+      api.RegisterMyService(a)
+  }
+  ```
+- **Consume via API:**
+  Any other package that needs to use the service **MUST** retrieve the handler from the `api` package. It **MUST NOT** import the service package directly.
+  ```go
+  // in another_package/logic.go
+  import "envctl/internal/api"
 
-**All inter-package communication MUST go through the central API layer.** This is the most critical rule in our architecture. It prevents direct coupling between packages, enabling them to be developed, tested, and refactored independently.
+  func DoWork(ctx context.Context) {
+      handler := api.GetMyService()
+      if handler == nil {
+          // Handle case where service is not available
+          return
+      }
+      handler.DoSomething(ctx)
+  }
+  ```
 
-### Core Concepts
+- **CRITICAL: Anti-Patterns**
+  -   **NEVER import workflow, mcpserver, serviceclass, capability and service packages directly.** This creates tight coupling and violates the core architectural principle.
+  -   **ALWAYS retrieve handlers from the `api` package.**
 
--   **Central Registry:** The `internal/api` package acts as a service locator. It contains a registry of service handlers.
--   **Interface-Driven:** Packages communicate using interfaces defined in `internal/api/handlers.go`. They do not know about each other's concrete implementations.
--   **One-Way Dependency:** All packages can depend on `internal/api`, but `internal/api` depends on **no other package** in the project. This is crucial for preventing circular dependencies.
+- **Testing Standards**
+  - **Minimum Coverage:** All new code **MUST** achieve at least **80% unit test coverage**.
+  - **TUI Golden Files:** All TUI view changes **MUST** be verified with golden file snapshots.
+    Run `NO_COLOR=true go test ./internal/tui/view/... -update` to update snapshots.
+    Manually review the `.golden` file changes in `internal/tui/view/testdata/` to ensure they are intentional.
+  - **No Flaky Tests:** Tests **MUST** be deterministic. Do not use `time.Sleep` or other mechanisms that can lead to race conditions. Use dependency injection for things like clocks or timers to make code testable.
 
-### Implementation Flow
-
-1.  **Define Interface in API:** Add a new handler interface to `internal/api/handlers.go`.
-    ```go
-    // internal/api/handlers.go
-    type MyServiceHandler interface {
-        DoSomething(ctx context.Context) error
-    }
-    ```
-2.  **Implement Adapter in Service Package:** In the package providing the functionality (e.g., `internal/myservice`), create an `api_adapter.go`. This adapter implements the interface and calls the package's internal logic.
-    ```go
-    // internal/myservice/api_adapter.go
-    type Adapter struct {
-        logic *ServiceLogic
-    }
-    func (a *Adapter) DoSomething(ctx context.Context) error {
-        return a.logic.performAction(ctx)
-    }
-    ```
-3.  **Register the Adapter:** Implement a `Register()` method on the adapter that calls the registration function in the `api` package.
-    ```go
-    // internal/myservice/api_adapter.go
-    func (a *Adapter) Register() {
-        api.RegisterMyService(a)
-    }
-    ```
-4.  **Consume via API:** Any other package that needs to use the service **MUST** retrieve the handler from the `api` package. It **MUST NOT** import the service package directly.
-    ```go
-    // in another_package/logic.go
-    import "envctl/internal/api"
-
-    func DoWork(ctx context.Context) {
-        handler := api.GetMyService()
-        if handler == nil {
-            // Handle case where service is not available
-            return
-        }
-        handler.DoSomething(ctx)
-    }
-    ```
-
-### ❌ **CRITICAL: Anti-Patterns**
-
--   **NEVER import another service package directly.** This creates tight coupling and violates the core architectural principle.
--   **ALWAYS retrieve handlers from the `api` package.**
-
----
-
-## 2. Testing Standards
-
--   **Minimum Coverage:** All new code **MUST** achieve at least **80% unit test coverage**.
--   **TUI Golden Files:** All TUI view changes **MUST** be verified with golden file snapshots.
-    -   Run `NO_COLOR=true go test ./internal/tui/view/... -update` to update snapshots.
-    -   Manually review the `.golden` file changes in `internal/tui/view/testdata/` to ensure they are intentional.
--   **No Flaky Tests:** Tests **MUST** be deterministic. Do not use `time.Sleep` or other mechanisms that can lead to race conditions. Use dependency injection for things like clocks or timers to make code testable.
-
----
-
-## 3. Go Development & Style
-
--   **Formatting:** Before **every commit**, run:
+- **Go Development & Style**
+  - **Formatting:** Before **every commit**, run:
     ```bash
     goimports -w .
     go fmt ./...
     ```
--   **Dependencies:** Before adding a new dependency with `go get`, use `web_search` to find its latest stable version.
--   **Error Handling:** Wrap errors with `fmt.Errorf("context: %w", err)` to preserve context.
--   **File Size:** Keep files focused and under **500 lines**. Refactor larger files.
+  - **Dependencies:** Before adding a new dependency with `go get`, use `web_search` to find its latest stable version.
+  - **Error Handling:** Wrap errors with `fmt.Errorf("context: %w", err)` to preserve context.
+  - **File Size:** Keep files focused and under **400 lines**. Refactor larger files.
 
-Testing changes to Go code in the live `envctl` service. This is a critical step to verify functionality beyond unit tests.
+- **Core Testing Loop**
+  - Whenever you change Go code and want to test the new functionality, you **MUST** follow these steps:
+    1. **Restart the Service:**
+       Run the development restart script to rebuild and restart the `envctl` service with your changes.
+       ```bash
+       ./scripts/dev-restart.sh
+       ```
+    2. **Initial Log Check:**
+       Verify that the service started correctly by checking the logs.
+       ```bash
+       journalctl --user -u envctl.service --no-pager |tail -n 50
+       ```
+    Look for any startup errors or unexpected messages.
 
-### Core Testing Loop
-
-Whenever you change Go code and want to test the new functionality, you **MUST** follow these steps:
-
-1.  **Restart the Service:**
-    -   Run the development restart script to rebuild and restart the `envctl` service with your changes.
-    -   ```bash
-      ./scripts/dev-restart.sh
+  - **Test with `mcp-debug`:**
+    - Use the `mcp-debug` tools to interact with the running service and test your new functionality.
+    - Start by listing the available tools to ensure your new features are registered.
       ```
-
-2.  **Initial Log Check:**
-    -   Verify that the service started correctly by checking the logs.
-    -   ```bash
-      journalctl --user -u envctl.service --no-pager |tail -n 50
-      ```
-    -   Look for any startup errors or unexpected messages.
-
-3.  **Test with `mcp-debug`:**
-    -   Use the `mcp-debug` tools to interact with the running service and test your new functionality.
-    -   Start by listing the available tools to ensure your new features are registered.
-    -   ```bash
       # Example: List all tools from the mcp-debug server
       mcp_mcp-debug_call_tool(name="core_mcpserver_list_tools", arguments={ "serverName": "mcp-debug" })
       ```
-    -   Then, call the specific tools related to your changes to validate their behavior.
-    -   ```bash
+    - Then, call the specific tools related to your changes to validate their behavior.
+      ```
       # Example: Call a specific tool
       mcp_mcp-debug_call_tool(name="your_new_tool", arguments={...})
       ```
-
-4.  **Final Log Check:**
-    -   Inspect the logs again to see the output and any errors generated during your testing.
-    -   ```bash
+  - **Final Log Check:**
+    - Inspect the logs again to see the output and any errors generated during your testing.
+      ```bash
       journalctl --user -u envctl.service --no-pager |tail -n 50
       ```
+  - **Important Note**
+    - **Always use `--no-pager`:** When using `journalctl` or `systemctl`, you **MUST** include the `--no-pager` flag. Without it, the output will be piped to a pager program, and you will not receive a response in the terminal. 
 
-### ❗ Important Note
-
--   **Always use `--no-pager`:** When using `journalctl` or `systemctl`, you **MUST** include the `--no-pager` flag. Without it, the output will be piped to a pager program, and you will not receive a response in the terminal. 
-
----
-
-## 4. Documentation
-
--   **Packages:** Every package **MUST** have a `doc.go` file explaining its purpose.
--   **Exported Members:** Every exported function, type, and variable **MUST** have a GoDoc comment.
--   **Project Docs:** New features or significant changes require updates to the relevant documents in the `docs/` directory.
+- **Documentation**
+  - **Packages:** Every package **MUST** have a `doc.go` file explaining its purpose.
+  - **Exported Members:** Every exported function, type, and variable **MUST** have a GoDoc comment.
+  - **Project Docs:** New features or significant changes require updates to the relevant documents in the `docs/` directory.
