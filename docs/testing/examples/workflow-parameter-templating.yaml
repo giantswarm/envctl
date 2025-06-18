@@ -1,0 +1,305 @@
+name: "workflow-parameter-templating-validation"
+category: "behavioral"
+concept: "workflow"
+description: "Advanced workflow parameter templating, step dependencies, and execution flow validation"
+tags: ["workflow", "templating", "parameters", "dependencies"]
+timeout: "8m"
+
+steps:
+  - name: "list-initial-workflows"
+    description: "Get baseline list of existing workflows"
+    tool: "core_workflow_list"
+    parameters:
+      include_system: true
+    expected:
+      success: true
+    timeout: "30s"
+
+  - name: "create-deployment-workflow"
+    description: "Create workflow with parameter templating and dependencies"
+    tool: "core_workflow_create"
+    parameters:
+      yaml_definition: |
+        name: application-deployment-workflow
+        description: "Multi-step application deployment with parameter templating"
+        parameters:
+          application_name:
+            type: string
+            required: true
+            description: "Name of the application to deploy"
+          environment:
+            type: string
+            default: "development"
+            enum: ["development", "staging", "production"]
+            description: "Target deployment environment"
+          replicas:
+            type: integer
+            default: 1
+            minimum: 1
+            maximum: 10
+            description: "Number of application replicas"
+          image_tag:
+            type: string
+            default: "latest"
+            description: "Container image tag"
+          enable_monitoring:
+            type: boolean
+            default: false
+            description: "Enable application monitoring"
+          notify_on_completion:
+            type: boolean
+            default: true
+            description: "Send notification when deployment completes"
+        steps:
+          - name: validate_environment
+            description: "Validate target environment is ready"
+            tool: core_service_list
+            parameters:
+              environment: "{{ .environment }}"
+          - name: create_serviceclass
+            description: "Create ServiceClass for the application"
+            tool: core_serviceclass_create
+            parameters:
+              yaml: |
+                name: "{{ .application_name }}-serviceclass"
+                description: "ServiceClass for {{ .application_name }} in {{ .environment }}"
+                parameters:
+                  replicas:
+                    type: integer
+                    default: {{ .replicas }}
+                  monitoring:
+                    type: boolean
+                    default: {{ .enable_monitoring }}
+                tools:
+                  - name: "core_service_create"
+          - name: deploy_application
+            description: "Deploy application using the ServiceClass"
+            tool: core_service_create
+            parameters:
+              serviceClassName: "{{ .application_name }}-serviceclass"
+              label: "{{ .application_name }}-{{ .environment }}"
+              parameters:
+                image: "{{ .application_name }}:{{ .image_tag }}"
+                replicas: {{ .replicas }}
+                monitoring: {{ .enable_monitoring }}
+          - name: wait_for_deployment
+            description: "Wait for application to be ready"
+            tool: core_service_status
+            parameters:
+              label: "{{ .application_name }}-{{ .environment }}"
+          - name: verify_deployment
+            description: "Verify deployment is healthy"
+            tool: core_service_get
+            parameters:
+              label: "{{ .application_name }}-{{ .environment }}"
+          - name: send_notification
+            description: "Send deployment notification if enabled"
+            tool: core_workflow_execute
+            parameters:
+              name: "notification-workflow"
+              parameters:
+                message: "{{ .application_name }} deployed to {{ .environment }}"
+                enabled: {{ .notify_on_completion }}
+    expected:
+      success: true
+      contains: ["created successfully", "application-deployment-workflow"]
+    timeout: "2m"
+
+  - name: "verify-workflow-created"
+    description: "Verify workflow was created with correct parameter structure"
+    tool: "core_workflow_get"
+    parameters:
+      name: "application-deployment-workflow"
+    expected:
+      success: true
+      contains: ["application-deployment-workflow", "Multi-step application deployment"]
+      json_path:
+        name: "application-deployment-workflow"
+        parameters.application_name.required: true
+        parameters.environment.default: "development"
+        parameters.replicas.default: 1
+        parameters.enable_monitoring.type: "boolean"
+    timeout: "30s"
+
+  - name: "validate-workflow-definition"
+    description: "Validate workflow definition and parameter templating"
+    tool: "core_workflow_validate"
+    parameters:
+      yaml_definition: |
+        name: application-deployment-workflow
+        description: "Multi-step application deployment with parameter templating"
+        parameters:
+          application_name:
+            type: string
+            required: true
+            description: "Name of the application to deploy"
+          environment:
+            type: string
+            default: "development"
+            enum: ["development", "staging", "production"]
+            description: "Target deployment environment"
+          replicas:
+            type: integer
+            default: 1
+            minimum: 1
+            maximum: 10
+            description: "Number of application replicas"
+          image_tag:
+            type: string
+            default: "latest"
+            description: "Container image tag"
+          enable_monitoring:
+            type: boolean
+            default: false
+            description: "Enable application monitoring"
+          notify_on_completion:
+            type: boolean
+            default: true
+            description: "Send notification when deployment completes"
+        steps:
+          - name: validate_environment
+            description: "Validate target environment is ready"
+            tool: core_service_list
+            parameters:
+              environment: "{{ .environment }}"
+          - name: create_serviceclass
+            description: "Create ServiceClass for the application"
+            tool: core_serviceclass_create
+            parameters:
+              yaml: |
+                name: "{{ .application_name }}-serviceclass"
+                description: "ServiceClass for {{ .application_name }} in {{ .environment }}"
+                parameters:
+                  replicas:
+                    type: integer
+                    default: {{ .replicas }}
+                  monitoring:
+                    type: boolean
+                    default: {{ .enable_monitoring }}
+                tools:
+                  - name: "core_service_create"
+          - name: deploy_application
+            description: "Deploy application using the ServiceClass"
+            tool: core_service_create
+            parameters:
+              serviceClassName: "{{ .application_name }}-serviceclass"
+              label: "{{ .application_name }}-{{ .environment }}"
+              parameters:
+                image: "{{ .application_name }}:{{ .image_tag }}"
+                replicas: {{ .replicas }}
+                monitoring: {{ .enable_monitoring }}
+          - name: wait_for_deployment
+            description: "Wait for application to be ready"
+            tool: core_service_status
+            parameters:
+              label: "{{ .application_name }}-{{ .environment }}"
+          - name: verify_deployment
+            description: "Verify deployment is healthy"
+            tool: core_service_get
+            parameters:
+              label: "{{ .application_name }}-{{ .environment }}"
+          - name: send_notification
+            description: "Send deployment notification if enabled"
+            tool: core_workflow_execute
+            parameters:
+              name: "notification-workflow"
+              parameters:
+                message: "{{ .application_name }} deployed to {{ .environment }}"
+                enabled: {{ .notify_on_completion }}
+    expected:
+      success: true
+      contains: ["valid", "application-deployment-workflow"]
+    timeout: "30s"
+
+  - name: "execute-workflow-with-parameters"
+    description: "Execute workflow with specific parameter values"
+    tool: "core_workflow_execute"
+    parameters:
+      name: "application-deployment-workflow"
+      parameters:
+        application_name: "test-web-app"
+        environment: "development"
+        replicas: 2
+        image_tag: "v1.0.0"
+        enable_monitoring: true
+        notify_on_completion: false
+    expected:
+      success: true
+      contains: ["executing", "test-web-app"]
+    timeout: "3m"
+
+  - name: "verify-workflow-execution"
+    description: "Verify workflow execution completed successfully"
+    tool: "core_workflow_status"
+    parameters:
+      name: "application-deployment-workflow"
+      execution_id: "latest"
+    expected:
+      success: true
+      json_path:
+        status: "completed"
+        steps_completed: 6
+        parameters.application_name: "test-web-app"
+        parameters.environment: "development"
+        parameters.replicas: 2
+    timeout: "30s"
+
+  - name: "test-parameter-validation"
+    description: "Test workflow parameter validation with invalid values"
+    tool: "core_workflow_execute"
+    parameters:
+      name: "application-deployment-workflow"
+      parameters:
+        application_name: "test-invalid"
+        environment: "invalid-env"  # Should fail enum validation
+        replicas: 15  # Should fail maximum validation
+        image_tag: "v2.0.0"
+    expected:
+      success: false
+      error_contains: ["invalid parameter", "environment", "replicas"]
+    timeout: "30s"
+
+cleanup:
+  - name: "delete-test-service"
+    description: "Clean up test service created by workflow"
+    tool: "core_service_delete"
+    parameters:
+      label: "test-web-app-development"
+    expected:
+      success: true
+      contains: ["deleted successfully"]
+    timeout: "1m"
+    continue_on_failure: true
+
+  - name: "delete-test-serviceclass"
+    description: "Clean up test ServiceClass created by workflow"
+    tool: "core_serviceclass_delete"
+    parameters:
+      name: "test-web-app-serviceclass"
+    expected:
+      success: true
+      contains: ["deleted successfully"]
+    timeout: "1m"
+    continue_on_failure: true
+
+  - name: "delete-test-workflow"
+    description: "Clean up test workflow"
+    tool: "core_workflow_delete"
+    parameters:
+      name: "application-deployment-workflow"
+    expected:
+      success: true
+      contains: ["deleted successfully", "application-deployment-workflow"]
+    timeout: "30s"
+    continue_on_failure: true
+
+  - name: "verify-workflow-deleted"
+    description: "Verify workflow was completely removed"
+    tool: "core_workflow_get"
+    parameters:
+      name: "application-deployment-workflow"
+    expected:
+      success: false
+      error_contains: ["not found", "does not exist"]
+    timeout: "30s"
+    continue_on_failure: true 
