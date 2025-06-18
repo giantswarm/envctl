@@ -113,8 +113,8 @@ type Orchestrator struct {
 type Config struct {
 	Aggregator config.AggregatorConfig
 	Yolo       bool
-	ToolCaller ToolCaller        // Optional: for ServiceClass-based services
-	Storage    *config.Storage   // Required: for configuration and persistence
+	ToolCaller ToolCaller      // Optional: for ServiceClass-based services
+	Storage    *config.Storage // Required: for configuration and persistence
 }
 
 // New creates a new orchestrator.

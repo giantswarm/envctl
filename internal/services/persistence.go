@@ -166,4 +166,4 @@ func CreateDefinitionFromInstance(label, serviceClassName, serviceClassType stri
 		AutoStart:        autoStart,
 		CreatedAt:        time.Now(),
 	}
-} 
+}

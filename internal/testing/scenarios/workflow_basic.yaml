@@ -1,0 +1,125 @@
+name: "workflow-basic-operations"
+category: "behavioral"
+concept: "workflow"
+description: "Basic Workflow management operations - create, validate, list, delete"
+tags: ["basic", "crud", "workflow"]
+timeout: "3m"
+
+steps:
+  - name: "list-initial-workflows"
+    description: "Get initial list of workflows to establish baseline"
+    tool: "core_workflow_list"
+    parameters:
+      include_system: true
+    expected:
+      success: true
+    timeout: "30s"
+
+  - name: "validate-test-workflow-definition"
+    description: "Validate a test workflow definition before creating it"
+    tool: "core_workflow_validate"
+    parameters:
+      yaml_definition: |
+        name: test-basic-workflow
+        description: "Test workflow for behavioral testing"
+        parameters:
+          target_service:
+            type: string
+            required: true
+            description: "Target service name"
+          operation:
+            type: string
+            default: "status"
+            description: "Operation to perform"
+        steps:
+          - name: check_service_status
+            tool: core_service_status
+            parameters:
+              label: "{{ .target_service }}"
+          - name: list_all_services
+            tool: core_service_list
+            parameters: {}
+    expected:
+      success: true
+      contains: ["valid", "test-basic-workflow"]
+    timeout: "30s"
+
+  - name: "create-test-workflow"
+    description: "Create a new test workflow with basic configuration"
+    tool: "core_workflow_create"
+    parameters:
+      yaml_definition: |
+        name: test-basic-workflow
+        description: "Test workflow for behavioral testing"
+        parameters:
+          target_service:
+            type: string
+            required: true
+            description: "Target service name"
+          operation:
+            type: string
+            default: "status"
+            description: "Operation to perform"
+        steps:
+          - name: check_service_status
+            tool: core_service_status
+            parameters:
+              label: "{{ .target_service }}"
+          - name: list_all_services
+            tool: core_service_list
+            parameters: {}
+    expected:
+      success: true
+      contains: ["created successfully", "test-basic-workflow"]
+    timeout: "1m"
+
+  - name: "verify-workflow-created"
+    description: "Verify the workflow was created and retrieve its details"
+    tool: "core_workflow_get"
+    parameters:
+      name: "test-basic-workflow"
+    expected:
+      success: true
+      contains: ["test-basic-workflow", "Test workflow for behavioral testing"]
+    timeout: "30s"
+
+  - name: "list-workflows-with-new"
+    description: "List workflows to verify our new one appears"
+    tool: "core_workflow_list"
+    parameters:
+      include_system: true
+    expected:
+      success: true
+      contains: ["test-basic-workflow"]
+    timeout: "30s"
+
+  - name: "get-workflow-specification"
+    description: "Get the workflow specification format for reference"
+    tool: "core_workflow_spec"
+    parameters:
+      format: "schema"
+    expected:
+      success: true
+      contains: ["schema", "workflow"]
+    timeout: "30s"
+
+cleanup:
+  - name: "delete-test-workflow"
+    description: "Clean up by deleting the test workflow"
+    tool: "core_workflow_delete"
+    parameters:
+      name: "test-basic-workflow"
+    expected:
+      success: true
+      contains: ["deleted successfully", "test-basic-workflow"]
+    timeout: "30s"
+
+  - name: "verify-workflow-deleted"
+    description: "Verify the workflow was completely removed"
+    tool: "core_workflow_get"
+    parameters:
+      name: "test-basic-workflow"
+    expected:
+      success: false
+      error_contains: ["not found", "does not exist"]
+    timeout: "30s" 

@@ -1,0 +1,98 @@
+name: "serviceclass-basic-operations"
+category: "behavioral"
+concept: "serviceclass"
+description: "Basic ServiceClass management operations - create, list, get, delete"
+tags: ["basic", "crud", "serviceclass"]
+timeout: "5m"
+
+steps:
+  - name: "list-initial-serviceclasses"
+    description: "Get initial list of ServiceClasses to establish baseline"
+    tool: "core_serviceclass_list"
+    parameters: {}
+    expected:
+      success: true
+    timeout: "30s"
+
+  - name: "create-test-serviceclass"
+    description: "Create a new test ServiceClass with basic configuration"
+    tool: "core_serviceclass_create"
+    parameters:
+      yaml: |
+        name: test-basic-serviceclass
+        description: "Test ServiceClass for behavioral testing"
+        parameters:
+          replicas:
+            type: integer
+            default: 1
+            description: "Number of service replicas"
+          image:
+            type: string
+            required: true
+            description: "Container image to use"
+        tools:
+          - name: "core_service_create"
+            description: "Create service instance"
+        template: |
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: "{{ .name }}-config"
+          data:
+            replicas: "{{ .parameters.replicas }}"
+            image: "{{ .parameters.image }}"
+    expected:
+      success: true
+      contains: ["created successfully", "test-basic-serviceclass"]
+    timeout: "1m"
+
+  - name: "verify-serviceclass-created"
+    description: "Verify the ServiceClass was created and is available"
+    tool: "core_serviceclass_get"
+    parameters:
+      name: "test-basic-serviceclass"
+    expected:
+      success: true
+      contains: ["test-basic-serviceclass", "Test ServiceClass for behavioral testing"]
+    timeout: "30s"
+
+  - name: "check-serviceclass-availability"
+    description: "Check if the ServiceClass is available for instantiation"
+    tool: "core_serviceclass_available"
+    parameters:
+      name: "test-basic-serviceclass"
+    expected:
+      success: true
+      json_path:
+        available: true
+    timeout: "30s"
+
+  - name: "list-serviceclasses-with-new"
+    description: "List ServiceClasses to verify our new one appears"
+    tool: "core_serviceclass_list"
+    parameters: {}
+    expected:
+      success: true
+      contains: ["test-basic-serviceclass"]
+    timeout: "30s"
+
+cleanup:
+  - name: "delete-test-serviceclass"
+    description: "Clean up by deleting the test ServiceClass"
+    tool: "core_serviceclass_delete"
+    parameters:
+      name: "test-basic-serviceclass"
+    expected:
+      success: true
+      contains: ["deleted successfully", "test-basic-serviceclass"]
+    timeout: "30s"
+
+  - name: "verify-serviceclass-deleted"
+    description: "Verify the ServiceClass was completely removed"
+    tool: "core_serviceclass_get"
+    parameters:
+      name: "test-basic-serviceclass"
+    expected:
+      success: false
+      error_contains: ["not found", "does not exist"]
+    timeout: "30s" 
