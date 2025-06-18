@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"envctl/internal/agent"
 	"envctl/internal/cli"
 	"envctl/internal/testing"
 	"fmt"
@@ -25,6 +26,7 @@ var (
 	testReportPath string
 	testFailFast   bool
 	testParallel   int
+	testMCPServer  bool
 )
 
 // completeCategoryFlag provides shell completion for the category flag
@@ -81,6 +83,7 @@ Test execution modes:
 2. Category-based: Run specific test categories (--category)
 3. Concept-based: Run tests for specific concepts (--concept)
 4. Scenario-based: Run individual test scenarios (--scenario)
+5. MCP Server mode (--mcp-server): Runs an MCP server that exposes test functionality via stdio
 
 Test Categories:
 - behavioral: BDD-style scenarios validating expected behavior
@@ -101,6 +104,13 @@ Example usage:
   envctl test --verbose --debug           # Detailed output and debugging
   envctl test --fail-fast                 # Stop on first failure
   envctl test --parallel=4                # Run with 4 parallel workers
+  envctl test --mcp-server                # Run as MCP server (stdio transport)
+
+In MCP Server mode:
+- The test command acts as an MCP server using stdio transport
+- It exposes all test functionality as MCP tools
+- It's designed for integration with AI assistants like Claude or Cursor
+- Configure it in your AI assistant's MCP settings
 
 The test framework uses YAML-based test scenario definitions and requires
 a running envctl aggregator server. Use 'envctl serve' to start the server
@@ -134,14 +144,24 @@ func init() {
 	testCmd.Flags().BoolVar(&testFailFast, "fail-fast", false, "Stop test execution on first failure")
 	testCmd.Flags().IntVar(&testParallel, "parallel", 1, "Number of parallel test workers (1-10)")
 
+	// MCP Server mode
+	testCmd.Flags().BoolVar(&testMCPServer, "mcp-server", false, "Run as MCP server (stdio transport)")
+
 	// Shell completion for test flags
 	_ = testCmd.RegisterFlagCompletionFunc("category", completeCategoryFlag)
 	_ = testCmd.RegisterFlagCompletionFunc("concept", completeConceptFlag)
 	_ = testCmd.RegisterFlagCompletionFunc("scenario", completeScenarioFlag)
 
+	// Mark flags as mutually exclusive with MCP server mode
+	testCmd.MarkFlagsMutuallyExclusive("mcp-server", "category")
+	testCmd.MarkFlagsMutuallyExclusive("mcp-server", "concept")
+	testCmd.MarkFlagsMutuallyExclusive("mcp-server", "scenario")
+	testCmd.MarkFlagsMutuallyExclusive("mcp-server", "fail-fast")
+	testCmd.MarkFlagsMutuallyExclusive("mcp-server", "parallel")
+
 	// Validate parallel flag
 	testCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
-		if testParallel < 1 || testParallel > 10 {
+		if !testMCPServer && (testParallel < 1 || testParallel > 10) {
 			return fmt.Errorf("parallel workers must be between 1 and 10, got %d", testParallel)
 		}
 		return nil
@@ -158,13 +178,11 @@ func runTest(cmd *cobra.Command, args []string) error {
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-sigChan
-		fmt.Println("\nReceived interrupt signal, stopping tests gracefully...")
+		if !testMCPServer {
+			fmt.Println("\nReceived interrupt signal, stopping tests gracefully...")
+		}
 		cancel()
 	}()
-
-	// Create timeout context
-	timeoutCtx, timeoutCancel := context.WithTimeout(ctx, testTimeout)
-	defer timeoutCancel()
 
 	// Determine endpoint using the same logic as CLI commands
 	endpoint := testEndpoint
@@ -174,13 +192,37 @@ func runTest(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			// Use fallback default that matches system defaults
 			endpoint = "http://localhost:8090/mcp"
-			if testVerbose {
+			if !testMCPServer && testVerbose {
 				fmt.Printf("Warning: Could not detect endpoint (%v), using default: %s\n", err, endpoint)
 			}
 		} else {
 			endpoint = detectedEndpoint
 		}
 	}
+
+	// Run in MCP Server mode if requested
+	if testMCPServer {
+		// Create logger for MCP server
+		logger := agent.NewLogger(testVerbose, true, testDebug)
+
+		// Create test MCP server
+		server, err := agent.NewTestMCPServer(endpoint, logger, testConfigPath, testDebug)
+		if err != nil {
+			return fmt.Errorf("failed to create test MCP server: %w", err)
+		}
+
+		logger.Info("Starting envctl test MCP server (stdio transport)...")
+		logger.Info("Connecting to aggregator at: %s", endpoint)
+
+		if err := server.Start(ctx); err != nil {
+			return fmt.Errorf("test MCP server error: %w", err)
+		}
+		return nil
+	}
+
+	// Create timeout context for normal test execution
+	timeoutCtx, timeoutCancel := context.WithTimeout(ctx, testTimeout)
+	defer timeoutCancel()
 
 	// Create test configuration
 	testConfig := testing.TestConfiguration{
