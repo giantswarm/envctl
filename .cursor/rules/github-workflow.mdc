@@ -3,13 +3,30 @@ description: Github workflow
 globs: 
 alwaysApply: true
 ---
-
 - **Github Tools Usage**
   - Always use the Github tools via mcp-debug
   - The Github tools via mcp_mcp-debug_list_tools
 - **Github Tools Discovery**
   - Sub-points with details
   - Examples and explanations
+- **Issue Management Best Practices**
+  - **When updating existing issues:**
+    - Always update the issue description if the scope of the issue has changed. A comment is not enough. But only do the necessary changes to the description.
+    - Add a **short** comment underneath explaining what was added/changed
+    - Avoid lengthy comments that repeat the description content
+  - **When adding subtasks to main issues:**
+    - Create separate issues for each subtask with detailed information
+    - Include full description, objective, implementation details, and acceptance criteria in subtask issues
+    - Link subtask issues in the main issue's "Related Subtasks" section
+    - Use consistent naming: "Subtask X.Y: [Description]"
+    - Add appropriate labels: `subtask`, relevant components, priority
+  - **Subtask issue structure:**
+    - **Parent Issue**: Link to main issue (e.g., "#71 - Task 13: Main Task Title")
+    - **Objective**: Clear, one-sentence goal
+    - **Implementation Details**: Specific technical requirements and approach
+    - **Files to Create/Modify**: Explicit file listing
+    - **Acceptance Criteria**: Detailed, testable requirements
+    - **Dependencies**: Links to related issues/tasks
 - **New Task**
   - Use the `x_github_list_issues` tool to fetch the list of open issues from the `giantswarm/envctl` repository, ordered by issue number descending (newest first).
   - Decide which is the next best issue in that list (still open issue) and use the `x_github_get_issue` tool with its issue number to retrieve full details. Also make sure to use the `x_github_get_issue_comments` tool to get the comments for the issue.
