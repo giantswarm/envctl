@@ -239,4 +239,4 @@ type TestReporter interface {
 	ReportScenarioResult(scenarioResult TestScenarioResult)
 	// ReportSuiteResult is called when all tests complete
 	ReportSuiteResult(suiteResult TestSuiteResult)
-} 
+}

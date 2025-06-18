@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"envctl/internal/config"
+	"envctl/internal/testing"
 	"fmt"
 	"os"
 	"os/signal"
@@ -125,9 +126,6 @@ func runTest(cmd *cobra.Command, args []string) error {
 	timeoutCtx, timeoutCancel := context.WithTimeout(ctx, testTimeout)
 	defer timeoutCancel()
 
-	// Use timeout context for future test execution
-	_ = timeoutCtx
-
 	// Determine endpoint
 	endpoint := testEndpoint
 	if endpoint == "" {
@@ -153,42 +151,90 @@ func runTest(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// TODO: Implement test framework components
-	// This is the entry point for the test framework implementation
-	fmt.Printf("🧪 envctl Test Framework\n")
-	fmt.Printf("📡 Aggregator endpoint: %s\n", endpoint)
-
-	if testVerbose {
-		fmt.Printf("⚙️  Test Configuration:\n")
-		fmt.Printf("   • Category: %s\n", getValueOrDefault(testCategory, "all"))
-		fmt.Printf("   • Concept: %s\n", getValueOrDefault(testConcept, "all"))
-		fmt.Printf("   • Scenario: %s\n", getValueOrDefault(testScenario, "all"))
-		fmt.Printf("   • Parallel workers: %d\n", testParallel)
-		fmt.Printf("   • Fail fast: %t\n", testFailFast)
-		fmt.Printf("   • Debug mode: %t\n", testDebug)
-		fmt.Printf("   • Timeout: %v\n", testTimeout)
-		fmt.Printf("\n")
+	// Create test configuration
+	testConfig := testing.TestConfiguration{
+		Endpoint:   endpoint,
+		Timeout:    testTimeout,
+		Parallel:   testParallel,
+		FailFast:   testFailFast,
+		Verbose:    testVerbose,
+		Debug:      testDebug,
+		ConfigPath: testConfigPath,
+		ReportPath: testReportPath,
 	}
 
-	// Placeholder implementation - will be replaced with actual test framework
-	fmt.Printf("🚧 Test framework implementation in progress...\n")
-	fmt.Printf("📋 Task 13 subtasks to be implemented:\n")
-	fmt.Printf("   • Subtask 13.1: Test Runner Engine with lifecycle management\n")
-	fmt.Printf("   • Subtask 13.2: envctl test command structure with CLI framework ✅\n")
-	fmt.Printf("   • Subtask 13.3: MCP Client for protocol communication\n")
-	fmt.Printf("   • Subtask 13.4: Configuration system for YAML-based test scenarios\n")
-	fmt.Printf("   • Subtask 13.5: Category-based test execution logic\n")
-	fmt.Printf("   • Subtask 13.6: Concept-specific test routing\n")
-	fmt.Printf("   • Subtask 13.7: Structured logging and reporting system\n")
-	fmt.Printf("\n")
-	fmt.Printf("📚 Available behavioral scenarios:\n")
-	fmt.Printf("   • ServiceClass management (docs/behavioral-scenarios/serviceclass-management.md)\n")
-	fmt.Printf("   • Workflow management (docs/behavioral-scenarios/workflow-management.md)\n")
-	fmt.Printf("   • MCPServer management (docs/behavioral-scenarios/mcpserver-management.md)\n")
-	fmt.Printf("   • Capability management (docs/behavioral-scenarios/capability-management.md)\n")
-	fmt.Printf("   • Service management (docs/behavioral-scenarios/service-management.md)\n")
-	fmt.Printf("\n")
-	fmt.Printf("🎯 Next: Implement MCP client and test runner engine\n")
+	// Parse category filter
+	if testCategory != "" {
+		switch testCategory {
+		case "behavioral":
+			testConfig.Category = testing.CategoryBehavioral
+		case "integration":
+			testConfig.Category = testing.CategoryIntegration
+		default:
+			return fmt.Errorf("invalid category '%s', must be 'behavioral' or 'integration'", testCategory)
+		}
+	}
+
+	// Parse concept filter
+	if testConcept != "" {
+		switch testConcept {
+		case "serviceclass":
+			testConfig.Concept = testing.ConceptServiceClass
+		case "workflow":
+			testConfig.Concept = testing.ConceptWorkflow
+		case "mcpserver":
+			testConfig.Concept = testing.ConceptMCPServer
+		case "capability":
+			testConfig.Concept = testing.ConceptCapability
+		case "service":
+			testConfig.Concept = testing.ConceptService
+		default:
+			return fmt.Errorf("invalid concept '%s', must be one of: serviceclass, workflow, mcpserver, capability, service", testConcept)
+		}
+	}
+
+	// Set scenario filter
+	testConfig.Scenario = testScenario
+
+	// Determine config path for scenarios
+	scenarioPath := testConfigPath
+	if scenarioPath == "" {
+		scenarioPath = testing.GetDefaultScenarioPath()
+	}
+
+	// Create test framework components
+	client := testing.NewMCPTestClient(testDebug)
+	loader := testing.NewTestScenarioLoader(testDebug)
+	reporter := testing.NewTestReporter(testVerbose, testDebug, testReportPath)
+	runner := testing.NewTestRunner(client, loader, reporter, testDebug)
+
+	// Load test scenarios
+	scenarios, err := loader.LoadScenarios(scenarioPath)
+	if err != nil {
+		return fmt.Errorf("failed to load test scenarios: %w", err)
+	}
+
+	if len(scenarios) == 0 {
+		fmt.Printf("⚠️  No test scenarios found in %s\n", scenarioPath)
+		fmt.Printf("💡 Available test scenario files:\n")
+		fmt.Printf("   • internal/testing/scenarios/serviceclass_basic.yaml\n")
+		fmt.Printf("   • internal/testing/scenarios/workflow_basic.yaml\n")
+		fmt.Printf("\n")
+		fmt.Printf("📚 For more information, see:\n")
+		fmt.Printf("   • docs/behavioral-scenarios/\n")
+		return nil
+	}
+
+	// Execute test suite
+	result, err := runner.Run(timeoutCtx, testConfig, scenarios)
+	if err != nil {
+		return fmt.Errorf("test execution failed: %w", err)
+	}
+
+	// Set exit code based on results
+	if result.FailedScenarios > 0 || result.ErrorScenarios > 0 {
+		os.Exit(1)
+	}
 
 	return nil
 }
