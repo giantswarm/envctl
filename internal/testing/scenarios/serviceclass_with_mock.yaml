@@ -138,19 +138,19 @@ pre_configuration:
                   name: "{{ .app_name }}-service"
 
 steps:
-  - name: "verify-mock-servers-available"
+  - id: verify-mock-servers-available
     description: "Verify that mock servers are available"
     tool: "core_mcpserver_list"
-    parameters: {}
+    args: {}
     expected:
       success: true
       contains: ["storage-mock", "network-mock"]
     timeout: "30s"
 
-  - name: "verify-serviceclass-tools-available"
+  - id: verify-serviceclass-tools-available
     description: "Verify that ServiceClass tools are available"
     tool: "core_serviceclass_available"
-    parameters:
+    args:
       name: "web-application"
     expected:
       success: true
@@ -158,10 +158,10 @@ steps:
         available: true
     timeout: "30s"
 
-  - name: "create-web-app-service"
+  - id: create-web-app-service
     description: "Create a web application service instance"
     tool: "core_service_create"
-    parameters:
+    args:
       serviceClassName: "web-application"
       label: "test-web-app"
       parameters:
@@ -173,20 +173,20 @@ steps:
       contains: ["test-web-app", "web-application"]
     timeout: "1m"
 
-  - name: "verify-service-created"
+  - id: verify-service-created
     description: "Verify the service was created successfully"
     tool: "core_service_get"
-    parameters:
+    args:
       labelOrServiceId: "test-web-app"
     expected:
       success: true
       contains: ["test-web-app", "my-web-app", "Running"]
     timeout: "30s"
 
-  - name: "test-storage-creation-directly"
+  - id: test-storage-creation-directly
     description: "Test direct storage volume creation"
     tool: "storage_volume_create"
-    parameters:
+    args:
       name: "direct-test-volume"
       size: "5Gi"
       storage_class: "fast"
@@ -195,10 +195,10 @@ steps:
       contains: ["created", "vol-direct-test-volume-fast", "5Gi"]
     timeout: "30s"
 
-  - name: "test-network-service-creation-directly"
+  - id: test-network-service-creation-directly
     description: "Test direct network service creation"
     tool: "network_create_service"
-    parameters:
+    args:
       name: "direct-test-service"
       port: 3000
       type: "LoadBalancer"
@@ -207,20 +207,20 @@ steps:
       contains: ["created", "direct-test-service", "3000", "LoadBalancer"]
     timeout: "30s"
 
-  - name: "test-service-lifecycle-stop"
+  - id: test-service-lifecycle-stop
     description: "Test stopping the service instance"
     tool: "core_service_stop"
-    parameters:
+    args:
       label: "test-web-app"
     expected:
       success: true
       contains: ["test-web-app"]
     timeout: "30s"
 
-  - name: "test-service-lifecycle-start"
+  - id: test-service-lifecycle-start
     description: "Test starting the service instance again"
     tool: "core_service_start"
-    parameters:
+    args:
       label: "test-web-app"
     expected:
       success: true
@@ -228,40 +228,40 @@ steps:
     timeout: "30s"
 
 cleanup:
-  - name: "delete-test-service"
+  - id: delete-test-service
     description: "Delete the test service instance"
     tool: "core_service_delete"
-    parameters:
+    args:
       labelOrServiceId: "test-web-app"
     expected:
       success: true
       contains: ["test-web-app"]
     timeout: "1m"
 
-  - name: "cleanup-direct-storage"
+  - id: cleanup-direct-storage
     description: "Clean up directly created storage"
     tool: "storage_volume_delete"
-    parameters:
+    args:
       volume_id: "vol-direct-test-volume-fast"
     expected:
       success: true
       contains: ["deleted", "vol-direct-test-volume-fast"]
     timeout: "30s"
 
-  - name: "cleanup-direct-network"
+  - id: cleanup-direct-network
     description: "Clean up directly created network service"
     tool: "network_delete_service"
-    parameters:
+    args:
       name: "direct-test-service"
     expected:
       success: true
       contains: ["deleted", "direct-test-service"]
     timeout: "30s"
 
-  - name: "cleanup-serviceclass"
+  - id: cleanup-serviceclass
     description: "Clean up the test ServiceClass"
     tool: "core_serviceclass_delete"
-    parameters:
+    args:
       name: "web-application"
     expected:
       success: true

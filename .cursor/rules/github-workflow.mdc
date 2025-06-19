@@ -1,7 +1,7 @@
 ---
-description: Github workflow
+description: 
 globs: 
-alwaysApply: true
+alwaysApply: false
 ---
 - **Github Tools Usage**
   - Always use the Github tools via mcp-debug

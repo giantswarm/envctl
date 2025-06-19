@@ -78,7 +78,7 @@ func (r *testReporter) ReportStepResult(stepResult TestStepResult) {
 	if r.verbose {
 		symbol := r.getResultSymbol(stepResult.Result)
 		fmt.Printf("   %s Step: %s (%v)\n",
-			symbol, stepResult.Step.Name, stepResult.Duration)
+			symbol, stepResult.Step.ID, stepResult.Duration)
 
 		if stepResult.RetryCount > 0 {
 			fmt.Printf("     🔄 Retries: %d\n", stepResult.RetryCount)

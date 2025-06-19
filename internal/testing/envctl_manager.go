@@ -511,14 +511,14 @@ func (m *envCtlInstanceManager) generateConfigFiles(configPath string, config *E
 		// Generate MCP server configs
 		for _, mcpServer := range config.MCPServers {
 			filename := filepath.Join(configPath, "mcpservers", mcpServer.Name+".yaml")
-			
+
 			// For mock servers, we need to create the full server definition
 			if mcpServer.Type == "mock" && mcpServer.MockConfig != nil {
 				serverDef := map[string]interface{}{
-					"name":                mcpServer.Name,
-					"type":                mcpServer.Type,
-					"enabledByDefault":    true,
-					"mock_config":         mcpServer.MockConfig,
+					"name":             mcpServer.Name,
+					"type":             mcpServer.Type,
+					"enabledByDefault": true,
+					"mock_config":      mcpServer.MockConfig,
 				}
 				if err := m.writeYAMLFile(filename, serverDef); err != nil {
 					return fmt.Errorf("failed to write mock MCP server config %s: %w", mcpServer.Name, err)

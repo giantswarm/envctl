@@ -361,7 +361,7 @@ func (r *testRunner) runStep(ctx context.Context, step TestStep, config TestConf
 				}
 
 				if r.debug {
-					fmt.Printf("⏳ Retrying step '%s' in %v (attempt %d/%d)\n", step.Name, delay, attempt+1, maxAttempts)
+					fmt.Printf("⏳ Retrying step '%s' in %v (attempt %d/%d)\n", step.ID, delay, attempt+1, maxAttempts)
 				}
 
 				select {
@@ -377,7 +377,7 @@ func (r *testRunner) runStep(ctx context.Context, step TestStep, config TestConf
 		}
 
 		// Execute the tool call
-		response, err := r.client.CallTool(stepCtx, step.Tool, step.Parameters)
+		response, err := r.client.CallTool(stepCtx, step.Tool, step.Args)
 		if err != nil {
 			lastErr = err
 			if attempt < maxAttempts-1 {

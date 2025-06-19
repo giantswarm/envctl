@@ -233,14 +233,14 @@ type EnvCtlInstanceManager interface {
 
 // TestStep defines a single step within a test scenario
 type TestStep struct {
-	// Name is the step identifier
-	Name string `yaml:"name"`
+	// ID is the step identifier
+	ID string `yaml:"id"`
 	// Description explains what the step does
 	Description string `yaml:"description,omitempty"`
 	// Tool is the MCP tool to invoke
 	Tool string `yaml:"tool"`
-	// Parameters are the tool parameters as a map
-	Parameters map[string]interface{} `yaml:"parameters"`
+	// Args are the tool arguments as a map
+	Args map[string]interface{} `yaml:"args"`
 	// Expected defines the expected outcome
 	Expected TestExpectation `yaml:"expected"`
 	// Retry configuration for this step

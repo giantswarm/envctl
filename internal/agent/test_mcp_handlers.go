@@ -273,7 +273,7 @@ func (t *TestMCPServer) handleValidateScenario(ctx context.Context, request mcp.
 		// Check for steps without descriptions
 		for j, step := range scenario.Steps {
 			if step.Description == "" {
-				warnings = append(warnings, fmt.Sprintf("Step %d (%s) missing description", j+1, step.Name))
+				warnings = append(warnings, fmt.Sprintf("Step %d (%s) missing description", j+1, step.ID))
 			}
 		}
 

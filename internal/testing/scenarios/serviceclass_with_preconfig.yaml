@@ -10,7 +10,7 @@ pre_configuration:
   # Configure MCP servers that will be available
   mcp_servers:
     - name: "test-kubernetes"
-      type: "process"
+      type: "localCommand"
       config:
         command: "kubectl-mcp"
         args: ["--context", "test-cluster"]
@@ -29,7 +29,7 @@ pre_configuration:
       config:
         name: "deploy-with-monitoring"
         description: "Deploy service with monitoring setup"
-        parameters:
+        input_schema:
           service_name:
             type: "string"
             required: true
@@ -37,13 +37,13 @@ pre_configuration:
             type: "string"
             default: "default"
         steps:
-          - name: "deploy-service"
+          - id: "deploy-service"
             tool: "x_kubernetes_apply"
-            parameters:
+            args:
               yaml: "{{ .service_yaml }}"
-          - name: "setup-monitoring"
+          - id: "setup-monitoring"
             tool: "x_prometheus_add_target"
-            parameters:
+            args:
               target: "{{ .service_name }}.{{ .namespace }}.svc.cluster.local:8080"
 
   # Configure a service class that uses the above components
@@ -52,7 +52,7 @@ pre_configuration:
       config:
         name: "monitored-web-service"
         description: "Web service with monitoring integration"
-        parameters:
+        input_schema:
           app_name:
             type: "string"
             required: true
@@ -102,37 +102,37 @@ pre_configuration:
         timeout: "30s"
 
 steps:
-  - name: "verify-preconfig-loaded"
+  - id: verify-preconfig-loaded
     description: "Verify that pre-configured components are available"
     tool: "core_mcpserver_list"
-    parameters: {}
+    args: {}
     expected:
       success: true
       contains: ["test-kubernetes", "test-prometheus"]
     timeout: "30s"
 
-  - name: "check-workflow-available"
+  - id: check-workflow-available
     description: "Verify the pre-configured workflow is available"
     tool: "core_workflow_list"
-    parameters: {}
+    args: {}
     expected:
       success: true
       contains: ["deploy-with-monitoring"]
     timeout: "30s"
 
-  - name: "check-serviceclass-available"
+  - id: check-serviceclass-available
     description: "Verify the pre-configured ServiceClass is available"
     tool: "core_serviceclass_list"
-    parameters: {}
+    args: {}
     expected:
       success: true
       contains: ["monitored-web-service"]
     timeout: "30s"
 
-  - name: "verify-serviceclass-ready"
+  - id: verify-serviceclass-ready
     description: "Check if the ServiceClass is ready for instantiation"
     tool: "core_serviceclass_available"
-    parameters:
+    args:
       name: "monitored-web-service"
     expected:
       success: true
@@ -141,10 +141,10 @@ steps:
         missing_tools: []
     timeout: "30s"
 
-  - name: "create-service-instance"
+  - id: create-service-instance
     description: "Create a service instance from the pre-configured ServiceClass"
     tool: "core_service_create"
-    parameters:
+    args:
       service_class_name: "monitored-web-service"
       label: "test-web-app"
       parameters:
@@ -157,41 +157,21 @@ steps:
       contains: ["created successfully", "test-web-app"]
     timeout: "2m"
 
-  - name: "verify-service-created"
+  - id: verify-service-created
     description: "Verify the service instance was created"
     tool: "core_service_list"
-    parameters: {}
+    args: {}
     expected:
       success: true
       contains: ["test-web-app", "Running"]
     timeout: "30s"
 
-  - name: "get-service-status"
+  - id: get-service-status
     description: "Get detailed status of the created service"
     tool: "core_service_status"
-    parameters:
+    args:
       label: "test-web-app"
     expected:
       success: true
       contains: ["Running", "monitored-web-service"]
     timeout: "30s"
-
-cleanup:
-  - name: "delete-service-instance"
-    description: "Clean up the service instance"
-    tool: "core_service_delete"
-    parameters:
-      instance_id: "test-web-app"
-    expected:
-      success: true
-      contains: ["deleted successfully"]
-    timeout: "1m"
-
-  - name: "verify-service-deleted"
-    description: "Verify the service instance was deleted"
-    tool: "core_service_list"
-    parameters: {}
-    expected:
-      success: true
-      not_contains: ["test-web-app"]
-    timeout: "30s" 

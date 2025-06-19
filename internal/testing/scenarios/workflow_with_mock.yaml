@@ -47,13 +47,14 @@ pre_configuration:
               properties:
                 name:
                   type: "string"
-                  required: true
                 image:
                   type: "string"
-                  required: true
                 namespace:
                   type: "string"
                   default: "default"
+              required:
+                - name
+                - image
             responses:
               - response:
                   status: "created"
@@ -70,10 +71,11 @@ pre_configuration:
               properties:
                 name:
                   type: "string"
-                  required: true
                 namespace:
                   type: "string"
                   default: "default"
+              required:
+                - name
             responses:
               - response:
                   status: "deleted"
@@ -86,77 +88,78 @@ pre_configuration:
       config:
         name: "deploy-test-app"
         description: "Deploy test application using mock Kubernetes tools"
-        parameters:
-          app_name:
-            type: "string"
-            required: true
-            description: "Application name"
-          app_image:
-            type: "string"
-            required: true
-            description: "Application container image"
-          namespace:
-            type: "string"
-            default: "default"
-            description: "Kubernetes namespace"
+        input_schema:
+          type: object
+          properties:
+            app_name:
+              type: "string"
+              description: "Application name"
+            app_image:
+              type: "string"
+              description: "Application container image"
+            namespace:
+              type: "string"
+              default: "default"
+              description: "Kubernetes namespace"
+          required:
+            - app_name
+            - app_image
         steps:
           - id: "list_existing_pods"
-            name: "list_existing_pods"
             tool: "k8s_pod_list"
-            parameters:
+            args:
               namespace: "{{ .namespace }}"
           - id: "create_application_pod"
-            name: "create_application_pod"
             tool: "k8s_pod_create"
-            parameters:
+            args:
               name: "{{ .app_name }}"
               image: "{{ .app_image }}"
               namespace: "{{ .namespace }}"
 
 steps:
-  - name: "verify-mock-server-tools"
+  - id: "verify-mock-server-tools"
     description: "Verify that mock Kubernetes tools are available"
     tool: "core_mcpserver_list"
-    parameters: {}
+    args: {}
     expected:
       success: true
       contains: ["kubernetes-mock"]
     timeout: "30s"
 
-  - name: "test-pod-list-default-namespace"
+  - id: "test-pod-list-default-namespace"
     description: "Test listing pods in default namespace"
     tool: "k8s_pod_list"
-    parameters:
+    args:
       namespace: "default"
     expected:
       success: true
       contains: ["test-pod-1", "Running", "nginx:1.20"]
     timeout: "30s"
 
-  - name: "test-pod-list-kube-system"
+  - id: "test-pod-list-kube-system"
     description: "Test listing pods in kube-system namespace"
     tool: "k8s_pod_list"
-    parameters:
+    args:
       namespace: "kube-system"
     expected:
       success: true
       contains: ["coredns", "k8s.gcr.io/coredns"]
     timeout: "30s"
 
-  - name: "test-pod-list-nonexistent-namespace"
+  - id: "test-pod-list-nonexistent-namespace"
     description: "Test listing pods in nonexistent namespace should fail"
     tool: "k8s_pod_list"
-    parameters:
+    args:
       namespace: "nonexistent"
     expected:
       success: false
       error_contains: ["namespace 'nonexistent' not found"]
     timeout: "30s"
 
-  - name: "execute-deployment-workflow"
+  - id: "execute-deployment-workflow"
     description: "Execute the deployment workflow with mock tools"
     tool: "core_workflow_execute"
-    parameters:
+    args:
       name: "deploy-test-app"
       parameters:
         app_name: "test-app"
@@ -167,10 +170,10 @@ steps:
       contains: ["created", "test-app", "nginx:latest"]
     timeout: "1m"
 
-  - name: "test-pod-creation-directly"
+  - id: "test-pod-creation-directly"
     description: "Test direct pod creation with mock tool"
     tool: "k8s_pod_create"
-    parameters:
+    args:
       name: "direct-test-pod"
       image: "redis:alpine"
       namespace: "default"
@@ -179,10 +182,10 @@ steps:
       contains: ["created", "direct-test-pod", "redis:alpine"]
     timeout: "30s"
 
-  - name: "test-pod-deletion"
+  - id: "test-pod-deletion"
     description: "Test pod deletion with mock tool"
     tool: "k8s_pod_delete"
-    parameters:
+    args:
       name: "direct-test-pod"
       namespace: "default"
     expected:
@@ -191,10 +194,10 @@ steps:
     timeout: "30s"
 
 cleanup:
-  - name: "cleanup-workflow"
+  - id: "cleanup-workflow"
     description: "Clean up the test workflow"
     tool: "core_workflow_delete"
-    parameters:
+    args:
       name: "deploy-test-app"
     expected:
       success: true

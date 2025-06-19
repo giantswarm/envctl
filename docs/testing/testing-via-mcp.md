@@ -326,9 +326,9 @@ concept: "serviceclass"
 description: "Test my new ServiceClass feature"
 
 steps:
-  - name: "test-new-feature"
-    tool: "core_serviceclass_create"
-    parameters:
+  - id: test-new-feature
+    tool: core_serviceclass_create
+    args:
       yaml: |
         name: test-new-feature
         # ... rest of YAML
@@ -682,6 +682,133 @@ const testResult = await mcp.callTool("x_envctl-test_test_run_scenarios", {
   concept: "serviceclass",
   verbose: true
 });
+```
+
+## Test Scenario Structure
+
+### Basic Structure
+
+```yaml
+---
+name: scenario-name
+description: "Description of what this scenario tests"
+category: behavioral  # or integration
+concept: serviceclass  # serviceclass, workflow, mcpserver, capability, service
+steps:
+  - id: step-identifier
+    description: "What this step does"
+    tool: "core_tool_name"
+    args:
+      param1: value1
+      param2: value2
+    expected:
+      success: true
+      contains: ["expected text"]
+cleanup:
+  - id: cleanup-step
+    tool: "core_cleanup_tool"
+    args:
+      name: resource-to-cleanup
+    expected:
+      success: true
+```
+
+### Step Definition
+
+Each test step follows the same structure as workflow steps for consistency:
+
+- **`id`**: Unique identifier for the step (aligns with workflow step format)
+- **`description`**: Human-readable explanation of what the step does
+- **`tool`**: The MCP tool to invoke (e.g., `core_serviceclass_create`)
+- **`args`**: Tool arguments as key-value pairs (aligns with workflow step format)
+- **`expected`**: Expected outcome validation
+
+### Example Scenarios
+
+#### Basic ServiceClass Operations
+
+```yaml
+---
+name: serviceclass-basic-operations
+description: "Tests basic ServiceClass CRUD operations"
+category: behavioral
+concept: serviceclass
+steps:
+  - id: list-initial-serviceclasses
+    description: "List ServiceClasses before creating any"
+    tool: core_serviceclass_list
+    args: {}
+    expected:
+      success: true
+
+  - id: create-serviceclass
+    description: "Create a new ServiceClass"
+    tool: core_serviceclass_create
+    args:
+      name: test-basic-serviceclass
+      definition:
+        description: "Test ServiceClass for basic operations"
+        tools:
+          - core_service_create
+          - core_service_delete
+        lifecycleTools:
+          start: "mock_start"
+          stop: "mock_stop"
+        parameters: []
+    expected:
+      success: true
+
+cleanup:
+  - id: delete-serviceclass
+    description: "Delete the test ServiceClass"
+    tool: core_serviceclass_delete
+    args:
+      name: test-basic-serviceclass
+    expected:
+      success: true
+```
+
+#### Basic Workflow Operations
+
+```yaml
+---
+name: workflow-basic-operations
+description: "Tests basic Workflow CRUD operations"
+category: behavioral
+concept: workflow
+steps:
+  - id: create-workflow
+    description: "Create a new workflow"
+    tool: core_workflow_create
+    args:
+      name: test-basic-workflow
+      definition:
+        description: "Test workflow for basic operations"
+        steps:
+          - id: step1
+            tool: core_serviceclass_list
+            args: {}
+    expected:
+      success: true
+
+  - id: validate-workflow
+    description: "Validate the workflow definition"
+    tool: core_workflow_validate
+    args:
+      name: test-basic-workflow
+    expected:
+      success: true
+      contains:
+        - "Workflow definition is valid"
+
+cleanup:
+  - id: delete-workflow
+    description: "Delete the test workflow"
+    tool: core_workflow_delete
+    args:
+      name: test-basic-workflow
+    expected:
+      success: true
 ```
 
 ## Summary

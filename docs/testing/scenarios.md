@@ -94,13 +94,13 @@ Use action-oriented names:
 
 ```yaml
 # ✅ Good examples
-- name: "create-test-serviceclass"
-- name: "verify-serviceclass-availability"
-- name: "instantiate-service-from-class"
+  - id: "create-test-serviceclass"
+  - id: "verify-serviceclass-availability"  
+  - id: "instantiate-service-from-class"
 
 # ❌ Bad examples
-- name: "step1"
-- name: "test-stuff"
+  - id: "step1"
+  - id: "test-stuff"
 ```
 
 ### 2. Parameter Patterns
@@ -190,9 +190,9 @@ Always clean up resources:
 
 ```yaml
 cleanup:
-  - name: "delete-test-serviceclass"
+  - id: "delete-test-serviceclass"
     tool: "core_serviceclass_delete"
-    parameters:
+    args:
       name: "test-serviceclass"
     expected:
       success: true

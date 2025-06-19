@@ -6,97 +6,103 @@ tags: ["basic", "crud", "workflow"]
 timeout: "3m"
 
 steps:
-  - name: "list-initial-workflows"
+  - id: "list-initial-workflows"
     description: "Get initial list of workflows to establish baseline"
     tool: "core_workflow_list"
-    parameters:
+    args:
       include_system: true
     expected:
       success: true
     timeout: "30s"
 
-  - name: "validate-test-workflow-definition"
+  - id: "validate-test-workflow-definition"
     description: "Validate a test workflow definition before creating it"
     tool: "core_workflow_validate"
-    parameters:
+    args:
       yaml_definition: |
         name: test-basic-workflow
         description: "Test workflow for behavioral testing"
-        parameters:
-          target_service:
-            type: string
-            required: true
-            description: "Target service name"
-          operation:
-            type: string
-            default: "status"
-            description: "Operation to perform"
+        input_schema:
+          type: object
+          properties:
+            target_service:
+              type: string
+              description: "Target service name"
+            operation:
+              type: string
+              default: "status"
+              description: "Operation to perform"
+          required:
+            - target_service
         steps:
-          - name: check_service_status
+          - id: check_service_status
             tool: core_service_status
-            parameters:
+            args:
               label: "{{ .target_service }}"
-          - name: list_all_services
+          - id: list_all_services
             tool: core_service_list
-            parameters: {}
+            args: {}
     expected:
       success: true
       contains: ["valid", "test-basic-workflow"]
     timeout: "30s"
 
-  - name: "create-test-workflow"
+  - id: "create-test-workflow"
     description: "Create a new test workflow with basic configuration"
     tool: "core_workflow_create"
-    parameters:
+    args:
       yaml_definition: |
         name: test-basic-workflow
         description: "Test workflow for behavioral testing"
-        parameters:
-          target_service:
-            type: string
-            required: true
-            description: "Target service name"
-          operation:
-            type: string
-            default: "status"
-            description: "Operation to perform"
+        input_schema:
+          type: object
+          properties:
+            target_service:
+              type: string
+              description: "Target service name"
+            operation:
+              type: string
+              default: "status"
+              description: "Operation to perform"
+          required:
+            - target_service
         steps:
-          - name: check_service_status
+          - id: check_service_status
             tool: core_service_status
-            parameters:
+            args:
               label: "{{ .target_service }}"
-          - name: list_all_services
+          - id: list_all_services
             tool: core_service_list
-            parameters: {}
+            args: {}
     expected:
       success: true
       contains: ["created successfully", "test-basic-workflow"]
     timeout: "1m"
 
-  - name: "verify-workflow-created"
+  - id: "verify-workflow-created"
     description: "Verify the workflow was created and retrieve its details"
     tool: "core_workflow_get"
-    parameters:
+    args:
       name: "test-basic-workflow"
     expected:
       success: true
       contains: ["test-basic-workflow", "Test workflow for behavioral testing"]
     timeout: "30s"
 
-  - name: "list-workflows-with-new"
+  - id: "list-workflows-with-new"
     description: "List workflows to verify our new one appears"
     tool: "core_workflow_list"
-    parameters:
+    args:
       include_system: true
     expected:
       success: true
       contains: ["test-basic-workflow"]
     timeout: "30s"
 
-  - name: "get-workflow-specification"
+  - id: "get-workflow-specification"
     description: "Get the workflow specification format for reference"
     tool: "core_workflow_spec"
-    parameters:
+    args:
       format: "schema"
     expected:
       success: true
@@ -104,20 +110,20 @@ steps:
     timeout: "30s"
 
 cleanup:
-  - name: "delete-test-workflow"
+  - id: "delete-test-workflow"
     description: "Clean up by deleting the test workflow"
     tool: "core_workflow_delete"
-    parameters:
+    args:
       name: "test-basic-workflow"
     expected:
       success: true
       contains: ["deleted successfully", "test-basic-workflow"]
     timeout: "30s"
 
-  - name: "verify-workflow-deleted"
+  - id: "verify-workflow-deleted"
     description: "Verify the workflow was completely removed"
     tool: "core_workflow_get"
-    parameters:
+    args:
       name: "test-basic-workflow"
     expected:
       success: false

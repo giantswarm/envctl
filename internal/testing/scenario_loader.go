@@ -166,8 +166,8 @@ func (l *scenarioLoader) validateScenario(scenario TestScenario, filePath string
 
 // validateStep validates that a step has required fields
 func (l *scenarioLoader) validateStep(step TestStep, index int) error {
-	if step.Name == "" {
-		return fmt.Errorf("step name is required")
+	if step.ID == "" {
+		return fmt.Errorf("step id is required")
 	}
 
 	if step.Tool == "" {
