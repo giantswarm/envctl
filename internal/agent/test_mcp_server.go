@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 
 	"envctl/internal/testing"
 
@@ -36,11 +37,11 @@ func NewTestMCPServer(endpoint string, logger *Logger, configPath string, debug 
 		server.WithPromptCapabilities(false),
 	)
 
-	// Create test framework components
-	testClient := testing.NewMCPTestClient(debug)
-	testLoader := testing.NewTestScenarioLoader(debug)
-	testReporter := testing.NewTestReporter(true, debug, "") // Use verbose output for MCP
-	testRunner := testing.NewTestRunner(testClient, testLoader, testReporter, debug)
+	// Create test framework using factory
+	framework, err := testing.NewTestFramework(debug, 18000)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create test framework: %w", err)
+	}
 
 	ts := &TestMCPServer{
 		endpoint:     endpoint,
@@ -48,10 +49,10 @@ func NewTestMCPServer(endpoint string, logger *Logger, configPath string, debug 
 		mcpServer:    mcpServer,
 		configPath:   configPath,
 		debug:        debug,
-		testRunner:   testRunner,
-		testClient:   testClient,
-		testLoader:   testLoader,
-		testReporter: testReporter,
+		testRunner:   framework.Runner,
+		testClient:   framework.Client,
+		testLoader:   framework.Loader,
+		testReporter: framework.Reporter,
 	}
 
 	// Register all test tools

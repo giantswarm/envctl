@@ -9,19 +9,21 @@ import (
 
 // testRunner implements the TestRunner interface
 type testRunner struct {
-	client   MCPTestClient
-	loader   TestScenarioLoader
-	reporter TestReporter
-	debug    bool
+	client          MCPTestClient
+	loader          TestScenarioLoader
+	reporter        TestReporter
+	instanceManager EnvCtlInstanceManager
+	debug           bool
 }
 
 // NewTestRunner creates a new test runner
-func NewTestRunner(client MCPTestClient, loader TestScenarioLoader, reporter TestReporter, debug bool) TestRunner {
+func NewTestRunner(client MCPTestClient, loader TestScenarioLoader, reporter TestReporter, instanceManager EnvCtlInstanceManager, debug bool) TestRunner {
 	return &testRunner{
-		client:   client,
-		loader:   loader,
-		reporter: reporter,
-		debug:    debug,
+		client:          client,
+		loader:          loader,
+		reporter:        reporter,
+		instanceManager: instanceManager,
+		debug:           debug,
 	}
 }
 
@@ -47,13 +49,8 @@ func (r *testRunner) Run(ctx context.Context, config TestConfiguration, scenario
 		return result, nil
 	}
 
-	// Connect to MCP aggregator
-	if err := r.client.Connect(ctx, config.Endpoint); err != nil {
-		return nil, fmt.Errorf("failed to connect to MCP aggregator: %w", err)
-	}
-	defer r.client.Close()
-
 	// Execute scenarios based on parallel configuration
+	// Each scenario now manages its own envctl instance
 	if config.Parallel <= 1 {
 		// Sequential execution
 		for _, scenario := range filteredScenarios {
@@ -94,6 +91,7 @@ func (r *testRunner) Run(ctx context.Context, config TestConfiguration, scenario
 }
 
 // runScenariosParallel executes scenarios in parallel with a worker pool
+// Each scenario gets its own envctl instance
 func (r *testRunner) runScenariosParallel(ctx context.Context, scenarios []TestScenario, config TestConfiguration) []TestScenarioResult {
 	// Create channels
 	scenarioChan := make(chan TestScenario, len(scenarios))
@@ -123,6 +121,7 @@ func (r *testRunner) runScenariosParallel(ctx context.Context, scenarios []TestS
 					fmt.Printf("🔄 Worker %d executing scenario: %s\n", workerID, scenario.Name)
 				}
 
+				// Each worker runs scenario with its own envctl instance
 				scenarioResult := r.runScenario(ctx, scenario, config)
 				resultChan <- scenarioResult
 
@@ -173,6 +172,98 @@ func (r *testRunner) runScenario(ctx context.Context, scenario TestScenario, con
 		defer cancel()
 	}
 
+	// Create and start envctl instance for this scenario
+	var instance *EnvCtlInstance
+	var err error
+
+	if r.debug {
+		fmt.Printf("🏗️  Creating envctl instance for scenario: %s\n", scenario.Name)
+	}
+
+	instance, err = r.instanceManager.CreateInstance(scenarioCtx, scenario.Name, scenario.PreConfiguration)
+	if err != nil {
+		result.Result = ResultError
+		result.Error = fmt.Sprintf("failed to create envctl instance: %v", err)
+		result.EndTime = time.Now()
+		result.Duration = result.EndTime.Sub(result.StartTime)
+		return result
+	}
+
+	// Ensure cleanup of instance
+	defer func() {
+		if instance != nil {
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			
+			if err := r.instanceManager.DestroyInstance(cleanupCtx, instance); err != nil {
+				if r.debug {
+					fmt.Printf("⚠️  Failed to destroy envctl instance %s: %v\n", instance.ID, err)
+				}
+			} else {
+				// Final log storage - may have been updated during destruction
+				if instance.Logs != nil && result.InstanceLogs == nil {
+					result.InstanceLogs = instance.Logs
+				}
+				if r.debug {
+					fmt.Printf("✅ Cleanup complete for envctl instance %s\n", instance.ID)
+				}
+			}
+		}
+	}()
+
+	// Wait for instance to be ready
+	if err := r.instanceManager.WaitForReady(scenarioCtx, instance); err != nil {
+		result.Result = ResultError
+		result.Error = fmt.Sprintf("envctl instance not ready: %v", err)
+		result.EndTime = time.Now()
+		result.Duration = result.EndTime.Sub(result.StartTime)
+		return result
+	}
+
+	// Connect MCP client to the instance
+	if err := r.client.Connect(scenarioCtx, instance.Endpoint); err != nil {
+		result.Result = ResultError
+		result.Error = fmt.Sprintf("failed to connect to envctl instance: %v", err)
+		result.EndTime = time.Now()
+		result.Duration = result.EndTime.Sub(result.StartTime)
+		return result
+	}
+
+	// Ensure MCP client is closed properly
+	defer func() {
+		if r.debug {
+			fmt.Printf("🔌 Closing MCP client connection to %s\n", instance.Endpoint)
+		}
+		
+		// Close with timeout to avoid hanging
+		closeCtx, closeCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer closeCancel()
+		
+		done := make(chan struct{})
+		go func() {
+			r.client.Close()
+			close(done)
+		}()
+		
+		select {
+		case <-done:
+			if r.debug {
+				fmt.Printf("✅ MCP client closed successfully\n")
+			}
+		case <-closeCtx.Done():
+			if r.debug {
+				fmt.Printf("⏰ MCP client close timeout - connection may have been reset\n")
+			}
+		}
+		
+		// Give a small delay to ensure close request is processed
+		time.Sleep(100 * time.Millisecond)
+	}()
+
+	if r.debug {
+		fmt.Printf("✅ Connected to envctl instance %s at %s\n", instance.ID, instance.Endpoint)
+	}
+
 	// Execute steps
 	for _, step := range scenario.Steps {
 		stepResult := r.runStep(scenarioCtx, step, config)
@@ -195,13 +286,41 @@ func (r *testRunner) runScenario(ctx context.Context, scenario TestScenario, con
 			stepResult := r.runStep(scenarioCtx, cleanupStep, config)
 			result.StepResults = append(result.StepResults, stepResult)
 			r.reporter.ReportStepResult(stepResult)
+			
+			// Cleanup step failures should also fail the scenario
+			if stepResult.Result == ResultFailed || stepResult.Result == ResultError {
+				// Only update if the scenario hasn't already failed
+				if result.Result == ResultPassed {
+					result.Result = stepResult.Result
+					result.Error = stepResult.Error
+				}
+			}
 		}
 	}
 
-	// Finalize result
+	// Finalize result - collect instance logs before ending
 	result.EndTime = time.Now()
 	result.Duration = result.EndTime.Sub(result.StartTime)
 
+	// Collect instance logs by triggering the destroy process early
+	// The defer cleanup will handle the actual cleanup, but we need logs now
+	if instance != nil {
+		// Get the managed process to collect logs before destruction
+		if manager, ok := r.instanceManager.(*envCtlInstanceManager); ok {
+			manager.mu.RLock()
+			if managedProc, exists := manager.processes[instance.ID]; exists && managedProc != nil && managedProc.logCapture != nil {
+				// Get logs without closing the capture yet (defer will handle that)
+				instance.Logs = managedProc.logCapture.getLogs()
+				result.InstanceLogs = instance.Logs
+				if r.debug {
+					fmt.Printf("📋 Collected instance logs for result: stdout=%d chars, stderr=%d chars\n", 
+						len(instance.Logs.Stdout), len(instance.Logs.Stderr))
+				}
+			}
+			manager.mu.RUnlock()
+		}
+	}
+	
 	return result
 }
 
@@ -302,17 +421,50 @@ func (r *testRunner) runStep(ctx context.Context, step TestStep, config TestConf
 
 // validateExpectations checks if the step response meets the expected criteria
 func (r *testRunner) validateExpectations(expected TestExpectation, response interface{}, err error) bool {
+	// Check if response indicates an error (for MCP responses)
+	isResponseError := false
+	if response != nil {
+		// The response might be a struct with an isError field
+		if mcpResponse, ok := response.(map[string]interface{}); ok {
+			if isErr, exists := mcpResponse["isError"]; exists {
+				if isErrBool, ok := isErr.(bool); ok {
+					isResponseError = isErrBool
+				}
+			}
+		} else {
+			// Try to access isError field via reflection or struct field
+			// This handles the case where response is a struct type
+			responseStr := fmt.Sprintf("%+v", response)
+			if containsText(responseStr, "isError:true") || containsText(responseStr, "isError: true") {
+				isResponseError = true
+			}
+		}
+	}
+
+	if r.debug {
+		fmt.Printf("🔍 Validation Debug:\n")
+		fmt.Printf("   Expected Success: %v\n", expected.Success)
+		fmt.Printf("   Call Error: %v\n", err)
+		fmt.Printf("   Response Error Flag: %v\n", isResponseError)
+		fmt.Printf("   Response Type: %T\n", response)
+		fmt.Printf("   Response Value: %+v\n", response)
+	}
+
 	// Check success expectation
-	if expected.Success && err != nil {
+	if expected.Success && (err != nil || isResponseError) {
 		if r.debug {
-			fmt.Printf("❌ Expected success but got error: %v\n", err)
+			if err != nil {
+				fmt.Printf("❌ Expected success but got error: %v\n", err)
+			} else {
+				fmt.Printf("❌ Expected success but response indicates error\n")
+			}
 		}
 		return false
 	}
 
-	if !expected.Success && err == nil {
+	if !expected.Success && err == nil && !isResponseError {
 		if r.debug {
-			fmt.Printf("❌ Expected failure but got success\n")
+			fmt.Printf("❌ Expected failure but got success (no error and no response error flag)\n")
 		}
 		return false
 	}

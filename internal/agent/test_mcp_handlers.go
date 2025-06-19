@@ -17,10 +17,10 @@ func (t *TestMCPServer) handleRunScenarios(ctx context.Context, request mcp.Call
 
 	// Extract and validate parameters
 	var config testing.TestConfiguration
-	config.Endpoint = t.endpoint
 	config.Timeout = 10 * time.Minute // Default timeout
 	config.Parallel = 1               // Default parallel workers
 	config.Verbose = true             // Always verbose for MCP
+	config.BasePort = 18000           // Default base port for test instances
 
 	// Parse optional parameters
 	if category, ok := args["category"].(string); ok && category != "" {

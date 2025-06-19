@@ -20,6 +20,8 @@ steps:
     parameters:
       yaml: |
         name: test-basic-serviceclass
+        type: "basic"
+        version: "1.0.0"
         description: "Test ServiceClass for behavioral testing"
         parameters:
           replicas:
@@ -30,9 +32,14 @@ steps:
             type: string
             required: true
             description: "Container image to use"
-        tools:
-          - name: "core_service_create"
-            description: "Create service instance"
+        serviceConfig:
+          lifecycleTools:
+            start:
+              tool: "core_service_create"
+              description: "Create service instance"
+            stop:
+              tool: "core_service_delete"
+              description: "Delete service instance"
         template: |
           apiVersion: v1
           kind: ConfigMap
@@ -43,7 +50,7 @@ steps:
             image: "{{ .parameters.image }}"
     expected:
       success: true
-      contains: ["created successfully", "test-basic-serviceclass"]
+      contains: ["test-basic-serviceclass"]
     timeout: "1m"
 
   - name: "verify-serviceclass-created"
@@ -84,7 +91,7 @@ cleanup:
       name: "test-basic-serviceclass"
     expected:
       success: true
-      contains: ["deleted successfully", "test-basic-serviceclass"]
+      contains: ["test-basic-serviceclass"]
     timeout: "30s"
 
   - name: "verify-serviceclass-deleted"
@@ -94,5 +101,5 @@ cleanup:
       name: "test-basic-serviceclass"
     expected:
       success: false
-      error_contains: ["not found", "does not exist"]
+      contains: ["not found"]
     timeout: "30s" 

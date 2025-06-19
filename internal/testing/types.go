@@ -2,6 +2,7 @@ package testing
 
 import (
 	"context"
+	"os"
 	"time"
 )
 
@@ -47,8 +48,6 @@ const (
 
 // TestConfiguration defines the overall test execution configuration
 type TestConfiguration struct {
-	// Endpoint is the MCP aggregator endpoint URL
-	Endpoint string `yaml:"endpoint"`
 	// Timeout is the overall test execution timeout
 	Timeout time.Duration `yaml:"timeout"`
 	// Category filter for test execution
@@ -69,6 +68,8 @@ type TestConfiguration struct {
 	ConfigPath string `yaml:"config_path,omitempty"`
 	// ReportPath is the path to save detailed test reports
 	ReportPath string `yaml:"report_path,omitempty"`
+	// BasePort is the starting port number for envctl instances
+	BasePort int `yaml:"base_port,omitempty"`
 }
 
 // TestScenario defines a single test scenario
@@ -91,6 +92,110 @@ type TestScenario struct {
 	Timeout time.Duration `yaml:"timeout,omitempty"`
 	// Tags for additional categorization
 	Tags []string `yaml:"tags,omitempty"`
+	// PreConfiguration defines envctl instance setup
+	PreConfiguration *EnvCtlPreConfiguration `yaml:"pre_configuration,omitempty"`
+}
+
+// EnvCtlPreConfiguration defines how to pre-configure an envctl serve instance
+type EnvCtlPreConfiguration struct {
+	// MCPServers defines MCP server configurations to load
+	MCPServers []MCPServerConfig `yaml:"mcp_servers,omitempty"`
+	// Workflows defines workflow definitions to load
+	Workflows []WorkflowConfig `yaml:"workflows,omitempty"`
+	// Capabilities defines capability definitions to load
+	Capabilities []CapabilityConfig `yaml:"capabilities,omitempty"`
+	// ServiceClasses defines service class definitions to load
+	ServiceClasses []ServiceClassConfig `yaml:"service_classes,omitempty"`
+	// Services defines service instance definitions to load
+	Services []ServiceConfig `yaml:"services,omitempty"`
+	// MainConfig defines the main envctl configuration
+	MainConfig *MainConfig `yaml:"main_config,omitempty"`
+}
+
+// MCPServerConfig represents an MCP server configuration
+type MCPServerConfig struct {
+	// Name is the unique identifier for the MCP server
+	Name string `yaml:"name"`
+	// Type is the server type (process, container, etc.)
+	Type string `yaml:"type"`
+	// Config contains the server-specific configuration
+	Config map[string]interface{} `yaml:"config"`
+}
+
+// WorkflowConfig represents a workflow configuration
+type WorkflowConfig struct {
+	// Name is the unique identifier for the workflow
+	Name string `yaml:"name"`
+	// Config contains the workflow definition
+	Config map[string]interface{} `yaml:"config"`
+}
+
+// CapabilityConfig represents a capability configuration
+type CapabilityConfig struct {
+	// Name is the unique identifier for the capability
+	Name string `yaml:"name"`
+	// Config contains the capability definition
+	Config map[string]interface{} `yaml:"config"`
+}
+
+// ServiceClassConfig represents a service class configuration
+type ServiceClassConfig struct {
+	// Name is the unique identifier for the service class
+	Name string `yaml:"name"`
+	// Config contains the service class definition
+	Config map[string]interface{} `yaml:"config"`
+}
+
+// ServiceConfig represents a service instance configuration
+type ServiceConfig struct {
+	// Name is the unique identifier for the service instance
+	Name string `yaml:"name"`
+	// Config contains the service instance definition
+	Config map[string]interface{} `yaml:"config"`
+}
+
+// MainConfig represents the main envctl configuration
+type MainConfig struct {
+	// Config contains the main configuration
+	Config map[string]interface{} `yaml:"config"`
+}
+
+// EnvCtlInstance represents a managed envctl serve instance
+type EnvCtlInstance struct {
+	// ID is the unique identifier for this instance
+	ID string
+	// ConfigPath is the path to the temporary configuration directory
+	ConfigPath string
+	// Port is the port the instance is listening on
+	Port int
+	// Endpoint is the full MCP endpoint URL
+	Endpoint string
+	// Process is the running envctl serve process
+	Process *os.Process
+	// StartTime when the instance was started
+	StartTime time.Time
+	// Logs contains the collected stdout and stderr from the instance
+	Logs *InstanceLogs
+}
+
+// InstanceLogs contains the captured logs from an envctl instance
+type InstanceLogs struct {
+	// Stdout contains the standard output
+	Stdout string
+	// Stderr contains the standard error output
+	Stderr string
+	// Combined contains both stdout and stderr in chronological order
+	Combined string
+}
+
+// EnvCtlInstanceManager manages envctl serve instances for testing
+type EnvCtlInstanceManager interface {
+	// CreateInstance creates a new envctl serve instance with the given configuration
+	CreateInstance(ctx context.Context, scenarioName string, config *EnvCtlPreConfiguration) (*EnvCtlInstance, error)
+	// DestroyInstance stops and cleans up an envctl serve instance
+	DestroyInstance(ctx context.Context, instance *EnvCtlInstance) error
+	// WaitForReady waits for an instance to be ready to accept connections
+	WaitForReady(ctx context.Context, instance *EnvCtlInstance) error
 }
 
 // TestStep defines a single step within a test scenario
@@ -179,6 +284,8 @@ type TestScenarioResult struct {
 	Error string `json:"error,omitempty"`
 	// Output from scenario execution
 	Output string `json:"output,omitempty"`
+	// InstanceLogs contains logs from the envctl serve instance
+	InstanceLogs *InstanceLogs `json:"instance_logs,omitempty"`
 }
 
 // TestStepResult represents the result of a single test step

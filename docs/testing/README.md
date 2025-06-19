@@ -7,51 +7,70 @@ The envctl test framework provides a comprehensive testing solution for validati
 - **Verify Core Functionality**: Test all envctl concepts (ServiceClasses, Workflows, MCP Servers, Capabilities, Services)
 - **Catch Regressions**: Automatically detect when changes break existing functionality  
 - **Validate New Features**: Ensure new implementations work correctly across different scenarios
-- **Debug Issues**: Systematically reproduce and diagnose problems
+- **Debug Issues**: Systematically reproduce and diagnose problems with comprehensive logging
 - **Ensure Quality**: Maintain high confidence in envctl reliability and correctness
 
-The framework executes test scenarios written in YAML that define step-by-step operations and expected outcomes, making it easy to create comprehensive tests without writing Go code.
+The framework executes test scenarios written in YAML that define step-by-step operations and expected outcomes, creating **isolated envctl instances** for each test scenario to ensure complete test isolation and reliable results.
 
 ## Quick Start
 
-### 1. Start envctl Aggregator
+### 1. No Setup Required! 
 
-The test framework communicates with envctl through its MCP aggregator, so make sure it's running:
+**🎉 The test framework now manages envctl instances automatically!**
 
-```bash
-# Start the envctl aggregator service
-envctl serve
+Unlike previous versions, you **do not need** to start an external envctl aggregator. The framework creates isolated, temporary envctl instances for each test scenario, ensuring:
 
-# Verify it's running (in another terminal)
-curl http://localhost:8080/health
-```
+- **Complete Test Isolation**: Each scenario runs against a fresh envctl instance
+- **No Resource Conflicts**: Tests cannot interfere with each other
+- **Automatic Cleanup**: Instances and configuration are cleaned up after each test
+- **Enhanced Debugging**: Instance logs are captured and available for analysis
 
 ### 2. Run Your First Test
 
 ```bash
 # Run a simple test to verify everything works
-envctl test --scenario=serviceclass-basic-operations --verbose
+./envctl test --scenario=serviceclass-basic-operations --verbose
+
+# The framework will automatically:
+# 1. Create a temporary envctl instance on an available port
+# 2. Execute the test scenario against that instance
+# 3. Capture logs and results
+# 4. Clean up the instance and configuration
 
 # If successful, run all behavioral tests
-envctl test --category=behavioral
+./envctl test --category=behavioral
 ```
 
 ### 3. Common Usage Patterns
 
 ```bash
 # Test specific functionality you're working on
-envctl test --concept=serviceclass          # Test all ServiceClass functionality
-envctl test --concept=workflow              # Test all Workflow functionality
-envctl test --concept=mcpserver             # Test all MCP Server functionality
+./envctl test --concept=serviceclass          # Test all ServiceClass functionality
+./envctl test --concept=workflow              # Test all Workflow functionality
+./envctl test --concept=mcpserver             # Test all MCP Server functionality
 
-# Run tests in parallel for faster execution
-envctl test --parallel=4
+# Run tests in parallel for faster execution (each gets its own instance)
+./envctl test --parallel=4 --base-port=18000
 
-# Get detailed output for debugging
-envctl test --verbose --debug
+# Get detailed output for debugging (includes instance logs)
+./envctl test --verbose --debug
 
 # Stop on first failure for quick feedback
-envctl test --fail-fast
+./envctl test --fail-fast
+```
+
+### 4. Enhanced Debugging with Instance Logs
+
+```bash
+# Instance logs are captured automatically and shown in debug mode
+./envctl test --scenario=serviceclass-basic-operations --debug
+
+# Example debug output:
+# 📋 Captured instance logs: stdout=7977 chars, stderr=0 chars
+# 📄 Instance Logs:
+#    STDOUT:
+#       time=2025-06-19T11:07:19.565+02:00 level=INFO msg="Loaded configuration..."
+#       time=2025-06-19T11:07:19.565+02:00 level=DEBUG msg="Registering service manager..."
 ```
 
 ## How to Execute Test Scenarios
@@ -62,51 +81,51 @@ The framework organizes tests by **category** and **concept** to help you run ex
 
 ```bash
 # By Category - Type of testing
-envctl test --category=behavioral      # User-facing functionality tests
-envctl test --category=integration     # Component interaction tests
+./envctl test --category=behavioral      # User-facing functionality tests
+./envctl test --category=integration     # Component interaction tests
 
 # By Concept - What you're testing  
-envctl test --concept=serviceclass     # All ServiceClass tests
-envctl test --concept=workflow         # All Workflow tests
-envctl test --concept=mcpserver        # All MCP Server tests
-envctl test --concept=capability       # All Capability tests
-envctl test --concept=service          # All Service tests
+./envctl test --concept=serviceclass     # All ServiceClass tests
+./envctl test --concept=workflow         # All Workflow tests
+./envctl test --concept=mcpserver        # All MCP Server tests
+./envctl test --concept=capability       # All Capability tests
+./envctl test --concept=service          # All Service tests
 
 # Specific scenario
-envctl test --scenario=serviceclass-basic-crud-operations
+./envctl test --scenario=serviceclass-basic-crud-operations
 ```
 
 ### Execution Control
 
 ```bash
 # Parallel execution (faster, but harder to debug)
-envctl test --parallel=4              # Run up to 4 tests simultaneously
-envctl test --parallel=1              # Single-threaded (default)
+./envctl test --parallel=4              # Run up to 4 tests simultaneously
+./envctl test --parallel=1              # Single-threaded (default)
 
 # Timeout control
-envctl test --timeout=10m             # Set global timeout to 10 minutes
-envctl test --timeout=1h              # Longer timeout for complex tests
+./envctl test --timeout=10m             # Set global timeout to 10 minutes
+./envctl test --timeout=1h              # Longer timeout for complex tests
 
 # Failure handling
-envctl test --fail-fast               # Stop immediately on first failure
-envctl test                           # Continue running all tests even if some fail
+./envctl test --fail-fast               # Stop immediately on first failure
+./envctl test                           # Continue running all tests even if some fail
 ```
 
 ### Output Control
 
 ```bash
 # Verbosity levels
-envctl test --verbose                 # Show detailed progress and results
-envctl test --debug                   # Show MCP protocol traces and internal details
-envctl test                           # Normal output (default)
+./envctl test --verbose                 # Show detailed progress and results
+./envctl test --debug                   # Show MCP protocol traces and internal details
+./envctl test                           # Normal output (default)
 
 # Output formats
-envctl test --output-format=text      # Human-readable (default)
-envctl test --output-format=json      # Machine-readable JSON
-envctl test --output-format=junit     # JUnit XML for CI/CD
+./envctl test --output-format=text      # Human-readable (default)
+./envctl test --output-format=json      # Machine-readable JSON
+./envctl test --output-format=junit     # JUnit XML for CI/CD
 
 # Save results to file
-envctl test --report-file=results.json --output-format=json
+./envctl test --report-file=results.json --output-format=json
 ```
 
 ## Understanding Test Categories and Concepts
@@ -137,16 +156,16 @@ Test concepts organize tests by **what functionality** is being tested:
 
 ```bash
 # Test if ServiceClass feature works for users
-envctl test --concept=serviceclass --category=behavioral
+./envctl test --concept=serviceclass --category=behavioral
 
 # Test if ServiceClasses integrate properly with other components
-envctl test --concept=serviceclass --category=integration
+./envctl test --concept=serviceclass --category=integration
 
 # Test all user-facing functionality across all concepts
-envctl test --category=behavioral
+./envctl test --category=behavioral
 
 # Test specific workflow functionality
-envctl test --concept=workflow
+./envctl test --concept=workflow
 ```
 
 ## How to Debug Failing Test Scenarios
@@ -157,43 +176,58 @@ When a test fails, follow this systematic approach to diagnose and fix the issue
 
 ```bash
 # Run the specific failing test with maximum verbosity
-envctl test --scenario=failing-scenario-name --verbose --debug
+./envctl test --scenario=failing-scenario-name --verbose --debug
 
 # Or run with fail-fast to focus on the first failure
-envctl test --concept=serviceclass --fail-fast --verbose
+./envctl test --concept=serviceclass --fail-fast --verbose
 ```
 
 This will show you:
-- Which step failed
+- Which step failed and why
 - The exact MCP tool call that was made
 - The response received vs. what was expected
 - Complete error messages and stack traces
+- **Instance logs** from the isolated envctl serve process
 
-### Step 2: Check envctl Aggregator Status
+### Step 2: Analyze Instance Logs
+
+With the `--debug` flag, you'll see captured logs from the envctl instance:
 
 ```bash
-# Check if the aggregator is running and healthy
-curl http://localhost:8080/health
+./envctl test --scenario=failing-scenario --debug
 
-# Check aggregator logs for errors
-journalctl --user -u envctl.service --no-pager | tail -50
-
-# If not running, restart it
-envctl serve
+# Example output:
+# 📋 Captured instance logs: stdout=7977 chars, stderr=0 chars
+# 📄 Instance Logs:
+#    STDOUT:
+#       time=2025-06-19T11:07:19.565+02:00 level=INFO msg="Loaded configuration..."
+#       time=2025-06-19T11:07:19.565+02:00 level=ERROR msg="Failed to register service..."
 ```
 
-### Step 3: Verify MCP Tools Are Available
+This helps identify:
+- Configuration loading issues
+- Service registration problems  
+- Runtime errors during test execution
+- Performance bottlenecks
+
+### Step 3: Verify Test Environment
 
 ```bash
-# Check what tools are available (when mcp-debug is available)
-# This helps identify if required tools are missing or misconfigured
+# Check if you can build envctl
+go build -o envctl .
+
+# Test with a simple scenario first
+./envctl test --scenario=serviceclass-basic-operations --debug
+
+# Check available port range if you see port conflicts
+./envctl test --base-port=19000 --scenario=failing-scenario
 ```
 
 ### Step 4: Isolate the Problem
 
 ```bash
-# Run just the problematic step manually to understand what's happening
-# Look at the test scenario YAML to see what MCP tool and parameters are being used
+# Run just the problematic step manually by examining the scenario YAML
+# Look at the test scenario to see what MCP tool and parameters are being used
 
 # Example: If "core_serviceclass_create" is failing, check:
 # - Is the YAML in the scenario valid?
@@ -203,42 +237,49 @@ envctl serve
 
 ### Step 5: Common Issues and Solutions
 
-#### Test Fails with "Connection Refused"
-**Problem**: envctl aggregator is not running or not accessible
+#### Test Fails with "Port Already in Use"
+**Problem**: Base port range is occupied by other processes
 
 ```bash
-# Solution: Start the aggregator
-envctl serve
+# Solution: Use a different base port range
+./envctl test --base-port=19000 --scenario=failing-scenario
 
-# Check if it's listening on the expected port
-ss -tlnp | grep 8080
+# Or check what's using the ports
+ss -tlnp | grep 18000
+```
+
+#### Test Fails with "Instance Startup Timeout"
+**Problem**: envctl instance takes too long to start
+
+```bash
+# Solution: Check instance logs for startup issues
+./envctl test --scenario=failing-scenario --debug
+
+# Look for errors in the instance logs like:
+# - Configuration file parsing errors
+# - Missing dependencies
+# - Permission issues
 ```
 
 #### Test Fails with "Tool Not Found"
-**Problem**: Required MCP tool is not registered with the aggregator
+**Problem**: Required MCP tool is not available in the test instance
 
 ```bash
-# Solution: Check which tools are available
-# Verify that the required MCP servers are running
-# Check aggregator logs for registration errors
+# Solution: Check if the tool should be available
+# This usually indicates:
+# - Missing MCP server registration in test configuration
+# - Tool name typo in the scenario
+# - Version mismatch between test and implementation
 ```
 
 #### Test Fails with "Resource Already Exists"
 **Problem**: Previous test run didn't clean up resources
 
 ```bash
-# Solution: Clean up manually or use unique names
-# Check if cleanup steps in the scenario are working properly
-```
-
-#### Test Fails with "Timeout"
-**Problem**: Operation takes longer than expected
-
-```bash
-# Solution: Increase timeout for the scenario or step
-envctl test --scenario=slow-scenario --timeout=60m
-
-# Or check if the system is under load
+# Solution: This shouldn't happen with isolated instances, but check:
+# - Scenario cleanup steps are properly defined
+# - Unique resource naming in the scenario
+# - No hard-coded resource names that conflict
 ```
 
 #### Test Fails with Validation Errors
@@ -248,6 +289,9 @@ envctl test --scenario=slow-scenario --timeout=60m
 # Solution: Check the scenario's "expected" section
 # Compare with actual response (shown in debug output)
 # Update expectations if the behavior changed intentionally
+
+# Use debug mode to see the exact response:
+./envctl test --scenario=failing-scenario --debug
 ```
 
 ### Step 6: Debug Individual Test Steps
@@ -268,19 +312,32 @@ You can examine what each test step is doing by looking at the scenario YAML fil
 ```
 
 To debug this step:
-1. Check if `core_serviceclass_create` tool exists
+1. Check if `core_serviceclass_create` tool should be available
 2. Verify the YAML parameters are valid
-3. Run similar operations manually to see expected behavior
-4. Check if the response actually contains "created successfully"
+3. Look at the instance logs for detailed error messages
+4. Check if the response format has changed
 
-### Step 7: Update or Fix the Test
+### Step 7: Advanced Debugging with Multiple Parallel Tests
+
+```bash
+# If parallel tests are failing, run them sequentially for easier debugging
+./envctl test --parallel=1 --concept=serviceclass --debug
+
+# If port conflicts occur in parallel execution
+./envctl test --parallel=2 --base-port=20000
+
+# Run a single problematic scenario in isolation
+./envctl test --scenario=specific-scenario --debug
+```
+
+### Step 8: Update or Fix the Test
 
 After identifying the issue:
 
 - **If envctl behavior changed**: Update the test scenario expectations
-- **If envctl has a bug**: Fix the bug in envctl code
+- **If envctl has a bug**: Fix the bug in envctl code  
 - **If test scenario is wrong**: Fix the scenario YAML
-- **If test environment issue**: Fix the environment setup
+- **If test environment issue**: Check build and dependency issues
 
 ## Parallel Execution
 
@@ -290,13 +347,13 @@ The test framework supports configurable parallel execution:
 
 ```bash
 # Run with 4 parallel workers (recommended for development)
-envctl test --parallel=4
+./envctl test --parallel=4
 
 # Run with 8 parallel workers (recommended for CI/CD)
-envctl test --parallel=8
+./envctl test --parallel=8
 
 # Single-threaded execution (useful for debugging)
-envctl test --parallel=1
+./envctl test --parallel=1
 ```
 
 ### Best Practices
@@ -319,7 +376,7 @@ envctl test --parallel=1
 
 #### Text Format (Default)
 ```bash
-envctl test --output-format=text
+./envctl test --output-format=text
 ```
 
 Provides human-readable output with:
@@ -330,7 +387,7 @@ Provides human-readable output with:
 
 #### JSON Format
 ```bash
-envctl test --output-format=json --report-file=results.json
+./envctl test --output-format=json --report-file=results.json
 ```
 
 Structured output suitable for:
@@ -341,7 +398,7 @@ Structured output suitable for:
 
 #### JUnit XML Format
 ```bash
-envctl test --output-format=junit --report-file=results.xml
+./envctl test --output-format=junit --report-file=results.xml
 ```
 
 Industry-standard format for:
@@ -397,7 +454,7 @@ Industry-standard format for:
 **Solution**: 
 ```bash
 # Ensure envctl aggregator is running
-envctl serve
+./envctl serve
 
 # Check if the service is healthy
 systemctl --user status envctl.service
@@ -416,7 +473,7 @@ systemctl --user status envctl.service
 **Solution**:
 ```bash
 # Increase timeout
-envctl test --timeout=60m
+./envctl test --timeout=60m
 
 # Check system performance and resource usage
 ```
@@ -437,7 +494,7 @@ kubectl config current-context
 **Solution**:
 ```bash
 # Validate scenario syntax
-envctl test --scenario=problematic-scenario --debug
+./envctl test --scenario=problematic-scenario --debug
 
 # Check YAML syntax manually
 ```
@@ -447,7 +504,7 @@ envctl test --scenario=problematic-scenario --debug
 Enable comprehensive debugging:
 
 ```bash
-envctl test --debug --verbose
+./envctl test --debug --verbose
 ```
 
 Debug mode provides:
@@ -489,23 +546,24 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       
-      - name: Setup envctl
-        run: |
-          # Install and configure envctl
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
           
-      - name: Start envctl
-        run: envctl serve &
+      - name: Build envctl
+        run: go build -o envctl .
         
       - name: Run Behavioral Tests
         run: |
-          envctl test --category=behavioral \
+          ./envctl test --category=behavioral \
             --output-format=junit \
             --report-file=behavioral-results.xml \
             --parallel=4
             
-      - name: Run Integration Tests
+      - name: Run Integration Tests  
         run: |
-          envctl test --category=integration \
+          ./envctl test --category=integration \
             --output-format=junit \
             --report-file=integration-results.xml \
             --parallel=2
@@ -525,17 +583,16 @@ pipeline {
     agent any
     
     stages {
-        stage('Setup') {
+        stage('Build') {
             steps {
-                sh 'envctl serve &'
-                sleep 10  // Wait for service to start
+                sh 'go build -o envctl .'
             }
         }
         
         stage('Behavioral Tests') {
             steps {
                 sh '''
-                    envctl test --category=behavioral \
+                    ./envctl test --category=behavioral \
                       --output-format=junit \
                       --report-file=behavioral-results.xml \
                       --parallel=4
@@ -551,7 +608,7 @@ pipeline {
         stage('Integration Tests') {
             steps {
                 sh '''
-                    envctl test --category=integration \
+                    ./envctl test --category=integration \
                       --output-format=junit \
                       --report-file=integration-results.xml \
                       --parallel=2
@@ -562,12 +619,6 @@ pipeline {
                     junit 'integration-results.xml'
                 }
             }
-        }
-    }
-    
-    post {
-        cleanup {
-            sh 'pkill envctl || true'
         }
     }
 }
@@ -588,23 +639,23 @@ The test framework provides standard exit codes for automation:
 
 ```bash
 # Load scenarios from custom directory
-envctl test --config-path=/path/to/custom/scenarios
+./envctl test --config-path=/path/to/custom/scenarios
 
 # Load scenarios from multiple directories
-envctl test --config-path=/path/one,/path/two
+./envctl test --config-path=/path/one,/path/two
 ```
 
 ### Filtering and Selection
 
 ```bash
 # Run tests with specific tags
-envctl test --tags=smoke,critical
+./envctl test --tags=smoke,critical
 
 # Exclude tests with specific tags
-envctl test --exclude-tags=slow,external
+./envctl test --exclude-tags=slow,external
 
 # Run tests matching name pattern
-envctl test --name-pattern="serviceclass-*"
+./envctl test --name-pattern="serviceclass-*"
 ```
 
 ### Environment-Specific Configuration
@@ -613,36 +664,52 @@ envctl test --name-pattern="serviceclass-*"
 # Development environment
 export ENVCTL_TEST_PARALLEL=2
 export ENVCTL_TEST_TIMEOUT=10m
-envctl test
+./envctl test
 
 # CI environment
 export ENVCTL_TEST_PARALLEL=8
 export ENVCTL_TEST_TIMEOUT=30m
 export ENVCTL_TEST_FAIL_FAST=true
-envctl test
+./envctl test
 ```
 
-## Configuration
+## Configuration Parameters
+
+### Base Port Configuration
+
+The framework automatically assigns ports starting from a base port:
+
+```bash
+# Default base port (18000)
+./envctl test
+
+# Custom base port to avoid conflicts
+./envctl test --base-port=19000
+
+# For parallel execution, each instance gets base-port + offset
+./envctl test --parallel=4 --base-port=18000
+# Creates instances on ports: 18000, 18001, 18002, 18003
+```
+
+### Environment Variables
 
 You can customize test execution through environment variables:
 
 ```bash
-# MCP connection settings
-export ENVCTL_MCP_ENDPOINT="http://localhost:8080/sse"    # Default MCP endpoint
-
 # Test execution settings  
 export ENVCTL_TEST_TIMEOUT="30m"                         # Default timeout
 export ENVCTL_TEST_PARALLEL="4"                          # Default parallel workers
 export ENVCTL_TEST_CONFIG="./scenarios"                  # Default scenario directory
+export ENVCTL_TEST_BASE_PORT="18000"                     # Default base port
 
 # Then run tests
-envctl test
+./envctl test
 ```
 
 Or use command-line flags to override settings per run:
 
 ```bash
-envctl test --timeout=10m --parallel=2 --config-path=/custom/scenarios
+./envctl test --timeout=10m --parallel=2 --base-port=19000 --config-path=/custom/scenarios
 ```
 
 ## How to Create New Test Scenarios
@@ -748,13 +815,13 @@ Before committing, validate your scenario works:
 
 ```bash
 # Validate YAML syntax (when validation is implemented)
-envctl test --validate-scenario=path/to/your-scenario.yaml
+./envctl test --validate-scenario=path/to/your-scenario.yaml
 
 # Run your scenario
-envctl test --scenario=my-new-test-scenario --verbose
+./envctl test --scenario=my-new-test-scenario --verbose
 
 # Debug any issues
-envctl test --scenario=my-new-test-scenario --debug
+./envctl test --scenario=my-new-test-scenario --debug
 ```
 
 ### Example: Complete ServiceClass Test Scenario
@@ -949,13 +1016,13 @@ internal/testing/scenarios/
 
 ```bash
 # Run your specific test
-envctl test --scenario=serviceclass-parameter-validation
+./envctl test --scenario=serviceclass-parameter-validation
 
 # Run all tests in your concept area
-envctl test --concept=serviceclass
+./envctl test --concept=serviceclass
 
 # Run with your changes included
-envctl test --category=behavioral --concept=serviceclass
+./envctl test --category=behavioral --concept=serviceclass
 ```
 
 ## Where to Find More Information

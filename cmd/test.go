@@ -15,7 +15,6 @@ import (
 )
 
 var (
-	testEndpoint   string
 	testTimeout    time.Duration
 	testVerbose    bool
 	testDebug      bool
@@ -27,6 +26,7 @@ var (
 	testFailFast   bool
 	testParallel   int
 	testMCPServer  bool
+	testBasePort   int
 )
 
 // completeCategoryFlag provides shell completion for the category flag
@@ -69,7 +69,7 @@ var testCmd = &cobra.Command{
 	Use:   "test",
 	Short: "Execute comprehensive behavioral and integration tests for envctl",
 	Long: `The test command executes comprehensive behavioral and integration tests
-against the running envctl aggregator server using MCP protocol communication.
+for envctl by creating clean, isolated instances of envctl serve for each test scenario.
 
 This command validates all core envctl concepts including:
 - ServiceClass management and templating
@@ -104,6 +104,7 @@ Example usage:
   envctl test --verbose --debug           # Detailed output and debugging
   envctl test --fail-fast                 # Stop on first failure
   envctl test --parallel=4                # Run with 4 parallel workers
+  envctl test --base-port=19000           # Use port 19000+ for test instances
   envctl test --mcp-server                # Run as MCP server (stdio transport)
 
 In MCP Server mode:
@@ -112,9 +113,10 @@ In MCP Server mode:
 - It's designed for integration with AI assistants like Claude or Cursor
 - Configure it in your AI assistant's MCP settings
 
-The test framework uses YAML-based test scenario definitions and requires
-a running envctl aggregator server. Use 'envctl serve' to start the server
-before running tests.
+The test framework uses YAML-based test scenario definitions and automatically
+creates clean, isolated envctl serve instances for each test scenario.
+Each scenario can specify pre-configuration including MCP servers, workflows,
+capabilities, service classes, and service instances.
 
 Test results are reported with structured output suitable for CI/CD integration.`,
 	RunE: runTest,
@@ -123,9 +125,9 @@ Test results are reported with structured output suitable for CI/CD integration.
 func init() {
 	rootCmd.AddCommand(testCmd)
 
-	// Connection and endpoint configuration
-	testCmd.Flags().StringVar(&testEndpoint, "endpoint", "", "Aggregator MCP endpoint URL (default: from config)")
+	// Test execution configuration
 	testCmd.Flags().DurationVar(&testTimeout, "timeout", 10*time.Minute, "Overall test execution timeout")
+	testCmd.Flags().IntVar(&testBasePort, "base-port", 18000, "Starting port number for test envctl instances")
 
 	// Output and debugging
 	testCmd.Flags().BoolVar(&testVerbose, "verbose", false, "Enable verbose test output")
@@ -184,24 +186,15 @@ func runTest(cmd *cobra.Command, args []string) error {
 		cancel()
 	}()
 
-	// Determine endpoint using the same logic as CLI commands
-	endpoint := testEndpoint
-	if endpoint == "" {
-		// Use the same endpoint detection logic as CLI commands
-		detectedEndpoint, err := cli.DetectAggregatorEndpoint()
-		if err != nil {
-			// Use fallback default that matches system defaults
-			endpoint = "http://localhost:8090/mcp"
-			if !testMCPServer && testVerbose {
-				fmt.Printf("Warning: Could not detect endpoint (%v), using default: %s\n", err, endpoint)
-			}
-		} else {
-			endpoint = detectedEndpoint
-		}
-	}
-
 	// Run in MCP Server mode if requested
 	if testMCPServer {
+		// For MCP server mode, we still need an endpoint for existing functionality
+		endpoint := "http://localhost:8090/mcp"
+		detectedEndpoint, err := cli.DetectAggregatorEndpoint()
+		if err == nil {
+			endpoint = detectedEndpoint
+		}
+
 		// Create logger for MCP server
 		logger := agent.NewLogger(testVerbose, true, testDebug)
 
@@ -226,7 +219,6 @@ func runTest(cmd *cobra.Command, args []string) error {
 
 	// Create test configuration
 	testConfig := testing.TestConfiguration{
-		Endpoint:   endpoint,
 		Timeout:    testTimeout,
 		Parallel:   testParallel,
 		FailFast:   testFailFast,
@@ -234,6 +226,7 @@ func runTest(cmd *cobra.Command, args []string) error {
 		Debug:      testDebug,
 		ConfigPath: testConfigPath,
 		ReportPath: testReportPath,
+		BasePort:   testBasePort,
 	}
 
 	// Parse category filter
@@ -275,14 +268,15 @@ func runTest(cmd *cobra.Command, args []string) error {
 		scenarioPath = testing.GetDefaultScenarioPath()
 	}
 
-	// Create test framework components
-	client := testing.NewMCPTestClient(testDebug)
-	loader := testing.NewTestScenarioLoader(testDebug)
-	reporter := testing.NewTestReporter(testVerbose, testDebug, testReportPath)
-	runner := testing.NewTestRunner(client, loader, reporter, testDebug)
+	// Create test framework
+	framework, err := testing.NewTestFramework(testDebug, testBasePort)
+	if err != nil {
+		return fmt.Errorf("failed to create test framework: %w", err)
+	}
+	defer framework.Cleanup()
 
 	// Load test scenarios
-	scenarios, err := loader.LoadScenarios(scenarioPath)
+	scenarios, err := framework.Loader.LoadScenarios(scenarioPath)
 	if err != nil {
 		return fmt.Errorf("failed to load test scenarios: %w", err)
 	}
@@ -299,7 +293,7 @@ func runTest(cmd *cobra.Command, args []string) error {
 	}
 
 	// Execute test suite
-	result, err := runner.Run(timeoutCtx, testConfig, scenarios)
+	result, err := framework.Runner.Run(timeoutCtx, testConfig, scenarios)
 	if err != nil {
 		return fmt.Errorf("test execution failed: %w", err)
 	}

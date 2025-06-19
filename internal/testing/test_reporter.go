@@ -27,7 +27,7 @@ func NewTestReporter(verbose, debug bool, reportPath string) TestReporter {
 // ReportStart is called when test execution begins
 func (r *testReporter) ReportStart(config TestConfiguration) {
 	fmt.Printf("🧪 Starting envctl Test Framework\n")
-	fmt.Printf("📡 Endpoint: %s\n", config.Endpoint)
+	fmt.Printf("🏗️  Using managed envctl instances (base port: %d)\n", config.BasePort)
 
 	if r.verbose {
 		fmt.Printf("⚙️  Configuration:\n")
@@ -38,6 +38,7 @@ func (r *testReporter) ReportStart(config TestConfiguration) {
 		fmt.Printf("   • Fail fast: %t\n", config.FailFast)
 		fmt.Printf("   • Debug mode: %t\n", config.Debug)
 		fmt.Printf("   • Timeout: %v\n", config.Timeout)
+		fmt.Printf("   • Base port: %d\n", config.BasePort)
 		if config.ConfigPath != "" {
 			fmt.Printf("   • Config path: %s\n", config.ConfigPath)
 		}
@@ -131,11 +132,42 @@ func (r *testReporter) ReportScenarioResult(scenarioResult TestScenarioResult) {
 		if errors > 0 {
 			fmt.Printf(", %d errors", errors)
 		}
-		fmt.Printf("\n\n")
+		fmt.Printf("\n")
+
+		// Show instance logs if available and debug is enabled
+		if r.debug && scenarioResult.InstanceLogs != nil {
+			fmt.Printf("   📄 Instance Logs:\n")
+			if scenarioResult.InstanceLogs.Stdout != "" {
+				fmt.Printf("   STDOUT:\n%s\n", r.indentText(scenarioResult.InstanceLogs.Stdout))
+			}
+			if scenarioResult.InstanceLogs.Stderr != "" {
+				fmt.Printf("   STDERR:\n%s\n", r.indentText(scenarioResult.InstanceLogs.Stderr))
+			}
+		} else if r.debug {
+			if scenarioResult.InstanceLogs == nil {
+				fmt.Printf("   🔍 Debug: No instance logs available\n")
+			} else {
+				fmt.Printf("   🔍 Debug: Instance logs present but debug disabled\n")
+			}
+		}
+
+		fmt.Printf("\n")
 	} else {
 		// Compact output
 		fmt.Printf("%s (%v)\n", symbol, scenarioResult.Duration)
 	}
+}
+
+// indentText adds indentation to each line of text
+func (r *testReporter) indentText(text string) string {
+	lines := strings.Split(text, "\n")
+	var indented []string
+	for _, line := range lines {
+		if line != "" {
+			indented = append(indented, "      "+line)
+		}
+	}
+	return strings.Join(indented, "\n")
 }
 
 // ReportSuiteResult is called when all tests complete

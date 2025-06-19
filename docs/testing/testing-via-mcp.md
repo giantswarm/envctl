@@ -9,13 +9,48 @@ This guide provides comprehensive documentation for testing envctl using its Mod
 - **IDE Integration**: Direct testing from development environments with MCP-enabled tools  
 - **Standardized Interface**: Consistent tool-based approach across different testing contexts
 - **Automated Validation**: Comprehensive scenario execution with built-in result verification
+- **Isolated Test Execution**: Each test scenario runs against a fresh, isolated envctl instance
+- **Complete Log Capture**: Instance logs are automatically captured and included in all MCP responses
+
+## Test Architecture
+
+### Managed Instance Approach
+
+Unlike CLI usage where you might need to manage envctl services manually, **the MCP testing tools automatically create and manage isolated envctl instances** for each test scenario:
+
+1. **Automatic Instance Creation**: Each test scenario gets a fresh envctl serve process
+2. **Port Management**: Instances are assigned unique ports to avoid conflicts  
+3. **Configuration Isolation**: Each instance has its own temporary configuration directory
+4. **Log Collection**: All stdout/stderr from instances is captured and included in responses
+5. **Automatic Cleanup**: Instances and configurations are cleaned up after test completion
+
+### Enhanced Debugging 
+
+**Instance logs are always included in MCP responses**, providing comprehensive debugging information:
+
+```json
+{
+  "summary": {...},
+  "scenarios": [
+    {
+      "name": "serviceclass-basic-operations",
+      "status": "passed", 
+      "instance_logs": {
+        "stdout": "time=2025-06-19T11:07:19.565+02:00 level=INFO msg=\"Loaded configuration...\"",
+        "stderr": "",
+        "combined": "=== STDOUT ===\ntime=2025-06-19T11:07:19.565+02:00 level=INFO..."
+      }
+    }
+  ]
+}
+```
 
 ## MCP Tools Overview
 
 The envctl testing framework exposes four primary MCP tools through the aggregator:
 
-### 1. `mcp_envctl-test_test_run_scenarios`
-**Purpose**: Execute test scenarios with comprehensive configuration options
+### 1. `x_envctl-test_test_run_scenarios`
+**Purpose**: Execute test scenarios with comprehensive configuration options and automatic instance management
 
 **Parameters**:
 - `category` (string, optional): Filter by category ("behavioral", "integration")
@@ -36,20 +71,34 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
     "errors": 1,
     "skipped": 0,
     "execution_time": "2m34s",
-    "success_rate": 92.0
+    "success_rate": 92.0,
+    "base_port": 18000
   },
   "scenarios": [
     {
       "name": "serviceclass-basic-operations",
       "status": "passed",
       "execution_time": "45s",
-      "steps": [...]
+      "instance_logs": {
+        "stdout": "time=2025-06-19T11:07:19.565+02:00 level=INFO msg=\"Loaded configuration...\"",
+        "stderr": "",
+        "combined": "=== STDOUT ===\ntime=2025-06-19T11:07:19.565+02:00 level=INFO..."
+      },
+      "steps": [
+        {
+          "name": "create-test-serviceclass",
+          "status": "passed",
+          "execution_time": "12s",
+          "tool": "core_serviceclass_create",
+          "response": {...}
+        }
+      ]
     }
   ]
 }
 ```
 
-### 2. `mcp_envctl-test_test_list_scenarios`
+### 2. `x_envctl-test_test_list_scenarios`
 **Purpose**: Discover available test scenarios with filtering capabilities
 
 **Parameters**:
@@ -77,7 +126,7 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
 }
 ```
 
-### 3. `mcp_envctl-test_test_validate_scenario`
+### 3. `x_envctl-test_test_validate_scenario`
 **Purpose**: Validate YAML scenario files for syntax and completeness
 
 **Parameters**:
@@ -95,7 +144,7 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
 }
 ```
 
-### 4. `mcp_envctl-test_test_get_results`
+### 4. `x_envctl-test_test_get_results`
 **Purpose**: Retrieve detailed results from the last test execution
 
 **Parameters**:
@@ -108,8 +157,16 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
     "start_time": "2024-01-15T10:30:00Z",
     "end_time": "2024-01-15T10:35:30Z", 
     "duration": "5m30s",
-    "configuration": {...},
-    "detailed_results": {...}
+    "base_port": 18000,
+    "configuration": {
+      "parallel": 4,
+      "category": "behavioral",
+      "verbose": true
+    },
+    "detailed_results": {
+      "scenarios": [...],
+      "summary": {...}
+    }
   },
   "available": true
 }
@@ -122,7 +179,7 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
 #### Run All Tests
 ```json
 {
-  "tool": "mcp_envctl-test_test_run_scenarios",
+  "tool": "x_envctl-test_test_run_scenarios",
   "parameters": {
     "verbose": true
   }
@@ -132,7 +189,7 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
 #### Run Category-Specific Tests
 ```json
 {
-  "tool": "mcp_envctl-test_test_run_scenarios", 
+  "tool": "x_envctl-test_test_run_scenarios", 
   "parameters": {
     "category": "behavioral",
     "verbose": true
@@ -143,7 +200,7 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
 #### Run Concept-Specific Tests
 ```json
 {
-  "tool": "mcp_envctl-test_test_run_scenarios",
+  "tool": "x_envctl-test_test_run_scenarios",
   "parameters": {
     "concept": "serviceclass",
     "parallel": 2
@@ -154,7 +211,7 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
 #### Run Single Scenario
 ```json
 {
-  "tool": "mcp_envctl-test_test_run_scenarios",
+  "tool": "x_envctl-test_test_run_scenarios",
   "parameters": {
     "scenario": "serviceclass-basic-operations",
     "verbose": true
@@ -167,7 +224,7 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
 #### Parallel Execution with Fail-Fast
 ```json
 {
-  "tool": "mcp_envctl-test_test_run_scenarios",
+  "tool": "x_envctl-test_test_run_scenarios",
   "parameters": {
     "category": "integration",
     "parallel": 4,
@@ -180,7 +237,7 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
 #### Custom Scenario Path
 ```json
 {
-  "tool": "mcp_envctl-test_test_run_scenarios",
+  "tool": "x_envctl-test_test_run_scenarios",
   "parameters": {
     "config_path": "/custom/scenarios",
     "concept": "workflow"
@@ -193,7 +250,7 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
 #### List Available Scenarios
 ```json
 {
-  "tool": "mcp_envctl-test_test_list_scenarios",
+  "tool": "x_envctl-test_test_list_scenarios",
   "parameters": {
     "concept": "serviceclass"
   }
@@ -203,7 +260,7 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
 #### Validate Scenario Files
 ```json
 {
-  "tool": "mcp_envctl-test_test_validate_scenario",
+  "tool": "x_envctl-test_test_validate_scenario",
   "parameters": {
     "scenario_path": "internal/testing/scenarios/"
   }
@@ -213,7 +270,7 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
 #### Get Latest Results
 ```json
 {
-  "tool": "mcp_envctl-test_test_get_results",
+  "tool": "x_envctl-test_test_get_results",
   "parameters": {
     "random_string": "get_results"
   }
@@ -226,14 +283,14 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
 
 #### Pre-Commit Testing Validation
 ```bash
-# 1. Start envctl aggregator
-./scripts/dev-restart.sh
+# 1. Build envctl with your changes
+go build -o envctl .
 
-# 2. Quick validation of core functionality
+# 2. Quick validation of core functionality (instances managed automatically)
 ```
 ```json
 {
-  "tool": "mcp_envctl-test_test_run_scenarios",
+  "tool": "x_envctl-test_test_run_scenarios",
   "parameters": {
     "category": "behavioral",
     "parallel": 2,
@@ -244,14 +301,14 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
 
 #### Local Development Testing Pattern
 ```bash
-# 1. Restart envctl with changes
-./scripts/dev-restart.sh
+# 1. Build envctl with your changes
+go build -o envctl .
 
-# 2. Test specific concept you're working on
+# 2. Test specific concept you're working on (fresh instances created automatically)
 ```
 ```json
 {
-  "tool": "mcp_envctl-test_test_run_scenarios",
+  "tool": "x_envctl-test_test_run_scenarios",
   "parameters": {
     "concept": "workflow",
     "verbose": true
@@ -262,7 +319,7 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
 #### Quick Feedback Loop
 ```json
 {
-  "tool": "mcp_envctl-test_test_run_scenarios",
+  "tool": "x_envctl-test_test_run_scenarios",
   "parameters": {
     "scenario": "serviceclass-basic-operations",
     "verbose": true
@@ -295,7 +352,7 @@ steps:
 #### 2. Validate Scenario Syntax
 ```json
 {
-  "tool": "mcp_envctl-test_test_validate_scenario",
+  "tool": "x_envctl-test_test_validate_scenario",
   "parameters": {
     "scenario_path": "internal/testing/scenarios/my-new-test.yaml"
   }
@@ -305,7 +362,7 @@ steps:
 #### 3. Test New Scenario
 ```json
 {
-  "tool": "mcp_envctl-test_test_run_scenarios",
+  "tool": "x_envctl-test_test_run_scenarios",
   "parameters": {
     "scenario": "my-new-feature-test",
     "verbose": true
@@ -316,7 +373,7 @@ steps:
 #### 4. Iterate Based on Results
 ```json
 {
-  "tool": "mcp_envctl-test_test_get_results",
+  "tool": "x_envctl-test_test_get_results",
   "parameters": {
     "random_string": "check_results"
   }
@@ -328,7 +385,7 @@ steps:
 #### 1. Identify Failing Tests
 ```json
 {
-  "tool": "mcp_envctl-test_test_run_scenarios",
+  "tool": "x_envctl-test_test_run_scenarios",
   "parameters": {
     "concept": "serviceclass",
     "fail_fast": true,
@@ -340,7 +397,7 @@ steps:
 #### 2. Analyze Detailed Results
 ```json
 {
-  "tool": "mcp_envctl-test_test_get_results",
+  "tool": "x_envctl-test_test_get_results",
   "parameters": {
     "random_string": "debug_analysis"
   }
@@ -350,7 +407,7 @@ steps:
 #### 3. Test Single Failing Scenario
 ```json
 {
-  "tool": "mcp_envctl-test_test_run_scenarios",
+  "tool": "x_envctl-test_test_run_scenarios",
   "parameters": {
     "scenario": "specific-failing-scenario",
     "verbose": true
@@ -375,7 +432,7 @@ journalctl --user -u envctl.service --no-pager | tail -50
 ```json
 // Start with behavioral tests
 {
-  "tool": "mcp_envctl-test_test_run_scenarios",
+  "tool": "x_envctl-test_test_run_scenarios",
   "parameters": {
     "category": "behavioral",
     "fail_fast": true
@@ -384,7 +441,7 @@ journalctl --user -u envctl.service --no-pager | tail -50
 
 // Then run integration tests
 {
-  "tool": "mcp_envctl-test_test_run_scenarios", 
+  "tool": "x_envctl-test_test_run_scenarios", 
   "parameters": {
     "category": "integration",
     "parallel": 2
@@ -396,7 +453,7 @@ journalctl --user -u envctl.service --no-pager | tail -50
 ```json
 // Test the concept you're actively developing
 {
-  "tool": "mcp_envctl-test_test_run_scenarios",
+  "tool": "x_envctl-test_test_run_scenarios",
   "parameters": {
     "concept": "workflow",
     "verbose": true
@@ -407,7 +464,7 @@ journalctl --user -u envctl.service --no-pager | tail -50
 #### 3. **Fast Feedback with Fail-Fast**
 ```json
 {
-  "tool": "mcp_envctl-test_test_run_scenarios",
+  "tool": "x_envctl-test_test_run_scenarios",
   "parameters": {
     "fail_fast": true,
     "parallel": 4,
@@ -442,7 +499,7 @@ journalctl --user -u envctl.service --no-pager | tail -50
 #### 1. **Graceful Failure Handling**
 ```json
 {
-  "tool": "mcp_envctl-test_test_run_scenarios",
+  "tool": "x_envctl-test_test_run_scenarios",
   "parameters": {
     "fail_fast": false,  // Continue execution
     "verbose": true      // Get detailed error info
@@ -454,7 +511,7 @@ journalctl --user -u envctl.service --no-pager | tail -50
 ```json
 // Always check results after execution
 {
-  "tool": "mcp_envctl-test_test_get_results",
+  "tool": "x_envctl-test_test_get_results",
   "parameters": {
     "random_string": "post_execution_check"
   }
@@ -465,7 +522,7 @@ journalctl --user -u envctl.service --no-pager | tail -50
 ```json
 // Validate scenarios before running
 {
-  "tool": "mcp_envctl-test_test_validate_scenario",
+  "tool": "x_envctl-test_test_validate_scenario",
   "parameters": {
     "scenario_path": "internal/testing/scenarios/"
   }
@@ -476,267 +533,122 @@ journalctl --user -u envctl.service --no-pager | tail -50
 
 ### Common Issues and Solutions
 
-#### 1. **Connection Refused**
+#### 1. **Build or Binary Issues**
 **Symptoms**: 
 ```json
 {
-  "error": "connection refused",
-  "tool": "mcp_envctl-test_test_run_scenarios"
+  "error": "failed to start envctl process: executable file not found",
+  "tool": "x_envctl-test_test_run_scenarios"
 }
 ```
 
 **Solutions**:
 ```bash
-# Check if envctl aggregator is running
-curl http://localhost:8080/health
+# Ensure envctl is built
+go build -o envctl .
 
-# Restart envctl service
-./scripts/dev-restart.sh
+# Verify binary exists and is executable
+ls -la ./envctl
+chmod +x ./envctl
 
-# Check service status
-systemctl --user status envctl.service --no-pager
-
-# Check service logs
-journalctl --user -u envctl.service --no-pager | tail -50
+# Test basic envctl functionality
+./envctl --help
 ```
 
-#### 2. **Tool Not Found**
+#### 2. **Port Conflicts**
 **Symptoms**:
 ```json
 {
-  "error": "tool not found: core_serviceclass_create",
-  "scenario": "serviceclass-basic-operations"
-}
-```
-
-**Investigation Steps**:
-```bash
-# Check available tools via aggregator
-curl http://localhost:8080/tools
-
-# Check envctl logs for registration errors
-journalctl --user -u envctl.service --no-pager | grep -i "register\|tool"
-
-# Restart to re-register tools
-./scripts/dev-restart.sh
-```
-
-**Source Code Investigation**:
-- Check `internal/serviceclass/` package for implementation issues
-- Verify `api_adapter.go` files for tool registration
-- Look at `internal/api/handlers.go` for interface definitions
-
-#### 3. **Scenario Validation Errors**
-**Symptoms**:
-```json
-{
-  "tool": "mcp_envctl-test_test_validate_scenario",
-  "result": {
-    "valid": false,
-    "errors": ["invalid YAML syntax at line 15"]
-  }
+  "error": "failed to find available port: no available ports found starting from 18000",
+  "tool": "x_envctl-test_test_run_scenarios"
 }
 ```
 
 **Solutions**:
 ```bash
-# Validate YAML syntax manually
-yamllint internal/testing/scenarios/problem-scenario.yaml
+# Check what's using the default port range
+ss -tlnp | grep 18000
 
-# Check against scenario schema
-# Review existing working scenarios for reference patterns
+# Use a different base port range
 ```
-
-#### 4. **Test Timeouts**
-**Symptoms**:
 ```json
 {
-  "error": "scenario timeout exceeded",
-  "scenario": "slow-integration-test"
-}
-```
-
-**Solutions**:
-```json
-// Increase timeout for specific scenarios
-{
-  "tool": "mcp_envctl-test_test_run_scenarios",
+  "tool": "x_envctl-test_test_run_scenarios",
   "parameters": {
-    "scenario": "slow-integration-test",
-    "timeout": "10m"
-  }
-}
-```
-
-```yaml
-# Or update scenario YAML
-timeout: "10m"
-steps:
-  - name: "slow-operation"
-    timeout: "5m"
-    # ...
-```
-
-#### 5. **Resource Conflicts**
-**Symptoms**:
-```json
-{
-  "error": "resource already exists: test-serviceclass",
-  "step": "create-test-serviceclass"
-}
-```
-
-**Solutions**:
-```bash
-# Clean up resources manually
-kubectl delete serviceclass test-serviceclass
-
-# Or use unique names in tests
-```
-
-```yaml
-# Update scenario to use unique names
-parameters:
-  yaml: |
-    name: test-serviceclass-{{ .timestamp }}
-```
-
-### Debugging Techniques
-
-#### 1. **Understanding Package Structure for Test Failures**
-
-When a test scenario fails, the issue is typically in the source code package related to the concept being tested:
-
-| **Concept** | **Primary Package** | **Key Files** |
-|-------------|-------------------|---------------|
-| `serviceclass` | `internal/serviceclass/` | `manager.go`, `api_adapter.go` |
-| `workflow` | `internal/workflow/` | `executor.go`, `manager.go` |
-| `mcpserver` | `internal/mcpserver/` | `manager.go`, `client.go` |
-| `capability` | `internal/capability/` | `manager.go`, `registry.go` |
-| `service` | `internal/services/` | `registry.go`, `instance.go` |
-
-**Investigation Process**:
-1. Identify which concept the failing test belongs to
-2. Check the corresponding package's implementation
-3. Look for recent changes in API adapters
-4. Verify tool registration in `internal/api/` handlers
-
-#### 2. **Using envctl Restart Script**
-
-```bash
-# Restart envctl with your changes
-./scripts/dev-restart.sh
-
-# This script:
-# 1. Stops the current envctl service
-# 2. Rebuilds envctl with latest code changes  
-# 3. Restarts the service
-# 4. Waits for it to be ready
-```
-
-**When to Use**:
-- After making code changes
-- When tools are not registering properly
-- When experiencing connection issues
-- Before running test scenarios
-
-#### 3. **Analyzing envctl Logs**
-
-```bash
-# Get recent logs
-journalctl --user -u envctl.service --no-pager | tail -50
-
-# Filter for specific components
-journalctl --user -u envctl.service --no-pager | grep -i "serviceclass"
-
-# Follow logs in real-time during testing
-journalctl --user -u envctl.service --no-pager -f
-```
-
-**Key Log Patterns to Look For**:
-- Tool registration: `"registered tool: core_serviceclass_create"`
-- Connection issues: `"failed to connect"`, `"connection refused"`
-- API errors: `"handler error"`, `"failed to process"`
-- Resource conflicts: `"already exists"`, `"conflict"`
-
-#### 4. **Systematic Debugging Steps**
-
-1. **Verify Environment**:
-   ```bash
-   # Check if envctl is running
-   systemctl --user status envctl.service --no-pager
-   
-   # Test basic connectivity
-   curl http://localhost:8080/health
-   ```
-
-2. **Isolate the Problem**:
-   ```json
-   // Run just the failing scenario
-   {
-     "tool": "mcp_envctl-test_test_run_scenarios",
-     "parameters": {
-       "scenario": "failing-scenario-name",
-       "verbose": true
-     }
-   }
-   ```
-
-3. **Check Tool Availability**:
-   ```bash
-   # List all available tools (when mcp-debug is available)
-   # This helps identify missing or misconfigured tools
-   ```
-
-4. **Analyze Results**:
-   ```json
-   {
-     "tool": "mcp_envctl-test_test_get_results", 
-     "parameters": {
-       "random_string": "detailed_analysis"
-     }
-   }
-   ```
-
-5. **Fix and Verify**:
-   ```bash
-   # Make necessary code changes
-   # Restart envctl
-   ./scripts/dev-restart.sh
-   
-   # Re-run the test
-   ```
-
-### Advanced Troubleshooting
-
-#### 1. **MCP Protocol Issues**
-```bash
-# Check MCP aggregator status
-curl http://localhost:8080/mcp/status
-
-# Verify tool registration
-curl http://localhost:8080/mcp/tools
-```
-
-#### 2. **Parallel Execution Issues**
-```json
-// Reduce parallelism to isolate race conditions
-{
-  "tool": "mcp_envctl-test_test_run_scenarios",
-  "parameters": {
-    "parallel": 1,
+    "scenario": "serviceclass-basic-operations",
     "verbose": true
   }
 }
 ```
 
-#### 3. **Resource Cleanup Issues**
-```bash
-# Manual cleanup of test resources
-kubectl get all -A | grep test-
+#### 3. **Instance Startup Failures**
+**Symptoms**:
+```json
+{
+  "error": "timeout waiting for envctl instance to be ready",
+  "tool": "x_envctl-test_test_run_scenarios"
+}
+```
 
-# Check for orphaned resources
-kubectl get serviceclass,workflow,capability -A
+**Solutions**:
+Check the instance logs in the response for startup errors:
+```json
+{
+  "scenario": {
+    "instance_logs": {
+      "stderr": "error: failed to load configuration: config file not found"
+    }
+  }
+}
+```
+
+Common startup issues:
+- Configuration generation errors
+- Missing dependencies
+- File permission issues
+- Resource exhaustion (memory/disk)
+
+#### 4. **Scenario Validation Errors**
+**Symptoms**:
+```json
+{
+  "tool": "x_envctl-test_test_validate_scenario",
+  "result": {
+    "valid": false,
+    "errors": ["step 'invalid-step' references unknown tool 'invalid_tool'"]
+  }
+}
+```
+
+**Solutions**:
+```json
+{
+  "tool": "x_envctl-test_test_validate_scenario",
+  "parameters": {
+    "scenario_path": "internal/testing/scenarios/"
+  }
+}
+```
+
+#### 5. **Resource Exhaustion**
+**Symptoms**: Tests fail with out-of-memory or disk space errors
+
+**Solutions**:
+```bash
+# Check system resources
+df -h        # Disk space
+free -h      # Memory usage
+```
+
+Reduce parallel execution:
+```json
+{
+  "tool": "x_envctl-test_test_run_scenarios",
+  "parameters": {
+    "parallel": 1,
+    "concept": "serviceclass"
+  }
+}
 ```
 
 ## Integration Examples
@@ -760,7 +672,7 @@ kubectl get serviceclass,workflow,capability -A
 #### Cursor with Built-in MCP
 ```typescript
 // Use MCP tools directly in Cursor
-const testResult = await mcp.callTool("mcp_envctl-test_test_run_scenarios", {
+const testResult = await mcp.callTool("x_envctl-test_test_run_scenarios", {
   concept: "serviceclass",
   verbose: true
 });
@@ -787,7 +699,7 @@ jobs:
       - name: Run Tests via MCP
         run: |
           # Use MCP client to execute tests
-          mcp-client call mcp_envctl-test_test_run_scenarios \
+          mcp-client call x_envctl-test_test_run_scenarios \
             '{"category": "behavioral", "parallel": 4}'
 ```
 
@@ -801,7 +713,7 @@ pipeline {
                 sh 'envctl serve &'
                 sh 'sleep 10'
                 sh '''
-                    mcp-client call mcp_envctl-test_test_run_scenarios \
+                    mcp-client call x_envctl-test_test_run_scenarios \
                         '{"category": "behavioral", "fail_fast": true}'
                 '''
             }

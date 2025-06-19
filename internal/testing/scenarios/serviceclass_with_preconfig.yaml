@@ -1,0 +1,197 @@
+name: "serviceclass-with-preconfig"
+category: "integration"
+concept: "serviceclass"
+description: "ServiceClass operations with pre-configured MCP servers and workflows"
+tags: ["integration", "preconfig", "serviceclass", "workflow"]
+timeout: "10m"
+
+# Pre-configuration for this test scenario
+pre_configuration:
+  # Configure MCP servers that will be available
+  mcp_servers:
+    - name: "test-kubernetes"
+      type: "process"
+      config:
+        command: "kubectl-mcp"
+        args: ["--context", "test-cluster"]
+        env:
+          KUBECONFIG: "/tmp/test-kubeconfig"
+        
+    - name: "test-prometheus"
+      type: "process"
+      config:
+        command: "prometheus-mcp"
+        args: ["--url", "http://localhost:9090"]
+
+  # Configure workflows that will be available
+  workflows:
+    - name: "deploy-with-monitoring"
+      config:
+        name: "deploy-with-monitoring"
+        description: "Deploy service with monitoring setup"
+        parameters:
+          service_name:
+            type: "string"
+            required: true
+          namespace:
+            type: "string"
+            default: "default"
+        steps:
+          - name: "deploy-service"
+            tool: "x_kubernetes_apply"
+            parameters:
+              yaml: "{{ .service_yaml }}"
+          - name: "setup-monitoring"
+            tool: "x_prometheus_add_target"
+            parameters:
+              target: "{{ .service_name }}.{{ .namespace }}.svc.cluster.local:8080"
+
+  # Configure a service class that uses the above components
+  service_classes:
+    - name: "monitored-web-service"
+      config:
+        name: "monitored-web-service"
+        description: "Web service with monitoring integration"
+        parameters:
+          app_name:
+            type: "string"
+            required: true
+          image:
+            type: "string"
+            required: true
+          port:
+            type: "integer"
+            default: 8080
+          replicas:
+            type: "integer"
+            default: 2
+        capabilities:
+          - "deploy-with-monitoring"
+        tools:
+          - "x_kubernetes_apply"
+          - "x_prometheus_add_target"
+        template: |
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: "{{ .parameters.app_name }}"
+            namespace: "{{ .parameters.namespace | default "default" }}"
+          spec:
+            replicas: {{ .parameters.replicas }}
+            selector:
+              matchLabels:
+                app: "{{ .parameters.app_name }}"
+            template:
+              metadata:
+                labels:
+                  app: "{{ .parameters.app_name }}"
+              spec:
+                containers:
+                - name: app
+                  image: "{{ .parameters.image }}"
+                  ports:
+                  - containerPort: {{ .parameters.port }}
+
+  # Configure main envctl settings
+  main_config:
+    config:
+      logging:
+        level: "debug"
+      server:
+        host: "localhost"
+        timeout: "30s"
+
+steps:
+  - name: "verify-preconfig-loaded"
+    description: "Verify that pre-configured components are available"
+    tool: "core_mcpserver_list"
+    parameters: {}
+    expected:
+      success: true
+      contains: ["test-kubernetes", "test-prometheus"]
+    timeout: "30s"
+
+  - name: "check-workflow-available"
+    description: "Verify the pre-configured workflow is available"
+    tool: "core_workflow_list"
+    parameters: {}
+    expected:
+      success: true
+      contains: ["deploy-with-monitoring"]
+    timeout: "30s"
+
+  - name: "check-serviceclass-available"
+    description: "Verify the pre-configured ServiceClass is available"
+    tool: "core_serviceclass_list"
+    parameters: {}
+    expected:
+      success: true
+      contains: ["monitored-web-service"]
+    timeout: "30s"
+
+  - name: "verify-serviceclass-ready"
+    description: "Check if the ServiceClass is ready for instantiation"
+    tool: "core_serviceclass_available"
+    parameters:
+      name: "monitored-web-service"
+    expected:
+      success: true
+      json_path:
+        available: true
+        missing_tools: []
+    timeout: "30s"
+
+  - name: "create-service-instance"
+    description: "Create a service instance from the pre-configured ServiceClass"
+    tool: "core_service_create"
+    parameters:
+      service_class_name: "monitored-web-service"
+      label: "test-web-app"
+      parameters:
+        app_name: "test-web-app"
+        image: "nginx:latest"
+        port: 80
+        replicas: 1
+    expected:
+      success: true
+      contains: ["created successfully", "test-web-app"]
+    timeout: "2m"
+
+  - name: "verify-service-created"
+    description: "Verify the service instance was created"
+    tool: "core_service_list"
+    parameters: {}
+    expected:
+      success: true
+      contains: ["test-web-app", "Running"]
+    timeout: "30s"
+
+  - name: "get-service-status"
+    description: "Get detailed status of the created service"
+    tool: "core_service_status"
+    parameters:
+      label: "test-web-app"
+    expected:
+      success: true
+      contains: ["Running", "monitored-web-service"]
+    timeout: "30s"
+
+cleanup:
+  - name: "delete-service-instance"
+    description: "Clean up the service instance"
+    tool: "core_service_delete"
+    parameters:
+      instance_id: "test-web-app"
+    expected:
+      success: true
+      contains: ["deleted successfully"]
+    timeout: "1m"
+
+  - name: "verify-service-deleted"
+    description: "Verify the service instance was deleted"
+    tool: "core_service_list"
+    parameters: {}
+    expected:
+      success: true
+      not_contains: ["test-web-app"]
+    timeout: "30s" 

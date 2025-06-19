@@ -256,23 +256,32 @@ Use the built-in validation to check scenario syntax:
 
 ```bash
 # Validate a single scenario
-envctl test --validate-scenario=path/to/scenario.yaml
+./envctl test --validate-scenario=path/to/scenario.yaml
 
 # Validate all scenarios in a directory  
-envctl test --validate-scenarios=path/to/scenarios/
+./envctl test --validate-scenarios=path/to/scenarios/
 ```
 
-### Dry Run Mode
+### Testing Your Scenarios
 
-Test scenarios without actually executing them:
+Test scenarios automatically run against isolated envctl instances:
 
 ```bash
-# Dry run to check syntax and dependencies
-envctl test --dry-run --scenario=my-scenario
+# Test a specific scenario (creates fresh envctl instance automatically)
+./envctl test --scenario=my-scenario --verbose
 
-# Dry run with verbose output
-envctl test --dry-run --verbose --category=behavioral
+# Test with debugging to see instance logs
+./envctl test --scenario=my-scenario --debug
+
+# Test all scenarios in a concept category
+./envctl test --concept=serviceclass --verbose
 ```
+
+**Benefits of Managed Instances:**
+- Each scenario runs against a fresh envctl instance
+- No interference between test scenarios
+- Automatic cleanup of instances and configurations
+- Complete isolation ensures reliable test results
 
 ---
 
