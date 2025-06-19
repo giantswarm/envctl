@@ -282,12 +282,6 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
 ### Development Workflow
 
 #### Pre-Commit Testing Validation
-```bash
-# 1. Build envctl with your changes
-go build -o envctl .
-
-# 2. Quick validation of core functionality (instances managed automatically)
-```
 ```json
 {
   "tool": "x_envctl-test_test_run_scenarios",
@@ -300,12 +294,6 @@ go build -o envctl .
 ```
 
 #### Local Development Testing Pattern
-```bash
-# 1. Build envctl with your changes
-go build -o envctl .
-
-# 2. Test specific concept you're working on (fresh instances created automatically)
-```
 ```json
 {
   "tool": "x_envctl-test_test_run_scenarios",
@@ -394,7 +382,23 @@ steps:
 }
 ```
 
-#### 2. Analyze Detailed Results
+#### 2. Analyze Instance Logs
+Check the `instance_logs` in the test results for detailed debugging information:
+```json
+{
+  "scenario": {
+    "name": "failing-scenario",
+    "status": "failed",
+    "instance_logs": {
+      "stdout": "time=2025-06-19T11:07:19.565+02:00 level=INFO msg=\"Starting envctl...\"",
+      "stderr": "time=2025-06-19T11:07:20.123+02:00 level=ERROR msg=\"Failed to initialize service\"",
+      "combined": "=== STDOUT ===\n... === STDERR ===\n..."
+    }
+  }
+}
+```
+
+#### 3. Get Detailed Test Results
 ```json
 {
   "tool": "x_envctl-test_test_get_results",
@@ -404,7 +408,7 @@ steps:
 }
 ```
 
-#### 3. Test Single Failing Scenario
+#### 4. Test Single Failing Scenario
 ```json
 {
   "tool": "x_envctl-test_test_run_scenarios",
@@ -413,15 +417,6 @@ steps:
     "verbose": true
   }
 }
-```
-
-#### 4. Validate Environment
-```bash
-# Check envctl status
-journalctl --user -u envctl.service --no-pager | tail -50
-
-# Restart if needed
-./scripts/dev-restart.sh
 ```
 
 ## Best Practices
@@ -543,6 +538,8 @@ journalctl --user -u envctl.service --no-pager | tail -50
 ```
 
 **Solutions**:
+The testing framework expects to find the `envctl` binary in the current working directory. Ensure the binary is built and available:
+
 ```bash
 # Ensure envctl is built
 go build -o envctl .
@@ -555,6 +552,8 @@ chmod +x ./envctl
 ./envctl --help
 ```
 
+**Note**: The testing framework automatically manages envctl serve processes - you don't need to start envctl manually.
+
 #### 2. **Port Conflicts**
 **Symptoms**:
 ```json
@@ -565,17 +564,22 @@ chmod +x ./envctl
 ```
 
 **Solutions**:
+The testing framework automatically finds available ports starting from 18000. If this error occurs, check what's using the port range:
+
 ```bash
 # Check what's using the default port range
 ss -tlnp | grep 18000
 
-# Use a different base port range
+# Kill conflicting processes or wait for them to finish
 ```
+
+The framework will automatically retry with different ports, but if the entire range is occupied, you may need to free up some ports or reduce parallel execution:
+
 ```json
 {
   "tool": "x_envctl-test_test_run_scenarios",
   "parameters": {
-    "scenario": "serviceclass-basic-operations",
+    "parallel": 1,
     "verbose": true
   }
 }
@@ -657,7 +661,7 @@ Reduce parallel execution:
 
 #### VS Code with MCP Extension
 ```json
-// Configure MCP connection to envctl
+// Configure MCP connection to envctl (for accessing testing tools)
 {
   "mcp.servers": {
     "envctl-test": {
@@ -669,9 +673,11 @@ Reduce parallel execution:
 }
 ```
 
+**Note**: The testing tools accessed through this MCP server will automatically manage their own envctl instances for test execution.
+
 #### Cursor with Built-in MCP
 ```typescript
-// Use MCP tools directly in Cursor
+// Use MCP testing tools directly in Cursor
 const testResult = await mcp.callTool("x_envctl-test_test_run_scenarios", {
   concept: "serviceclass",
   verbose: true
@@ -691,14 +697,12 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       
-      - name: Start envctl
-        run: |
-          envctl serve &
-          sleep 10
+      - name: Build envctl
+        run: go build -o envctl .
         
       - name: Run Tests via MCP
         run: |
-          # Use MCP client to execute tests
+          # Use MCP client to execute tests (instances managed automatically)
           mcp-client call x_envctl-test_test_run_scenarios \
             '{"category": "behavioral", "parallel": 4}'
 ```
@@ -708,11 +712,15 @@ jobs:
 pipeline {
     agent any
     stages {
+        stage('Build') {
+            steps {
+                sh 'go build -o envctl .'
+            }
+        }
         stage('Test') {
             steps {
-                sh 'envctl serve &'
-                sh 'sleep 10'
                 sh '''
+                    # Test framework manages envctl instances automatically
                     mcp-client call x_envctl-test_test_run_scenarios \
                         '{"category": "behavioral", "fail_fast": true}'
                 '''
@@ -733,12 +741,13 @@ The envctl MCP testing framework provides a powerful, standardized way to execut
 - **Integration Ready**: Works with IDEs, CI/CD pipelines, and LLM agents
 
 **Best Practices Summary**:
-1. Always restart envctl after code changes: `./scripts/dev-restart.sh`
+1. Build envctl binary before running tests: `go build -o envctl .`
 2. Use fail-fast for quick feedback during development
-3. Check logs for debugging: `journalctl --user -u envctl.service --no-pager`
-4. Validate scenarios before execution
-5. Analyze detailed results for troubleshooting
+3. Analyze instance logs in test responses for debugging
+4. Validate scenarios before execution with `test_validate_scenario`
+5. Use verbose mode to get detailed execution information
 6. Test concept-specific functionality during development
 7. Use parallel execution for comprehensive test suites
+8. Leverage automatic instance management - no manual envctl service management needed
 
 This MCP-based testing approach enables seamless integration between envctl development and AI-powered development workflows, providing both automated validation and intelligent debugging capabilities. 
