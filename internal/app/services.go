@@ -77,7 +77,12 @@ func (a *aggregatorToolChecker) GetAvailableTools() []string {
 // InitializeServices creates and registers all required services
 func InitializeServices(cfg *Config) (*Services, error) {
 	// Create storage for shared use across services including orchestrator persistence
-	storage := config.NewStorage()
+	var storage *config.Storage
+	if cfg.ConfigPath != "" {
+		storage = config.NewStorageWithPath(cfg.ConfigPath)
+	} else {
+		storage = config.NewStorage()
+	}
 
 	// Create orchestrator without ToolCaller initially
 	orchConfig := orchestrator.Config{
@@ -129,37 +134,36 @@ func InitializeServices(cfg *Config) (*Services, error) {
 	serviceClassAdapter := serviceclass.NewAdapter(serviceClassManager)
 	serviceClassAdapter.Register()
 
-	// Load ServiceClass definitions
-	if err := serviceClassManager.LoadServiceDefinitions(); err != nil {
+	// Load ServiceClass definitions using the appropriate loading method
+	if err := loadServiceClassDefinitions(serviceClassManager, cfg.ConfigPath); err != nil {
 		// Log warning but don't fail - ServiceClass is optional
 		logging.Warn("Services", "Failed to load ServiceClass definitions: %v", err)
 	}
 
 	// Initialize and register Capability adapter
-	// Note: We'll need to pass a ToolCaller when it becomes available
-	capabilityAdapter, err := capability.NewAdapter(toolChecker, nil, storage) // ToolCaller will be set later, pass shared storage
+	capabilityAdapter, err := capability.NewAdapter(toolChecker, nil, storage)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Capability adapter: %w", err)
 	}
 	capabilityAdapter.Register()
 
-	// Load Capability definitions - will now load from both files and storage
-	if err := api.GetCapability().LoadDefinitions(); err != nil {
+	// Load Capability definitions using the appropriate loading method
+	if err := loadCapabilityDefinitions(capabilityAdapter, cfg.ConfigPath); err != nil {
 		// Log warning but don't fail - Capability is optional
 		logging.Warn("Services", "Failed to load Capability definitions: %v", err)
 	}
 
 	// Create and register Workflow adapter
-	workflowManager, err := workflow.NewWorkflowManager(storage, nil, toolChecker) // ToolCaller will be set later
+	workflowManager, err := workflow.NewWorkflowManager(storage, nil, toolChecker)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Workflow manager: %w", err)
 	}
 
-	workflowAdapter := workflow.NewAdapter(workflowManager, nil) // ToolCaller will be set later
+	workflowAdapter := workflow.NewAdapter(workflowManager, nil)
 	workflowAdapter.Register()
 
-	// Load Workflow definitions
-	if err := workflowManager.LoadDefinitions(); err != nil {
+	// Load Workflow definitions using the appropriate loading method
+	if err := loadWorkflowDefinitions(workflowManager, cfg.ConfigPath); err != nil {
 		// Log warning but don't fail - Workflow is optional
 		logging.Warn("Services", "Failed to load Workflow definitions: %v", err)
 	}
@@ -174,8 +178,8 @@ func InitializeServices(cfg *Config) (*Services, error) {
 	mcpServerAdapter := mcpserverPkg.NewAdapter(mcpServerManager)
 	mcpServerAdapter.Register()
 
-	// Load MCP server definitions from directories
-	if err := mcpServerManager.LoadDefinitions(); err != nil {
+	// Load MCP server definitions using the appropriate loading method
+	if err := loadMCPServerDefinitions(mcpServerManager, cfg.ConfigPath); err != nil {
 		// Log warning but don't fail - MCP servers are optional
 		logging.Warn("Services", "Failed to load MCP server definitions: %v", err)
 	}
@@ -209,11 +213,18 @@ func InitializeServices(cfg *Config) (*Services, error) {
 		// Need to get the service registry handler from the registry adapter
 		registryHandler := api.GetServiceRegistry()
 		if registryHandler != nil {
-			// Auto-detect config directory
-			configDir, err := config.GetUserConfigDir()
-			if err != nil {
-				// Fallback to empty string if auto-detection fails
-				configDir = ""
+			// Auto-detect config directory or use custom path
+			var configDir string
+			if cfg.ConfigPath != "" {
+				configDir = cfg.ConfigPath
+			} else {
+				userConfigDir, err := config.GetUserConfigDir()
+				if err != nil {
+					// Fallback to empty string if auto-detection fails
+					configDir = ""
+				} else {
+					configDir = userConfigDir
+				}
 			}
 
 			// Convert config types
@@ -307,4 +318,61 @@ func InitializeServices(cfg *Config) (*Services, error) {
 		ConfigAPI:       configAPI,
 		AggregatorPort:  cfg.EnvctlConfig.Aggregator.Port,
 	}, nil
+}
+
+// Helper functions for loading definitions with config path support
+
+// loadServiceClassDefinitions loads service class definitions using the appropriate method
+func loadServiceClassDefinitions(manager interface{}, configPath string) error {
+	// Set config path if manager supports it
+	if configSetter, ok := manager.(interface{ SetConfigPath(string) }); ok && configPath != "" {
+		configSetter.SetConfigPath(configPath)
+	}
+
+	if loader, ok := manager.(interface{ LoadServiceDefinitions() error }); ok {
+		return loader.LoadServiceDefinitions()
+	}
+	return fmt.Errorf("service class manager does not support loading definitions")
+}
+
+// loadCapabilityDefinitions loads capability definitions using the appropriate method
+func loadCapabilityDefinitions(adapter interface{}, configPath string) error {
+	// Get the capability handler from the API
+	if capHandler := api.GetCapability(); capHandler != nil {
+		// Set config path if handler supports it
+		if configSetter, ok := capHandler.(interface{ SetConfigPath(string) }); ok && configPath != "" {
+			configSetter.SetConfigPath(configPath)
+		}
+
+		if loader, ok := capHandler.(interface{ LoadDefinitions() error }); ok {
+			return loader.LoadDefinitions()
+		}
+	}
+	return fmt.Errorf("capability handler not available or does not support loading definitions")
+}
+
+// loadWorkflowDefinitions loads workflow definitions using the appropriate method
+func loadWorkflowDefinitions(manager interface{}, configPath string) error {
+	// Set config path if manager supports it
+	if configSetter, ok := manager.(interface{ SetConfigPath(string) }); ok && configPath != "" {
+		configSetter.SetConfigPath(configPath)
+	}
+
+	if loader, ok := manager.(interface{ LoadDefinitions() error }); ok {
+		return loader.LoadDefinitions()
+	}
+	return fmt.Errorf("workflow manager does not support loading definitions")
+}
+
+// loadMCPServerDefinitions loads MCP server definitions using the appropriate method
+func loadMCPServerDefinitions(manager interface{}, configPath string) error {
+	// Set config path if manager supports it
+	if configSetter, ok := manager.(interface{ SetConfigPath(string) }); ok && configPath != "" {
+		configSetter.SetConfigPath(configPath)
+	}
+
+	if loader, ok := manager.(interface{ LoadDefinitions() error }); ok {
+		return loader.LoadDefinitions()
+	}
+	return fmt.Errorf("MCP server manager does not support loading definitions")
 }

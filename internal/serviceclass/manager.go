@@ -20,6 +20,7 @@ type ServiceClassManager struct {
 	toolChecker     config.ToolAvailabilityChecker
 	exposedServices map[string]bool // Track which service classes are available
 	storage         *config.Storage
+	configPath      string // Optional custom config path
 
 	// Callbacks for lifecycle events
 	onRegister   []func(def *ServiceClassDefinition)
@@ -41,27 +42,42 @@ func NewServiceClassManager(toolChecker config.ToolAvailabilityChecker, storage 
 		return nil, fmt.Errorf("failed to create configuration loader: %w", err)
 	}
 
+	// Extract config path from storage if it has one
+	var configPath string
+	if storage != nil {
+		// We can't directly access the configPath from storage, so we'll pass it via parameter later
+		// For now, leave it empty
+	}
+
 	return &ServiceClassManager{
 		loader:          loader,
 		definitions:     make(map[string]*ServiceClassDefinition),
 		toolChecker:     toolChecker,
 		exposedServices: make(map[string]bool),
 		storage:         storage,
+		configPath:      configPath,
 		onRegister:      []func(def *ServiceClassDefinition){},
 		onUnregister:    []func(serviceClassName string){},
 		onUpdate:        []func(def *ServiceClassDefinition){},
 	}, nil
 }
 
+// SetConfigPath sets the custom configuration path
+func (m *ServiceClassManager) SetConfigPath(configPath string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.configPath = configPath
+}
+
 // LoadServiceDefinitions loads all service class definitions from YAML files.
 // All service classes are just YAML files, regardless of how they were created.
 func (m *ServiceClassManager) LoadServiceDefinitions() error {
-	// Load all service class YAML files from user and project directories
+	// Load all service class YAML files using the config path-aware helper
 	validator := func(def ServiceClassDefinition) error {
 		return m.validateServiceClassDefinition(&def)
 	}
 
-	definitions, errorCollection, err := config.LoadAndParseYAML[ServiceClassDefinition]("serviceclasses", validator)
+	definitions, errorCollection, err := config.LoadAndParseYAMLWithConfig[ServiceClassDefinition](m.configPath, "serviceclasses", validator)
 	if err != nil {
 		logging.Warn("ServiceClassManager", "Error loading service classes: %v", err)
 		return err

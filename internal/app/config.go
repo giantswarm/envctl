@@ -15,15 +15,20 @@ type Config struct {
 	// Safety settings
 	Yolo bool
 
+	// Custom configuration path (optional)
+	// When set, disables layered configuration loading
+	ConfigPath string
+
 	// Environment configuration
 	EnvctlConfig *config.EnvctlConfig
 }
 
 // NewConfig creates a new application configuration
-func NewConfig(noTUI, debug, yolo bool) *Config {
+func NewConfig(noTUI, debug, yolo bool, configPath string) *Config {
 	return &Config{
-		NoTUI: noTUI,
-		Debug: debug,
-		Yolo:  yolo,
+		NoTUI:      noTUI,
+		Debug:      debug,
+		Yolo:       yolo,
+		ConfigPath: configPath,
 	}
 }

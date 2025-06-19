@@ -93,6 +93,31 @@ func LoadConfig() (EnvctlConfig, error) {
 	return config, nil
 }
 
+// LoadConfigFromPath loads configuration from a single specified directory.
+// This bypasses the layered configuration system and loads everything from the given path.
+// The directory should contain config.yaml and subdirectories for other configuration types.
+func LoadConfigFromPath(configPath string) (EnvctlConfig, error) {
+	// Validate that the directory exists
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		return EnvctlConfig{}, fmt.Errorf("configuration directory does not exist: %s", configPath)
+	}
+
+	// Start with default configuration
+	config := GetDefaultConfigWithRoles()
+
+	// Load main config.yaml from the specified path
+	configFilePath := filepath.Join(configPath, configFileName)
+	if _, err := os.Stat(configFilePath); err == nil {
+		fileConfig, err := loadConfigFromFile(configFilePath)
+		if err != nil {
+			return EnvctlConfig{}, fmt.Errorf("error loading config from %s: %w", configFilePath, err)
+		}
+		config = mergeConfigs(config, fileConfig)
+	}
+
+	return config, nil
+}
+
 // NewConfigurationLoader creates a new configuration loader
 func NewConfigurationLoader() (*ConfigurationLoader, error) {
 	userDir, err := GetUserConfigDir()
@@ -108,6 +133,20 @@ func NewConfigurationLoader() (*ConfigurationLoader, error) {
 	return &ConfigurationLoader{
 		userConfigDir:    userDir,
 		projectConfigDir: projectDir,
+	}, nil
+}
+
+// NewConfigurationLoaderFromPath creates a new configuration loader for a single directory.
+// This disables layered loading and loads all configuration from the specified path.
+func NewConfigurationLoaderFromPath(configPath string) (*ConfigurationLoader, error) {
+	// Validate that the directory exists
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("configuration directory does not exist: %s", configPath)
+	}
+
+	return &ConfigurationLoader{
+		userConfigDir:    "",         // Disable user config
+		projectConfigDir: configPath, // Use specified path as project config
 	}, nil
 }
 
@@ -293,6 +332,110 @@ func LoadAndParseYAML[T any](subDir string, validator func(T) error) ([]T, *Conf
 	}
 
 	return results, errorCollection, nil
+}
+
+// LoadAndParseYAMLFromPath is a generic utility for loading and parsing YAML files from a specific directory
+// with comprehensive error collection and graceful degradation.
+func LoadAndParseYAMLFromPath[T any](configPath, subDir string, validator func(T) error) ([]T, *ConfigurationErrorCollection, error) {
+	loader, err := NewConfigurationLoaderFromPath(configPath)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	files, err := loader.LoadYAMLFiles(subDir)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var results []T
+	errorCollection := NewConfigurationErrorCollection()
+
+	for _, file := range files {
+		var item T
+
+		// Read file
+		data, err := os.ReadFile(file.Path)
+		if err != nil {
+			suggestions := []string{
+				"Check file permissions",
+				"Verify the file exists and is readable",
+			}
+			configError := NewConfigurationErrorWithDetails(
+				file.Path, file.Name, file.Source, subDir, "io",
+				fmt.Sprintf("Failed to read file: %v", err),
+				"File system error occurred while reading configuration file",
+				suggestions,
+			)
+			errorCollection.Add(configError)
+			continue
+		}
+
+		// Parse YAML
+		if err := yaml.Unmarshal(data, &item); err != nil {
+			suggestions := []string{
+				"Check YAML syntax and indentation",
+				"Verify all strings are properly quoted",
+				"Ensure no tabs are used (use spaces for indentation)",
+				"Validate YAML structure with a YAML validator",
+			}
+
+			details := fmt.Sprintf("YAML parsing failed: %v", err)
+			if yamlErr, ok := err.(*yaml.TypeError); ok {
+				details = fmt.Sprintf("YAML type error: %s", strings.Join(yamlErr.Errors, ", "))
+			}
+
+			configError := NewConfigurationErrorWithDetails(
+				file.Path, file.Name, file.Source, subDir, "parse",
+				"Invalid YAML format",
+				details,
+				suggestions,
+			)
+			errorCollection.Add(configError)
+			continue
+		}
+
+		// Validate if validator provided
+		if validator != nil {
+			if err := validator(item); err != nil {
+				suggestions := getValidationSuggestions(subDir, err)
+				configError := NewConfigurationErrorWithDetails(
+					file.Path, file.Name, file.Source, subDir, "validation",
+					fmt.Sprintf("Validation failed: %v", err),
+					"Configuration content does not meet requirements",
+					suggestions,
+				)
+				errorCollection.Add(configError)
+				continue
+			}
+		}
+
+		results = append(results, item)
+		logging.Info("ConfigurationLoader", "Successfully loaded %s configuration: %s from %s", file.Source, file.Name, subDir)
+	}
+
+	// Log summary of results
+	totalFiles := len(files)
+	successCount := len(results)
+	errorCount := errorCollection.Count()
+
+	if errorCount > 0 {
+		logging.Warn("ConfigurationLoader", "Loaded %d/%d %s configurations (%d errors)",
+			successCount, totalFiles, subDir, errorCount)
+	} else if totalFiles > 0 {
+		logging.Info("ConfigurationLoader", "Successfully loaded all %d %s configurations",
+			successCount, subDir)
+	}
+
+	return results, errorCollection, nil
+}
+
+// LoadAndParseYAMLWithConfig is a utility that chooses between layered and single-directory loading
+// based on whether a custom config path is provided. If configPath is empty, uses layered loading.
+func LoadAndParseYAMLWithConfig[T any](configPath, subDir string, validator func(T) error) ([]T, *ConfigurationErrorCollection, error) {
+	if configPath != "" {
+		return LoadAndParseYAMLFromPath[T](configPath, subDir, validator)
+	}
+	return LoadAndParseYAML[T](subDir, validator)
 }
 
 // getValidationSuggestions returns context-aware suggestions based on the configuration type and error

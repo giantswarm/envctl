@@ -6,34 +6,45 @@ import (
 
 func TestNewConfig(t *testing.T) {
 	tests := []struct {
-		name  string
-		noTUI bool
-		debug bool
-		yolo  bool
+		name       string
+		noTUI      bool
+		debug      bool
+		yolo       bool
+		configPath string
 	}{
 		{
-			name:  "full configuration",
-			noTUI: true,
-			debug: true,
-			yolo:  true,
+			name:       "full configuration",
+			noTUI:      true,
+			debug:      true,
+			yolo:       true,
+			configPath: "/custom/config/path",
 		},
 		{
-			name:  "minimal configuration",
-			noTUI: false,
-			debug: false,
-			yolo:  false,
+			name:       "minimal configuration",
+			noTUI:      false,
+			debug:      false,
+			yolo:       false,
+			configPath: "",
 		},
 		{
-			name:  "debug only",
-			noTUI: false,
-			debug: true,
-			yolo:  false,
+			name:       "debug only",
+			noTUI:      false,
+			debug:      true,
+			yolo:       false,
+			configPath: "",
+		},
+		{
+			name:       "with custom config path",
+			noTUI:      false,
+			debug:      false,
+			yolo:       false,
+			configPath: "/test/config",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := NewConfig(tt.noTUI, tt.debug, tt.yolo)
+			cfg := NewConfig(tt.noTUI, tt.debug, tt.yolo, tt.configPath)
 
 			if cfg.NoTUI != tt.noTUI {
 				t.Errorf("NoTUI = %v, want %v", cfg.NoTUI, tt.noTUI)
@@ -43,6 +54,9 @@ func TestNewConfig(t *testing.T) {
 			}
 			if cfg.Yolo != tt.yolo {
 				t.Errorf("Yolo = %v, want %v", cfg.Yolo, tt.yolo)
+			}
+			if cfg.ConfigPath != tt.configPath {
+				t.Errorf("ConfigPath = %v, want %v", cfg.ConfigPath, tt.configPath)
 			}
 			if cfg.EnvctlConfig != nil {
 				t.Error("EnvctlConfig should be nil before loading")

@@ -26,11 +26,27 @@ func NewApplication(cfg *Config) (*Application, error) {
 	logging.InitForCLI(appLogLevel, os.Stdout)
 
 	// Load environment configuration
-	envctlCfg, err := config.LoadConfig()
-	if err != nil {
-		logging.Error("Bootstrap", err, "Failed to load envctl configuration")
-		return nil, fmt.Errorf("failed to load envctl configuration: %w", err)
+	var envctlCfg config.EnvctlConfig
+	var err error
+
+	if cfg.ConfigPath != "" {
+		// Use single directory configuration loading
+		envctlCfg, err = config.LoadConfigFromPath(cfg.ConfigPath)
+		if err != nil {
+			logging.Error("Bootstrap", err, "Failed to load envctl configuration from path: %s", cfg.ConfigPath)
+			return nil, fmt.Errorf("failed to load envctl configuration from path %s: %w", cfg.ConfigPath, err)
+		}
+		logging.Info("Bootstrap", "Loaded configuration from custom path: %s", cfg.ConfigPath)
+	} else {
+		// Use layered configuration loading (default behavior)
+		envctlCfg, err = config.LoadConfig()
+		if err != nil {
+			logging.Error("Bootstrap", err, "Failed to load envctl configuration")
+			return nil, fmt.Errorf("failed to load envctl configuration: %w", err)
+		}
+		logging.Info("Bootstrap", "Loaded configuration using layered approach")
 	}
+
 	cfg.EnvctlConfig = &envctlCfg
 
 	// Initialize services

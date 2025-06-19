@@ -13,12 +13,20 @@ import (
 // Storage provides generic storage functionality for dynamic entities
 // with context-aware path resolution that prefers project over user paths
 type Storage struct {
-	mu sync.RWMutex
+	mu         sync.RWMutex
+	configPath string // Optional custom config path - when set, disables layered loading
 }
 
 // NewStorage creates a new Storage instance
 func NewStorage() *Storage {
 	return &Storage{}
+}
+
+// NewStorageWithPath creates a new Storage instance with a custom config path
+func NewStorageWithPath(configPath string) *Storage {
+	return &Storage{
+		configPath: configPath,
+	}
 }
 
 // Save stores data for the given entity type and name
@@ -73,6 +81,20 @@ func (ds *Storage) Load(entityType string, name string) ([]byte, error) {
 	ds.mu.RLock()
 	defer ds.mu.RUnlock()
 
+	// Use custom config path if provided
+	if ds.configPath != "" {
+		filePath := filepath.Join(ds.configPath, entityType, ds.sanitizeFilename(name)+".yaml")
+		data, err := os.ReadFile(filePath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil, fmt.Errorf("entity %s/%s not found in custom path", entityType, name)
+			}
+			return nil, fmt.Errorf("failed to read file %s: %w", filePath, err)
+		}
+		logging.Info("Storage", "Loaded %s/%s from custom path: %s", entityType, name, filePath)
+		return data, nil
+	}
+
 	// Try both user and project paths
 	userDir, projectDir, err := GetConfigurationPaths()
 	if err != nil {
@@ -111,6 +133,23 @@ func (ds *Storage) Delete(entityType string, name string) error {
 
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
+
+	// Use custom config path if provided
+	if ds.configPath != "" {
+		filename := ds.sanitizeFilename(name) + ".yaml"
+		filePath := filepath.Join(ds.configPath, entityType, filename)
+
+		if _, err := os.Stat(filePath); os.IsNotExist(err) {
+			return fmt.Errorf("entity %s/%s not found in custom path", entityType, name)
+		}
+
+		if err := os.Remove(filePath); err != nil {
+			return fmt.Errorf("failed to delete file %s: %w", filePath, err)
+		}
+
+		logging.Info("Storage", "Deleted %s/%s from custom path: %s", entityType, name, filePath)
+		return nil
+	}
 
 	// Try both user and project paths
 	userDir, projectDir, err := GetConfigurationPaths()
@@ -158,6 +197,17 @@ func (ds *Storage) List(entityType string) ([]string, error) {
 	ds.mu.RLock()
 	defer ds.mu.RUnlock()
 
+	// Use custom config path if provided
+	if ds.configPath != "" {
+		customPath := filepath.Join(ds.configPath, entityType)
+		names, err := ds.listFilesInDirectory(customPath)
+		if err != nil && !os.IsNotExist(err) {
+			return nil, fmt.Errorf("failed to list custom %s: %w", entityType, err)
+		}
+		logging.Info("Storage", "Listed %d %s entities from custom path", len(names), entityType)
+		return names, nil
+	}
+
 	userDir, projectDir, err := GetConfigurationPaths()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get configuration paths: %w", err)
@@ -202,6 +252,11 @@ func (ds *Storage) List(entityType string) ([]string, error) {
 // resolveEntityDir determines the target directory for saving based on context
 // Prefers project directory if .envctl exists in current directory
 func (ds *Storage) resolveEntityDir(entityType string) (string, error) {
+	// Use custom config path if provided
+	if ds.configPath != "" {
+		return filepath.Join(ds.configPath, entityType), nil
+	}
+
 	userDir, projectDir, err := GetConfigurationPaths()
 	if err != nil {
 		return "", err

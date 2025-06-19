@@ -19,6 +19,7 @@ type CapabilityManager struct {
 	registry     *Registry
 	exposedTools map[string]bool // Track which capability tools we've exposed
 	storage      *config.Storage
+	configPath   string // Optional custom config path
 }
 
 // NewCapabilityManager creates a new capability manager
@@ -28,6 +29,13 @@ func NewCapabilityManager(toolChecker config.ToolAvailabilityChecker, registry *
 		return nil, fmt.Errorf("failed to create configuration loader: %w", err)
 	}
 
+	// Extract config path from storage if it has one
+	var configPath string
+	if storage != nil {
+		// We can't directly access the configPath from storage, so we'll pass it via parameter later
+		// For now, leave it empty
+	}
+
 	return &CapabilityManager{
 		loader:       loader,
 		definitions:  make(map[string]*CapabilityDefinition),
@@ -35,7 +43,15 @@ func NewCapabilityManager(toolChecker config.ToolAvailabilityChecker, registry *
 		registry:     registry,
 		exposedTools: make(map[string]bool),
 		storage:      storage,
+		configPath:   configPath,
 	}, nil
+}
+
+// SetConfigPath sets the custom configuration path
+func (cm *CapabilityManager) SetConfigPath(configPath string) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	cm.configPath = configPath
 }
 
 // LoadDefinitions loads all capability definitions using the unified configuration loading.
@@ -48,8 +64,8 @@ func (cm *CapabilityManager) LoadDefinitions() error {
 	cm.definitions = make(map[string]*CapabilityDefinition)
 	cm.exposedTools = make(map[string]bool)
 
-	// Load all capability YAML files from user and project directories
-	definitions, errorCollection, err := config.LoadAndParseYAML[CapabilityDefinition]("capabilities", func(def CapabilityDefinition) error {
+	// Load all capability YAML files using the config path-aware helper
+	definitions, errorCollection, err := config.LoadAndParseYAMLWithConfig[CapabilityDefinition](cm.configPath, "capabilities", func(def CapabilityDefinition) error {
 		return cm.validateDefinition(&def)
 	})
 	if err != nil {

@@ -20,6 +20,7 @@ type MCPServerManager struct {
 	loader      *config.ConfigurationLoader
 	definitions map[string]*MCPServerDefinition // server name -> definition
 	storage     *config.Storage
+	configPath  string // Optional custom config path
 }
 
 // NewMCPServerManager creates a new MCP server manager
@@ -33,22 +34,37 @@ func NewMCPServerManager(storage *config.Storage) (*MCPServerManager, error) {
 		return nil, fmt.Errorf("storage is required")
 	}
 
+	// Extract config path from storage if it has one
+	var configPath string
+	if storage != nil {
+		// We can't directly access the configPath from storage, so we'll pass it via parameter later
+		// For now, leave it empty
+	}
+
 	return &MCPServerManager{
 		loader:      loader,
 		definitions: make(map[string]*MCPServerDefinition),
 		storage:     storage,
+		configPath:  configPath,
 	}, nil
+}
+
+// SetConfigPath sets the custom configuration path
+func (msm *MCPServerManager) SetConfigPath(configPath string) {
+	msm.mu.Lock()
+	defer msm.mu.Unlock()
+	msm.configPath = configPath
 }
 
 // LoadDefinitions loads all MCP server definitions from YAML files.
 // All MCP servers are just YAML files, regardless of how they were created.
 func (msm *MCPServerManager) LoadDefinitions() error {
-	// Load all MCP server YAML files from user and project directories
+	// Load all MCP server YAML files using the config path-aware helper
 	validator := func(def MCPServerDefinition) error {
 		return msm.validateDefinition(&def)
 	}
 
-	definitions, errorCollection, err := config.LoadAndParseYAML[MCPServerDefinition]("mcpservers", validator)
+	definitions, errorCollection, err := config.LoadAndParseYAMLWithConfig[MCPServerDefinition](msm.configPath, "mcpservers", validator)
 	if err != nil {
 		logging.Warn("MCPServerManager", "Error loading MCP servers: %v", err)
 		return err

@@ -18,6 +18,7 @@ type WorkflowManager struct {
 	workflows   map[string]*WorkflowDefinition // In-memory workflow storage
 	executor    *WorkflowExecutor
 	toolChecker config.ToolAvailabilityChecker
+	configPath  string // Optional custom config path
 	mu          sync.RWMutex
 	stopped     bool
 }
@@ -26,14 +27,29 @@ type WorkflowManager struct {
 func NewWorkflowManager(storage *config.Storage, toolCaller ToolCaller, toolChecker config.ToolAvailabilityChecker) (*WorkflowManager, error) {
 	executor := NewWorkflowExecutor(toolCaller)
 
+	// Extract config path from storage if it has one
+	var configPath string
+	if storage != nil {
+		// We can't directly access the configPath from storage, so we'll pass it via parameter later
+		// For now, leave it empty
+	}
+
 	wm := &WorkflowManager{
 		storage:     storage,
 		workflows:   make(map[string]*WorkflowDefinition),
 		executor:    executor,
 		toolChecker: toolChecker,
+		configPath:  configPath,
 	}
 
 	return wm, nil
+}
+
+// SetConfigPath sets the custom configuration path
+func (wm *WorkflowManager) SetConfigPath(configPath string) {
+	wm.mu.Lock()
+	defer wm.mu.Unlock()
+	wm.configPath = configPath
 }
 
 // LoadDefinitions loads all workflow definitions from YAML files.
@@ -45,12 +61,12 @@ func (wm *WorkflowManager) LoadDefinitions() error {
 	// Clear existing in-memory workflows
 	wm.workflows = make(map[string]*WorkflowDefinition)
 
-	// Load all workflow YAML files from user and project directories
+	// Load all workflow YAML files using the config path-aware helper
 	validator := func(def WorkflowDefinition) error {
 		return wm.validateWorkflowDefinition(&def)
 	}
 
-	definitions, errorCollection, err := config.LoadAndParseYAML[WorkflowDefinition]("workflows", validator)
+	definitions, errorCollection, err := config.LoadAndParseYAMLWithConfig[WorkflowDefinition](wm.configPath, "workflows", validator)
 	if err != nil {
 		logging.Warn("WorkflowManager", "Error loading workflows: %v", err)
 		return err

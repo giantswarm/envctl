@@ -20,6 +20,11 @@ var serveDebug bool
 // When enabled, all MCP tools can be executed without restrictions.
 var serveYolo bool
 
+// configPath specifies a custom configuration directory path.
+// When set, disables layered configuration and loads all config from this single directory.
+// The directory should contain config.yaml and subdirectories: mcpserver/, workflow/, capability/, serviceclass/, service/
+var serveConfigPath string
+
 // serveCmd defines the serve command structure.
 // This is the main command of envctl that starts the aggregator server
 // and sets up the necessary MCP servers for development.
@@ -45,7 +50,17 @@ Use 'envctl service', 'envctl workflow', etc. to interact with the running serve
 
 Configuration:
   envctl loads configuration from .envctl/config.yaml in the current directory or user config directory.
-  Use 'envctl serve --help' for more information about configuration options.`,
+  By default, it uses layered configuration loading (user config overridden by project config).
+  
+  Use --config-path to specify a single directory containing all configuration files:
+  - config.yaml (main configuration)
+  - mcpservers/ (MCP server definitions)
+  - workflows/ (workflow definitions)  
+  - capabilities/ (capability definitions)
+  - serviceclasses/ (service class definitions)
+  - services/ (service instance definitions)
+  
+  When --config-path is used, layered configuration is disabled.`,
 	Args: cobra.NoArgs, // No arguments required
 	RunE: runServe,
 }
@@ -53,7 +68,7 @@ Configuration:
 // runServe is the main entry point for the serve command
 func runServe(cmd *cobra.Command, args []string) error {
 	// Create application configuration without cluster arguments
-	cfg := app.NewConfig(serveNoTUI, serveDebug, serveYolo)
+	cfg := app.NewConfig(serveNoTUI, serveDebug, serveYolo, serveConfigPath)
 
 	// Create and initialize the application
 	application, err := app.NewApplication(cfg)
@@ -78,4 +93,5 @@ func init() {
 	serveCmd.Flags().BoolVar(&serveNoTUI, "no-tui", false, "Disable TUI and run services in the background")
 	serveCmd.Flags().BoolVar(&serveDebug, "debug", false, "Enable general debug logging")
 	serveCmd.Flags().BoolVar(&serveYolo, "yolo", false, "Disable denylist for destructive tool calls (use with caution)")
+	serveCmd.Flags().StringVar(&serveConfigPath, "config-path", "", "Custom configuration directory path (disables layered config)")
 }
