@@ -1,0 +1,201 @@
+name: "workflow-with-kubernetes-mock"
+category: "behavioral"
+concept: "workflow"
+description: "Test workflow execution with mock Kubernetes tools"
+tags: ["mock", "workflow", "kubernetes"]
+timeout: "5m"
+
+pre_configuration:
+  mcp_servers:
+    - name: "kubernetes-mock"
+      type: "mock"
+      mock_config:
+        tools:
+          - name: "k8s_pod_list"
+            description: "List Kubernetes pods"
+            input_schema:
+              type: "object"
+              properties:
+                namespace:
+                  type: "string"
+                  default: "default"
+            responses:
+              - condition:
+                  namespace: "default"
+                response:
+                  pods:
+                    - name: "test-pod-1"
+                      status: "Running"
+                      image: "nginx:1.20"
+                    - name: "test-pod-2"
+                      status: "Pending"
+                      image: "redis:6.2"
+              - condition:
+                  namespace: "kube-system"
+                response:
+                  pods:
+                    - name: "coredns-5d78c9869d-xyz12"
+                      status: "Running"
+                      image: "k8s.gcr.io/coredns/coredns:v1.8.4"
+              - response:  # Default fallback
+                  error: "namespace '{{ .namespace }}' not found"
+
+          - name: "k8s_pod_create"
+            description: "Create a Kubernetes pod"
+            input_schema:
+              type: "object"
+              properties:
+                name:
+                  type: "string"
+                  required: true
+                image:
+                  type: "string"
+                  required: true
+                namespace:
+                  type: "string"
+                  default: "default"
+            responses:
+              - response:
+                  status: "created"
+                  name: "{{ .name }}"
+                  image: "{{ .image }}"
+                  namespace: "{{ .namespace }}"
+                  uid: "mock-{{ .name }}-12345"
+                delay: "2s"  # Simulate creation time
+
+          - name: "k8s_pod_delete"
+            description: "Delete a Kubernetes pod"
+            input_schema:
+              type: "object"
+              properties:
+                name:
+                  type: "string"
+                  required: true
+                namespace:
+                  type: "string"
+                  default: "default"
+            responses:
+              - response:
+                  status: "deleted"
+                  name: "{{ .name }}"
+                  namespace: "{{ .namespace }}"
+                delay: "1s"
+
+  workflows:
+    - name: "deploy-test-app"
+      config:
+        name: "deploy-test-app"
+        description: "Deploy test application using mock Kubernetes tools"
+        parameters:
+          app_name:
+            type: "string"
+            required: true
+            description: "Application name"
+          app_image:
+            type: "string"
+            required: true
+            description: "Application container image"
+          namespace:
+            type: "string"
+            default: "default"
+            description: "Kubernetes namespace"
+        steps:
+          - id: "list_existing_pods"
+            name: "list_existing_pods"
+            tool: "k8s_pod_list"
+            parameters:
+              namespace: "{{ .namespace }}"
+          - id: "create_application_pod"
+            name: "create_application_pod"
+            tool: "k8s_pod_create"
+            parameters:
+              name: "{{ .app_name }}"
+              image: "{{ .app_image }}"
+              namespace: "{{ .namespace }}"
+
+steps:
+  - name: "verify-mock-server-tools"
+    description: "Verify that mock Kubernetes tools are available"
+    tool: "core_mcpserver_list"
+    parameters: {}
+    expected:
+      success: true
+      contains: ["kubernetes-mock"]
+    timeout: "30s"
+
+  - name: "test-pod-list-default-namespace"
+    description: "Test listing pods in default namespace"
+    tool: "k8s_pod_list"
+    parameters:
+      namespace: "default"
+    expected:
+      success: true
+      contains: ["test-pod-1", "Running", "nginx:1.20"]
+    timeout: "30s"
+
+  - name: "test-pod-list-kube-system"
+    description: "Test listing pods in kube-system namespace"
+    tool: "k8s_pod_list"
+    parameters:
+      namespace: "kube-system"
+    expected:
+      success: true
+      contains: ["coredns", "k8s.gcr.io/coredns"]
+    timeout: "30s"
+
+  - name: "test-pod-list-nonexistent-namespace"
+    description: "Test listing pods in nonexistent namespace should fail"
+    tool: "k8s_pod_list"
+    parameters:
+      namespace: "nonexistent"
+    expected:
+      success: false
+      error_contains: ["namespace 'nonexistent' not found"]
+    timeout: "30s"
+
+  - name: "execute-deployment-workflow"
+    description: "Execute the deployment workflow with mock tools"
+    tool: "core_workflow_execute"
+    parameters:
+      name: "deploy-test-app"
+      parameters:
+        app_name: "test-app"
+        app_image: "nginx:latest"
+        namespace: "default"
+    expected:
+      success: true
+      contains: ["created", "test-app", "nginx:latest"]
+    timeout: "1m"
+
+  - name: "test-pod-creation-directly"
+    description: "Test direct pod creation with mock tool"
+    tool: "k8s_pod_create"
+    parameters:
+      name: "direct-test-pod"
+      image: "redis:alpine"
+      namespace: "default"
+    expected:
+      success: true
+      contains: ["created", "direct-test-pod", "redis:alpine"]
+    timeout: "30s"
+
+  - name: "test-pod-deletion"
+    description: "Test pod deletion with mock tool"
+    tool: "k8s_pod_delete"
+    parameters:
+      name: "direct-test-pod"
+      namespace: "default"
+    expected:
+      success: true
+      contains: ["deleted", "direct-test-pod"]
+    timeout: "30s"
+
+cleanup:
+  - name: "cleanup-workflow"
+    description: "Clean up the test workflow"
+    tool: "core_workflow_delete"
+    parameters:
+      name: "deploy-test-app"
+    expected:
+      success: true
+    timeout: "30s" 

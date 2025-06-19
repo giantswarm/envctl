@@ -20,14 +20,14 @@ import (
 
 // logCapture captures stdout and stderr from a process
 type logCapture struct {
-	stdoutBuf *bytes.Buffer
-	stderrBuf *bytes.Buffer
+	stdoutBuf    *bytes.Buffer
+	stderrBuf    *bytes.Buffer
 	stdoutReader *io.PipeReader
 	stderrReader *io.PipeReader
 	stdoutWriter *io.PipeWriter
 	stderrWriter *io.PipeWriter
-	wg sync.WaitGroup
-	mu sync.RWMutex
+	wg           sync.WaitGroup
+	mu           sync.RWMutex
 }
 
 // newLogCapture creates a new log capture instance
@@ -36,22 +36,22 @@ func newLogCapture() *logCapture {
 		stdoutBuf: &bytes.Buffer{},
 		stderrBuf: &bytes.Buffer{},
 	}
-	
+
 	lc.stdoutReader, lc.stdoutWriter = io.Pipe()
 	lc.stderrReader, lc.stderrWriter = io.Pipe()
-	
+
 	// Start goroutines to capture output
 	lc.wg.Add(2)
 	go lc.captureOutput(lc.stdoutReader, lc.stdoutBuf)
 	go lc.captureOutput(lc.stderrReader, lc.stderrBuf)
-	
+
 	return lc
 }
 
 // captureOutput captures output from a reader to a buffer
 func (lc *logCapture) captureOutput(reader io.Reader, buffer *bytes.Buffer) {
 	defer lc.wg.Done()
-	
+
 	scanner := bufio.NewScanner(reader)
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -72,10 +72,10 @@ func (lc *logCapture) close() {
 func (lc *logCapture) getLogs() *InstanceLogs {
 	lc.mu.RLock()
 	defer lc.mu.RUnlock()
-	
+
 	stdout := lc.stdoutBuf.String()
 	stderr := lc.stderrBuf.String()
-	
+
 	// Create combined log with simple interleaving
 	combined := ""
 	if stdout != "" {
@@ -87,7 +87,7 @@ func (lc *logCapture) getLogs() *InstanceLogs {
 		}
 		combined += "=== STDERR ===\n" + stderr
 	}
-	
+
 	return &InstanceLogs{
 		Stdout:   stdout,
 		Stderr:   stderr,
@@ -249,7 +249,7 @@ func (m *envCtlInstanceManager) gracefulShutdown(managedProc *managedProcess, in
 	// Wait for graceful shutdown with timeout
 	shutdownTimeout := 10 * time.Second
 	done := make(chan error, 1)
-	
+
 	go func() {
 		err := managedProc.cmd.Wait()
 		done <- err
@@ -311,7 +311,7 @@ func (m *envCtlInstanceManager) WaitForReady(ctx context.Context, instance *EnvC
 				}
 				return nil
 			}
-			
+
 			if m.debug {
 				fmt.Printf("🔍 Port %d not ready yet: %v\n", instance.Port, err)
 			}
@@ -322,13 +322,13 @@ func (m *envCtlInstanceManager) WaitForReady(ctx context.Context, instance *EnvC
 // showLogs displays the recent logs from an envctl instance
 func (m *envCtlInstanceManager) showLogs(instance *EnvCtlInstance) {
 	logDir := filepath.Join(instance.ConfigPath, "logs")
-	
+
 	// Show stdout logs
 	stdoutPath := filepath.Join(logDir, "stdout.log")
 	if content, err := os.ReadFile(stdoutPath); err == nil && len(content) > 0 {
 		fmt.Printf("📄 Instance %s stdout logs:\n%s\n", instance.ID, string(content))
 	}
-	
+
 	// Show stderr logs
 	stderrPath := filepath.Join(logDir, "stderr.log")
 	if content, err := os.ReadFile(stderrPath); err == nil && len(content) > 0 {
@@ -340,7 +340,7 @@ func (m *envCtlInstanceManager) showLogs(instance *EnvCtlInstance) {
 func (m *envCtlInstanceManager) findAvailablePort() (int, error) {
 	for i := 0; i < 100; i++ { // Try up to 100 ports
 		port := m.basePort + m.portOffset + i
-		
+
 		// Check if port is available
 		ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 		if err == nil {
@@ -349,7 +349,7 @@ func (m *envCtlInstanceManager) findAvailablePort() (int, error) {
 			return port, nil
 		}
 	}
-	
+
 	return 0, fmt.Errorf("no available ports found starting from %d", m.basePort)
 }
 
@@ -370,7 +370,7 @@ func (m *envCtlInstanceManager) startEnvCtlProcess(ctx context.Context, configPa
 	}
 
 	cmd := exec.CommandContext(ctx, envctlPath, args...)
-	
+
 	// Set environment variables
 	cmd.Env = append(os.Environ(),
 		fmt.Sprintf("ENVCTL_PORT=%d", port),
@@ -435,13 +435,13 @@ func (m *envCtlInstanceManager) getEnvCtlBinaryPath() (string, error) {
 		if m.debug {
 			fmt.Printf("🔨 Building envctl binary from source\n")
 		}
-		
+
 		buildCmd := exec.Command("go", "build", "-o", "envctl", ".")
 		buildCmd.Dir = cwd
 		if err := buildCmd.Run(); err != nil {
 			return "", fmt.Errorf("failed to build envctl: %w", err)
 		}
-		
+
 		builtPath := filepath.Join(cwd, "envctl")
 		if _, err := os.Stat(builtPath); err == nil {
 			return builtPath, nil
@@ -455,13 +455,13 @@ func (m *envCtlInstanceManager) getEnvCtlBinaryPath() (string, error) {
 func (m *envCtlInstanceManager) isInEnvCtlSource(dir string) bool {
 	// Check for key files that indicate we're in the envctl source
 	markers := []string{"main.go", "go.mod", "cmd/serve.go"}
-	
+
 	for _, marker := range markers {
 		if _, err := os.Stat(filepath.Join(dir, marker)); err != nil {
 			return false
 		}
 	}
-	
+
 	return true
 }
 
@@ -478,10 +478,10 @@ func (m *envCtlInstanceManager) generateConfigFiles(configPath string, config *E
 	// Generate main config.yaml
 	mainConfig := map[string]interface{}{
 		"aggregator": map[string]interface{}{
-			"host": "localhost",
-			"port": port,
+			"host":      "localhost",
+			"port":      port,
 			"transport": "streamable-http",
-			"enabled": true,
+			"enabled":   true,
 		},
 		"logging": map[string]interface{}{
 			"level": "debug",
@@ -511,8 +511,23 @@ func (m *envCtlInstanceManager) generateConfigFiles(configPath string, config *E
 		// Generate MCP server configs
 		for _, mcpServer := range config.MCPServers {
 			filename := filepath.Join(configPath, "mcpservers", mcpServer.Name+".yaml")
-			if err := m.writeYAMLFile(filename, mcpServer.Config); err != nil {
-				return fmt.Errorf("failed to write MCP server config %s: %w", mcpServer.Name, err)
+			
+			// For mock servers, we need to create the full server definition
+			if mcpServer.Type == "mock" && mcpServer.MockConfig != nil {
+				serverDef := map[string]interface{}{
+					"name":                mcpServer.Name,
+					"type":                mcpServer.Type,
+					"enabledByDefault":    true,
+					"mock_config":         mcpServer.MockConfig,
+				}
+				if err := m.writeYAMLFile(filename, serverDef); err != nil {
+					return fmt.Errorf("failed to write mock MCP server config %s: %w", mcpServer.Name, err)
+				}
+			} else {
+				// For regular servers, use the Config field
+				if err := m.writeYAMLFile(filename, mcpServer.Config); err != nil {
+					return fmt.Errorf("failed to write MCP server config %s: %w", mcpServer.Name, err)
+				}
 			}
 		}
 
@@ -585,14 +600,14 @@ func sanitizeFileName(name string) string {
 		"|", "_",
 		" ", "_",
 	)
-	
+
 	sanitized := replacer.Replace(name)
-	
+
 	// Limit length
 	if len(sanitized) > 50 {
 		sanitized = sanitized[:50]
 	}
-	
+
 	return sanitized
 }
 
@@ -602,4 +617,4 @@ func (m *envCtlInstanceManager) Cleanup() error {
 		return os.RemoveAll(m.tempDir)
 	}
 	return nil
-} 
+}

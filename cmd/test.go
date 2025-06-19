@@ -27,6 +27,9 @@ var (
 	testParallel   int
 	testMCPServer  bool
 	testBasePort   int
+	// New flags for mock MCP server
+	testMockMCPServer bool
+	testConfigName    string
 )
 
 // completeCategoryFlag provides shell completion for the category flag
@@ -149,6 +152,10 @@ func init() {
 	// MCP Server mode
 	testCmd.Flags().BoolVar(&testMCPServer, "mcp-server", false, "Run as MCP server (stdio transport)")
 
+	// New flags for mock MCP server
+	testCmd.Flags().BoolVar(&testMockMCPServer, "mock-mcp-server", false, "Run as mock MCP server")
+	testCmd.Flags().StringVar(&testConfigName, "config-name", "", "Name of the mock MCP server configuration")
+
 	// Shell completion for test flags
 	_ = testCmd.RegisterFlagCompletionFunc("category", completeCategoryFlag)
 	_ = testCmd.RegisterFlagCompletionFunc("concept", completeConceptFlag)
@@ -161,10 +168,20 @@ func init() {
 	testCmd.MarkFlagsMutuallyExclusive("mcp-server", "fail-fast")
 	testCmd.MarkFlagsMutuallyExclusive("mcp-server", "parallel")
 
+	// Mark flags as mutually exclusive with mock MCP server mode
+	testCmd.MarkFlagsMutuallyExclusive("mock-mcp-server", "category")
+	testCmd.MarkFlagsMutuallyExclusive("mock-mcp-server", "concept")
+	testCmd.MarkFlagsMutuallyExclusive("mock-mcp-server", "scenario")
+	testCmd.MarkFlagsMutuallyExclusive("mock-mcp-server", "fail-fast")
+	testCmd.MarkFlagsMutuallyExclusive("mock-mcp-server", "mcp-server")
+
 	// Validate parallel flag
 	testCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
-		if !testMCPServer && (testParallel < 1 || testParallel > 10) {
+		if !testMCPServer && !testMockMCPServer && (testParallel < 1 || testParallel > 10) {
 			return fmt.Errorf("parallel workers must be between 1 and 10, got %d", testParallel)
+		}
+		if testMockMCPServer && testConfigName == "" {
+			return fmt.Errorf("--config-name is required when using --mock-mcp-server")
 		}
 		return nil
 	}
@@ -209,6 +226,30 @@ func runTest(cmd *cobra.Command, args []string) error {
 
 		if err := server.Start(ctx); err != nil {
 			return fmt.Errorf("test MCP server error: %w", err)
+		}
+		return nil
+	}
+
+	// Run in Mock MCP Server mode if requested
+	if testMockMCPServer {
+		// Load the mock server configuration from test scenarios
+		scenarioPath := testConfigPath
+		if scenarioPath == "" {
+			scenarioPath = testing.GetDefaultScenarioPath()
+		}
+
+		// Create mock MCP server
+		mockServer, err := testing.NewMockMCPServer(testConfigName, scenarioPath, testDebug)
+		if err != nil {
+			return fmt.Errorf("failed to create mock MCP server: %w", err)
+		}
+
+		if testDebug {
+			fmt.Printf("🔧 Starting mock MCP server '%s' (stdio transport)...\n", testConfigName)
+		}
+
+		if err := mockServer.Start(ctx); err != nil {
+			return fmt.Errorf("mock MCP server error: %w", err)
 		}
 		return nil
 	}

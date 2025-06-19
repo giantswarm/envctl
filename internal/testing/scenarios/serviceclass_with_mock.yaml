@@ -1,0 +1,269 @@
+name: "serviceclass-with-mock-dependencies"
+category: "behavioral"
+concept: "serviceclass"
+description: "Test ServiceClass that requires multiple mock dependencies"
+tags: ["mock", "serviceclass", "dependencies"]
+timeout: "5m"
+
+pre_configuration:
+  mcp_servers:
+    - name: "storage-mock"
+      type: "mock"
+      mock_config:
+        tools:
+          - name: "storage_volume_create"
+            description: "Create a storage volume"
+            input_schema:
+              type: "object"
+              properties:
+                name:
+                  type: "string"
+                  required: true
+                size:
+                  type: "string"
+                  default: "10Gi"
+                storage_class:
+                  type: "string"
+                  default: "standard"
+            responses:
+              - response:
+                  status: "created"
+                  volume_id: "vol-{{ .name }}-{{ .storage_class }}"
+                  name: "{{ .name }}"
+                  size: "{{ .size }}"
+                  storage_class: "{{ .storage_class }}"
+                  state: "available"
+                delay: "3s"
+
+          - name: "storage_volume_delete"
+            description: "Delete a storage volume"
+            input_schema:
+              type: "object"
+              properties:
+                volume_id:
+                  type: "string"
+                  required: true
+            responses:
+              - response:
+                  status: "deleted"
+                  volume_id: "{{ .volume_id }}"
+                delay: "2s"
+
+    - name: "network-mock"
+      type: "mock"
+      mock_config:
+        tools:
+          - name: "network_create_service"
+            description: "Create a network service"
+            input_schema:
+              type: "object"
+              properties:
+                name:
+                  type: "string"
+                  required: true
+                port:
+                  type: "integer"
+                  required: true
+                type:
+                  type: "string"
+                  default: "ClusterIP"
+            responses:
+              - response:
+                  status: "created"
+                  service_name: "{{ .name }}"
+                  port: "{{ .port }}"
+                  type: "{{ .type }}"
+                  cluster_ip: "10.96.{{ .port }}.100"
+                delay: "1s"
+
+          - name: "network_delete_service"
+            description: "Delete a network service"
+            input_schema:
+              type: "object"
+              properties:
+                name:
+                  type: "string"
+                  required: true
+            responses:
+              - response:
+                  status: "deleted"
+                  service_name: "{{ .name }}"
+
+  service_classes:
+    - name: "web-application"
+      config:
+        name: "web-application"
+        type: "stateful"
+        version: "1.0.0"
+        description: "Web application with storage and networking dependencies"
+        parameters:
+          app_name:
+            type: "string"
+            required: true
+            description: "Application name"
+          storage_size:
+            type: "string"
+            default: "10Gi"
+            description: "Storage volume size"
+          port:
+            type: "integer"
+            default: 8080
+            description: "Application port"
+        requiredTools:
+          - "storage_volume_create"
+          - "storage_volume_delete"
+          - "network_create_service"
+          - "network_delete_service"
+        serviceConfig:
+          lifecycleTools:
+            create:
+              - tool: "storage_volume_create"
+                description: "Create storage volume"
+                parameters:
+                  name: "{{ .app_name }}-storage"
+                  size: "{{ .storage_size }}"
+              - tool: "network_create_service"
+                description: "Create network service"
+                parameters:
+                  name: "{{ .app_name }}-service"
+                  port: "{{ .port }}"
+            delete:
+              - tool: "storage_volume_delete"
+                description: "Delete storage volume"
+                parameters:
+                  volume_id: "vol-{{ .app_name }}-storage-standard"
+              - tool: "network_delete_service"
+                description: "Delete network service"
+                parameters:
+                  name: "{{ .app_name }}-service"
+
+steps:
+  - name: "verify-mock-servers-available"
+    description: "Verify that mock servers are available"
+    tool: "core_mcpserver_list"
+    parameters: {}
+    expected:
+      success: true
+      contains: ["storage-mock", "network-mock"]
+    timeout: "30s"
+
+  - name: "verify-serviceclass-tools-available"
+    description: "Verify that ServiceClass tools are available"
+    tool: "core_serviceclass_available"
+    parameters:
+      name: "web-application"
+    expected:
+      success: true
+      json_path:
+        available: true
+    timeout: "30s"
+
+  - name: "create-web-app-service"
+    description: "Create a web application service instance"
+    tool: "core_service_create"
+    parameters:
+      serviceClassName: "web-application"
+      label: "test-web-app"
+      parameters:
+        app_name: "my-web-app"
+        storage_size: "20Gi"
+        port: 9000
+    expected:
+      success: true
+      contains: ["test-web-app", "web-application"]
+    timeout: "1m"
+
+  - name: "verify-service-created"
+    description: "Verify the service was created successfully"
+    tool: "core_service_get"
+    parameters:
+      labelOrServiceId: "test-web-app"
+    expected:
+      success: true
+      contains: ["test-web-app", "my-web-app", "Running"]
+    timeout: "30s"
+
+  - name: "test-storage-creation-directly"
+    description: "Test direct storage volume creation"
+    tool: "storage_volume_create"
+    parameters:
+      name: "direct-test-volume"
+      size: "5Gi"
+      storage_class: "fast"
+    expected:
+      success: true
+      contains: ["created", "vol-direct-test-volume-fast", "5Gi"]
+    timeout: "30s"
+
+  - name: "test-network-service-creation-directly"
+    description: "Test direct network service creation"
+    tool: "network_create_service"
+    parameters:
+      name: "direct-test-service"
+      port: 3000
+      type: "LoadBalancer"
+    expected:
+      success: true
+      contains: ["created", "direct-test-service", "3000", "LoadBalancer"]
+    timeout: "30s"
+
+  - name: "test-service-lifecycle-stop"
+    description: "Test stopping the service instance"
+    tool: "core_service_stop"
+    parameters:
+      label: "test-web-app"
+    expected:
+      success: true
+      contains: ["test-web-app"]
+    timeout: "30s"
+
+  - name: "test-service-lifecycle-start"
+    description: "Test starting the service instance again"
+    tool: "core_service_start"
+    parameters:
+      label: "test-web-app"
+    expected:
+      success: true
+      contains: ["test-web-app"]
+    timeout: "30s"
+
+cleanup:
+  - name: "delete-test-service"
+    description: "Delete the test service instance"
+    tool: "core_service_delete"
+    parameters:
+      labelOrServiceId: "test-web-app"
+    expected:
+      success: true
+      contains: ["test-web-app"]
+    timeout: "1m"
+
+  - name: "cleanup-direct-storage"
+    description: "Clean up directly created storage"
+    tool: "storage_volume_delete"
+    parameters:
+      volume_id: "vol-direct-test-volume-fast"
+    expected:
+      success: true
+      contains: ["deleted", "vol-direct-test-volume-fast"]
+    timeout: "30s"
+
+  - name: "cleanup-direct-network"
+    description: "Clean up directly created network service"
+    tool: "network_delete_service"
+    parameters:
+      name: "direct-test-service"
+    expected:
+      success: true
+      contains: ["deleted", "direct-test-service"]
+    timeout: "30s"
+
+  - name: "cleanup-serviceclass"
+    description: "Clean up the test ServiceClass"
+    tool: "core_serviceclass_delete"
+    parameters:
+      name: "web-application"
+    expected:
+      success: true
+      contains: ["web-application"]
+    timeout: "30s" 

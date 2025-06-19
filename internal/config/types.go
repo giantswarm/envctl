@@ -22,6 +22,7 @@ type MCPServerType string
 const (
 	MCPServerTypeLocalCommand MCPServerType = "localCommand"
 	MCPServerTypeContainer    MCPServerType = "container"
+	MCPServerTypeMock         MCPServerType = "mock"
 )
 
 const (
@@ -49,7 +50,7 @@ const (
 // MCPServerDefinition defines how to run and manage an MCP server.
 type MCPServerDefinition struct {
 	Name                string        `yaml:"name"`                          // Unique name for this server, e.g., "kubernetes", "prometheus-main"
-	Type                MCPServerType `yaml:"type"`                          // "localCommand" or "container"
+	Type                MCPServerType `yaml:"type"`                          // "localCommand", "container", or "mock"
 	Enabled             bool          `yaml:"enabledByDefault"`              // Whether this server is started by default
 	Icon                string        `yaml:"icon,omitempty"`                // Optional: an icon/emoji for display in TUI
 	Category            string        `yaml:"category,omitempty"`            // Optional: for grouping in TUI, e.g., "Core", "Monitoring"

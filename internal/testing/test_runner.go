@@ -194,7 +194,7 @@ func (r *testRunner) runScenario(ctx context.Context, scenario TestScenario, con
 		if instance != nil {
 			cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
-			
+
 			if err := r.instanceManager.DestroyInstance(cleanupCtx, instance); err != nil {
 				if r.debug {
 					fmt.Printf("⚠️  Failed to destroy envctl instance %s: %v\n", instance.ID, err)
@@ -234,17 +234,17 @@ func (r *testRunner) runScenario(ctx context.Context, scenario TestScenario, con
 		if r.debug {
 			fmt.Printf("🔌 Closing MCP client connection to %s\n", instance.Endpoint)
 		}
-		
+
 		// Close with timeout to avoid hanging
 		closeCtx, closeCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer closeCancel()
-		
+
 		done := make(chan struct{})
 		go func() {
 			r.client.Close()
 			close(done)
 		}()
-		
+
 		select {
 		case <-done:
 			if r.debug {
@@ -255,7 +255,7 @@ func (r *testRunner) runScenario(ctx context.Context, scenario TestScenario, con
 				fmt.Printf("⏰ MCP client close timeout - connection may have been reset\n")
 			}
 		}
-		
+
 		// Give a small delay to ensure close request is processed
 		time.Sleep(100 * time.Millisecond)
 	}()
@@ -286,7 +286,7 @@ func (r *testRunner) runScenario(ctx context.Context, scenario TestScenario, con
 			stepResult := r.runStep(scenarioCtx, cleanupStep, config)
 			result.StepResults = append(result.StepResults, stepResult)
 			r.reporter.ReportStepResult(stepResult)
-			
+
 			// Cleanup step failures should also fail the scenario
 			if stepResult.Result == ResultFailed || stepResult.Result == ResultError {
 				// Only update if the scenario hasn't already failed
@@ -313,14 +313,14 @@ func (r *testRunner) runScenario(ctx context.Context, scenario TestScenario, con
 				instance.Logs = managedProc.logCapture.getLogs()
 				result.InstanceLogs = instance.Logs
 				if r.debug {
-					fmt.Printf("📋 Collected instance logs for result: stdout=%d chars, stderr=%d chars\n", 
+					fmt.Printf("📋 Collected instance logs for result: stdout=%d chars, stderr=%d chars\n",
 						len(instance.Logs.Stdout), len(instance.Logs.Stderr))
 				}
 			}
 			manager.mu.RUnlock()
 		}
 	}
-	
+
 	return result
 }
 

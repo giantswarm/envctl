@@ -63,7 +63,7 @@ func TestMCPServerManager_validateDefinition(t *testing.T) {
 				Type: "invalid-type",
 			},
 			wantErr: true,
-			errMsg:  "field 'type': must be one of: localCommand, container",
+			errMsg:  "field 'type': must be one of: localCommand, container, mock",
 		},
 		{
 			name: "local command without command",

@@ -48,7 +48,7 @@ func TestValidateMCPServerDefinition(t *testing.T) {
 				Type: "invalid-type",
 			},
 			wantErr: true,
-			errMsg:  "invalid MCP server type",
+			errMsg:  "field 'type': must be one of: localCommand, container, mock",
 		},
 		{
 			name: "local command without command",

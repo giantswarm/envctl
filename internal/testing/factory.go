@@ -88,4 +88,4 @@ func NewTestConfigurationFromFile(configPath string) (TestConfiguration, error) 
 	config := DefaultTestConfiguration()
 	config.ConfigPath = configPath
 	return config, nil
-} 
+}
