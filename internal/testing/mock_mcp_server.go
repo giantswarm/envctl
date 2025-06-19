@@ -2,234 +2,218 @@ package testing
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"envctl/internal/template"
 
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 	"gopkg.in/yaml.v3"
 )
 
-// MockMCPServer implements a configurable mock MCP server for testing
+// MockMCPServer represents a mock MCP server for testing
 type MockMCPServer struct {
 	name           string
-	config         MockMCPServerConfig
-	tools          map[string]*MockToolHandler
+	tools          []MockToolConfig // Direct array of tools instead of config struct
+	toolHandlers   map[string]*MockToolHandler
 	templateEngine *template.Engine
+	mcpServer      *server.MCPServer
 	debug          bool
 }
 
-// NewMockMCPServer creates a new mock MCP server from configuration
+// NewMockMCPServer creates a new mock MCP server with the given configuration
 func NewMockMCPServer(configName, scenarioPath string, debug bool) (*MockMCPServer, error) {
-	config, err := loadMockServerConfig(configName, scenarioPath)
+	// Load the mock server configuration
+	tools, err := loadMockServerConfig(configName, scenarioPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load mock server config: %w", err)
 	}
 
-	server := &MockMCPServer{
+	// Create the MCP server
+	mcpServer := server.NewMCPServer(
+		fmt.Sprintf("mock-%s", configName),
+		"1.0.0",
+		server.WithToolCapabilities(false),
+		server.WithResourceCapabilities(false, false),
+		server.WithPromptCapabilities(false),
+	)
+
+	mockServer := &MockMCPServer{
 		name:           configName,
-		config:         config,
-		tools:          make(map[string]*MockToolHandler),
+		tools:          tools,
+		toolHandlers:   make(map[string]*MockToolHandler),
 		templateEngine: template.New(),
+		mcpServer:      mcpServer,
 		debug:          debug,
 	}
 
-	// Initialize tool handlers
-	for _, toolConfig := range config.Tools {
-		handler := NewMockToolHandler(toolConfig, server.templateEngine, debug)
-		server.tools[toolConfig.Name] = handler
+	// Initialize tool handlers and register tools
+	for _, toolConfig := range tools {
+		handler := NewMockToolHandler(toolConfig, mockServer.templateEngine, debug)
+		mockServer.toolHandlers[toolConfig.Name] = handler
+		
+		// Register the tool with the MCP server
+		tool := mcp.NewTool(toolConfig.Name, mcp.WithDescription(toolConfig.Description))
+		mcpServer.AddTool(tool, mockServer.createToolHandler(toolConfig.Name))
 	}
 
 	if debug {
-		fmt.Printf("🔧 Mock MCP server '%s' initialized with %d tools\n", configName, len(server.tools))
-		for toolName := range server.tools {
-			fmt.Printf("  • %s\n", toolName)
+		fmt.Fprintf(os.Stderr, "🔧 Mock MCP server '%s' initialized with %d tools\n", configName, len(mockServer.toolHandlers))
+		for toolName := range mockServer.toolHandlers {
+			fmt.Fprintf(os.Stderr, "  • %s\n", toolName)
 		}
 	}
 
-	return server, nil
+	return mockServer, nil
+}
+
+// NewMockMCPServerFromFile creates a new mock MCP server from a configuration file
+func NewMockMCPServerFromFile(configPath string, debug bool) (*MockMCPServer, error) {
+	// Read the config file directly
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read mock config file %s: %w", configPath, err)
+	}
+
+	// Parse the config structure that contains tools directly
+	var configData struct {
+		Tools []MockToolConfig `yaml:"tools"`
+	}
+	if err := yaml.Unmarshal(content, &configData); err != nil {
+		return nil, fmt.Errorf("failed to parse mock config file %s: %w", configPath, err)
+	}
+
+	// Extract name from file path for the server name
+	name := filepath.Base(configPath)
+	name = strings.TrimSuffix(name, filepath.Ext(name))
+
+	// Create the MCP server
+	mcpServer := server.NewMCPServer(
+		fmt.Sprintf("mock-%s", name),
+		"1.0.0",
+		server.WithToolCapabilities(false),
+		server.WithResourceCapabilities(false, false),
+		server.WithPromptCapabilities(false),
+	)
+
+	mockServer := &MockMCPServer{
+		name:           name,
+		tools:          configData.Tools,
+		toolHandlers:   make(map[string]*MockToolHandler),
+		templateEngine: template.New(),
+		mcpServer:      mcpServer,
+		debug:          debug,
+	}
+
+	// Initialize tool handlers and register tools
+	for _, toolConfig := range configData.Tools {
+		handler := NewMockToolHandler(toolConfig, mockServer.templateEngine, debug)
+		mockServer.toolHandlers[toolConfig.Name] = handler
+		
+		// Register the tool with the MCP server
+		tool := mcp.NewTool(toolConfig.Name, mcp.WithDescription(toolConfig.Description))
+		mcpServer.AddTool(tool, mockServer.createToolHandler(toolConfig.Name))
+	}
+
+	if debug {
+		// Ensure debug output goes to stderr to not interfere with MCP protocol on stdout
+		fmt.Fprintf(os.Stderr, "🔧 Mock MCP server '%s' initialized with %d tools from %s\n", name, len(mockServer.toolHandlers), configPath)
+		for toolName := range mockServer.toolHandlers {
+			fmt.Fprintf(os.Stderr, "  • %s\n", toolName)
+		}
+	}
+
+	return mockServer, nil
+}
+
+// createToolHandler creates an MCP tool handler function for the given tool name
+func (s *MockMCPServer) createToolHandler(toolName string) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		handler, exists := s.toolHandlers[toolName]
+		if !exists {
+			return mcp.NewToolResultError(fmt.Sprintf("tool %s not found", toolName)), nil
+		}
+
+		// Convert MCP arguments to the format expected by our mock tool handler
+		args := request.GetArguments()
+
+		// Handle the tool call
+		result, err := handler.HandleCall(args)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Error: %v", err)), nil
+		}
+
+		// Convert result to MCP format
+		if result != nil {
+			resultStr := fmt.Sprintf("%v", result)
+			return mcp.NewToolResultText(resultStr), nil
+		}
+
+		return mcp.NewToolResultText(""), nil
+	}
 }
 
 // Start starts the mock MCP server using stdio transport
 func (s *MockMCPServer) Start(ctx context.Context) error {
 	if s.debug {
-		fmt.Printf("🚀 Starting mock MCP server '%s' on stdio transport\n", s.name)
+		fmt.Fprintf(os.Stderr, "🚀 Starting mock MCP server '%s' on stdio transport\n", s.name)
 	}
 
-	// Create MCP server instance and handle communication
-	return s.handleMCPCommunication(ctx, os.Stdin, os.Stdout)
-}
-
-// handleMCPCommunication handles the MCP protocol communication
-func (s *MockMCPServer) handleMCPCommunication(ctx context.Context, stdin io.Reader, stdout io.Writer) error {
-	decoder := json.NewDecoder(stdin)
-	encoder := json.NewEncoder(stdout)
-
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-			// Read MCP message
-			var message map[string]interface{}
-			if err := decoder.Decode(&message); err != nil {
-				if err == io.EOF {
-					return nil
-				}
-				return fmt.Errorf("failed to decode message: %w", err)
-			}
-
-			// Process message and send response
-			response := s.processMessage(message)
-			if response != nil {
-				if err := encoder.Encode(response); err != nil {
-					return fmt.Errorf("failed to encode response: %w", err)
-				}
-			}
-		}
-	}
-}
-
-// processMessage processes an incoming MCP message and returns a response
-func (s *MockMCPServer) processMessage(message map[string]interface{}) map[string]interface{} {
-	method, _ := message["method"].(string)
-	id := message["id"]
-	params, _ := message["params"].(map[string]interface{})
-
-	if s.debug {
-		fmt.Printf("📥 Received MCP message: method=%s, id=%v\n", method, id)
-	}
-
-	switch method {
-	case "initialize":
-		return s.handleInitialize(id, params)
-	case "tools/list":
-		return s.handleToolsList(id)
-	case "tools/call":
-		return s.handleToolCall(id, params)
-	default:
-		return s.createErrorResponse(id, -32601, "Method not found", method)
-	}
-}
-
-// handleInitialize handles the MCP initialize request
-func (s *MockMCPServer) handleInitialize(id interface{}, params map[string]interface{}) map[string]interface{} {
-	return map[string]interface{}{
-		"jsonrpc": "2.0",
-		"id":      id,
-		"result": map[string]interface{}{
-			"protocolVersion": "2024-11-05",
-			"capabilities": map[string]interface{}{
-				"tools": map[string]interface{}{},
-			},
-			"serverInfo": map[string]interface{}{
-				"name":    fmt.Sprintf("mock-%s", s.name),
-				"version": "1.0.0",
-			},
-		},
-	}
-}
-
-// handleToolsList handles the tools/list request
-func (s *MockMCPServer) handleToolsList(id interface{}) map[string]interface{} {
-	var tools []map[string]interface{}
-
-	for _, handler := range s.tools {
-		tools = append(tools, map[string]interface{}{
-			"name":        handler.config.Name,
-			"description": handler.config.Description,
-			"inputSchema": handler.config.InputSchema,
-		})
-	}
-
-	return map[string]interface{}{
-		"jsonrpc": "2.0",
-		"id":      id,
-		"result": map[string]interface{}{
-			"tools": tools,
-		},
-	}
-}
-
-// handleToolCall handles the tools/call request
-func (s *MockMCPServer) handleToolCall(id interface{}, params map[string]interface{}) map[string]interface{} {
-	toolName, _ := params["name"].(string)
-	arguments, _ := params["arguments"].(map[string]interface{})
-
-	if s.debug {
-		fmt.Printf("🔧 Tool call: %s with arguments: %v\n", toolName, arguments)
-	}
-
-	handler, exists := s.tools[toolName]
-	if !exists {
-		return s.createErrorResponse(id, -32602, "Tool not found", toolName)
-	}
-
-	// Handle the tool call
-	result, err := handler.HandleCall(arguments)
-	if err != nil {
-		return s.createErrorResponse(id, -32603, err.Error(), nil)
-	}
-
-	return map[string]interface{}{
-		"jsonrpc": "2.0",
-		"id":      id,
-		"result":  result,
-	}
-}
-
-// createErrorResponse creates an MCP error response
-func (s *MockMCPServer) createErrorResponse(id interface{}, code int, message string, data interface{}) map[string]interface{} {
-	errorObj := map[string]interface{}{
-		"code":    code,
-		"message": message,
-	}
-	if data != nil {
-		errorObj["data"] = data
-	}
-
-	return map[string]interface{}{
-		"jsonrpc": "2.0",
-		"id":      id,
-		"error":   errorObj,
-	}
+	// Use the proper MCP library to serve stdio
+	// This handles all the protocol details correctly
+	return server.ServeStdio(s.mcpServer)
 }
 
 // loadMockServerConfig loads mock server configuration from test scenarios
-func loadMockServerConfig(configName, scenarioPath string) (MockMCPServerConfig, error) {
-	var config MockMCPServerConfig
+func loadMockServerConfig(configName, scenarioPath string) ([]MockToolConfig, error) {
+	var tools []MockToolConfig
 
-	// Search for the mock server configuration in test scenarios
-	err := filepath.WalkDir(scenarioPath, func(path string, d os.DirEntry, err error) error {
+	err := filepath.WalkDir(scenarioPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 
-		if d.IsDir() || (!strings.HasSuffix(path, ".yaml") && !strings.HasSuffix(path, ".yml")) {
+		if d.IsDir() {
 			return nil
 		}
 
-		// Read and parse the scenario file
+		if !strings.HasSuffix(path, ".yaml") && !strings.HasSuffix(path, ".yml") {
+			return nil
+		}
+
 		content, err := os.ReadFile(path)
 		if err != nil {
-			return err
+			return nil
 		}
 
 		var scenario TestScenario
 		if err := yaml.Unmarshal(content, &scenario); err != nil {
-			return nil // Skip invalid files
+			return nil
 		}
 
-		// Check if this scenario has the mock server we're looking for
 		if scenario.PreConfiguration != nil {
 			for _, mcpServer := range scenario.PreConfiguration.MCPServers {
-				if mcpServer.Name == configName && mcpServer.Type == "mock" && mcpServer.MockConfig != nil {
-					config = *mcpServer.MockConfig
-					return filepath.SkipAll // Found it, stop searching
+				if mcpServer.Name == configName {
+					// Check if this is a mock server (has tools in config)
+					if toolsInterface, hasMockTools := mcpServer.Config["tools"]; hasMockTools {
+						// Convert the config to tools array
+						configBytes, err := yaml.Marshal(map[string]interface{}{"tools": toolsInterface})
+						if err != nil {
+							continue
+						}
+						var configData struct {
+							Tools []MockToolConfig `yaml:"tools"`
+						}
+						if err := yaml.Unmarshal(configBytes, &configData); err != nil {
+							continue
+						}
+						tools = configData.Tools
+						return filepath.SkipAll // Found it, stop searching
+					}
 				}
 			}
 		}
@@ -238,12 +222,12 @@ func loadMockServerConfig(configName, scenarioPath string) (MockMCPServerConfig,
 	})
 
 	if err != nil {
-		return config, fmt.Errorf("failed to search for mock server config: %w", err)
+		return tools, fmt.Errorf("failed to search scenarios: %w", err)
 	}
 
-	if len(config.Tools) == 0 {
-		return config, fmt.Errorf("mock server configuration '%s' not found in scenario path '%s'", configName, scenarioPath)
+	if len(tools) == 0 {
+		return tools, fmt.Errorf("mock server configuration '%s' not found in scenarios", configName)
 	}
 
-	return config, nil
+	return tools, nil
 }

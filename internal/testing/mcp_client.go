@@ -101,6 +101,19 @@ func (c *mcpTestClient) CallTool(ctx context.Context, toolName string, parameter
 	callCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
+	// First, try the tool name as provided
+	resolvedToolName, err := c.resolveToolName(callCtx, toolName)
+	if err != nil {
+		if c.debug {
+			fmt.Printf("❌ Tool resolution failed: %v\n", err)
+		}
+		return nil, fmt.Errorf("tool call %s failed: %w", toolName, err)
+	}
+
+	if c.debug && resolvedToolName != toolName {
+		fmt.Printf("🔄 Resolved tool name: %s -> %s\n", toolName, resolvedToolName)
+	}
+
 	// Create the request using the pattern from the existing codebase
 	request := mcp.CallToolRequest{
 		Params: struct {
@@ -108,7 +121,7 @@ func (c *mcpTestClient) CallTool(ctx context.Context, toolName string, parameter
 			Arguments any       `json:"arguments,omitempty"`
 			Meta      *mcp.Meta `json:"_meta,omitempty"`
 		}{
-			Name:      toolName,
+			Name:      resolvedToolName,
 			Arguments: args,
 		},
 	}
@@ -128,6 +141,99 @@ func (c *mcpTestClient) CallTool(ctx context.Context, toolName string, parameter
 	}
 
 	return result, nil
+}
+
+// resolveToolName attempts to resolve a tool name to its actual prefixed name in the aggregator
+func (c *mcpTestClient) resolveToolName(ctx context.Context, toolName string) (string, error) {
+	// First, try to get the list of available tools
+	availableTools, err := c.ListTools(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to list available tools: %w", err)
+	}
+
+	if c.debug {
+		fmt.Printf("🔍 Resolving tool name '%s' from %d available tools\n", toolName, len(availableTools))
+		fmt.Printf("🛠️  Available tools: %v\n", availableTools)
+	}
+
+	// Check if the exact tool name exists
+	for _, availableTool := range availableTools {
+		if availableTool == toolName {
+			if c.debug {
+				fmt.Printf("✅ Found exact match: %s\n", toolName)
+			}
+			return toolName, nil
+		}
+	}
+
+	// If exact name doesn't exist, try to find a prefixed version
+	// Look for tools that end with the requested tool name
+	var candidates []string
+	for _, availableTool := range availableTools {
+		// Check if this tool ends with our desired tool name
+		if c.isToolMatch(availableTool, toolName) {
+			candidates = append(candidates, availableTool)
+			if c.debug {
+				fmt.Printf("🎯 Found candidate match: %s for %s\n", availableTool, toolName)
+			}
+		}
+	}
+
+	if len(candidates) == 0 {
+		if c.debug {
+			fmt.Printf("❌ No candidates found for tool '%s'\n", toolName)
+		}
+		return "", fmt.Errorf("tool '%s' not found: tool not found", toolName)
+	}
+
+	if len(candidates) == 1 {
+		if c.debug {
+			fmt.Printf("✅ Single candidate found: %s\n", candidates[0])
+		}
+		return candidates[0], nil
+	}
+
+	// If multiple candidates, prefer the shortest one (likely the most direct match)
+	best := candidates[0]
+	for _, candidate := range candidates[1:] {
+		if len(candidate) < len(best) {
+			best = candidate
+		}
+	}
+
+	if c.debug {
+		fmt.Printf("🔍 Multiple tool candidates found for '%s': %v, choosing: %s\n", toolName, candidates, best)
+	}
+
+	return best, nil
+}
+
+// isToolMatch checks if a prefixed tool name matches the requested tool name
+func (c *mcpTestClient) isToolMatch(prefixedTool, requestedTool string) bool {
+	// Check if the prefixed tool ends with the requested tool name
+	if prefixedTool == requestedTool {
+		return true
+	}
+
+	// Check for exact suffix match with underscore separator
+	suffix := "_" + requestedTool
+	if len(prefixedTool) > len(suffix) && prefixedTool[len(prefixedTool)-len(suffix):] == suffix {
+		if c.debug {
+			fmt.Printf("🎯 Suffix match: %s matches %s (suffix: %s)\n", prefixedTool, requestedTool, suffix)
+		}
+		return true
+	}
+
+	// Check for dash separator as well (for names like storage-mock)
+	dashSuffix := "-" + requestedTool
+	if len(prefixedTool) > len(dashSuffix) && prefixedTool[len(prefixedTool)-len(dashSuffix):] == dashSuffix {
+		if c.debug {
+			fmt.Printf("🎯 Dash suffix match: %s matches %s (suffix: %s)\n", prefixedTool, requestedTool, dashSuffix)
+		}
+		return true
+	}
+
+	return false
 }
 
 // ListTools returns available MCP tools

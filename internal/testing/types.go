@@ -116,29 +116,19 @@ type EnvCtlPreConfiguration struct {
 type MCPServerConfig struct {
 	// Name is the unique identifier for the MCP server
 	Name string `yaml:"name"`
-	// Type is the server type (process, container, mock, etc.)
-	Type string `yaml:"type"`
-	// Config contains the server-specific configuration
+	// Config contains the server-specific configuration (can include tools for mock servers)
 	Config map[string]interface{} `yaml:"config"`
-	// MockConfig contains mock server configuration (only used when Type is "mock")
-	MockConfig *MockMCPServerConfig `yaml:"mock_config,omitempty"`
 }
 
-// MockMCPServerConfig defines configuration for a mock MCP server
-type MockMCPServerConfig struct {
-	// Tools defines the mock tools available on this server
-	Tools []MockToolConfig `yaml:"tools"`
-}
-
-// MockToolConfig defines a single mock tool configuration
+// MockToolConfig defines configuration for a mock tool
 type MockToolConfig struct {
-	// Name is the tool name (e.g., "k8s_pod_list")
+	// Name is the unique identifier for the tool
 	Name string `yaml:"name"`
-	// Description is the tool description
+	// Description describes what the tool does
 	Description string `yaml:"description"`
-	// InputSchema defines the JSON schema for tool parameters
+	// InputSchema defines the expected input schema (JSON Schema)
 	InputSchema map[string]interface{} `yaml:"input_schema"`
-	// Responses defines possible responses based on conditions
+	// Responses defines possible responses for this tool
 	Responses []MockToolResponse `yaml:"responses"`
 }
 

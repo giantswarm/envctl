@@ -1,0 +1,63 @@
+name: "example-with-mock"
+category: "behavioral"
+concept: "serviceclass"
+description: "Test ServiceClass that requires multiple mock dependencies"
+tags: ["mock", "serviceclass", "dependencies"]
+timeout: "5m"
+
+pre_configuration:
+  mcp_servers:
+    - name: "mock1"
+      config:
+        tools:
+          - name: "create"
+            description: "Create"
+            input_schema:
+              type: "object"
+              properties:
+                name:
+                  type: "string"
+                  required: true
+            responses:
+              - response:
+                  status: "created"
+                  name: "{{ .name }}"
+                delay: "3s"
+          - name: "list"
+            description: "List items"
+            input_schema:
+              type: "object"
+              properties: {}
+            responses:
+              - response:
+                  status: "success"
+                  items: []
+
+steps:
+  - id: verify-mock-server-available
+    description: "Verify that mock server is available"
+    tool: "core_mcpserver_list"
+    args: {}
+    expected:
+      success: true
+      contains: ["mock1"]
+    timeout: "30s"
+    
+  - id: test-create-tool
+    description: "Test the create tool on mock server"
+    tool: "create"
+    args:
+      name: "test-item"
+    expected:
+      success: true
+      contains: ["created", "test-item"]
+    timeout: "30s"
+    
+  - id: test-list-tool
+    description: "Test the list tool on mock server"
+    tool: "list"
+    args: {}
+    expected:
+      success: true
+      contains: ["success"]
+    timeout: "30s" 

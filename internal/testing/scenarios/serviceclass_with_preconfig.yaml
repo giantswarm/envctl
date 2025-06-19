@@ -1,27 +1,100 @@
-name: "serviceclass-with-preconfig"
-category: "integration"
+name: "serviceclass-with-preconfigured-dependencies"
+category: "behavioral"
 concept: "serviceclass"
-description: "ServiceClass operations with pre-configured MCP servers and workflows"
-tags: ["integration", "preconfig", "serviceclass", "workflow"]
-timeout: "10m"
+description: "Test ServiceClass with pre-configured dependencies and workflows"
+tags: ["serviceclass", "dependencies", "workflow", "mock"]
+timeout: "7m"
 
 # Pre-configuration for this test scenario
 pre_configuration:
-  # Configure MCP servers that will be available
   mcp_servers:
-    - name: "test-kubernetes"
-      type: "localCommand"
+    - name: "database-mock"
       config:
-        command: "kubectl-mcp"
-        args: ["--context", "test-cluster"]
-        env:
-          KUBECONFIG: "/tmp/test-kubeconfig"
-        
-    - name: "test-prometheus"
-      type: "process"
+        tools:
+          - name: "database_create"
+            description: "Create a database instance"
+            input_schema:
+              type: "object"
+              properties:
+                name:
+                  type: "string"
+                  required: true
+                engine:
+                  type: "string"
+                  default: "postgresql"
+                version:
+                  type: "string"
+                  default: "14"
+                storage_size:
+                  type: "string"
+                  default: "20Gi"
+            responses:
+              - response:
+                  status: "created"
+                  database_id: "db-{{ .name }}-{{ .engine }}"
+                  name: "{{ .name }}"
+                  engine: "{{ .engine }}"
+                  version: "{{ .version }}"
+                  storage_size: "{{ .storage_size }}"
+                  state: "available"
+                  endpoint: "{{ .name }}.db.example.com:5432"
+                delay: "8s"
+
+          - name: "database_delete"
+            description: "Delete a database instance"
+            input_schema:
+              type: "object"
+              properties:
+                database_id:
+                  type: "string"
+                  required: true
+            responses:
+              - response:
+                  status: "deleted"
+                  database_id: "{{ .database_id }}"
+                delay: "5s"
+
+    - name: "loadbalancer-mock"
       config:
-        command: "prometheus-mcp"
-        args: ["--url", "http://localhost:9090"]
+        tools:
+          - name: "loadbalancer_create"
+            description: "Create a load balancer"
+            input_schema:
+              type: "object"
+              properties:
+                name:
+                  type: "string"
+                  required: true
+                type:
+                  type: "string"
+                  default: "application"
+                scheme:
+                  type: "string"
+                  default: "internet-facing"
+            responses:
+              - response:
+                  status: "created"
+                  loadbalancer_id: "lb-{{ .name }}-{{ .type }}"
+                  name: "{{ .name }}"
+                  type: "{{ .type }}"
+                  scheme: "{{ .scheme }}"
+                  state: "active"
+                  dns_name: "{{ .name }}-lb.example.com"
+                delay: "4s"
+
+          - name: "loadbalancer_delete"
+            description: "Delete a load balancer"
+            input_schema:
+              type: "object"
+              properties:
+                loadbalancer_id:
+                  type: "string"
+                  required: true
+            responses:
+              - response:
+                  status: "deleted"
+                  loadbalancer_id: "{{ .loadbalancer_id }}"
+                delay: "3s"
 
   # Configure workflows that will be available
   workflows:
@@ -51,8 +124,10 @@ pre_configuration:
     - name: "monitored-web-service"
       config:
         name: "monitored-web-service"
+        type: "stateful"
+        version: "1.0.0"
         description: "Web service with monitoring integration"
-        input_schema:
+        parameters:
           app_name:
             type: "string"
             required: true
@@ -65,11 +140,17 @@ pre_configuration:
           replicas:
             type: "integer"
             default: 2
-        capabilities:
-          - "deploy-with-monitoring"
-        tools:
-          - "x_kubernetes_apply"
-          - "x_prometheus_add_target"
+        serviceConfig:
+          lifecycleTools:
+            start:
+              tool: "x_kubernetes_apply"
+              arguments:
+                yaml: "{{ .template }}"
+            stop:
+              tool: "x_kubernetes_delete"
+              arguments:
+                name: "{{ .app_name }}"
+                namespace: "{{ .namespace | default \"default\" }}"
         template: |
           apiVersion: apps/v1
           kind: Deployment
@@ -108,7 +189,7 @@ steps:
     args: {}
     expected:
       success: true
-      contains: ["test-kubernetes", "test-prometheus"]
+      contains: ["database-mock", "loadbalancer-mock"]
     timeout: "30s"
 
   - id: check-workflow-available
@@ -145,7 +226,7 @@ steps:
     description: "Create a service instance from the pre-configured ServiceClass"
     tool: "core_service_create"
     args:
-      service_class_name: "monitored-web-service"
+      serviceClassName: "monitored-web-service"
       label: "test-web-app"
       parameters:
         app_name: "test-web-app"

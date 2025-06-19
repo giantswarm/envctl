@@ -8,8 +8,7 @@ timeout: "5m"
 pre_configuration:
   mcp_servers:
     - name: "storage-mock"
-      type: "mock"
-      mock_config:
+      config:
         tools:
           - name: "storage_volume_create"
             description: "Create a storage volume"
@@ -50,8 +49,7 @@ pre_configuration:
                 delay: "2s"
 
     - name: "network-mock"
-      type: "mock"
-      mock_config:
+      config:
         tools:
           - name: "network_create_service"
             description: "Create a network service"
@@ -109,33 +107,18 @@ pre_configuration:
             type: "integer"
             default: 8080
             description: "Application port"
-        requiredTools:
-          - "storage_volume_create"
-          - "storage_volume_delete"
-          - "network_create_service"
-          - "network_delete_service"
+
         serviceConfig:
           lifecycleTools:
-            create:
-              - tool: "storage_volume_create"
-                description: "Create storage volume"
-                parameters:
-                  name: "{{ .app_name }}-storage"
-                  size: "{{ .storage_size }}"
-              - tool: "network_create_service"
-                description: "Create network service"
-                parameters:
-                  name: "{{ .app_name }}-service"
-                  port: "{{ .port }}"
-            delete:
-              - tool: "storage_volume_delete"
-                description: "Delete storage volume"
-                parameters:
-                  volume_id: "vol-{{ .app_name }}-storage-standard"
-              - tool: "network_delete_service"
-                description: "Delete network service"
-                parameters:
-                  name: "{{ .app_name }}-service"
+            start:
+              tool: "storage_volume_create"
+              arguments:
+                name: "{{ .app_name }}-storage"
+                size: "{{ .storage_size }}"
+            stop:
+              tool: "storage_volume_delete"
+              arguments:
+                volume_id: "vol-{{ .app_name }}-storage-standard"
 
 steps:
   - id: verify-mock-servers-available

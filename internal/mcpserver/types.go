@@ -31,7 +31,6 @@ type MCPServerType string
 const (
 	MCPServerTypeLocalCommand MCPServerType = "localCommand"
 	MCPServerTypeContainer    MCPServerType = "container"
-	MCPServerTypeMock         MCPServerType = "mock"
 )
 
 // MCPServerDefinition defines how to run and manage an MCP server.

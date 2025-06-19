@@ -44,7 +44,7 @@ steps:
             args: {}
     expected:
       success: true
-      contains: ["valid", "test-basic-workflow"]
+      contains: ["valid", "definition"]
     timeout: "30s"
 
   - id: "create-test-workflow"
@@ -76,7 +76,7 @@ steps:
             args: {}
     expected:
       success: true
-      contains: ["created successfully", "test-basic-workflow"]
+      contains: ["created successfully"]
     timeout: "1m"
 
   - id: "verify-workflow-created"

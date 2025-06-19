@@ -361,25 +361,21 @@ func (m *envCtlInstanceManager) startEnvCtlProcess(ctx context.Context, configPa
 		return nil, fmt.Errorf("failed to find envctl binary: %w", err)
 	}
 
+	// envctl serve should use the envctl subdirectory as config path
+	envctlConfigPath := filepath.Join(configPath, "envctl")
+
 	// Create command
 	args := []string{
 		"serve",
 		"--no-tui",
-		"--config-path", configPath,
+		"--config-path", envctlConfigPath,
 		"--debug",
 	}
 
 	cmd := exec.CommandContext(ctx, envctlPath, args...)
 
-	// Set environment variables
-	cmd.Env = append(os.Environ(),
-		fmt.Sprintf("ENVCTL_PORT=%d", port),
-		"ENVCTL_HOST=localhost",
-	)
-
 	if m.debug {
 		fmt.Printf("🚀 Starting command: %s %v\n", envctlPath, args)
-		fmt.Printf("🌍 Environment: ENVCTL_PORT=%d ENVCTL_HOST=localhost\n", port)
 	}
 
 	// Create log capture
@@ -467,15 +463,23 @@ func (m *envCtlInstanceManager) isInEnvCtlSource(dir string) bool {
 
 // generateConfigFiles generates configuration files for the envctl instance
 func (m *envCtlInstanceManager) generateConfigFiles(configPath string, config *EnvCtlPreConfiguration, port int) error {
-	// Create subdirectories
+	// Create envctl subdirectory - this is where envctl serve will look for configs
+	envctlConfigPath := filepath.Join(configPath, "envctl")
+	
+	// Create subdirectories under envctl
 	dirs := []string{"mcpservers", "workflows", "capabilities", "serviceclasses", "services"}
 	for _, dir := range dirs {
-		if err := os.MkdirAll(filepath.Join(configPath, dir), 0755); err != nil {
+		if err := os.MkdirAll(filepath.Join(envctlConfigPath, dir), 0755); err != nil {
 			return fmt.Errorf("failed to create %s directory: %w", dir, err)
 		}
 	}
+	
+	// Create mocks directory for mock configurations
+	if err := os.MkdirAll(filepath.Join(configPath, "mocks"), 0755); err != nil {
+		return fmt.Errorf("failed to create mocks directory: %w", err)
+	}
 
-	// Generate main config.yaml
+	// Generate main config.yaml in envctl subdirectory
 	mainConfig := map[string]interface{}{
 		"aggregator": map[string]interface{}{
 			"host":      "localhost",
@@ -495,7 +499,7 @@ func (m *envCtlInstanceManager) generateConfigFiles(configPath string, config *E
 		}
 	}
 
-	configFile := filepath.Join(configPath, "config.yaml")
+	configFile := filepath.Join(envctlConfigPath, "config.yaml")
 	if err := m.writeYAMLFile(configFile, mainConfig); err != nil {
 		return fmt.Errorf("failed to write main config: %w", err)
 	}
@@ -510,54 +514,80 @@ func (m *envCtlInstanceManager) generateConfigFiles(configPath string, config *E
 	if config != nil {
 		// Generate MCP server configs
 		for _, mcpServer := range config.MCPServers {
-			filename := filepath.Join(configPath, "mcpservers", mcpServer.Name+".yaml")
-
-			// For mock servers, we need to create the full server definition
-			if mcpServer.Type == "mock" && mcpServer.MockConfig != nil {
+			// Check if this is a mock server (has tools in config)
+			if tools, hasMockTools := mcpServer.Config["tools"]; hasMockTools {
+				// Get the current working directory to build the envctl command path
+				envctlPath, err := m.getEnvCtlBinaryPath()
+				if err != nil {
+					return fmt.Errorf("failed to get envctl binary path: %w", err)
+				}
+				
+				// Create the localCommand server definition for envctl serve
 				serverDef := map[string]interface{}{
 					"name":             mcpServer.Name,
-					"type":             mcpServer.Type,
+					"type":             "localCommand",
 					"enabledByDefault": true,
-					"mock_config":      mcpServer.MockConfig,
+					"icon":             "m",
+					"category":         "Test",
+					"command":          []string{envctlPath, "test", "--mock-mcp-server", "--mock-config", filepath.Join(configPath, "mocks", mcpServer.Name+".yaml")},
 				}
+				
+				if m.debug {
+					fmt.Printf("🧪 ServerDef for %s: %+v\n", mcpServer.Name, serverDef)
+					fmt.Printf("🧪 Tools config for %s: %+v\n", mcpServer.Name, mcpServer.Config)
+				}
+				
+				// Save server definition to mcpservers directory (what envctl serve loads)
+				filename := filepath.Join(envctlConfigPath, "mcpservers", mcpServer.Name+".yaml")
 				if err := m.writeYAMLFile(filename, serverDef); err != nil {
 					return fmt.Errorf("failed to write mock MCP server config %s: %w", mcpServer.Name, err)
 				}
+
+				// Save mock tools config to mocks directory (what mock server reads)
+				mockConfigFile := filepath.Join(configPath, "mocks", mcpServer.Name+".yaml")
+				if err := m.writeYAMLFile(mockConfigFile, mcpServer.Config); err != nil {
+					return fmt.Errorf("failed to write mock config %s: %w", mcpServer.Name, err)
+				}
+				
+				if m.debug {
+					fmt.Printf("🧪 Created mock server %s with %d tools\n", mcpServer.Name, len(tools.([]interface{})))
+				}
 			} else {
-				// For regular servers, use the Config field
+				// For regular servers, use the Config field directly
+				filename := filepath.Join(envctlConfigPath, "mcpservers", mcpServer.Name+".yaml")
 				if err := m.writeYAMLFile(filename, mcpServer.Config); err != nil {
 					return fmt.Errorf("failed to write MCP server config %s: %w", mcpServer.Name, err)
 				}
 			}
 		}
 
-		// Generate workflow configs
+		// Generate workflow configs in envctl subdirectory
 		for _, workflow := range config.Workflows {
-			filename := filepath.Join(configPath, "workflows", workflow.Name+".yaml")
+			filename := filepath.Join(envctlConfigPath, "workflows", workflow.Name+".yaml")
 			if err := m.writeYAMLFile(filename, workflow.Config); err != nil {
 				return fmt.Errorf("failed to write workflow config %s: %w", workflow.Name, err)
 			}
 		}
 
-		// Generate capability configs
+		// Generate capability configs in envctl subdirectory
 		for _, capability := range config.Capabilities {
-			filename := filepath.Join(configPath, "capabilities", capability.Name+".yaml")
+			filename := filepath.Join(envctlConfigPath, "capabilities", capability.Name+".yaml")
 			if err := m.writeYAMLFile(filename, capability.Config); err != nil {
 				return fmt.Errorf("failed to write capability config %s: %w", capability.Name, err)
 			}
 		}
 
-		// Generate service class configs
+		// Generate service class configs in envctl subdirectory
 		for _, serviceClass := range config.ServiceClasses {
-			filename := filepath.Join(configPath, "serviceclasses", serviceClass.Name+".yaml")
+			filename := filepath.Join(envctlConfigPath, "serviceclasses", serviceClass.Name+".yaml")
 			if err := m.writeYAMLFile(filename, serviceClass.Config); err != nil {
 				return fmt.Errorf("failed to write service class config %s: %w", serviceClass.Name, err)
 			}
 		}
 
-		// Generate service configs
+		// Generate service configs in envctl subdirectory
 		for _, service := range config.Services {
-			filename := filepath.Join(configPath, "services", service.Name+".yaml")
+			filename := filepath.Join(envctlConfigPath, "services", service.Name+".yaml")
 			if err := m.writeYAMLFile(filename, service.Config); err != nil {
 				return fmt.Errorf("failed to write service config %s: %w", service.Name, err)
 			}
@@ -580,6 +610,7 @@ func (m *envCtlInstanceManager) writeYAMLFile(filename string, data interface{})
 
 	if m.debug {
 		fmt.Printf("📝 Generated config file: %s\n", filename)
+		fmt.Printf("📄 Content:\n%s\n", string(yamlData))
 	}
 
 	return nil

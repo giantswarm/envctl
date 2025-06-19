@@ -12,7 +12,7 @@ func DefaultTestConfiguration() TestConfiguration {
 		Parallel:   1,
 		FailFast:   false,
 		Verbose:    false,
-		Debug:      false,
+		Debug:      true,
 		ConfigPath: GetDefaultScenarioPath(),
 		BasePort:   18000, // Start from port 18000 for test instances
 	}

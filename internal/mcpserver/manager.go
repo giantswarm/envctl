@@ -102,7 +102,7 @@ func (msm *MCPServerManager) validateDefinition(def *MCPServerDefinition) error 
 	}
 
 	// Validate type
-	validTypes := []string{string(MCPServerTypeLocalCommand), string(MCPServerTypeContainer), string(MCPServerTypeMock)}
+	validTypes := []string{string(MCPServerTypeLocalCommand), string(MCPServerTypeContainer)}
 	if err := config.ValidateOneOf("type", string(def.Type), validTypes); err != nil {
 		errors = append(errors, err.(config.ValidationError))
 	}

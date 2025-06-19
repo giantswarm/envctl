@@ -2,13 +2,14 @@ package testing
 
 import (
 	"fmt"
+	"os"
 	"reflect"
 	"time"
 
 	"envctl/internal/template"
 )
 
-// MockToolHandler handles calls to a specific mock tool
+// MockToolHandler handles mock tool calls with configurable responses
 type MockToolHandler struct {
 	config         MockToolConfig
 	templateEngine *template.Engine
@@ -24,105 +25,88 @@ func NewMockToolHandler(config MockToolConfig, templateEngine *template.Engine, 
 	}
 }
 
-// HandleCall processes a tool call and returns the appropriate response
-func (h *MockToolHandler) HandleCall(parameters map[string]interface{}) (interface{}, error) {
+// HandleCall processes a tool call and returns the configured response
+func (h *MockToolHandler) HandleCall(arguments map[string]interface{}) (interface{}, error) {
 	if h.debug {
-		fmt.Printf("🔧 MockToolHandler.HandleCall for tool '%s' with parameters: %v\n", h.config.Name, parameters)
+		fmt.Fprintf(os.Stderr, "🔧 Mock tool '%s' called with arguments: %v\n", h.config.Name, arguments)
 	}
 
-	// Find matching response based on conditions
+	// Find the first matching response
 	var selectedResponse *MockToolResponse
-	for i := range h.config.Responses {
-		response := &h.config.Responses[i]
-		if h.matchesCondition(response.Condition, parameters) {
-			selectedResponse = response
+	for _, response := range h.config.Responses {
+		if h.matchesCondition(response.Condition, arguments) {
+			selectedResponse = &response
 			break
 		}
 	}
 
-	// If no conditional response matched, use fallback (response with no condition)
+	// If no specific response matched, use the first one as fallback
+	if selectedResponse == nil && len(h.config.Responses) > 0 {
+		selectedResponse = &h.config.Responses[0]
+	}
+
 	if selectedResponse == nil {
-		for i := range h.config.Responses {
-			response := &h.config.Responses[i]
-			if len(response.Condition) == 0 {
-				selectedResponse = response
-				break
+		return nil, fmt.Errorf("no response configured for tool %s", h.config.Name)
+	}
+
+	// Handle delay if specified
+	if selectedResponse.Delay != "" {
+		if duration, err := time.ParseDuration(selectedResponse.Delay); err == nil {
+			if h.debug {
+				fmt.Fprintf(os.Stderr, "⏳ Simulating delay of %s for tool '%s'\n", selectedResponse.Delay, h.config.Name)
 			}
+			time.Sleep(duration)
 		}
 	}
 
-	if selectedResponse == nil {
-		return nil, fmt.Errorf("no matching response found for tool '%s' with parameters: %v", h.config.Name, parameters)
-	}
-
-	// Apply delay if configured
-	if selectedResponse.Delay != "" {
-		delay, err := time.ParseDuration(selectedResponse.Delay)
+	// Handle error response
+	if selectedResponse.Error != "" {
+		errorMessage, err := h.templateEngine.Replace(selectedResponse.Error, arguments)
 		if err != nil {
 			if h.debug {
-				fmt.Printf("⚠️  Invalid delay format '%s', ignoring\n", selectedResponse.Delay)
+				fmt.Fprintf(os.Stderr, "❌ Failed to render error message for tool '%s': %v\n", h.config.Name, err)
 			}
-		} else {
-			if h.debug {
-				fmt.Printf("⏳ Applying delay of %v for tool '%s'\n", delay, h.config.Name)
-			}
-			time.Sleep(delay)
+			return nil, fmt.Errorf("failed to render error message: %w", err)
 		}
+		errorStr, ok := errorMessage.(string)
+		if !ok {
+			errorStr = fmt.Sprintf("%v", errorMessage)
+		}
+		if h.debug {
+			fmt.Fprintf(os.Stderr, "❌ Mock tool '%s' returning error: %s\n", h.config.Name, errorStr)
+		}
+		return nil, fmt.Errorf(errorStr)
 	}
 
-	// Return error if configured
-	if selectedResponse.Error != "" {
-		return nil, fmt.Errorf("%s", selectedResponse.Error)
-	}
-
-	// Process response with template engine
-	context := map[string]interface{}{
-		"parameters": parameters,
-	}
-
-	// Add individual parameters to context for easier access
-	for key, value := range parameters {
-		context[key] = value
-	}
-
-	processedResponse, err := h.templateEngine.Replace(selectedResponse.Response, context)
+	// Render the response using the template engine
+	renderedResponse, err := h.templateEngine.Replace(selectedResponse.Response, arguments)
 	if err != nil {
-		return nil, fmt.Errorf("template processing failed for tool '%s': %w", h.config.Name, err)
+		if h.debug {
+			fmt.Fprintf(os.Stderr, "❌ Failed to render response for tool '%s': %v\n", h.config.Name, err)
+		}
+		return nil, fmt.Errorf("failed to render response: %w", err)
 	}
 
 	if h.debug {
-		fmt.Printf("✅ Tool '%s' returning response: %v\n", h.config.Name, processedResponse)
+		fmt.Fprintf(os.Stderr, "✅ Mock tool '%s' returning response: %v\n", h.config.Name, renderedResponse)
 	}
 
-	return processedResponse, nil
+	return renderedResponse, nil
 }
 
-// matchesCondition checks if the given parameters match the condition
-func (h *MockToolHandler) matchesCondition(condition map[string]interface{}, parameters map[string]interface{}) bool {
+// matchesCondition checks if the given arguments match the response condition
+func (h *MockToolHandler) matchesCondition(condition map[string]interface{}, arguments map[string]interface{}) bool {
 	if len(condition) == 0 {
-		return false // Empty condition doesn't match (it's a fallback)
+		return true // No condition means it matches everything
 	}
 
 	for key, expectedValue := range condition {
-		actualValue, exists := parameters[key]
-		if !exists {
-			if h.debug {
-				fmt.Printf("🔍 Condition check: parameter '%s' not found in call\n", key)
-			}
-			return false
-		}
-
-		if !h.valuesEqual(expectedValue, actualValue) {
-			if h.debug {
-				fmt.Printf("🔍 Condition check: parameter '%s' expected '%v', got '%v'\n", key, expectedValue, actualValue)
-			}
+		actualValue, exists := arguments[key]
+		if !exists || actualValue != expectedValue {
 			return false
 		}
 	}
 
-	if h.debug {
-		fmt.Printf("✅ Condition matched for tool '%s'\n", h.config.Name)
-	}
 	return true
 }
 

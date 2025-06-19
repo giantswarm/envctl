@@ -76,9 +76,9 @@ func validateMCPServerDefinition(def MCPServerDefinition) error {
 	}
 
 	// Validate type
-	if def.Type != MCPServerTypeLocalCommand && def.Type != MCPServerTypeContainer && def.Type != MCPServerTypeMock {
-		return fmt.Errorf("field 'type': must be one of: %s, %s, %s",
-			MCPServerTypeLocalCommand, MCPServerTypeContainer, MCPServerTypeMock)
+	if def.Type != MCPServerTypeLocalCommand && def.Type != MCPServerTypeContainer {
+		return fmt.Errorf("unsupported MCP server type: %s, supported types: %s, %s",
+			def.Type, MCPServerTypeLocalCommand, MCPServerTypeContainer)
 	}
 
 	// Validate type-specific requirements

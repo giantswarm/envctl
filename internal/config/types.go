@@ -22,7 +22,6 @@ type MCPServerType string
 const (
 	MCPServerTypeLocalCommand MCPServerType = "localCommand"
 	MCPServerTypeContainer    MCPServerType = "container"
-	MCPServerTypeMock         MCPServerType = "mock"
 )
 
 const (

@@ -30,6 +30,7 @@ var (
 	// New flags for mock MCP server
 	testMockMCPServer bool
 	testConfigName    string
+	testMockConfig    string
 )
 
 // completeCategoryFlag provides shell completion for the category flag
@@ -155,6 +156,7 @@ func init() {
 	// New flags for mock MCP server
 	testCmd.Flags().BoolVar(&testMockMCPServer, "mock-mcp-server", false, "Run as mock MCP server")
 	testCmd.Flags().StringVar(&testConfigName, "config-name", "", "Name of the mock MCP server configuration")
+	testCmd.Flags().StringVar(&testMockConfig, "mock-config", "", "Path to mock MCP server configuration file")
 
 	// Shell completion for test flags
 	_ = testCmd.RegisterFlagCompletionFunc("category", completeCategoryFlag)
@@ -180,8 +182,8 @@ func init() {
 		if !testMCPServer && !testMockMCPServer && (testParallel < 1 || testParallel > 10) {
 			return fmt.Errorf("parallel workers must be between 1 and 10, got %d", testParallel)
 		}
-		if testMockMCPServer && testConfigName == "" {
-			return fmt.Errorf("--config-name is required when using --mock-mcp-server")
+		if testMockMCPServer && testMockConfig == "" {
+			return fmt.Errorf("--mock-config is required when using --mock-mcp-server")
 		}
 		return nil
 	}
@@ -197,7 +199,7 @@ func runTest(cmd *cobra.Command, args []string) error {
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-sigChan
-		if !testMCPServer {
+		if !testMCPServer && !testMockMCPServer {
 			fmt.Println("\nReceived interrupt signal, stopping tests gracefully...")
 		}
 		cancel()
@@ -232,20 +234,14 @@ func runTest(cmd *cobra.Command, args []string) error {
 
 	// Run in Mock MCP Server mode if requested
 	if testMockMCPServer {
-		// Load the mock server configuration from test scenarios
-		scenarioPath := testConfigPath
-		if scenarioPath == "" {
-			scenarioPath = testing.GetDefaultScenarioPath()
-		}
-
-		// Create mock MCP server
-		mockServer, err := testing.NewMockMCPServer(testConfigName, scenarioPath, testDebug)
+		// Create mock MCP server using the provided config file
+		mockServer, err := testing.NewMockMCPServerFromFile(testMockConfig, testDebug)
 		if err != nil {
 			return fmt.Errorf("failed to create mock MCP server: %w", err)
 		}
 
 		if testDebug {
-			fmt.Printf("🔧 Starting mock MCP server '%s' (stdio transport)...\n", testConfigName)
+			fmt.Printf("🔧 Starting mock MCP server with config '%s' (stdio transport)...\n", testMockConfig)
 		}
 
 		if err := mockServer.Start(ctx); err != nil {
