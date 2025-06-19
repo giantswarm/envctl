@@ -684,52 +684,6 @@ const testResult = await mcp.callTool("x_envctl-test_test_run_scenarios", {
 });
 ```
 
-### CI/CD Pipeline Integration
-
-#### GitHub Actions
-```yaml
-name: envctl Tests via MCP
-on: [push, pull_request]
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      
-      - name: Build envctl
-        run: go build -o envctl .
-        
-      - name: Run Tests via MCP
-        run: |
-          # Use MCP client to execute tests (instances managed automatically)
-          mcp-client call x_envctl-test_test_run_scenarios \
-            '{"category": "behavioral", "parallel": 4}'
-```
-
-#### Jenkins Pipeline
-```groovy
-pipeline {
-    agent any
-    stages {
-        stage('Build') {
-            steps {
-                sh 'go build -o envctl .'
-            }
-        }
-        stage('Test') {
-            steps {
-                sh '''
-                    # Test framework manages envctl instances automatically
-                    mcp-client call x_envctl-test_test_run_scenarios \
-                        '{"category": "behavioral", "fail_fast": true}'
-                '''
-            }
-        }
-    }
-}
-```
-
 ## Summary
 
 The envctl MCP testing framework provides a powerful, standardized way to execute comprehensive tests through AI-powered workflows. Key takeaways:
