@@ -400,31 +400,33 @@ func (r *testRunner) runStep(ctx context.Context, step TestStep, config TestConf
 
 		// Execute the tool call
 		response, err := r.client.CallTool(stepCtx, step.Tool, step.Args)
-		if err != nil {
-			lastErr = err
-			if attempt < maxAttempts-1 {
-				continue // Retry
-			}
-			result.Result = ResultError
-			result.Error = fmt.Sprintf("tool call failed: %v", err)
-			break
-		}
-
-		// Store response
+		
+		// Store response (even if there's an error)
 		result.Response = response
 
-		// Validate expectations
+		// Validate expectations (always check, even with errors - they might be expected)
 		if !r.validateExpectations(step.Expected, response, err) {
-			lastErr = fmt.Errorf("expectations not met")
+			lastErr = err
+			if lastErr == nil {
+				lastErr = fmt.Errorf("expectations not met")
+			}
 			if attempt < maxAttempts-1 {
 				continue // Retry
 			}
-			result.Result = ResultFailed
-			result.Error = "step expectations not met"
+			
+			if err != nil {
+				result.Result = ResultError
+				result.Error = fmt.Sprintf("tool call failed: %v", err)
+			} else {
+				result.Result = ResultFailed
+				result.Error = "step expectations not met"
+			}
 			break
 		}
 
-		// Success - break out of retry loop
+		// Success - expectations met, even if there was an error
+		result.Result = ResultPassed
+		lastErr = nil // Clear any error since expectations were met
 		break
 	}
 
@@ -466,14 +468,7 @@ func (r *testRunner) validateExpectations(expected TestExpectation, response int
 		}
 	}
 
-	if r.debug {
-		r.logger.Debug("🔍 Validation Debug:\n")
-		r.logger.Debug("   Expected Success: %v\n", expected.Success)
-		r.logger.Debug("   Call Error: %v\n", err)
-		r.logger.Debug("   Response Error Flag: %v\n", isResponseError)
-		r.logger.Debug("   Response Type: %T\n", response)
-		r.logger.Debug("   Response Value: %+v\n", response)
-	}
+
 
 	// Check success expectation
 	if expected.Success && (err != nil || isResponseError) {
@@ -518,23 +513,23 @@ func (r *testRunner) validateExpectations(expected TestExpectation, response int
 		}
 
 		if errorText == "" {
-			if r.debug {
-				r.logger.Debug("❌ Expected error containing text but got no error text (err=%v, isResponseError=%v)\n", err, isResponseError)
-			}
+					if r.debug {
+			r.logger.Debug("❌ Expected error containing text but got no error text (err=%v, isResponseError=%v)", err, isResponseError)
+		}
 			return false
 		}
 
 		for _, expectedText := range expected.ErrorContains {
 			if !containsText(errorText, expectedText) {
 				if r.debug {
-					r.logger.Debug("❌ Error text '%s' does not contain expected text '%s'\n", errorText, expectedText)
+					r.logger.Debug("❌ Error text '%s' does not contain expected text '%s'", errorText, expectedText)
 				}
 				return false
 			}
 		}
 
 		if r.debug {
-			r.logger.Debug("✅ Error expectations met: found all expected text in '%s'\n", errorText)
+			r.logger.Debug("✅ Error expectations met: found all expected text in '%s'", errorText)
 		}
 	}
 

@@ -36,8 +36,7 @@ pre_configuration:
                     - name: "coredns-5d78c9869d-xyz12"
                       status: "Running"
                       image: "k8s.gcr.io/coredns/coredns:v1.8.4"
-              - response:  # Default fallback
-                  error: "namespace '{{ .namespace }}' not found"
+              - error: "namespace '{{ .namespace }}' not found"  # Default fallback
 
           - name: "k8s_pod_create"
             description: "Create a Kubernetes pod"
@@ -157,13 +156,11 @@ steps:
 
   - id: "execute-deployment-workflow"
     description: "Execute the deployment workflow with mock tools"
-    tool: "core_workflow_execute"
+    tool: "workflow_deploy-test-app"
     args:
-      name: "deploy-test-app"
-      parameters:
-        app_name: "test-app"
-        app_image: "nginx:latest"
-        namespace: "default"
+      app_name: "test-app"
+      app_image: "nginx:latest"
+      namespace: "default"
     expected:
       success: true
       contains: ["created", "test-app", "nginx:latest"]

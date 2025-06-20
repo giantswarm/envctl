@@ -144,7 +144,7 @@ func (s *Server) createToolHandler(toolName string) func(context.Context, mcp.Ca
 		// Handle the tool call
 		result, err := handler.HandleCall(args)
 		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("Error: %v", err)), nil
+			return nil, err
 		}
 
 		// Convert result to MCP format
