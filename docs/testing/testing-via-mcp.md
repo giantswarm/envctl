@@ -45,6 +45,35 @@ Unlike CLI usage where you might need to manage envctl services manually, **the 
 }
 ```
 
+### Mocked MCP Server Tools
+
+**Important**: When envctl serves scenarios that include mocked MCP servers, those mock server tools become available through the main envctl MCP interface with a specific naming convention:
+
+**Naming Pattern**: `x_<mcpserver-name>_<tool-name>`
+
+**Example**: If you have a mocked MCP server named "kubernetes" with a tool called "get_pods", it becomes available as:
+- **Tool Name**: `x_kubernetes_get_pods`
+- **Access**: Available through the same envctl serve MCP interface alongside core tools
+
+**Usage in Test Scenarios**:
+```yaml
+steps:
+  - id: test-mock-tool
+    description: "Use mocked Kubernetes tool"
+    tool: x_kubernetes_get_pods  # Note the x_ prefix
+    args:
+      namespace: default
+    expected:
+      success: true
+      contains: ["pod-1", "pod-2"]
+```
+
+**Key Points**:
+- Mock server tools are prefixed with `x_` followed by the server name
+- These tools are available during test execution through the same MCP interface
+- Mock responses are defined in the scenario configuration
+- This enables testing complex integrations without requiring actual external services
+
 ## MCP Tools Overview
 
 The envctl testing framework exposes four primary MCP tools through the aggregator:
@@ -56,7 +85,7 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
 - `category` (string, optional): Filter by category ("behavioral", "integration")
 - `concept` (string, optional): Filter by concept ("serviceclass", "workflow", "mcpserver", "capability", "service")
 - `scenario` (string, optional): Run specific scenario by name
-- `config_path` (string, optional): Path to scenario files
+- `config_path` (string, optional): Path to scenario files (default: `/home/teemow/projects/giantswarm/envctl/internal/testing/scenarios`)
 - `parallel` (number, optional): Number of parallel workers (default: 1)
 - `fail_fast` (boolean, optional): Stop on first failure (default: false)
 - `verbose` (boolean, optional): Enable verbose output (default: false)
@@ -104,7 +133,7 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
 **Parameters**:
 - `category` (string, optional): Filter by category
 - `concept` (string, optional): Filter by concept  
-- `config_path` (string, optional): Path to scenario files
+- `config_path` (string, optional): Path to scenario files (default: `/home/teemow/projects/giantswarm/envctl/internal/testing/scenarios`)
 
 **Response Format**:
 ```json
@@ -239,7 +268,7 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
 {
   "tool": "x_envctl-test_test_run_scenarios",
   "parameters": {
-    "config_path": "/custom/scenarios",
+    "config_path": "/home/teemow/projects/giantswarm/envctl/internal/testing/scenarios",
     "concept": "workflow"
   }
 }
@@ -262,7 +291,7 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
 {
   "tool": "x_envctl-test_test_validate_scenario",
   "parameters": {
-    "scenario_path": "internal/testing/scenarios/"
+    "scenario_path": "/home/teemow/projects/giantswarm/envctl/internal/testing/scenarios/"
   }
 }
 ```
@@ -319,7 +348,7 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
 
 #### 1. Create New Test Scenario
 ```yaml
-# Create: internal/testing/scenarios/my-new-test.yaml
+# Create: /home/teemow/projects/giantswarm/envctl/internal/testing/scenarios/my-new-test.yaml
 name: "my-new-feature-test"
 category: "behavioral"
 concept: "serviceclass"
@@ -342,7 +371,7 @@ steps:
 {
   "tool": "x_envctl-test_test_validate_scenario",
   "parameters": {
-    "scenario_path": "internal/testing/scenarios/my-new-test.yaml"
+    "scenario_path": "/home/teemow/projects/giantswarm/envctl/internal/testing/scenarios/my-new-test.yaml"
   }
 }
 ```
@@ -519,7 +548,7 @@ Check the `instance_logs` in the test results for detailed debugging information
 {
   "tool": "x_envctl-test_test_validate_scenario",
   "parameters": {
-    "scenario_path": "internal/testing/scenarios/"
+    "scenario_path": "/home/teemow/projects/giantswarm/envctl/internal/testing/scenarios/"
   }
 }
 ```
@@ -629,7 +658,7 @@ Common startup issues:
 {
   "tool": "x_envctl-test_test_validate_scenario",
   "parameters": {
-    "scenario_path": "internal/testing/scenarios/"
+    "scenario_path": "/home/teemow/projects/giantswarm/envctl/internal/testing/scenarios/"
   }
 }
 ```
