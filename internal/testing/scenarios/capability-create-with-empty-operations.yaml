@@ -1,34 +1,19 @@
 name: "capability-create-with-empty-operations"
 category: "behavioral"
 concept: "capability"
-description: "Tests creating a capability with an empty 'operations' block."
-tags: ["capability", "create", "validation", "core-api"]
+description: "Tests creating a capability with an empty 'operations' block (should fail)."
+tags: ["capability", "create", "validation", "error-handling", "core-api"]
 timeout: "1m"
 
 steps:
 - id: "create-empty-operations-capability"
-  description: "Create a capability definition with a present but empty 'operations' map"
+  description: "Attempt to create a capability definition with empty operations"
   tool: "core_capability_create"
   args:
-    yamlContent: |
-      name: "empty-operations-capability"
-      type: "test"
-      description: "A capability with an empty operations map"
-      operations: {}
-  expected:
-    success: true
-  cleanup:
-    - id: "delete-empty-operations-capability"
-      tool: "core_capability_delete"
-      args: { name: "empty-operations-capability" }
-
-- id: "get-and-verify-empty-operations"
-  description: "Verify the created capability has an empty operations field"
-  tool: "core_capability_get"
-  args:
     name: "empty-operations-capability"
+    type: "test"
+    description: "A capability with an empty operations map"
+    operations: {}
   expected:
-    success: true
-    json_path:
-      name: "empty-operations-capability"
-      operations: {} 
+    success: false
+    error_contains: ["must have at least one operation"] 

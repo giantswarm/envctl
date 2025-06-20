@@ -245,7 +245,7 @@ func (r *testRunner) runScenario(ctx context.Context, scenario TestScenario, con
 	// Create isolated MCP client for this scenario
 	// This ensures each parallel scenario has its own client and context
 	scenarioClient := NewMCPTestClientWithLogger(r.debug, r.logger)
-	
+
 	// Connect the isolated MCP client to this specific instance
 	if err := scenarioClient.Connect(scenarioCtx, instance.Endpoint); err != nil {
 		result.Result = ResultError

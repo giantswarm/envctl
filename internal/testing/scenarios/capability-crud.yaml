@@ -28,21 +28,20 @@ steps:
   description: "Create a new capability definition"
   tool: "core_capability_create"
   args:
-    yamlContent: |
-      name: "my-first-capability"
-      type: "kubernetes"
-      version: "1.0.0"
-      description: "Manages basic k8s resources"
-      operations:
-        create_pod:
-          description: "Creates a new pod"
-          parameters:
-            name:
-              type: "string"
-              required: true
-              description: "The name of the pod"
-          workflow:
-            name: "sample-workflow-for-caps" # Reference the pre-configured workflow
+    name: "my-first-capability"
+    type: "kubernetes"
+    version: "1.0.0"
+    description: "Manages basic k8s resources"
+    operations:
+      create_pod:
+        description: "Creates a new pod"
+        parameters:
+          name:
+            type: "string"
+            required: true
+            description: "The name of the pod"
+        workflow:
+          name: "sample-workflow-for-caps"
   expected:
     success: true
     contains: ["my-first-capability"]
@@ -64,11 +63,8 @@ steps:
   tool: "core_capability_update"
   args:
     name: "my-first-capability"
-    yamlContent: |
-      name: "my-first-capability"
-      type: "kubernetes"
-      version: "1.0.1"
-      description: "An updated description for the capability"
+    version: "1.0.1"
+    description: "An updated description for the capability"
   expected:
     success: true
 

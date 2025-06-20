@@ -10,9 +10,12 @@ steps:
   description: "Attempt to create a capability without the required 'name' field"
   tool: "core_capability_create"
   args:
-    yamlContent: |
-      type: "test"
-      description: "A capability with no name"
+    type: "test"
+    description: "A capability with no name"
+    operations:
+      test_operation:
+        description: "A test operation"
+        requires: []
   expected:
     success: false
-    error_contains: ["name is required"] 
+    error_contains: ["name parameter is required"] 

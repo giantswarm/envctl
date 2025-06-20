@@ -1,33 +1,19 @@
 name: "capability-create-no-operations"
 category: "behavioral"
 concept: "capability"
-description: "Tests creating a capability without an 'operations' block."
-tags: ["capability", "create", "validation", "core-api"]
+description: "Tests creating a capability without operations (should fail)."
+tags: ["capability", "create", "validation", "error-handling", "core-api"]
 timeout: "1m"
 
 steps:
 - id: "create-no-operations-capability"
-  description: "Create a capability definition missing the optional 'operations' map"
+  description: "Attempt to create a capability definition without operations"
   tool: "core_capability_create"
   args:
-    yamlContent: |
-      name: "no-operations-capability"
-      type: "test"
-      description: "A capability with no operations"
-  expected:
-    success: true
-  cleanup:
-    - id: "delete-no-operations-capability"
-      tool: "core_capability_delete"
-      args: { name: "no-operations-capability" }
-
-- id: "get-and-verify-no-operations"
-  description: "Verify the created capability has a null/empty operations field"
-  tool: "core_capability_get"
-  args:
     name: "no-operations-capability"
+    type: "test"
+    description: "A capability with no operations"
+    operations: {}
   expected:
-    success: true
-    json_path:
-      name: "no-operations-capability"
-      operations: null 
+    success: false
+    error_contains: ["must have at least one operation"] 

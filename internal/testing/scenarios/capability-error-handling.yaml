@@ -6,33 +6,56 @@ tags: ["capability", "error-handling", "core-api"]
 timeout: "5m"
 
 steps:
-- id: "create-capability-invalid-yaml"
-  description: "Attempt to create a capability with invalid YAML syntax"
-  tool: "core_capability_create"
-  args:
-    yamlContent: "name: 'my-cap',,, oops"
-  expected:
-    success: false
-    error_contains: ["invalid YAML"]
-
 - id: "create-capability-missing-name"
   description: "Attempt to create a capability with a missing 'name' field"
   tool: "core_capability_create"
   args:
-    yamlContent: |
-      type: "test"
-      description: "This capability is missing a name"
+    type: "test"
+    description: "This capability is missing a name"
+    operations:
+      test_operation:
+        description: "A test operation"
+        requires: []
   expected:
     success: false
-    error_contains: ["name is required"]
+    error_contains: ["name parameter is required"]
+
+- id: "create-capability-missing-type"
+  description: "Attempt to create a capability with a missing 'type' field"
+  tool: "core_capability_create"
+  args:
+    name: "missing-type-cap"
+    description: "This capability is missing a type"
+    operations:
+      test_operation:
+        description: "A test operation"
+        requires: []
+  expected:
+    success: false
+    error_contains: ["type parameter is required"]
+
+- id: "create-capability-missing-operations"
+  description: "Attempt to create a capability with missing operations"
+  tool: "core_capability_create"
+  args:
+    name: "missing-ops-cap"
+    type: "test"
+    description: "This capability has no operations"
+    operations: {}
+  expected:
+    success: false
+    error_contains: ["must have at least one operation"]
 
 - id: "create-capability-with-conflicting-name"
   description: "Create a capability, then try to create another with the same name"
   tool: "core_capability_create"
   args:
-    yamlContent: |
-      name: "conflicting-cap"
-      type: "test"
+    name: "conflicting-cap"
+    type: "test"
+    operations:
+      test_operation:
+        description: "A test operation"
+        requires: []
   expected:
     success: true
   cleanup:
@@ -43,9 +66,12 @@ steps:
   description: "Attempt the conflicting creation"
   tool: "core_capability_create"
   args:
-    yamlContent: |
-      name: "conflicting-cap"
-      type: "another-test"
+    name: "conflicting-cap"
+    type: "another-test"
+    operations:
+      test_operation:
+        description: "Another test operation"
+        requires: []
   expected:
     success: false
     error_contains: ["already exists"]
@@ -64,8 +90,7 @@ steps:
   tool: "core_capability_update"
   args:
     name: "non-existent-capability"
-    yamlContent: |
-      name: "non-existent-capability"
+    description: "Updated description"
   expected:
     success: false
     error_contains: ["not found"]

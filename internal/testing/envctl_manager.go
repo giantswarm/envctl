@@ -105,14 +105,14 @@ type managedProcess struct {
 
 // envCtlInstanceManager implements the EnvCtlInstanceManager interface
 type envCtlInstanceManager struct {
-	debug         bool
-	basePort      int
-	portOffset    int
-	tempDir       string
-	processes     map[string]*managedProcess // Track processes by instance ID
-	mu            sync.RWMutex
-	logger        TestLogger
-	
+	debug      bool
+	basePort   int
+	portOffset int
+	tempDir    string
+	processes  map[string]*managedProcess // Track processes by instance ID
+	mu         sync.RWMutex
+	logger     TestLogger
+
 	// Port reservation system for thread-safe parallel execution
 	portMu        sync.Mutex     // Protects port allocation
 	reservedPorts map[int]string // port -> instanceID mapping
@@ -671,7 +671,7 @@ func (m *envCtlInstanceManager) showLogs(instance *EnvCtlInstance) {
 func (m *envCtlInstanceManager) findAvailablePort(instanceID string) (int, error) {
 	m.portMu.Lock()
 	defer m.portMu.Unlock()
-	
+
 	for i := 0; i < 100; i++ { // Try up to 100 ports
 		port := m.basePort + m.portOffset + i
 
@@ -691,17 +691,17 @@ func (m *envCtlInstanceManager) findAvailablePort(instanceID string) (int, error
 			}
 			continue // Port not available, try next
 		}
-		
+
 		ln.Close() // Close immediately to free the port
-		
+
 		// ATOMIC: Reserve the port and update offset
 		m.reservedPorts[port] = instanceID
 		m.portOffset = i + 1 // Next search starts from next port
-		
+
 		if m.debug {
 			m.logger.Debug("✅ Reserved port %d for instance %s\n", port, instanceID)
 		}
-		
+
 		return port, nil
 	}
 
@@ -712,7 +712,7 @@ func (m *envCtlInstanceManager) findAvailablePort(instanceID string) (int, error
 func (m *envCtlInstanceManager) releasePort(port int, instanceID string) {
 	m.portMu.Lock()
 	defer m.portMu.Unlock()
-	
+
 	// Check if the port is actually reserved by this instance
 	if existingInstanceID, reserved := m.reservedPorts[port]; reserved {
 		if existingInstanceID == instanceID {

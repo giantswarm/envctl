@@ -10,13 +10,16 @@ steps:
   description: "Create a capability definition that includes a metadata map"
   tool: "core_capability_create"
   args:
-    yamlContent: |
-      name: "metadata-capability"
-      type: "test"
-      description: "A capability with metadata"
-      metadata:
-        author: "envctl-test"
-        reference: "ticket-123"
+    name: "metadata-capability"
+    type: "test"
+    description: "A capability with metadata"
+    operations:
+      test_operation:
+        description: "A test operation"
+        requires: []
+    metadata:
+      author: "envctl-test"
+      reference: "ticket-123"
   expected:
     success: true
   cleanup:
