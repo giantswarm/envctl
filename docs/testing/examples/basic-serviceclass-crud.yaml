@@ -22,20 +22,20 @@ timeout: "10m"
 
 # Test execution steps
 steps:
-  - name: "list-initial-serviceclasses"
+  - id: "list-initial-serviceclasses"
     description: "Verify no ServiceClasses exist initially"
     tool: "core_serviceclass_list"
-    parameters: {}
+    args: {}
     expected:
       success: true
       json_path:
         total: 0
     timeout: "30s"
 
-  - name: "create-test-serviceclass"
+  - id: "create-test-serviceclass"
     description: "Create a basic ServiceClass for testing"
     tool: "core_serviceclass_create"
-    parameters:
+    args:
       yaml: |
         name: example-web-service
         type: "web-application"
@@ -73,10 +73,10 @@ steps:
       contains: ["created service class", "example-web-service"]
     timeout: "1m"
 
-  - name: "verify-serviceclass-created"
+  - id: "verify-serviceclass-created"
     description: "Verify the ServiceClass was created correctly"
     tool: "core_serviceclass_get"
-    parameters:
+    args:
       name: "example-web-service"
     expected:
       success: true
@@ -87,10 +87,10 @@ steps:
         description: "Example web application ServiceClass"
     timeout: "30s"
 
-  - name: "check-serviceclass-availability"
+  - id: "check-serviceclass-availability"
     description: "Check if ServiceClass is available for service creation"
     tool: "core_serviceclass_available"
-    parameters:
+    args:
       name: "example-web-service"
     expected:
       success: true
@@ -99,10 +99,10 @@ steps:
         available: false  # Tools may not be available in test environment
     timeout: "30s"
 
-  - name: "list-serviceclasses-with-new"
+  - id: "list-serviceclasses-with-new"
     description: "Verify ServiceClass appears in list"
     tool: "core_serviceclass_list"
-    parameters: {}
+    args: {}
     expected:
       success: true
       json_path:
@@ -112,10 +112,10 @@ steps:
 
 # Cleanup operations (always executed, even if steps fail)
 cleanup:
-  - name: "delete-test-serviceclass"
+  - id: "delete-test-serviceclass"
     description: "Remove the test ServiceClass"
     tool: "core_serviceclass_delete"
-    parameters:
+    args:
       name: "example-web-service"
     expected:
       success: true
@@ -123,10 +123,10 @@ cleanup:
     timeout: "30s"
     continue_on_failure: true
 
-  - name: "verify-serviceclass-deleted"
+  - id: "verify-serviceclass-deleted"
     description: "Verify ServiceClass was completely removed"
     tool: "core_serviceclass_get"
-    parameters:
+    args:
       name: "example-web-service"
     expected:
       success: false
