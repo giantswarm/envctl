@@ -48,12 +48,6 @@ func NewTestFrameworkWithVerbose(verbose, debug bool, basePort int, reportPath s
 // Note: In MCP server mode, verbose defaults to true and debug output is controlled by the 
 // silent logger to prevent stdio contamination.
 func NewTestFrameworkForMode(mode ExecutionMode, verbose, debug bool, basePort int, reportPath string) (*TestFramework, error) {
-	// Create instance manager
-	instanceManager, err := NewEnvCtlInstanceManager(debug, basePort)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create instance manager: %w", err)
-	}
-
 	// Create logger based on execution mode
 	var logger TestLogger
 	switch mode {
@@ -63,6 +57,12 @@ func NewTestFrameworkForMode(mode ExecutionMode, verbose, debug bool, basePort i
 		logger = NewSilentLogger(verbose, debug)
 	default:
 		logger = NewStdoutLogger(verbose, debug)
+	}
+
+	// Create instance manager
+	instanceManager, err := NewEnvCtlInstanceManagerWithLogger(debug, basePort, logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create instance manager: %w", err)
 	}
 
 	// Create MCP client with logger

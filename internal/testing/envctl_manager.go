@@ -111,10 +111,16 @@ type envCtlInstanceManager struct {
 	tempDir    string
 	processes  map[string]*managedProcess // Track processes by instance ID
 	mu         sync.RWMutex
+	logger     TestLogger
 }
 
 // NewEnvCtlInstanceManager creates a new envctl instance manager
 func NewEnvCtlInstanceManager(debug bool, basePort int) (EnvCtlInstanceManager, error) {
+	return NewEnvCtlInstanceManagerWithLogger(debug, basePort, NewStdoutLogger(false, debug))
+}
+
+// NewEnvCtlInstanceManagerWithLogger creates a new envctl instance manager with custom logger
+func NewEnvCtlInstanceManagerWithLogger(debug bool, basePort int, logger TestLogger) (EnvCtlInstanceManager, error) {
 	// Create temporary directory for test configurations
 	tempDir, err := os.MkdirTemp("", "envctl-test-*")
 	if err != nil {
@@ -126,6 +132,7 @@ func NewEnvCtlInstanceManager(debug bool, basePort int) (EnvCtlInstanceManager, 
 		basePort:  basePort,
 		tempDir:   tempDir,
 		processes: make(map[string]*managedProcess),
+		logger:    logger,
 	}, nil
 }
 
@@ -147,7 +154,7 @@ func (m *envCtlInstanceManager) CreateInstance(ctx context.Context, scenarioName
 	}
 
 	if m.debug {
-		fmt.Printf("🏗️  Creating envctl instance %s with config at %s\n", instanceID, configPath)
+		m.logger.Debug("🏗️  Creating envctl instance %s with config at %s\n", instanceID, configPath)
 	}
 
 	// Generate configuration files
@@ -185,7 +192,7 @@ func (m *envCtlInstanceManager) CreateInstance(ctx context.Context, scenarioName
 	}
 
 	if m.debug {
-		fmt.Printf("🚀 Started envctl instance %s on port %d (PID: %d)\n", instanceID, port, managedProc.cmd.Process.Pid)
+		m.logger.Debug("🚀 Started envctl instance %s on port %d (PID: %d)\n", instanceID, port, managedProc.cmd.Process.Pid)
 	}
 
 	return instance, nil
@@ -194,7 +201,7 @@ func (m *envCtlInstanceManager) CreateInstance(ctx context.Context, scenarioName
 // DestroyInstance stops and cleans up an envctl serve instance
 func (m *envCtlInstanceManager) DestroyInstance(ctx context.Context, instance *EnvCtlInstance) error {
 	if m.debug {
-		fmt.Printf("🛑 Destroying envctl instance %s (PID: %d)\n", instance.ID, instance.Process.Pid)
+		m.logger.Debug("🛑 Destroying envctl instance %s (PID: %d)\n", instance.ID, instance.Process.Pid)
 	}
 
 	// Get the managed process
@@ -205,9 +212,9 @@ func (m *envCtlInstanceManager) DestroyInstance(ctx context.Context, instance *E
 	if exists && managedProc != nil {
 		// Attempt graceful shutdown first
 		if err := m.gracefulShutdown(managedProc, instance.ID); err != nil {
-			if m.debug {
-				fmt.Printf("⚠️  Graceful shutdown failed for %s: %v, forcing termination\n", instance.ID, err)
-			}
+					if m.debug {
+			m.logger.Debug("⚠️  Graceful shutdown failed for %s: %v, forcing termination\n", instance.ID, err)
+		}
 		}
 
 		// Collect logs before cleanup
@@ -225,13 +232,13 @@ func (m *envCtlInstanceManager) DestroyInstance(ctx context.Context, instance *E
 	// Clean up configuration directory
 	if err := os.RemoveAll(instance.ConfigPath); err != nil {
 		if m.debug {
-			fmt.Printf("⚠️  Failed to remove config directory %s: %v\n", instance.ConfigPath, err)
+			m.logger.Debug("⚠️  Failed to remove config directory %s: %v\n", instance.ConfigPath, err)
 		}
 		return fmt.Errorf("failed to remove config directory: %w", err)
 	}
 
 	if m.debug {
-		fmt.Printf("✅ Destroyed envctl instance %s\n", instance.ID)
+		m.logger.Debug("✅ Destroyed envctl instance %s\n", instance.ID)
 	}
 
 	return nil
@@ -249,7 +256,7 @@ func (m *envCtlInstanceManager) gracefulShutdown(managedProc *managedProcess, in
 	if err := process.Signal(syscall.SIGTERM); err != nil {
 		// If SIGTERM fails, try SIGKILL
 		if m.debug {
-			fmt.Printf("🔄 SIGTERM failed for %s, using SIGKILL: %v\n", instanceID, err)
+			m.logger.Debug("🔄 SIGTERM failed for %s, using SIGKILL: %v\n", instanceID, err)
 		}
 		return process.Kill()
 	}
@@ -267,15 +274,15 @@ func (m *envCtlInstanceManager) gracefulShutdown(managedProc *managedProcess, in
 	case err := <-done:
 		if m.debug {
 			if err != nil {
-				fmt.Printf("✅ Process %s exited with: %v\n", instanceID, err)
+				m.logger.Debug("✅ Process %s exited with: %v\n", instanceID, err)
 			} else {
-				fmt.Printf("✅ Process %s exited gracefully\n", instanceID)
+				m.logger.Debug("✅ Process %s exited gracefully\n", instanceID)
 			}
 		}
 		return nil
 	case <-time.After(shutdownTimeout):
 		if m.debug {
-			fmt.Printf("⏰ Graceful shutdown timeout for %s, forcing kill\n", instanceID)
+			m.logger.Debug("⏰ Graceful shutdown timeout for %s, forcing kill\n", instanceID)
 		}
 		return process.Kill()
 	}
@@ -284,7 +291,7 @@ func (m *envCtlInstanceManager) gracefulShutdown(managedProc *managedProcess, in
 // WaitForReady waits for an instance to be ready to accept connections and has all expected resources available
 func (m *envCtlInstanceManager) WaitForReady(ctx context.Context, instance *EnvCtlInstance) error {
 	if m.debug {
-		fmt.Printf("⏳ Waiting for envctl instance %s to be ready at %s\n", instance.ID, instance.Endpoint)
+		m.logger.Debug("⏳ Waiting for envctl instance %s to be ready at %s\n", instance.ID, instance.Endpoint)
 	}
 
 	timeout := 60 * time.Second // Increased timeout for more complex setups
@@ -317,17 +324,17 @@ func (m *envCtlInstanceManager) WaitForReady(ctx context.Context, instance *EnvC
 				conn.Close()
 				portReady = true
 				if m.debug {
-					fmt.Printf("✅ Port %d is ready\n", instance.Port)
+					m.logger.Debug("✅ Port %d is ready\n", instance.Port)
 				}
 			} else if m.debug {
-				fmt.Printf("🔍 Port %d not ready yet: %v\n", instance.Port, err)
+				m.logger.Debug("🔍 Port %d not ready yet: %v\n", instance.Port, err)
 			}
 		}
 	}
 
 	// Now wait for services to be fully initialized
 	if m.debug {
-		fmt.Printf("⏳ Waiting for services to be fully initialized and all resources to be available...\n")
+		m.logger.Debug("⏳ Waiting for services to be fully initialized and all resources to be available...\n")
 	}
 
 	// Create MCP client to check availability
@@ -344,7 +351,7 @@ func (m *envCtlInstanceManager) WaitForReady(ctx context.Context, instance *EnvC
 		select {
 		case <-connectCtx.Done():
 			if m.debug {
-				fmt.Printf("⚠️  Failed to connect to MCP aggregator, proceeding anyway\n")
+				m.logger.Debug("⚠️  Failed to connect to MCP aggregator, proceeding anyway\n")
 			}
 			// If we can't connect to MCP, fall back to the old behavior
 			time.Sleep(3 * time.Second)
@@ -354,10 +361,10 @@ func (m *envCtlInstanceManager) WaitForReady(ctx context.Context, instance *EnvC
 			if err == nil {
 				connected = true
 				if m.debug {
-					fmt.Printf("✅ Connected to MCP aggregator\n")
+					m.logger.Debug("✅ Connected to MCP aggregator\n")
 				}
 			} else if m.debug {
-				fmt.Printf("🔍 Waiting for MCP connection: %v\n", err)
+				m.logger.Debug("🔍 Waiting for MCP connection: %v\n", err)
 			}
 		}
 	}
@@ -372,7 +379,7 @@ func (m *envCtlInstanceManager) WaitForReady(ctx context.Context, instance *EnvC
 	if len(expectedTools) == 0 && len(expectedServiceClasses) == 0 && len(expectedServices) == 0 && 
 	   len(expectedWorkflows) == 0 && len(expectedCapabilities) == 0 {
 		if m.debug {
-			fmt.Printf("ℹ️  No expected resources specified, waiting for basic service readiness\n")
+			m.logger.Debug("ℹ️  No expected resources specified, waiting for basic service readiness\n")
 		}
 		// If no specific resources expected, wait a bit longer for general readiness
 		time.Sleep(5 * time.Second)
@@ -381,19 +388,19 @@ func (m *envCtlInstanceManager) WaitForReady(ctx context.Context, instance *EnvC
 
 	if m.debug {
 		if len(expectedTools) > 0 {
-			fmt.Printf("🎯 Waiting for %d expected tools: %v\n", len(expectedTools), expectedTools)
+			m.logger.Debug("🎯 Waiting for %d expected tools: %v\n", len(expectedTools), expectedTools)
 		}
 		if len(expectedServiceClasses) > 0 {
-			fmt.Printf("🎯 Waiting for %d expected ServiceClasses: %v\n", len(expectedServiceClasses), expectedServiceClasses)
+			m.logger.Debug("🎯 Waiting for %d expected ServiceClasses: %v\n", len(expectedServiceClasses), expectedServiceClasses)
 		}
 		if len(expectedServices) > 0 {
-			fmt.Printf("🎯 Waiting for %d expected Services: %v\n", len(expectedServices), expectedServices)
+			m.logger.Debug("🎯 Waiting for %d expected Services: %v\n", len(expectedServices), expectedServices)
 		}
 		if len(expectedWorkflows) > 0 {
-			fmt.Printf("🎯 Waiting for %d expected Workflows: %v\n", len(expectedWorkflows), expectedWorkflows)
+			m.logger.Debug("🎯 Waiting for %d expected Workflows: %v\n", len(expectedWorkflows), expectedWorkflows)
 		}
 		if len(expectedCapabilities) > 0 {
-			fmt.Printf("🎯 Waiting for %d expected Capabilities: %v\n", len(expectedCapabilities), expectedCapabilities)
+			m.logger.Debug("🎯 Waiting for %d expected Capabilities: %v\n", len(expectedCapabilities), expectedCapabilities)
 		}
 	}
 
@@ -409,12 +416,12 @@ func (m *envCtlInstanceManager) WaitForReady(ctx context.Context, instance *EnvC
 		select {
 		case <-resourceCtx.Done():
 			if m.debug {
-				fmt.Printf("⚠️  Resource availability check timed out, checking what's available...\n")
+				m.logger.Debug("⚠️  Resource availability check timed out, checking what's available...\n")
 				// Show what's available for debugging
 				if len(expectedTools) > 0 {
 					if availableTools, err := mcpClient.ListTools(context.Background()); err == nil {
-						fmt.Printf("🛠️  Available tools: %v\n", availableTools)
-						fmt.Printf("🎯 Expected tools: %v\n", expectedTools)
+						m.logger.Debug("🛠️  Available tools: %v\n", availableTools)
+						m.logger.Debug("🎯 Expected tools: %v\n", expectedTools)
 					}
 				}
 			}
@@ -428,7 +435,7 @@ func (m *envCtlInstanceManager) WaitForReady(ctx context.Context, instance *EnvC
 				availableTools, err := mcpClient.ListTools(resourceCtx)
 				if err != nil {
 					if m.debug {
-						fmt.Printf("🔍 Failed to list tools: %v\n", err)
+						m.logger.Debug("🔍 Failed to list tools: %v\n", err)
 					}
 					allReady = false
 					notReadyReasons = append(notReadyReasons, "tools check failed")
@@ -447,7 +454,7 @@ func (m *envCtlInstanceManager) WaitForReady(ctx context.Context, instance *EnvC
 					available, err := m.checkServiceClassAvailability(mcpClient, resourceCtx, serviceClassName)
 					if err != nil {
 						if m.debug {
-							fmt.Printf("🔍 Failed to check ServiceClass %s: %v\n", serviceClassName, err)
+							m.logger.Debug("🔍 Failed to check ServiceClass %s: %v\n", serviceClassName, err)
 						}
 						allReady = false
 						notReadyReasons = append(notReadyReasons, fmt.Sprintf("ServiceClass %s check failed", serviceClassName))
@@ -464,7 +471,7 @@ func (m *envCtlInstanceManager) WaitForReady(ctx context.Context, instance *EnvC
 					available, err := m.checkServiceAvailability(mcpClient, resourceCtx, serviceName)
 					if err != nil {
 						if m.debug {
-							fmt.Printf("🔍 Failed to check Service %s: %v\n", serviceName, err)
+							m.logger.Debug("🔍 Failed to check Service %s: %v\n", serviceName, err)
 						}
 						allReady = false
 						notReadyReasons = append(notReadyReasons, fmt.Sprintf("Service %s check failed", serviceName))
@@ -480,7 +487,7 @@ func (m *envCtlInstanceManager) WaitForReady(ctx context.Context, instance *EnvC
 				availableWorkflows, err := m.checkWorkflowsAvailability(mcpClient, resourceCtx)
 				if err != nil {
 					if m.debug {
-						fmt.Printf("🔍 Failed to list workflows: %v\n", err)
+						m.logger.Debug("🔍 Failed to list workflows: %v\n", err)
 					}
 					allReady = false
 					notReadyReasons = append(notReadyReasons, "workflows check failed")
@@ -506,7 +513,7 @@ func (m *envCtlInstanceManager) WaitForReady(ctx context.Context, instance *EnvC
 				availableCapabilities, err := m.checkCapabilitiesAvailability(mcpClient, resourceCtx)
 				if err != nil {
 					if m.debug {
-						fmt.Printf("🔍 Failed to list capabilities: %v\n", err)
+						m.logger.Debug("🔍 Failed to list capabilities: %v\n", err)
 					}
 					allReady = false
 					notReadyReasons = append(notReadyReasons, "capabilities check failed")
@@ -529,7 +536,7 @@ func (m *envCtlInstanceManager) WaitForReady(ctx context.Context, instance *EnvC
 
 			if allReady {
 				if m.debug {
-					fmt.Printf("✅ All expected resources are available!\n")
+					m.logger.Debug("✅ All expected resources are available!\n")
 				}
 				// Wait a little bit more to ensure everything is fully stable
 				time.Sleep(2 * time.Second)
@@ -537,7 +544,7 @@ func (m *envCtlInstanceManager) WaitForReady(ctx context.Context, instance *EnvC
 			}
 
 			if m.debug {
-				fmt.Printf("⏳ Still waiting for resources: %v\n", notReadyReasons)
+				m.logger.Debug("⏳ Still waiting for resources: %v\n", notReadyReasons)
 			}
 		}
 	}
@@ -569,7 +576,7 @@ func (m *envCtlInstanceManager) extractExpectedTools(config *EnvCtlPreConfigurat
 	}
 	
 	if m.debug && len(expectedTools) > 0 {
-		fmt.Printf("🎯 Extracted expected tools from configuration: %v\n", expectedTools)
+		m.logger.Debug("🎯 Extracted expected tools from configuration: %v\n", expectedTools)
 	}
 	
 	return expectedTools
@@ -621,13 +628,13 @@ func (m *envCtlInstanceManager) showLogs(instance *EnvCtlInstance) {
 	// Show stdout logs
 	stdoutPath := filepath.Join(logDir, "stdout.log")
 	if content, err := os.ReadFile(stdoutPath); err == nil && len(content) > 0 {
-		fmt.Printf("📄 Instance %s stdout logs:\n%s\n", instance.ID, string(content))
+		m.logger.Debug("📄 Instance %s stdout logs:\n%s\n", instance.ID, string(content))
 	}
 
 	// Show stderr logs
 	stderrPath := filepath.Join(logDir, "stderr.log")
 	if content, err := os.ReadFile(stderrPath); err == nil && len(content) > 0 {
-		fmt.Printf("🚨 Instance %s stderr logs:\n%s\n", instance.ID, string(content))
+		m.logger.Debug("🚨 Instance %s stderr logs:\n%s\n", instance.ID, string(content))
 	}
 }
 
@@ -670,7 +677,7 @@ func (m *envCtlInstanceManager) startEnvCtlProcess(ctx context.Context, configPa
 	cmd := exec.CommandContext(ctx, envctlPath, args...)
 
 	if m.debug {
-		fmt.Printf("🚀 Starting command: %s %v\n", envctlPath, args)
+		m.logger.Debug("🚀 Starting command: %s %v\n", envctlPath, args)
 	}
 
 	// Create log capture
@@ -724,7 +731,7 @@ func (m *envCtlInstanceManager) getEnvCtlBinaryPath() (string, error) {
 	// Try to build envctl if we're in the source directory
 	if m.isInEnvCtlSource(cwd) {
 		if m.debug {
-			fmt.Printf("🔨 Building envctl binary from source\n")
+			m.logger.Debug("🔨 Building envctl binary from source\n")
 		}
 
 		buildCmd := exec.Command("go", "build", "-o", "envctl", ".")
@@ -802,7 +809,7 @@ func (m *envCtlInstanceManager) generateConfigFiles(configPath string, config *E
 	if m.debug {
 		// Show the generated config
 		configContent, _ := os.ReadFile(configFile)
-		fmt.Printf("📋 Generated config.yaml:\n%s\n", string(configContent))
+		m.logger.Debug("📋 Generated config.yaml:\n%s\n", string(configContent))
 	}
 
 	// Generate configuration files if config is provided
@@ -828,8 +835,8 @@ func (m *envCtlInstanceManager) generateConfigFiles(configPath string, config *E
 				}
 				
 				if m.debug {
-					fmt.Printf("🧪 ServerDef for %s: %+v\n", mcpServer.Name, serverDef)
-					fmt.Printf("🧪 Tools config for %s: %+v\n", mcpServer.Name, mcpServer.Config)
+					m.logger.Debug("🧪 ServerDef for %s: %+v\n", mcpServer.Name, serverDef)
+					m.logger.Debug("🧪 Tools config for %s: %+v\n", mcpServer.Name, mcpServer.Config)
 				}
 				
 				// Save server definition to mcpservers directory (what envctl serve loads)
@@ -845,7 +852,7 @@ func (m *envCtlInstanceManager) generateConfigFiles(configPath string, config *E
 				}
 				
 				if m.debug {
-					fmt.Printf("🧪 Created mock server %s with %d tools\n", mcpServer.Name, len(tools.([]interface{})))
+					m.logger.Debug("🧪 Created mock server %s with %d tools\n", mcpServer.Name, len(tools.([]interface{})))
 				}
 			} else {
 				// For regular servers, use the Config field directly
@@ -904,8 +911,8 @@ func (m *envCtlInstanceManager) writeYAMLFile(filename string, data interface{})
 	}
 
 	if m.debug {
-		fmt.Printf("📝 Generated config file: %s\n", filename)
-		fmt.Printf("📄 Content:\n%s\n", string(yamlData))
+		m.logger.Debug("📝 Generated config file: %s\n", filename)
+		m.logger.Debug("📄 Content:\n%s\n", string(yamlData))
 	}
 
 	return nil
@@ -959,7 +966,7 @@ func (m *envCtlInstanceManager) extractExpectedServiceClasses(config *EnvCtlPreC
 	}
 	
 	if m.debug && len(expectedServiceClasses) > 0 {
-		fmt.Printf("🎯 Extracted expected ServiceClasses from configuration: %v\n", expectedServiceClasses)
+		m.logger.Debug("🎯 Extracted expected ServiceClasses from configuration: %v\n", expectedServiceClasses)
 	}
 	
 	return expectedServiceClasses
@@ -1005,7 +1012,7 @@ func (m *envCtlInstanceManager) checkServiceClassAvailability(client MCPTestClie
 	}
 
 	if m.debug {
-		fmt.Printf("🔍 ServiceClass availability check result for %s: %+v\n", serviceClassName, result)
+		m.logger.Debug("🔍 ServiceClass availability check result for %s: %+v\n", serviceClassName, result)
 	}
 
 	// Try to extract the JSON content from the MCP response
@@ -1058,23 +1065,23 @@ func (m *envCtlInstanceManager) checkServiceClassAvailability(client MCPTestClie
 			if available, exists := serviceClassInfo["available"]; exists {
 				if availableBool, ok := available.(bool); ok {
 					if m.debug {
-						fmt.Printf("✅ ServiceClass %s availability: %v\n", serviceClassName, availableBool)
+						m.logger.Debug("✅ ServiceClass %s availability: %v\n", serviceClassName, availableBool)
 					}
 					return availableBool, nil
 				}
 			}
 		} else {
 			if m.debug {
-				fmt.Printf("🔍 Failed to parse JSON from text field: %v, content: %s\n", err, jsonStr)
+				m.logger.Debug("🔍 Failed to parse JSON from text field: %v, content: %s\n", err, jsonStr)
 			}
 		}
 	}
 
 	// If we get here, the parsing failed - let's add more debugging
 	if m.debug {
-		fmt.Printf("🔍 ServiceClass availability check failed to parse response: %+v\n", result)
+		m.logger.Debug("🔍 ServiceClass availability check failed to parse response: %+v\n", result)
 		if resultBytes, err := json.MarshalIndent(result, "", "  "); err == nil {
-			fmt.Printf("🔍 Full response JSON:\n%s\n", string(resultBytes))
+			m.logger.Debug("🔍 Full response JSON:\n%s\n", string(resultBytes))
 		}
 	}
 
