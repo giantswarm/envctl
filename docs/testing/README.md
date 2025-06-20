@@ -1,16 +1,121 @@
 # envctl Test Framework
 
+## Recent Updates and Improvements
+
+**🆕 Major Architecture Improvements**: The envctl test framework has been significantly enhanced with the following key changes:
+
+### Isolated Test Execution
+- **Separate envctl Instances**: Each test scenario now runs against its own dedicated envctl serve instance
+- **Port Isolation**: Instances are automatically assigned unique ports (starting from base port 18000)
+- **Configuration Isolation**: Each scenario gets its own temporary configuration directory
+- **Complete Cleanup**: Instances and configurations are automatically cleaned up after each test
+
+### Updated Tool Naming Conventions
+- **Workflows**: Now use `workflow_<workflow-name>` prefix (old `action_<workflow-name>` is deprecated)
+- **Mock Tools**: Use `x_<mockserver-name>_<tool-name>` pattern for mock MCP server tools
+- **Core Tools**: Continue to use direct names like `core_serviceclass_create`
+
+### Essential Mock Integration
+- **Tests Core Functionality**: Mock MCP servers are essential for testing envctl's core MCP server management and tool aggregation capabilities
+- **Enables Concept Testing**: Other envctl concepts (workflows, serviceclasses, capabilities, services) depend on MCP server tools being available
+- **Automatic Configuration**: Mock MCP server config files and server definitions are generated from scenario definitions
+- **Full Integration Testing**: Mock servers run as separate processes managed by envctl serve, so the test framework can test the complete mcpserver management workflow
+- **Tool Aggregation Testing**: Validates that mock tools are properly exposed through envctl's aggregated MCP interface
+
+### Dual Execution Modes
+- **CLI Mode**: Traditional command-line execution with `envctl test`
+- **MCP Server Mode**: New `envctl test --mcp-server` for IDE integration and AI-powered testing
+
+### Improved Debugging
+- **Instance Log Capture**: All stdout/stderr from test instances is captured and available
+- **Enhanced Error Reporting**: Detailed error information with context from instance logs
+- **Debug Mode**: Comprehensive debugging output with `--debug` flag
+
 ## Overview
 
 The envctl test framework provides a comprehensive testing solution for validating all envctl functionality through automated test scenarios. As an envctl developer, you can use this framework to:
 
-- **Verify Core Functionality**: Test all envctl concepts (ServiceClasses, Workflows, MCP Servers, Capabilities, Services)
+- **Test Core MCP Integration**: Validate envctl's ability to manage MCP servers and aggregate their tools
+- **Test Concept Dependencies**: Verify that workflows, serviceclasses, capabilities, and services work correctly with MCP server tools  
 - **Catch Regressions**: Automatically detect when changes break existing functionality  
 - **Validate New Features**: Ensure new implementations work correctly across different scenarios
 - **Debug Issues**: Systematically reproduce and diagnose problems with comprehensive logging
 - **Ensure Quality**: Maintain high confidence in envctl reliability and correctness
 
-The framework executes test scenarios written in YAML that define step-by-step operations and expected outcomes, creating **isolated envctl instances** for each test scenario to ensure complete test isolation and reliable results.
+The framework executes test scenarios written in YAML that define step-by-step operations and expected outcomes, creating **isolated envctl instances** for each test scenario to ensure complete test isolation and reliable results. Mock MCP servers are used to test envctl's core mcpserver management capabilities and enable testing of concepts that depend on external tool availability.
+
+## Test Execution Architecture
+
+### Separate envctl serve Instances
+
+**🏗️ Each test scenario runs against its own dedicated envctl serve instance!**
+
+The framework automatically creates and manages isolated envctl instances for optimal test reliability:
+
+- **Individual Configuration**: Each scenario gets its own temporary configuration directory with generated config files
+- **Separate Ports**: Each instance binds to a unique port to avoid conflicts (starting from base port 18000)
+- **Mock Integration**: Mock MCP servers test envctl's core mcpserver management and enable testing of concepts that depend on MCP server tools
+- **Complete Isolation**: Scenarios cannot interfere with each other's resources or state
+- **Automatic Cleanup**: Instances, configurations, and temporary files are cleaned up after each test
+- **Log Capture**: All stdout/stderr from each instance is captured and available for debugging
+
+### Configuration Generation
+
+For each test scenario, the framework generates the necessary files before starting envctl serve to test the complete envctl ecosystem:
+
+1. **Mock MCP Server Configs**: Individual configuration files for each mock MCP server defined in the scenario
+2. **MCP Server Definitions**: MCP Server definition files that tell envctl serve how to manage the mock MCP servers
+3. **envctl Configuration**: Main envctl config file that references defines the aggregated MCP server port
+4. **ServiceClass Definitions**: Generated from the scenario's `pre_configuration.service_classes`
+5. **Workflow Definitions**: Generated from the scenario's `pre_configuration.workflows`
+
+**Why Mock Servers Are Essential**: Since workflows, serviceclasses, capabilities, and services all depend on MCP server tools being available through envctl's aggregated MCP interface, mock mcpservers are required to test these concepts properly. Without them, you can only test the core CRUD operations but not the actual functionality that depends on external tools.
+
+### Mock MCP Server Tool Naming
+
+**Important Naming Convention**: Mock MCP server tools follow a specific naming pattern:
+
+- **In Mock Config**: Tools are defined with simple names like `"mock-tool1"`
+- **In Test Scenarios**: Tools must be referenced as `"x_<mockserver>_<tool-name>"`
+
+**Example**:
+```yaml
+# In pre_configuration.mcp_servers:
+- name: "kubernetes-mock"
+  config:
+    tools:
+      - name: "get_pods"        # ← Defined as simple name
+        # ... tool definition
+
+# In test steps:
+steps:
+  - id: "test-k8s-tool"
+    tool: "x_kubernetes-mock_get_pods"   # ← Referenced with x_ prefix
+    args:
+      namespace: "default"
+```
+
+### Workflow Naming
+
+**Updated Naming Convention**: Workflows are now exposed with `workflow_` prefix:
+
+- **Current**: `workflow_<workflow-name>` ✅
+- **Old/Deprecated**: `action_<workflow-name>` ❌ (no longer works)
+
+**Example**:
+```yaml
+# Workflow definition in pre_configuration:
+workflows:
+  - name: "deploy-app"
+    # ... workflow definition
+
+# Usage in test steps:
+steps:
+  - id: "run-deployment"
+    tool: "workflow_deploy-app"   # ← Use workflow_ prefix
+    args:
+      app_name: "test-app"
+```
 
 ## Quick Start
 
@@ -33,9 +138,10 @@ Unlike previous versions, you **do not need** to start an external envctl aggreg
 
 # The framework will automatically:
 # 1. Create a temporary envctl instance on an available port
-# 2. Execute the test scenario against that instance
-# 3. Capture logs and results
-# 4. Clean up the instance and configuration
+# 2. Generate mock MCP server configurations if needed
+# 3. Execute the test scenario against that instance
+# 4. Capture logs and results
+# 5. Clean up the instance and configuration
 
 # If successful, run all behavioral tests
 ./envctl test --category=behavioral
@@ -75,6 +181,35 @@ Unlike previous versions, you **do not need** to start an external envctl aggreg
 
 ## How to Execute Test Scenarios
 
+### Command Line Interface
+
+The primary way to run tests is through the CLI:
+
+```bash
+# Basic execution
+./envctl test
+
+# With filters and options
+./envctl test --category=behavioral --concept=serviceclass --verbose
+```
+
+### MCP Server Mode
+
+Tests can also be executed via MCP server mode for IDE integration and AI-powered testing:
+
+```bash
+# Start envctl in MCP server mode for testing
+./envctl test --mcp-server
+
+# The MCP server exposes these tools:
+# - x_envctl-test_test_run_scenarios
+# - x_envctl-test_test_list_scenarios  
+# - x_envctl-test_test_validate_scenario
+# - x_envctl-test_test_get_results
+```
+
+For detailed MCP usage, see [testing-via-mcp.md](testing-via-mcp.md).
+
 ### Filtering Tests
 
 The framework organizes tests by **category** and **concept** to help you run exactly what you need:
@@ -101,6 +236,9 @@ The framework organizes tests by **category** and **concept** to help you run ex
 # Parallel execution (faster, but harder to debug)
 ./envctl test --parallel=4              # Run up to 4 tests simultaneously
 ./envctl test --parallel=1              # Single-threaded (default)
+
+# Port management for parallel execution
+./envctl test --parallel=4 --base-port=18000  # Instances use ports 18000-18003
 
 # Timeout control
 ./envctl test --timeout=10m             # Set global timeout to 10 minutes

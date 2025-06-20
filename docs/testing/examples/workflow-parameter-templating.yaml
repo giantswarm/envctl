@@ -1,305 +1,248 @@
-name: "workflow-parameter-templating-validation"
+name: "workflow-parameter-templating-with-mock"
 category: "behavioral"
 concept: "workflow"
-description: "Advanced workflow parameter templating, step dependencies, and execution flow validation"
-tags: ["workflow", "templating", "parameters", "dependencies"]
-timeout: "8m"
+description: "Test workflow parameter templating with mock dependencies"
+tags: ["workflow", "templating", "mock", "kubernetes"]
+timeout: "10m"
 
+# Pre-configuration for the isolated envctl instance
+pre_configuration:
+  # Mock MCP servers are automatically configured and integrated
+  mcp_servers:
+    - name: "kubernetes-mock"
+      config:
+        tools:
+          - name: "create_deployment"
+            description: "Create Kubernetes deployment"
+            input_schema:
+              type: "object"
+              properties:
+                name:
+                  type: "string"
+                  required: true
+                image:
+                  type: "string"
+                  required: true
+                replicas:
+                  type: "integer"
+                  default: 1
+                namespace:
+                  type: "string"
+                  default: "default"
+            responses:
+              - response:
+                  status: "created"
+                  deployment_name: "{{ .name }}"
+                  image: "{{ .image }}"
+                  replicas: "{{ .replicas }}"
+                  namespace: "{{ .namespace }}"
+                  ready_replicas: 0
+                delay: "3s"
+
+          - name: "get_deployment_status"
+            description: "Get deployment status"
+            input_schema:
+              type: "object"
+              properties:
+                name:
+                  type: "string"
+                  required: true
+                namespace:
+                  type: "string"
+                  default: "default"
+            responses:
+              - response:
+                  deployment_name: "{{ .name }}"
+                  namespace: "{{ .namespace }}"
+                  status: "Running"
+                  ready_replicas: 3
+                  desired_replicas: 3
+
+    - name: "storage-mock"
+      config:
+        tools:
+          - name: "create_pvc"
+            description: "Create persistent volume claim"
+            input_schema:
+              type: "object"
+              properties:
+                name:
+                  type: "string"
+                  required: true
+                size:
+                  type: "string"
+                  default: "1Gi"
+                storage_class:
+                  type: "string"
+                  default: "standard"
+            responses:
+              - response:
+                  status: "created"
+                  pvc_name: "{{ .name }}"
+                  size: "{{ .size }}"
+                  storage_class: "{{ .storage_class }}"
+                  phase: "Bound"
+
+  # Workflows are automatically registered with workflow_ prefix
+  workflows:
+    - name: "deploy-application"
+      config:
+        name: "deploy-application"
+        description: "Deploy application with storage and compute resources"
+        input_schema:
+          type: "object"
+          properties:
+            app_name:
+              type: "string"
+              required: true
+              description: "Application name"
+            app_image:
+              type: "string"
+              required: true
+              description: "Container image"
+            replicas:
+              type: "integer"
+              default: 3
+              description: "Number of replicas"
+            storage_size:
+              type: "string"
+              default: "5Gi"
+              description: "Storage size"
+            namespace:
+              type: "string"
+              default: "default"
+              description: "Kubernetes namespace"
+        steps:
+          - id: "create_storage"
+            tool: "x_storage-mock_create_pvc"  # Mock tool with x_ prefix
+            args:
+              name: "{{ .input.app_name }}-storage"
+              size: "{{ .input.storage_size }}"
+              storage_class: "fast"
+            store: "storage_result"
+            
+          - id: "create_deployment"
+            tool: "x_kubernetes-mock_create_deployment"  # Mock tool with x_ prefix
+            args:
+              name: "{{ .input.app_name }}"
+              image: "{{ .input.app_image }}"
+              replicas: "{{ .input.replicas }}"
+              namespace: "{{ .input.namespace }}"
+            store: "deployment_result"
+            
+          - id: "verify_deployment"
+            tool: "x_kubernetes-mock_get_deployment_status"  # Mock tool with x_ prefix
+            args:
+              name: "{{ .input.app_name }}"
+              namespace: "{{ .input.namespace }}"
+            store: "status_result"
+
+# Test steps using the configured instance
 steps:
-  - name: "list-initial-workflows"
-    description: "Get baseline list of existing workflows"
-    tool: "core_workflow_list"
-    parameters:
-      include_system: true
+  - id: "verify-mock-servers-available"
+    description: "Verify that mock MCP servers are registered"
+    tool: "core_mcpserver_list"
+    args: {}
     expected:
       success: true
+      contains: ["kubernetes-mock", "storage-mock"]
     timeout: "30s"
 
-  - name: "create-deployment-workflow"
-    description: "Create workflow with parameter templating and dependencies"
-    tool: "core_workflow_create"
-    parameters:
-      yaml_definition: |
-        name: application-deployment-workflow
-        description: "Multi-step application deployment with parameter templating"
-        parameters:
-          application_name:
-            type: string
-            required: true
-            description: "Name of the application to deploy"
-          environment:
-            type: string
-            default: "development"
-            enum: ["development", "staging", "production"]
-            description: "Target deployment environment"
-          replicas:
-            type: integer
-            default: 1
-            minimum: 1
-            maximum: 10
-            description: "Number of application replicas"
-          image_tag:
-            type: string
-            default: "latest"
-            description: "Container image tag"
-          enable_monitoring:
-            type: boolean
-            default: false
-            description: "Enable application monitoring"
-          notify_on_completion:
-            type: boolean
-            default: true
-            description: "Send notification when deployment completes"
-        steps:
-          - name: validate_environment
-            description: "Validate target environment is ready"
-            tool: core_service_list
-            parameters:
-              environment: "{{ .environment }}"
-          - name: create_serviceclass
-            description: "Create ServiceClass for the application"
-            tool: core_serviceclass_create
-            parameters:
-              yaml: |
-                name: "{{ .application_name }}-serviceclass"
-                description: "ServiceClass for {{ .application_name }} in {{ .environment }}"
-                parameters:
-                  replicas:
-                    type: integer
-                    default: {{ .replicas }}
-                  monitoring:
-                    type: boolean
-                    default: {{ .enable_monitoring }}
-                tools:
-                  - name: "core_service_create"
-          - name: deploy_application
-            description: "Deploy application using the ServiceClass"
-            tool: core_service_create
-            parameters:
-              serviceClassName: "{{ .application_name }}-serviceclass"
-              label: "{{ .application_name }}-{{ .environment }}"
-              parameters:
-                image: "{{ .application_name }}:{{ .image_tag }}"
-                replicas: {{ .replicas }}
-                monitoring: {{ .enable_monitoring }}
-          - name: wait_for_deployment
-            description: "Wait for application to be ready"
-            tool: core_service_status
-            parameters:
-              label: "{{ .application_name }}-{{ .environment }}"
-          - name: verify_deployment
-            description: "Verify deployment is healthy"
-            tool: core_service_get
-            parameters:
-              label: "{{ .application_name }}-{{ .environment }}"
-          - name: send_notification
-            description: "Send deployment notification if enabled"
-            tool: core_workflow_execute
-            parameters:
-              name: "notification-workflow"
-              parameters:
-                message: "{{ .application_name }} deployed to {{ .environment }}"
-                enabled: {{ .notify_on_completion }}
+  - id: "verify-workflow-available"
+    description: "Verify that workflow is available"
+    tool: "core_workflow_list"
+    args: {}
     expected:
       success: true
-      contains: ["created successfully", "application-deployment-workflow"]
+      contains: ["deploy-application"]
+    timeout: "30s"
+
+  - id: "test-direct-mock-storage-tool"
+    description: "Test storage mock tool directly"
+    tool: "x_storage-mock_create_pvc"  # Direct mock tool usage
+    args:
+      name: "test-direct-pvc"
+      size: "2Gi"
+      storage_class: "standard"
+    expected:
+      success: true
+      contains: ["created", "test-direct-pvc", "2Gi", "Bound"]
+    timeout: "30s"
+
+  - id: "test-direct-mock-k8s-tool"
+    description: "Test kubernetes mock tool directly"
+    tool: "x_kubernetes-mock_create_deployment"  # Direct mock tool usage
+    args:
+      name: "test-direct-deployment"
+      image: "nginx:latest"
+      replicas: 2
+      namespace: "default"
+    expected:
+      success: true
+      contains: ["created", "test-direct-deployment", "nginx:latest"]
+    timeout: "30s"
+
+  - id: "execute-deployment-workflow-small"
+    description: "Execute deployment workflow with small configuration"
+    tool: "workflow_deploy-application"  # Workflow tool with workflow_ prefix (NOT action_)
+    args:
+      app_name: "small-app"
+      app_image: "nginx:1.20"
+      replicas: 1
+      storage_size: "1Gi"
+      namespace: "test"
+    expected:
+      success: true
+      contains: ["small-app", "nginx:1.20", "created"]
     timeout: "2m"
 
-  - name: "verify-workflow-created"
-    description: "Verify workflow was created with correct parameter structure"
-    tool: "core_workflow_get"
-    parameters:
-      name: "application-deployment-workflow"
+  - id: "execute-deployment-workflow-large"
+    description: "Execute deployment workflow with large configuration"
+    tool: "workflow_deploy-application"  # Workflow tool with workflow_ prefix
+    args:
+      app_name: "large-app"
+      app_image: "redis:6.2"
+      replicas: 5
+      storage_size: "10Gi"
+      namespace: "production"
     expected:
       success: true
-      contains: ["application-deployment-workflow", "Multi-step application deployment"]
-      json_path:
-        name: "application-deployment-workflow"
-        parameters.application_name.required: true
-        parameters.environment.default: "development"
-        parameters.replicas.default: 1
-        parameters.enable_monitoring.type: "boolean"
-    timeout: "30s"
+      contains: ["large-app", "redis:6.2", "created"]
+    timeout: "2m"
 
-  - name: "validate-workflow-definition"
-    description: "Validate workflow definition and parameter templating"
-    tool: "core_workflow_validate"
-    parameters:
-      yaml_definition: |
-        name: application-deployment-workflow
-        description: "Multi-step application deployment with parameter templating"
-        parameters:
-          application_name:
-            type: string
-            required: true
-            description: "Name of the application to deploy"
-          environment:
-            type: string
-            default: "development"
-            enum: ["development", "staging", "production"]
-            description: "Target deployment environment"
-          replicas:
-            type: integer
-            default: 1
-            minimum: 1
-            maximum: 10
-            description: "Number of application replicas"
-          image_tag:
-            type: string
-            default: "latest"
-            description: "Container image tag"
-          enable_monitoring:
-            type: boolean
-            default: false
-            description: "Enable application monitoring"
-          notify_on_completion:
-            type: boolean
-            default: true
-            description: "Send notification when deployment completes"
-        steps:
-          - name: validate_environment
-            description: "Validate target environment is ready"
-            tool: core_service_list
-            parameters:
-              environment: "{{ .environment }}"
-          - name: create_serviceclass
-            description: "Create ServiceClass for the application"
-            tool: core_serviceclass_create
-            parameters:
-              yaml: |
-                name: "{{ .application_name }}-serviceclass"
-                description: "ServiceClass for {{ .application_name }} in {{ .environment }}"
-                parameters:
-                  replicas:
-                    type: integer
-                    default: {{ .replicas }}
-                  monitoring:
-                    type: boolean
-                    default: {{ .enable_monitoring }}
-                tools:
-                  - name: "core_service_create"
-          - name: deploy_application
-            description: "Deploy application using the ServiceClass"
-            tool: core_service_create
-            parameters:
-              serviceClassName: "{{ .application_name }}-serviceclass"
-              label: "{{ .application_name }}-{{ .environment }}"
-              parameters:
-                image: "{{ .application_name }}:{{ .image_tag }}"
-                replicas: {{ .replicas }}
-                monitoring: {{ .enable_monitoring }}
-          - name: wait_for_deployment
-            description: "Wait for application to be ready"
-            tool: core_service_status
-            parameters:
-              label: "{{ .application_name }}-{{ .environment }}"
-          - name: verify_deployment
-            description: "Verify deployment is healthy"
-            tool: core_service_get
-            parameters:
-              label: "{{ .application_name }}-{{ .environment }}"
-          - name: send_notification
-            description: "Send deployment notification if enabled"
-            tool: core_workflow_execute
-            parameters:
-              name: "notification-workflow"
-              parameters:
-                message: "{{ .application_name }} deployed to {{ .environment }}"
-                enabled: {{ .notify_on_completion }}
+  - id: "test-parameter-templating"
+    description: "Test that workflow parameters are properly templated"
+    tool: "workflow_deploy-application"
+    args:
+      app_name: "templating-test"
+      app_image: "alpine:latest"
+      replicas: 2
+      storage_size: "3Gi" 
+      namespace: "testing"
     expected:
       success: true
-      contains: ["valid", "application-deployment-workflow"]
-    timeout: "30s"
+      # Verify that templated parameters are correctly passed to mock tools
+      contains: ["templating-test-storage", "3Gi", "templating-test", "alpine:latest"]
+    timeout: "2m"
 
-  - name: "execute-workflow-with-parameters"
-    description: "Execute workflow with specific parameter values"
-    tool: "core_workflow_execute"
-    parameters:
-      name: "application-deployment-workflow"
-      parameters:
-        application_name: "test-web-app"
-        environment: "development"
-        replicas: 2
-        image_tag: "v1.0.0"
-        enable_monitoring: true
-        notify_on_completion: false
-    expected:
-      success: true
-      contains: ["executing", "test-web-app"]
-    timeout: "3m"
-
-  - name: "verify-workflow-execution"
-    description: "Verify workflow execution completed successfully"
-    tool: "core_workflow_status"
-    parameters:
-      name: "application-deployment-workflow"
-      execution_id: "latest"
-    expected:
-      success: true
-      json_path:
-        status: "completed"
-        steps_completed: 6
-        parameters.application_name: "test-web-app"
-        parameters.environment: "development"
-        parameters.replicas: 2
-    timeout: "30s"
-
-  - name: "test-parameter-validation"
-    description: "Test workflow parameter validation with invalid values"
-    tool: "core_workflow_execute"
-    parameters:
-      name: "application-deployment-workflow"
-      parameters:
-        application_name: "test-invalid"
-        environment: "invalid-env"  # Should fail enum validation
-        replicas: 15  # Should fail maximum validation
-        image_tag: "v2.0.0"
-    expected:
-      success: false
-      error_contains: ["invalid parameter", "environment", "replicas"]
-    timeout: "30s"
-
+# Cleanup runs against the same isolated instance
 cleanup:
-  - name: "delete-test-service"
-    description: "Clean up test service created by workflow"
-    tool: "core_service_delete"
-    parameters:
-      label: "test-web-app-development"
-    expected:
-      success: true
-      contains: ["deleted successfully"]
-    timeout: "1m"
-    continue_on_failure: true
-
-  - name: "delete-test-serviceclass"
-    description: "Clean up test ServiceClass created by workflow"
-    tool: "core_serviceclass_delete"
-    parameters:
-      name: "test-web-app-serviceclass"
-    expected:
-      success: true
-      contains: ["deleted successfully"]
-    timeout: "1m"
-    continue_on_failure: true
-
-  - name: "delete-test-workflow"
-    description: "Clean up test workflow"
+  - id: "cleanup-workflow"
+    description: "Delete the deployment workflow"
     tool: "core_workflow_delete"
-    parameters:
-      name: "application-deployment-workflow"
+    args:
+      name: "deploy-application"
     expected:
       success: true
-      contains: ["deleted successfully", "application-deployment-workflow"]
     timeout: "30s"
     continue_on_failure: true
 
-  - name: "verify-workflow-deleted"
-    description: "Verify workflow was completely removed"
-    tool: "core_workflow_get"
-    parameters:
-      name: "application-deployment-workflow"
+  - id: "verify-workflow-deleted"
+    description: "Verify workflow was deleted"
+    tool: "core_workflow_list"
+    args: {}
     expected:
-      success: false
-      error_contains: ["not found", "does not exist"]
+      success: true
+      not_contains: ["deploy-application"]
     timeout: "30s"
     continue_on_failure: true 

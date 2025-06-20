@@ -18,11 +18,12 @@ This guide provides comprehensive documentation for testing envctl using its Mod
 
 Unlike CLI usage where you might need to manage envctl services manually, **the MCP testing tools automatically create and manage isolated envctl instances** for each test scenario:
 
-1. **Automatic Instance Creation**: Each test scenario gets a fresh envctl serve process
-2. **Port Management**: Instances are assigned unique ports to avoid conflicts  
+1. **Automatic Instance Creation**: Each test scenario gets a fresh envctl serve process on a unique port
+2. **Port Management**: Instances are assigned unique ports to avoid conflicts (starting from base port 18000)
 3. **Configuration Isolation**: Each instance has its own temporary configuration directory
-4. **Log Collection**: All stdout/stderr from instances is captured and included in responses
-5. **Automatic Cleanup**: Instances and configurations are cleaned up after test completion
+4. **Mock Server Integration**: Mock MCP servers are automatically configured and started within each instance
+5. **Log Collection**: All stdout/stderr from instances is captured and included in responses
+6. **Automatic Cleanup**: Instances and configurations are cleaned up after test completion
 
 ### Enhanced Debugging 
 
@@ -45,22 +46,42 @@ Unlike CLI usage where you might need to manage envctl services manually, **the 
 }
 ```
 
-### Mocked MCP Server Tools
+### Mock MCP Server Integration
 
-**Important**: When envctl serves scenarios that include mocked MCP servers, those mock server tools become available through the main envctl MCP interface with a specific naming convention:
+**Testing envctl's Core MCP Server Management**: When test scenarios include mock MCP servers in their `pre_configuration`, the framework tests envctl serve's MCP server management and tool aggregation capabilities:
+
+1. **Generates Mock Server Configs**: Creates individual configuration files for each mock MCP server
+2. **Creates MCPServer Definitions**: Generates MCP server definition files for envctl serve
+3. **Updates envctl Config**: the main envctl configuration with the port for the aggregator
+4. **Starts envctl serve**: So we have a clean instance to test against for each test scenario
+5. **Tool Aggregation**: mcpserver tools are  aggregated and exposed through envctl's aggregated MCP server
+
+**Why This Architecture Matters**: envctl's other concepts (workflows, serviceclasses, capabilities, services) depend on MCP server tools being available through the aggregated MCP server. Mock servers enable testing these concepts and the complete integration without requiring actual external services.
+
+**Mock Server Tool Naming**: Mock MCP server tools become available through the envctl MCP interface with a specific naming convention:
 
 **Naming Pattern**: `x_<mcpserver-name>_<tool-name>`
 
-**Example**: If you have a mocked MCP server named "kubernetes" with a tool called "get_pods", it becomes available as:
-- **Tool Name**: `x_kubernetes_get_pods`
+**Example**: If you have a mocked MCP server named "kubernetes-mock" with a tool called "get_pods", it becomes available as:
+- **Tool Name**: `x_kubernetes-mock_get_pods`
 - **Access**: Available through the same envctl serve MCP interface alongside core tools
 
 **Usage in Test Scenarios**:
 ```yaml
+# Pre-configuration defines mock server:
+pre_configuration:
+  mcp_servers:
+    - name: "kubernetes-mock"
+      config:
+        tools:
+          - name: "get_pods"        # Simple name in mock config
+            # ... tool definition
+
+# Test steps reference with prefix:
 steps:
   - id: test-mock-tool
     description: "Use mocked Kubernetes tool"
-    tool: x_kubernetes_get_pods  # Note the x_ prefix
+    tool: x_kubernetes-mock_get_pods  # Note the x_ prefix
     args:
       namespace: default
     expected:
@@ -73,6 +94,28 @@ steps:
 - These tools are available during test execution through the same MCP interface
 - Mock responses are defined in the scenario configuration
 - This enables testing complex integrations without requiring actual external services
+
+### Workflow Tool Integration
+
+**Workflow Naming**: Workflows defined in test scenarios are exposed with the `workflow_` prefix:
+
+```yaml
+# Pre-configuration defines workflow:
+pre_configuration:
+  workflows:
+    - name: "deploy-app"
+      config:
+        # workflow definition
+
+# Test steps reference workflows:
+steps:
+  - id: "run-deployment"
+    tool: "workflow_deploy-app"   # workflow_ prefix (NOT action_)
+    args:
+      app_name: "test-app"
+```
+
+**Important**: The old `action_<workflow-name>` naming is deprecated and no longer works. Always use `workflow_<workflow-name>`.
 
 ## MCP Tools Overview
 
@@ -115,7 +158,7 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
       },
       "steps": [
         {
-          "name": "create-test-serviceclass",
+          "id": "create-test-serviceclass",
           "status": "passed",
           "execution_time": "12s",
           "tool": "core_serviceclass_create",
@@ -145,7 +188,8 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
       "concept": "serviceclass",
       "description": "Basic ServiceClass management operations",
       "tags": ["basic", "crud", "serviceclass"],
-      "steps": 6,
+      "step_count": 6,
+      "cleanup_count": 2,
       "estimated_duration": "5m"
     }
   ],
@@ -165,11 +209,20 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
 ```json
 {
   "valid": true,
-  "errors": [],
-  "warnings": [
-    "Step 'create-test-service' has no timeout specified"
+  "scenario_count": 3,
+  "scenarios": [
+    {
+      "name": "serviceclass-basic-operations",
+      "valid": true,
+      "errors": [],
+      "warnings": [
+        "Step 'create-test-service' has no timeout specified"
+      ],
+      "step_count": 4,
+      "cleanup_count": 1
+    }
   ],
-  "scenarios_validated": 3
+  "path": "/home/teemow/projects/giantswarm/envctl/internal/testing/scenarios"
 }
 ```
 
@@ -723,10 +776,25 @@ name: scenario-name
 description: "Description of what this scenario tests"
 category: behavioral  # or integration
 concept: serviceclass  # serviceclass, workflow, mcpserver, capability, service
+
+# Pre-configuration for isolated envctl instance
+pre_configuration:
+  mcp_servers:                    # Mock MCP servers (optional)
+    - name: "mock-server"
+      config:
+        tools:
+          - name: "mock-tool"     # Simple name in config
+  workflows:                      # Workflows (optional)
+    - name: "test-workflow"
+      config:
+        # workflow definition
+
 steps:
   - id: step-identifier
     description: "What this step does"
-    tool: "core_tool_name"
+    tool: "core_tool_name"        # Core tools: direct name
+    # tool: "x_mock-server_mock-tool"  # Mock tools: x_<server>_<tool>
+    # tool: "workflow_test-workflow"   # Workflows: workflow_<name>
     args:
       param1: value1
       param2: value2
@@ -748,9 +816,15 @@ Each test step follows the same structure as workflow steps for consistency:
 
 - **`id`**: Unique identifier for the step (aligns with workflow step format)
 - **`description`**: Human-readable explanation of what the step does
-- **`tool`**: The MCP tool to invoke (e.g., `core_serviceclass_create`)
+- **`tool`**: The MCP tool to invoke (core, mock, or workflow - see naming conventions below)
 - **`args`**: Tool arguments as key-value pairs (aligns with workflow step format)
 - **`expected`**: Expected outcome validation
+
+### Tool Naming Conventions in Scenarios
+
+- **Core Tools**: Use direct names like `core_serviceclass_create`
+- **Mock Tools**: Use `x_<server-name>_<tool-name>` pattern
+- **Workflows**: Use `workflow_<workflow-name>` pattern (NOT `action_<name>`)
 
 ### Example Scenarios
 
@@ -805,18 +879,30 @@ name: workflow-basic-operations
 description: "Tests basic Workflow CRUD operations"
 category: behavioral
 concept: workflow
-steps:
-  - id: create-workflow
-    description: "Create a new workflow"
-    tool: core_workflow_create
-    args:
-      name: test-basic-workflow
-      definition:
+
+pre_configuration:
+  workflows:
+    - name: "test-basic-workflow"
+      config:
         description: "Test workflow for basic operations"
         steps:
           - id: step1
             tool: core_serviceclass_list
             args: {}
+
+steps:
+  - id: verify-workflow-available
+    description: "Verify the workflow is available"
+    tool: core_workflow_list
+    args: {}
+    expected:
+      success: true
+      contains: ["test-basic-workflow"]
+
+  - id: execute-workflow
+    description: "Execute the test workflow"
+    tool: workflow_test-basic-workflow  # Note: workflow_ prefix, NOT action_
+    args: {}
     expected:
       success: true
 

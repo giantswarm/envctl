@@ -4,6 +4,13 @@
 
 This guide provides comprehensive documentation for authoring YAML-based test scenarios for the envctl test framework. Test scenarios define the complete lifecycle of a test, including setup, execution, validation, and cleanup.
 
+**Key Architecture Points:**
+- Each test scenario runs against its own isolated envctl serve instance
+- Mock MCP servers are essential for testing envctl's core MCP server management and tool aggregation features
+- Mock servers enable testing envctl concepts (workflows, serviceclasses, capabilities, services) that depend on MCP server tools
+- Mock servers are managed as separate processes by envctl serve, so we can test the complete functionality of envctl serve through the scenarios
+- Tools follow specific naming conventions based on their source (core vs. mock)
+
 ## YAML Schema Reference
 
 ### Complete Scenario Structure
@@ -19,12 +26,40 @@ description: "Human-readable description of what this scenario tests"
 tags: ["basic", "crud", "smoke"]       # Tags for filtering and organization
 timeout: "5m"                          # Global scenario timeout (default: 30m)
 
+# Pre-configuration for the isolated envctl instance
+# This generates the necessary configs and definitions before starting envctl serve
+pre_configuration:
+  mcp_servers:                         # Mock MCP servers (uses envctl's standard MCP server management)
+    - name: "mock-server-name"
+      config:
+        tools:
+          - name: "tool-name"          # Simple name in mock config
+            description: "Tool description"
+            input_schema:
+              type: "object"
+              properties:
+                param1:
+                  type: "string"
+            responses:
+              - response:
+                  status: "success"
+                  
+  service_classes:                     # ServiceClasses to pre-create
+    - name: "test-serviceclass"
+      config:
+        # ServiceClass definition
+        
+  workflows:                           # Workflows to pre-create  
+    - name: "test-workflow"
+      config:
+        # Workflow definition
+
 # Test execution steps
 steps:
-  - name: "step-unique-name"           # Unique step identifier
+  - id: "step-unique-name"             # Unique step identifier
     description: "What this step does" # Human-readable step description
     tool: "core_serviceclass_create"   # MCP tool name to invoke
-    parameters:                        # Tool parameters
+    args:                              # Tool parameters (renamed from 'parameters')
       yaml: |                          # YAML content (for tools that accept YAML)
         name: test-resource
         description: "Test resource"
@@ -38,14 +73,61 @@ steps:
 
 # Required cleanup steps (always run, even on failure)
 cleanup:
-  - name: "cleanup-resources"
+  - id: "cleanup-resources"            # Changed from 'name' to 'id'
     description: "Remove test resources"
     tool: "core_serviceclass_delete"
-    parameters:
+    args:                              # Changed from 'parameters' to 'args'
       name: "test-resource"
     expected:
       success: true
     timeout: "30s"
+```
+
+### Key Schema Changes
+
+#### Updated Field Names
+- Step identifiers use `id` instead of `name` (aligns with workflow step format)
+- Tool parameters use `args` instead of `parameters` (aligns with workflow step format)
+- Cleanup steps also use `id` and `args` for consistency
+
+#### Tool Naming Conventions
+
+**Core envctl Tools**: Use standard names
+```yaml
+steps:
+  - id: "create-serviceclass"
+    tool: "core_serviceclass_create"   # Standard core tool
+```
+
+**Mock MCP Server Tools**: Use `x_<server-name>_<tool-name>` pattern
+```yaml
+# Pre-configuration defines mock server:
+pre_configuration:
+  mcp_servers:
+    - name: "kubernetes-mock"
+      config:
+        tools:
+          - name: "get_pods"           # Simple name in config
+
+# Steps reference with prefix:
+steps:
+  - id: "test-k8s-pods"
+    tool: "x_kubernetes-mock_get_pods" # Prefixed name in usage
+```
+
+**Workflow Tools**: Use `workflow_<workflow-name>` pattern  
+```yaml
+# Pre-configuration defines workflow:
+pre_configuration:
+  workflows:
+    - name: "backup-data"
+      config:
+        # workflow definition
+
+# Steps reference workflows:
+steps:
+  - id: "run-backup"
+    tool: "workflow_backup-data"     # workflow_ prefix (NOT action_)
 ```
 
 ### Schema Validation Rules
@@ -62,13 +144,14 @@ cleanup:
 
 - **tags**: Array of strings for categorization and filtering
 - **timeout**: Global timeout in Go duration format (e.g., "5m", "30s", "1h")
+- **pre_configuration**: Setup for the isolated envctl instance
 - **cleanup**: Teardown steps run after test completion
 
 #### Step Schema
 
 Each step must define:
-- **name**: Unique identifier within the scenario
-- **tool**: Valid MCP tool name (must be available in envctl aggregator)
+- **id**: Unique identifier within the scenario
+- **tool**: Valid MCP tool name (core, mock, or workflow)
 - **expected**: At least one validation rule (success, contains, json_path, etc.)
 
 ## Authoring Best Practices
@@ -90,7 +173,7 @@ name: "ServiceClass_Test"
 ```
 
 #### Step Names
-Use action-oriented names:
+Use action-oriented names with `id` field:
 
 ```yaml
 # ✅ Good examples
@@ -103,13 +186,53 @@ Use action-oriented names:
   - id: "test-stuff"
 ```
 
-### 2. Parameter Patterns
+### 2. Tool Reference Patterns
+
+#### Core Tools
+```yaml
+steps:
+  - id: "list-serviceclasses"
+    tool: "core_serviceclass_list"    # Direct core tool usage
+```
+
+#### Mock Server Tools  
+```yaml
+# Define in pre_configuration:
+pre_configuration:
+  mcp_servers:
+    - name: "storage-mock"
+      config:
+        tools:
+          - name: "create_volume"      # Simple name in mock config
+
+# Reference in steps:
+steps:
+  - id: "test-storage"
+    tool: "x_storage-mock_create_volume"  # x_<server>_<tool> pattern
+```
+
+#### Workflow Tools
+```yaml
+# Define in pre_configuration:
+pre_configuration:
+  workflows:
+    - name: "backup-data"
+      config:
+        # workflow definition
+
+# Reference in steps:
+steps:
+  - id: "run-backup"
+    tool: "workflow_backup-data"     # workflow_<name> pattern (NOT action_)
+```
+
+### 3. Parameter Patterns
 
 #### YAML Parameters
 For tools that accept YAML configurations:
 
 ```yaml
-parameters:
+args:
   yaml: |
     name: test-serviceclass
     description: "Test ServiceClass for scenario"
@@ -128,13 +251,13 @@ parameters:
 For simple parameter passing:
 
 ```yaml
-parameters:
+args:
   name: "test-workflow"
   timeout: "5m"
   parallel: true
 ```
 
-### 3. Validation Patterns
+### 4. Validation Patterns
 
 #### Success Validation
 Basic validation - ensure the operation succeeded:
@@ -174,15 +297,62 @@ expected:
   error_contains: ["not found", "resource does not exist"]
 ```
 
-### 4. Resource Management
+### 5. Mock Server Configuration
+
+#### Complete Mock Server Example
+```yaml
+pre_configuration:
+  mcp_servers:
+    - name: "database-mock"
+      config:
+        tools:
+          - name: "create_table"
+            description: "Create database table"
+            input_schema:
+              type: "object"
+              properties:
+                table_name:
+                  type: "string"
+                  required: true
+                columns:
+                  type: "array"
+                  items:
+                    type: "object"
+            responses:
+              - condition:
+                  table_name: "users"
+                response:
+                  status: "created"
+                  table_id: "tbl_users_123"
+                  rows: 0
+                delay: "2s"
+              - error: "table '{{ .table_name }}' already exists"
+
+# Usage in steps:
+steps:
+  - id: "create-users-table"
+    tool: "x_database-mock_create_table"  # Note the x_ prefix
+    args:
+      table_name: "users"
+      columns:
+        - name: "id"
+          type: "integer"
+        - name: "email"
+          type: "string"
+    expected:
+      success: true
+      contains: ["created", "tbl_users_123"]
+```
+
+### 6. Resource Management
 
 #### Unique Resource Names
 Always use unique names to avoid conflicts:
 
 ```yaml
-parameters:
+args:
   yaml: |
-    name: "test-serviceclass-{{ .timestamp }}"
+    name: "test-serviceclass-{{ scenario.name }}"  # Use scenario name for uniqueness
 ```
 
 #### Comprehensive Cleanup
@@ -191,7 +361,7 @@ Always clean up resources:
 ```yaml
 cleanup:
   - id: "delete-test-serviceclass"
-    tool: "core_serviceclass_delete"
+    tool: "core_serviceclass_delete"  
     args:
       name: "test-serviceclass"
     expected:
@@ -203,49 +373,62 @@ cleanup:
 
 ### ❌ What to Avoid
 
-#### 1. Hardcoded Values
+#### 1. Incorrect Tool Naming
 ```yaml
-# ❌ Bad: Hardcoded timestamp will cause conflicts
-parameters:
-  name: "test-serviceclass-20240115"
+# ❌ Bad: Old workflow naming
+steps:
+  - id: "run-workflow"
+    tool: "action_my-workflow"  # Old naming, doesn't work
+
+# ✅ Good: Current workflow naming  
+steps:
+  - id: "run-workflow"
+    tool: "workflow_my-workflow"  # Correct workflow_ prefix
 ```
 
+#### 2. Missing Mock Tool Prefix
 ```yaml
-# ✅ Good: Use dynamic values
-parameters:
-  name: "test-serviceclass-{{ .timestamp }}"
+# ❌ Bad: Direct mock tool name
+steps:
+  - id: "test-mock"
+    tool: "create_resource"  # Missing x_ prefix
+
+# ✅ Good: Proper mock tool reference
+steps:
+  - id: "test-mock"  
+    tool: "x_resource-mock_create_resource"  # Correct x_<server>_<tool> pattern
 ```
 
-#### 2. Missing Cleanup
+#### 3. Inconsistent Field Names
+```yaml
+# ❌ Bad: Mixing old and new field names
+steps:
+  - name: "test-step"         # Should be 'id'
+    tool: "core_test"
+    parameters:               # Should be 'args'
+      test: true
+      
+# ✅ Good: Consistent field naming
+steps:
+  - id: "test-step"
+    tool: "core_test"  
+    args:
+      test: true
+```
+
+#### 4. Missing Cleanup
 ```yaml
 # ❌ Bad: No cleanup section
 steps:
-  - name: "create-resource"
+  - id: "create-resource"
     # ... create something but never clean it up
 ```
 
 ```yaml
 # ✅ Good: Always include cleanup
 cleanup:
-  - name: "delete-resource"
+  - id: "delete-resource"
     # ... proper cleanup
-```
-
-#### 3. Weak Validation
-```yaml
-# ❌ Bad: Only checking for success
-expected:
-  success: true
-```
-
-```yaml
-# ✅ Good: Comprehensive validation
-expected:
-  success: true
-  contains: ["created successfully", "resource-name"]
-  json_path:
-    status: "created"
-    available: true
 ```
 
 ## Validation and Testing
@@ -279,6 +462,7 @@ Test scenarios automatically run against isolated envctl instances:
 
 **Benefits of Managed Instances:**
 - Each scenario runs against a fresh envctl instance
+- Mock MCP servers are automatically configured and integrated
 - No interference between test scenarios
 - Automatic cleanup of instances and configurations
 - Complete isolation ensures reliable test results
