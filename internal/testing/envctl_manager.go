@@ -166,14 +166,18 @@ func (m *envCtlInstanceManager) CreateInstance(ctx context.Context, scenarioName
 	m.processes[instanceID] = managedProc
 	m.mu.Unlock()
 
+	// Extract expected tools from configuration
+	expectedTools := m.extractExpectedTools(config)
+
 	instance := &EnvCtlInstance{
-		ID:         instanceID,
-		ConfigPath: configPath,
-		Port:       port,
-		Endpoint:   fmt.Sprintf("http://localhost:%d/mcp", port),
-		Process:    managedProc.cmd.Process,
-		StartTime:  time.Now(),
-		Logs:       nil, // Will be populated when destroying
+		ID:            instanceID,
+		ConfigPath:    configPath,
+		Port:          port,
+		Endpoint:      fmt.Sprintf("http://localhost:%d/mcp", port),
+		Process:       managedProc.cmd.Process,
+		StartTime:     time.Now(),
+		Logs:          nil, // Will be populated when destroying
+		ExpectedTools: expectedTools,
 	}
 
 	if m.debug {
@@ -273,13 +277,13 @@ func (m *envCtlInstanceManager) gracefulShutdown(managedProc *managedProcess, in
 	}
 }
 
-// WaitForReady waits for an instance to be ready to accept connections
+// WaitForReady waits for an instance to be ready to accept connections and has all expected tools available
 func (m *envCtlInstanceManager) WaitForReady(ctx context.Context, instance *EnvCtlInstance) error {
 	if m.debug {
 		fmt.Printf("⏳ Waiting for envctl instance %s to be ready at %s\n", instance.ID, instance.Endpoint)
 	}
 
-	timeout := 30 * time.Second
+	timeout := 60 * time.Second // Increased timeout for more complex setups
 	if deadline, ok := ctx.Deadline(); ok {
 		timeout = time.Until(deadline)
 	}
@@ -293,30 +297,212 @@ func (m *envCtlInstanceManager) WaitForReady(ctx context.Context, instance *EnvC
 	// Give the process a moment to start
 	time.Sleep(2 * time.Second)
 
-	for {
+	// First wait for port to be available
+	portReady := false
+	for !portReady {
 		select {
 		case <-readyCtx.Done():
-			// Before giving up, try to show logs if available
 			if m.debug {
 				m.showLogs(instance)
 			}
-			return fmt.Errorf("timeout waiting for envctl instance to be ready")
+			return fmt.Errorf("timeout waiting for envctl instance port to be ready")
 		case <-ticker.C:
 			// Check if port is accepting connections
 			conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", instance.Port), 1*time.Second)
 			if err == nil {
 				conn.Close()
+				portReady = true
 				if m.debug {
-					fmt.Printf("✅ envctl instance %s is ready\n", instance.ID)
+					fmt.Printf("✅ Port %d is ready\n", instance.Port)
 				}
-				return nil
-			}
-
-			if m.debug {
+			} else if m.debug {
 				fmt.Printf("🔍 Port %d not ready yet: %v\n", instance.Port, err)
 			}
 		}
 	}
+
+	// Now wait for services to be fully initialized and tools to be available
+	if m.debug {
+		fmt.Printf("⏳ Waiting for services to be fully initialized and tools to be available...\n")
+	}
+
+	// Create MCP client to check tool availability
+	mcpClient := NewMCPTestClient(m.debug)
+	defer mcpClient.Close()
+
+	// Connect to the MCP aggregator
+	connectCtx, connectCancel := context.WithTimeout(readyCtx, 30*time.Second)
+	defer connectCancel()
+
+	// Retry connection until successful or timeout
+	var connected bool
+	for !connected {
+		select {
+		case <-connectCtx.Done():
+			if m.debug {
+				fmt.Printf("⚠️  Failed to connect to MCP aggregator, proceeding anyway\n")
+			}
+			// If we can't connect to MCP, fall back to the old behavior
+			time.Sleep(3 * time.Second)
+			return nil
+		case <-time.After(1 * time.Second):
+			err := mcpClient.Connect(connectCtx, instance.Endpoint)
+			if err == nil {
+				connected = true
+				if m.debug {
+					fmt.Printf("✅ Connected to MCP aggregator\n")
+				}
+			} else if m.debug {
+				fmt.Printf("🔍 Waiting for MCP connection: %v\n", err)
+			}
+		}
+	}
+
+	// Extract expected tools from the pre-configuration if available
+	expectedTools := m.extractExpectedToolsFromInstance(instance)
+	
+	if len(expectedTools) == 0 {
+		if m.debug {
+			fmt.Printf("ℹ️  No expected tools specified, waiting for basic service readiness\n")
+		}
+		// If no specific tools expected, wait a bit longer for general readiness
+		time.Sleep(5 * time.Second)
+		return nil
+	}
+
+	if m.debug {
+		fmt.Printf("🎯 Waiting for %d expected tools to be available: %v\n", len(expectedTools), expectedTools)
+	}
+
+	// Wait for all expected tools to be available
+	toolTimeout := 45 * time.Second
+	toolCtx, toolCancel := context.WithTimeout(readyCtx, toolTimeout)
+	defer toolCancel()
+
+	toolTicker := time.NewTicker(2 * time.Second)
+	defer toolTicker.Stop()
+
+	for {
+		select {
+		case <-toolCtx.Done():
+			if m.debug {
+				fmt.Printf("⚠️  Tool availability check timed out, checking what's available...\n")
+				// Show what tools are available for debugging
+				if availableTools, err := mcpClient.ListTools(context.Background()); err == nil {
+					fmt.Printf("🛠️  Available tools: %v\n", availableTools)
+					fmt.Printf("🎯 Expected tools: %v\n", expectedTools)
+				}
+			}
+			return fmt.Errorf("timeout waiting for all expected tools to be available")
+		case <-toolTicker.C:
+			// Check if all expected tools are available
+			availableTools, err := mcpClient.ListTools(toolCtx)
+			if err != nil {
+				if m.debug {
+					fmt.Printf("🔍 Failed to list tools: %v\n", err)
+				}
+				continue
+			}
+
+			if m.debug && len(availableTools) > 0 {
+				fmt.Printf("🛠️  Currently available tools (%d): %v\n", len(availableTools), availableTools)
+			}
+
+			// Check if all expected tools are present
+			missingTools := m.findMissingTools(expectedTools, availableTools)
+			if len(missingTools) == 0 {
+				if m.debug {
+					fmt.Printf("✅ All expected tools are available!\n")
+				}
+				// Wait a little bit more to ensure tool registration is fully complete
+				time.Sleep(2 * time.Second)
+				return nil
+			}
+
+			if m.debug {
+				fmt.Printf("⏳ Still waiting for tools: %v\n", missingTools)
+			}
+		}
+	}
+}
+
+// extractExpectedTools extracts expected tool names from the configuration during instance creation
+func (m *envCtlInstanceManager) extractExpectedTools(config *EnvCtlPreConfiguration) []string {
+	if config == nil {
+		return []string{}
+	}
+	
+	var expectedTools []string
+	
+	// Extract tools from MCP server configurations
+	for _, mcpServer := range config.MCPServers {
+		if tools, hasTools := mcpServer.Config["tools"]; hasTools {
+			if toolsList, ok := tools.([]interface{}); ok {
+				for _, tool := range toolsList {
+					if toolMap, ok := tool.(map[string]interface{}); ok {
+						if name, ok := toolMap["name"].(string); ok {
+							expectedTools = append(expectedTools, name)
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	if m.debug && len(expectedTools) > 0 {
+		fmt.Printf("🎯 Extracted expected tools from configuration: %v\n", expectedTools)
+	}
+	
+	return expectedTools
+}
+
+// extractExpectedToolsFromInstance gets the expected tools stored in the instance
+func (m *envCtlInstanceManager) extractExpectedToolsFromInstance(instance *EnvCtlInstance) []string {
+	return instance.ExpectedTools
+}
+
+// findMissingTools returns tools that are expected but not found in available tools
+func (m *envCtlInstanceManager) findMissingTools(expectedTools, availableTools []string) []string {
+	var missing []string
+	
+	for _, expected := range expectedTools {
+		found := false
+		for _, available := range availableTools {
+			// Check for exact match or suffix match (for prefixed tools)
+			if available == expected || m.isToolMatch(available, expected) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			missing = append(missing, expected)
+		}
+	}
+	
+	return missing
+}
+
+// isToolMatch checks if an available tool matches an expected tool name
+// This handles cases where tools might have prefixes from MCP server names
+func (m *envCtlInstanceManager) isToolMatch(availableTool, expectedTool string) bool {
+	// Check exact match
+	if availableTool == expectedTool {
+		return true
+	}
+	
+	// Check for suffix match with underscore (server_tool format)
+	suffix := "_" + expectedTool
+	if len(availableTool) > len(suffix) && availableTool[len(availableTool)-len(suffix):] == suffix {
+		return true
+	}
+	
+	// Check for suffix match with dash (server-tool format)
+	dashSuffix := "-" + expectedTool
+	if len(availableTool) > len(dashSuffix) && availableTool[len(availableTool)-len(dashSuffix):] == dashSuffix {
+		return true
+	}
+	
+	return false
 }
 
 // showLogs displays the recent logs from an envctl instance

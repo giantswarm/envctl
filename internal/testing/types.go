@@ -199,6 +199,8 @@ type EnvCtlInstance struct {
 	StartTime time.Time
 	// Logs contains the collected stdout and stderr from the instance
 	Logs *InstanceLogs
+	// ExpectedTools contains the list of tools expected to be available from MCP servers
+	ExpectedTools []string
 }
 
 // InstanceLogs contains the captured logs from an envctl instance
