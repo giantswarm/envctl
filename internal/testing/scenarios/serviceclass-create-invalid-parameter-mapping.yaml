@@ -1,0 +1,34 @@
+name: "serviceclass-create-invalid-parameter-mapping"
+category: "behavioral"
+concept: "serviceclass"
+description: "Tests creating a service from a SC with invalid parameter mapping."
+tags: ["serviceclass", "parameters", "error-handling", "core-api"]
+timeout: "1m"
+
+pre_configuration:
+  service_classes:
+  - name: "invalid-params-sc"
+    config:
+      name: "invalid-params-sc"
+      type: "basic"
+      serviceConfig:
+        createParameters:
+          name:
+            required: true
+            # Missing toolParameter field
+        lifecycleTools:
+          start: { tool: "core_service_list" }
+          stop: { tool: "core_service_list" }
+steps:
+- id: "create-service-with-bad-sc"
+  description: "Attempt to create a service from a SC that has an invalid parameter definition"
+  tool: "core_service_create"
+  args:
+    serviceClassName: "invalid-params-sc"
+    label: "my-service"
+    parameters:
+      name: "test"
+  expected:
+    success: false
+    # The error message should indicate a problem with the service class definition itself
+    error_contains: ["invalid service class", "toolParameter is required"] 

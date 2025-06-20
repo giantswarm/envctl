@@ -1,0 +1,14 @@
+name: "serviceclass-get-definitions-path"
+category: "behavioral"
+concept: "serviceclass"
+description: "Tests getting the ServiceClass definitions path."
+tags: ["serviceclass", "definitions-path", "core-api"]
+timeout: "1m"
+
+steps:
+- id: "get-definitions-path"
+  description: "Get the path from which ServiceClass definitions are loaded"
+  tool: "core_serviceclass_definitions_path"
+  expected:
+    success: true
+    not_empty: true 

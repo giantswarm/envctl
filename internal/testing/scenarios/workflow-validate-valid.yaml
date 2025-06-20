@@ -1,0 +1,21 @@
+name: "workflow-validate-valid"
+category: "behavioral"
+concept: "workflow"
+description: "Tests validating a correct workflow definition."
+tags: ["workflow", "validate", "core-api"]
+timeout: "1m"
+
+steps:
+- id: "validate-correct-workflow"
+  description: "Validate a workflow with a correct structure"
+  tool: "core_workflow_validate"
+  args:
+    yaml_definition: |
+      name: "valid-workflow-to-validate"
+      description: "This is a valid workflow"
+      steps:
+        - id: "step1"
+          tool: "core_service_list"
+  expected:
+    success: true
+    contains: ["valid"] 

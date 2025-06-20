@@ -1,0 +1,36 @@
+name: "service-get"
+category: "behavioral"
+concept: "service"
+description: "Tests getting a specific service instance."
+tags: ["service", "get", "core-api"]
+timeout: "1m"
+
+pre_configuration:
+  service_classes:
+  - name: "sc-for-get"
+    config:
+      name: "sc-for-get"
+      type: "basic"
+      serviceConfig:
+        lifecycleTools:
+          start: { tool: "core_config_get" }
+          stop: { tool: "core_config_get" }
+steps:
+- id: "create-service-for-get"
+  description: "Create a service to retrieve"
+  tool: "core_service_create"
+  args: { serviceClassName: "sc-for-get", label: "get-test-service" }
+  expected: { success: true }
+  cleanup:
+  - tool: "core_service_delete"
+    args: { labelOrServiceId: "get-test-service" }
+- id: "get-the-service"
+  description: "Get the created service by its label"
+  tool: "core_service_get"
+  args:
+    labelOrServiceId: "get-test-service"
+  expected:
+    success: true
+    json_path:
+      label: "get-test-service"
+      state: "RUNNING" 

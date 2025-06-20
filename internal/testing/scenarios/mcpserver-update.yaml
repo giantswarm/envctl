@@ -1,0 +1,35 @@
+name: "mcpserver-update"
+category: "behavioral"
+concept: "mcpserver"
+description: "Tests updating an existing MCPServer."
+tags: ["mcpserver", "update", "core-api"]
+timeout: "1m"
+
+pre_configuration:
+  mcp_servers:
+  - name: "update-test-server"
+    config:
+      name: "update-test-server"
+      type: "localCommand"
+      command: ["echo", "initial"]
+steps:
+- id: "update-the-server"
+  description: "Update the server's command"
+  tool: "core_mcpserver_update"
+  args:
+    name: "update-test-server"
+    yaml: |
+      name: "update-test-server"
+      type: "localCommand"
+      command: ["echo", "updated"]
+  expected:
+    success: true
+- id: "verify-server-was-updated"
+  description: "Get the server and verify its command was updated"
+  tool: "core_mcpserver_get"
+  args:
+    name: "update-test-server"
+  expected:
+    success: true
+    json_path:
+      command: ["echo", "updated"] 

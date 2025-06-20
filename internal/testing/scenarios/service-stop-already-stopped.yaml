@@ -1,0 +1,38 @@
+name: "service-stop-already-stopped"
+category: "behavioral"
+concept: "service"
+description: "Tests stopping an already stopped service."
+tags: ["service", "stop", "lifecycle", "idempotency", "core-api"]
+timeout: "1m"
+
+pre_configuration:
+  service_classes:
+  - name: "sc-for-idempotency"
+    config:
+      name: "sc-for-idempotency"
+      type: "basic"
+      serviceConfig:
+        lifecycleTools:
+          start: { tool: "core_config_get" }
+          stop: { tool: "core_config_get" }
+steps:
+- id: "create-service"
+  description: "Create a service"
+  tool: "core_service_create"
+  args: { serviceClassName: "sc-for-idempotency", label: "idempotent-stop-test" }
+  expected: { success: true }
+  cleanup:
+  - tool: "core_service_delete"
+    args: { labelOrServiceId: "idempotent-stop-test" }
+- id: "stop-service-once"
+  description: "Stop the service"
+  tool: "core_service_stop"
+  args: { label: "idempotent-stop-test" }
+  expected: { success: true }
+- id: "stop-service-again"
+  description: "Stop the already stopped service, expecting success"
+  tool: "core_service_stop"
+  args: { label: "idempotent-stop-test" }
+  expected:
+    success: true
+    contains: ["already stopped"] 

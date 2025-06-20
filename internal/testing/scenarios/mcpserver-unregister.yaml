@@ -1,0 +1,30 @@
+name: "mcpserver-unregister"
+category: "behavioral"
+concept: "mcpserver"
+description: "Tests unregistering an MCPServer on the fly."
+tags: ["mcpserver", "unregister", "core-api"]
+timeout: "1m"
+
+pre_configuration:
+  mcp_servers:
+  - name: "unregister-test-server"
+    config:
+      name: "unregister-test-server"
+      type: "localCommand"
+      command: ["echo", "unregister"]
+steps:
+- id: "unregister-server"
+  description: "Unregister a pre-configured server"
+  tool: "core_mcpserver_unregister"
+  args:
+    name: "unregister-test-server"
+  expected:
+    success: true
+- id: "verify-unregistered"
+  description: "Verify the server is gone"
+  tool: "core_mcpserver_get"
+  args:
+    name: "unregister-test-server"
+  expected:
+    success: false
+    error_contains: ["not found"] 

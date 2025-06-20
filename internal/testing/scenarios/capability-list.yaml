@@ -1,0 +1,13 @@
+name: "capability-list"
+category: "behavioral"
+concept: "capability"
+description: "Tests listing all available capability definitions."
+tags: ["capability", "list", "core-api"]
+timeout: "1m"
+
+steps:
+- id: "list-all-capabilities"
+  description: "List all capabilities to ensure the tool runs successfully"
+  tool: "core_capability_list"
+  expected:
+    success: true 

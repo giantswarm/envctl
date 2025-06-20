@@ -1,0 +1,33 @@
+name: "capability-create-no-type"
+category: "behavioral"
+concept: "capability"
+description: "Tests creating a capability without a 'type' field."
+tags: ["capability", "create", "validation", "core-api"]
+timeout: "1m"
+
+steps:
+- id: "create-no-type-capability"
+  description: "Create a capability definition that is missing the optional 'type' field"
+  tool: "core_capability_create"
+  args:
+    yamlContent: |
+      name: "no-type-capability"
+      version: "1.0"
+      description: "A capability without a type"
+  expected:
+    success: true
+  cleanup:
+    - id: "delete-no-type-capability"
+      tool: "core_capability_delete"
+      args: { name: "no-type-capability" }
+
+- id: "get-and-verify-no-type"
+  description: "Verify the created capability has an empty type field"
+  tool: "core_capability_get"
+  args:
+    name: "no-type-capability"
+  expected:
+    success: true
+    json_path:
+      name: "no-type-capability"
+      type: "" 

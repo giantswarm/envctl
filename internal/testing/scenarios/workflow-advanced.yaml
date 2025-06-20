@@ -1,0 +1,143 @@
+name: "workflow-advanced-scenarios"
+category: "behavioral"
+concept: "workflow"
+description: "Scenarios for advanced workflow features, including spec and storing values."
+tags: ["workflow", "advanced", "core-api"]
+timeout: "5m"
+
+pre_configuration:
+  workflows:
+    - name: "store-and-use-workflow"
+      config:
+        name: "store-and-use-workflow"
+        description: "A workflow that stores a value from one step and uses it in another"
+        steps:
+          - id: "get_service_list"
+            tool: "core_service_list"
+            # The 'store' key saves the entire output of this step into the context
+            # with the key 'all_services'
+            store: "all_services"
+          - id: "echo_service_list"
+            tool: "x_mock-echo_echo"
+            args:
+              # We can then reference the stored output in subsequent steps
+              text: "Stored services: {{ .context.all_services }}"
+
+  mcp_servers:
+    - name: "mock-echo"
+      config:
+        tools:
+          - name: "echo"
+            input_schema:
+              type: "object"
+              properties: { text: { type: "string" } }
+            responses:
+              - response: { echoed: "{{ .text }}" }
+
+steps:
+- id: "get-workflow-spec-full"
+  description: "Get the full specification for a workflow"
+  tool: "core_workflow_spec"
+  args:
+    format: "full"
+  expected:
+    success: true
+    contains: ["schema", "template", "examples"]
+
+- id: "get-workflow-spec-schema-only"
+  description: "Get just the schema for a workflow"
+  tool: "core_workflow_spec"
+  args:
+    format: "schema"
+  expected:
+    success: true
+    contains: ["schema"]
+    not_contains: ["template"]
+
+- id: "get-workflow-spec-invalid-format"
+  description: "Attempt to get a workflow spec with an invalid format"
+  tool: "core_workflow_spec"
+  args:
+    format: "invalid-format"
+  expected:
+    success: false
+    error_contains: ["invalid format"]
+
+- id: "run-store-and-use-workflow"
+  description: "Run a workflow that stores and uses a value between steps"
+  tool: "workflow_store-and-use-workflow"
+  args: {}
+  expected:
+    success: true
+    # We expect the final output to contain the echoed text, which includes
+    # the stringified JSON from the first step's output.
+    contains: ["Stored services:", "label", "state"]
+
+- id: "create-workflow-with-no-steps"
+  description: "Create a workflow that has an empty steps array"
+  tool: "core_workflow_create"
+  args:
+    yaml_definition: |
+      name: "empty-steps-workflow"
+      description: "A workflow with no steps to run"
+      steps: []
+  expected:
+    success: true
+  cleanup:
+  - tool: "core_workflow_delete"
+    args: { name: "empty-steps-workflow" }
+
+- id: "run-workflow-that-overwrites-context"
+  description: "Run a workflow where one step's stored output overwrites another's"
+  tool: "core_workflow_create"
+  args:
+    yaml_definition: |
+      name: "overwrite-context-workflow"
+      steps:
+        - id: "step1"
+          tool: "x_mock-echo_echo"
+          args: { text: "first" }
+          store: "my_value"
+        - id: "step2"
+          tool: "x_mock-echo_echo"
+          args: { text: "second" }
+          store: "my_value"
+        - id: "step3"
+          tool: "x_mock-echo_echo"
+          args: { text: "final value is {{ .context.my_value.echoed }}" }
+  expected:
+    success: true
+  cleanup:
+  - tool: "core_workflow_delete"
+    args: { name: "overwrite-context-workflow" }
+- id: "run-overwrite-context-workflow"
+  description: "Run the overwrite workflow and check the final output"
+  tool: "workflow_overwrite-context-workflow"
+  args: {}
+  expected:
+    success: true
+    json_path:
+      echoed: "final value is second"
+
+- id: "run-workflow-with-bad-template"
+  description: "Run a workflow that templates a non-existent context value"
+  tool: "core_workflow_create"
+  args:
+    yaml_definition: |
+      name: "bad-template-workflow"
+      steps:
+        - id: "bad-step"
+          tool: "x_mock-echo_echo"
+          args: { text: "{{ .context.non_existent_value }}" }
+  expected:
+    success: true # The workflow itself is valid
+  cleanup:
+  - tool: "core_workflow_delete"
+    args: { name: "bad-template-workflow" }
+- id: "run-bad-template-workflow"
+  description: "Run the bad template workflow and expect a failure"
+  tool: "workflow_bad-template-workflow"
+  args: {}
+  expected:
+    success: false
+    error_contains: ["failed to render arguments", "non_existent_value"] 

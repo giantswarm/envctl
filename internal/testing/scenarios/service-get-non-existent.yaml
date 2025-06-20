@@ -1,0 +1,16 @@
+name: "service-get-non-existent"
+category: "behavioral"
+concept: "service"
+description: "Tests getting a service that does not exist."
+tags: ["service", "get", "error-handling", "core-api"]
+timeout: "1m"
+
+steps:
+- id: "get-non-existent"
+  description: "Attempt to get a non-existent service"
+  tool: "core_service_get"
+  args:
+    labelOrServiceId: "service-does-not-exist"
+  expected:
+    success: false
+    error_contains: ["not found"] 

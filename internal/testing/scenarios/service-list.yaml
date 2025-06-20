@@ -1,0 +1,13 @@
+name: "service-list"
+category: "behavioral"
+concept: "service"
+description: "Tests listing all service instances."
+tags: ["service", "list", "core-api"]
+timeout: "1m"
+
+steps:
+- id: "list-all-services"
+  description: "List all services to ensure the tool runs successfully"
+  tool: "core_service_list"
+  expected:
+    success: true 

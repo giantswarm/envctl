@@ -1,0 +1,18 @@
+name: "mcpserver-create-invalid-type"
+category: "behavioral"
+concept: "mcpserver"
+description: "Tests creating an MCPServer with an invalid type."
+tags: ["mcpserver", "create", "error-handling", "core-api"]
+timeout: "1m"
+
+steps:
+- id: "create-invalid-type"
+  description: "Attempt to create a server with an invalid type"
+  tool: "core_mcpserver_create"
+  args:
+    yaml: |
+      name: "invalid-type-server"
+      type: "fakeType"
+  expected:
+    success: false
+    error_contains: ["invalid mcpserver type: fakeType"] 

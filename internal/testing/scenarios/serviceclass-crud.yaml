@@ -1,0 +1,164 @@
+name: "serviceclass-crud-scenarios"
+category: "behavioral"
+concept: "serviceclass"
+description: "Basic CRUD operations for ServiceClass management using the correct data model"
+tags: ["serviceclass", "crud", "core-api"]
+timeout: "5m"
+
+pre_configuration:
+  mcp_servers:
+    - name: "lifecycle-provider"
+      config:
+        tools:
+          - name: "create_resource"
+            description: "Mock tool for creating a resource"
+            input_schema:
+              type: "object"
+              properties:
+                resource_name: { type: "string" }
+            responses:
+              - response:
+                  id: "res-{{ .resource_name }}"
+                  status: "created"
+          - name: "delete_resource"
+            description: "Mock tool for deleting a resource"
+            input_schema:
+              type: "object"
+              properties:
+                resource_id: { type: "string" }
+            responses:
+              - response:
+                  status: "deleted"
+
+steps:
+  - id: "list-initial-serviceclasses"
+    description: "Get initial list of ServiceClasses to establish a baseline"
+    tool: "core_serviceclass_list"
+    expected:
+      success: true
+
+  - id: "create-correct-serviceclass"
+    description: "Create a new ServiceClass using the correct, detailed structure"
+    tool: "core_serviceclass_create"
+    args:
+      yaml: |
+        name: "correct-sc"
+        type: "basic"
+        version: "1.0.1"
+        description: "A correctly structured ServiceClass for testing"
+        serviceConfig:
+          serviceType: "mock-resource"
+          defaultLabel: "res-{{ .name }}"
+          dependencies: []
+          createParameters:
+            name:
+              toolParameter: "resource_name"
+              required: true
+          lifecycleTools:
+            start:
+              tool: "x_lifecycle-provider_create_resource"
+              arguments:
+                resource_name: "{{ .parameters.name }}"
+              responseMapping:
+                serviceId: "id"
+                status: "status"
+            stop:
+              tool: "x_lifecycle-provider_delete_resource"
+              arguments:
+                resource_id: "{{ .service.id }}"
+    expected:
+      success: true
+      contains: ["correct-sc"]
+
+  - id: "get-created-serviceclass"
+    description: "Retrieve the details of the newly created ServiceClass"
+    tool: "core_serviceclass_get"
+    args:
+      name: "correct-sc"
+    expected:
+      success: true
+      json_path:
+        name: "correct-sc"
+        description: "A correctly structured ServiceClass for testing"
+        serviceConfig.serviceType: "mock-resource"
+
+  - id: "check-availability-of-new-serviceclass"
+    description: "Verify that the new ServiceClass is available"
+    tool: "core_serviceclass_available"
+    args:
+      name: "correct-sc"
+    expected:
+      success: true
+      json_path:
+        available: true
+
+  - id: "update-serviceclass-description"
+    description: "Update the description of the existing ServiceClass"
+    tool: "core_serviceclass_update"
+    args:
+      name: "correct-sc"
+      yaml: |
+        name: "correct-sc"
+        type: "basic"
+        version: "1.0.2"
+        description: "An updated description"
+        serviceConfig:
+          serviceType: "mock-resource"
+          lifecycleTools:
+            start:
+              tool: "x_lifecycle-provider_create_resource"
+            stop:
+              tool: "x_lifecycle-provider_delete_resource"
+    expected:
+      success: true
+      contains: ["correct-sc"]
+
+  - id: "verify-updated-description"
+    description: "Verify that the ServiceClass description was updated"
+    tool: "core_serviceclass_get"
+    args:
+      name: "correct-sc"
+    expected:
+      success: true
+      json_path:
+        description: "An updated description"
+        version: "1.0.2"
+
+  - id: "delete-created-serviceclass"
+    description: "Delete the ServiceClass created during the test"
+    tool: "core_serviceclass_delete"
+    args:
+      name: "correct-sc"
+    expected:
+      success: true
+
+  - id: "verify-serviceclass-is-deleted"
+    description: "Verify the test ServiceClass is no longer available"
+    tool: "core_serviceclass_get"
+    args:
+      name: "correct-sc"
+    expected:
+      success: false
+      error_contains: ["not found"]
+
+cleanup:
+  - id: "delete-created-serviceclass"
+    description: "Delete the ServiceClass created during the test"
+    tool: "core_serviceclass_delete"
+    args:
+      name: "my-test-serviceclass"
+    expected:
+      success: true
+    # This runs even if prior steps fail, so we don't depend on state.
+    # We just ensure it runs.
+    timeout: "30s"
+
+  - id: "verify-serviceclass-is-deleted"
+    description: "Verify the test ServiceClass is no longer available"
+    tool: "core_serviceclass_get"
+    args:
+      name: "my-test-serviceclass"
+    expected:
+      success: false
+      contains: ["not found"]
+    timeout: "30s" 

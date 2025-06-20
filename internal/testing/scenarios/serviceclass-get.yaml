@@ -1,0 +1,30 @@
+name: "serviceclass-get"
+category: "behavioral"
+concept: "serviceclass"
+description: "Tests getting a specific ServiceClass definition."
+tags: ["serviceclass", "get", "core-api"]
+timeout: "1m"
+
+pre_configuration:
+  service_classes:
+    - name: "get-test-sc"
+      config:
+        name: "get-test-sc"
+        type: "basic"
+        description: "A ServiceClass for testing get"
+        serviceConfig:
+          lifecycleTools:
+            start: { tool: "core_service_list" }
+            stop: { tool: "core_service_list" }
+
+steps:
+- id: "get-specific-serviceclass"
+  description: "Get the pre-configured ServiceClass by name"
+  tool: "core_serviceclass_get"
+  args:
+    name: "get-test-sc"
+  expected:
+    success: true
+    json_path:
+      name: "get-test-sc"
+      description: "A ServiceClass for testing get" 

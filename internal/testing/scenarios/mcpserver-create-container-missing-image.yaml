@@ -1,0 +1,18 @@
+name: "mcpserver-create-container-missing-image"
+category: "behavioral"
+concept: "mcpserver"
+description: "Tests creating a container server without an image."
+tags: ["mcpserver", "create", "error-handling", "core-api"]
+timeout: "1m"
+
+steps:
+- id: "create-missing-image"
+  description: "Attempt to create a container server without the image field"
+  tool: "core_mcpserver_create"
+  args:
+    yaml: |
+      name: "container-no-image"
+      type: "container"
+  expected:
+    success: false
+    error_contains: ["'image' is required for container type"] 

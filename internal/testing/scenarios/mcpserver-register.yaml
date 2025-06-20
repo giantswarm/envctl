@@ -1,0 +1,28 @@
+name: "mcpserver-register"
+category: "behavioral"
+concept: "mcpserver"
+description: "Tests registering a new MCPServer on the fly."
+tags: ["mcpserver", "register", "core-api"]
+timeout: "1m"
+
+steps:
+- id: "register-server"
+  description: "Register a server dynamically"
+  tool: "core_mcpserver_register"
+  args:
+    yaml: |
+      name: "registered-server"
+      type: "localCommand"
+      command: ["echo", "registered"]
+  expected:
+    success: true
+  cleanup:
+  - tool: "core_mcpserver_delete"
+    args: { name: "registered-server" }
+- id: "verify-registered"
+  description: "Verify the registered server exists"
+  tool: "core_mcpserver_get"
+  args:
+    name: "registered-server"
+  expected:
+    success: true 

@@ -1,0 +1,15 @@
+name: "capability-get-definitions-path"
+category: "behavioral"
+concept: "capability"
+description: "Tests getting the capability definitions path."
+tags: ["capability", "definitions-path", "core-api"]
+timeout: "1m"
+
+steps:
+- id: "get-definitions-path"
+  description: "Get the path from which capability definitions are loaded"
+  tool: "core_capability_definitions_path"
+  expected:
+    success: true
+    # We just expect a non-empty string as the path
+    not_empty: true 

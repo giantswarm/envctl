@@ -1,0 +1,16 @@
+name: "capability-get-non-existent"
+category: "behavioral"
+concept: "capability"
+description: "Tests getting a capability that does not exist."
+tags: ["capability", "get", "error-handling", "not-found", "core-api"]
+timeout: "1m"
+
+steps:
+- id: "get-non-existent"
+  description: "Attempt to get a capability by a name that is not registered"
+  tool: "core_capability_get"
+  args:
+    name: "i-do-not-exist"
+  expected:
+    success: false
+    error_contains: ["not found"] 

@@ -1,0 +1,31 @@
+name: "serviceclass-create-conflicting-name"
+category: "behavioral"
+concept: "serviceclass"
+description: "Tests creating a ServiceClass with a name that already exists."
+tags: ["serviceclass", "create", "error-handling", "conflict", "core-api"]
+timeout: "1m"
+
+pre_configuration:
+  service_classes:
+    - name: "existing-sc"
+      config:
+        name: "existing-sc"
+        type: "basic"
+        serviceConfig:
+          lifecycleTools:
+            start: { tool: "core_service_list" }
+
+steps:
+- id: "attempt-conflicting-create"
+  description: "Attempt to create a ServiceClass with the same name as a pre-configured one"
+  tool: "core_serviceclass_create"
+  args:
+    yaml: |
+      name: "existing-sc"
+      type: "another-type"
+      serviceConfig:
+        lifecycleTools:
+          start: { tool: "core_service_list" }
+  expected:
+    success: false
+    error_contains: ["already exists"] 

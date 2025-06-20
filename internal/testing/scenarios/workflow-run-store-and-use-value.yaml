@@ -1,0 +1,34 @@
+name: "workflow-run-store-and-use-value"
+category: "behavioral"
+concept: "workflow"
+description: "Tests running a workflow that stores and uses a value between steps."
+tags: ["workflow", "run", "context", "store", "core-api"]
+timeout: "1m"
+
+pre_configuration:
+  workflows:
+  - name: "store-and-use-workflow"
+    config:
+      name: "store-and-use-workflow"
+      steps:
+        - id: "get-list"
+          tool: "core_service_list"
+          store: "services"
+        - id: "echo"
+          tool: "x_echo-provider_echo"
+          args: { text: "Service list is: {{ .context.services }}" }
+  mcp_servers:
+  - name: "echo-provider"
+    config:
+      tools:
+      - name: "echo"
+        input_schema: { type: "object", properties: { text: { type: "string" } } }
+        responses: [ { response: { said: "{{ .text }}" } } ]
+steps:
+- id: "run-store-and-use"
+  description: "Run a workflow that stores a value and references it in a later step"
+  tool: "workflow_store-and-use-workflow"
+  args: {}
+  expected:
+    success: true
+    contains: ["Service list is:", "label", "state"] 

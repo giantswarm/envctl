@@ -1,0 +1,329 @@
+name: "user-journey-platform-setup"
+category: "behavioral"
+concept: "end-to-end"
+description: "As a platform engineer, I want to set up a complete development environment so that developers can provision and manage services efficiently"
+tags: ["user-journey", "platform-setup", "end-to-end", "developer-experience"]
+timeout: "10m"
+
+# User Story: Platform Engineer Setting Up Development Environment
+# Given: A clean envctl instance
+# When: I configure the platform with MCP servers, capabilities, and service classes
+# Then: Developers should be able to create and manage services seamlessly
+
+pre_configuration:
+  # Mock external dependencies that would exist in real environment
+  mcp_servers:
+    - name: "kubernetes-provider"
+      config:
+        tools:
+          - name: "create_namespace"
+            description: "Creates a Kubernetes namespace"
+            input_schema:
+              type: "object"
+              properties:
+                name: { type: "string" }
+                labels: { type: "object" }
+            responses:
+              - response:
+                  namespace: "{{ .name }}"
+                  status: "created"
+                  
+          - name: "delete_namespace"
+            description: "Deletes a Kubernetes namespace"
+            input_schema:
+              type: "object"
+              properties:
+                name: { type: "string" }
+            responses:
+              - response:
+                  status: "deleted"
+                  
+    - name: "monitoring-provider"
+      config:
+        tools:
+          - name: "setup_prometheus"
+            description: "Sets up Prometheus monitoring"
+            input_schema:
+              type: "object"
+              properties:
+                namespace: { type: "string" }
+                retention: { type: "string", default: "30d" }
+            responses:
+              - response:
+                  prometheus_url: "http://prometheus.{{ .namespace }}.svc.cluster.local:9090"
+                  status: "deployed"
+
+steps:
+  # Phase 1: Platform Engineer validates clean state
+  - id: "validate-clean-environment" 
+    description: "Given a clean envctl instance, I should see no custom resources"
+    tool: "core_service_list"
+    expected:
+      success: true
+      # Should only contain default/system services
+    
+  - id: "check-initial-capabilities"
+    description: "And I should see only system capabilities available"
+    tool: "core_capability_list"
+    expected:
+      success: true
+      
+  # Phase 2: Platform Engineer creates foundational capabilities
+  - id: "create-kubernetes-capability"
+    description: "When I define a Kubernetes management capability for my platform"
+    tool: "core_capability_create"
+    args:
+      yamlContent: |
+        name: "kubernetes-management"
+        type: "infrastructure"
+        version: "1.0.0"
+        description: "Provides Kubernetes namespace and resource management"
+        operations:
+          - name: "create-namespace"
+            description: "Create a new Kubernetes namespace"
+            tool: "x_kubernetes-provider_create_namespace"
+          - name: "delete-namespace"
+            description: "Delete a Kubernetes namespace"
+            tool: "x_kubernetes-provider_delete_namespace"
+        metadata:
+          owner: "platform-team"
+          category: "infrastructure"
+    expected:
+      success: true
+      contains: ["kubernetes-management"]
+      
+  - id: "verify-capability-availability"
+    description: "Then the capability should be available for use"
+    tool: "core_capability_available"
+    args:
+      name: "kubernetes-management"
+    expected:
+      success: true
+      json_path:
+        available: true
+        
+  # Phase 3: Platform Engineer creates service classes for developers
+  - id: "create-development-namespace-serviceclass"
+    description: "And I create a ServiceClass that developers can use to provision development namespaces"
+    tool: "core_serviceclass_create"
+    args:
+      yaml: |
+        name: "dev-namespace"
+        type: "infrastructure"
+        version: "1.0.0"
+        description: "Provisions a development namespace with monitoring"
+        serviceConfig:
+          serviceType: "kubernetes-namespace"
+          defaultLabel: "dev-ns-{{ .parameters.team }}-{{ .parameters.project }}"
+          createParameters:
+            team:
+              toolParameter: "team_name"
+              required: true
+              description: "Team name for the namespace"
+            project:
+              toolParameter: "project_name" 
+              required: true
+              description: "Project name for the namespace"
+            monitoring:
+              toolParameter: "enable_monitoring"
+              required: false
+              default: true
+              description: "Enable Prometheus monitoring"
+          lifecycleTools:
+            start:
+              tool: "x_kubernetes-provider_create_namespace"
+              arguments:
+                name: "{{ .parameters.team }}-{{ .parameters.project }}-dev"
+                labels:
+                  team: "{{ .parameters.team }}"
+                  project: "{{ .parameters.project }}"
+                  environment: "development"
+              responseMapping:
+                serviceId: "namespace"
+                status: "status"
+            stop:
+              tool: "x_kubernetes-provider_delete_namespace"
+              arguments:
+                name: "{{ .service.id }}"
+          dependencies:
+            - capability: "kubernetes-management"
+              version: ">=1.0.0"
+    expected:
+      success: true
+      contains: ["dev-namespace"]
+      
+  - id: "create-monitoring-serviceclass"
+    description: "And I create a monitoring ServiceClass for observability"
+    tool: "core_serviceclass_create"
+    args:
+      yaml: |
+        name: "prometheus-monitoring"
+        type: "observability"
+        version: "1.0.0"
+        description: "Deploys Prometheus monitoring stack"
+        serviceConfig:
+          serviceType: "monitoring-stack"
+          defaultLabel: "monitoring-{{ .parameters.namespace }}"
+          createParameters:
+            namespace:
+              toolParameter: "target_namespace"
+              required: true
+              description: "Namespace to deploy monitoring"
+            retention_period:
+              toolParameter: "retention"
+              required: false
+              default: "30d"
+              description: "Metrics retention period"
+          lifecycleTools:
+            start:
+              tool: "x_monitoring-provider_setup_prometheus"
+              arguments:
+                namespace: "{{ .parameters.namespace }}"
+                retention: "{{ .parameters.retention_period }}"
+              responseMapping:
+                serviceId: "prometheus_url"
+                status: "status"
+    expected:
+      success: true
+      contains: ["prometheus-monitoring"]
+      
+  # Phase 4: Validate platform readiness
+  - id: "verify-serviceclass-availability"
+    description: "Then both ServiceClasses should be available for developers"
+    tool: "core_serviceclass_available"
+    args:
+      name: "dev-namespace"
+    expected:
+      success: true
+      json_path:
+        available: true
+        
+  - id: "verify-monitoring-serviceclass-availability"
+    description: "And the monitoring ServiceClass should also be available"
+    tool: "core_serviceclass_available"
+    args:
+      name: "prometheus-monitoring"
+    expected:
+      success: true
+      json_path:
+        available: true
+        
+  # Phase 5: Simulate developer workflow
+  - id: "developer-creates-dev-environment"
+    description: "When a developer creates a development environment"
+    tool: "core_service_create"
+    args:
+      serviceClassName: "dev-namespace"
+      label: "team-alpha-project-x-dev"
+      parameters:
+        team: "alpha"
+        project: "project-x"
+        monitoring: true
+      persist: true
+      autoStart: true
+    expected:
+      success: true
+      contains: ["team-alpha-project-x-dev"]
+      
+  - id: "verify-development-namespace-running"
+    description: "Then the development namespace should be running"
+    tool: "core_service_get"
+    args:
+      labelOrServiceId: "team-alpha-project-x-dev"
+    expected:
+      success: true
+      json_path:
+        label: "team-alpha-project-x-dev"
+        serviceClass: "dev-namespace"
+        state: "RUNNING"
+        service.id: "alpha-project-x-dev"
+        
+  - id: "developer-adds-monitoring"
+    description: "And the developer adds monitoring to their namespace"
+    tool: "core_service_create"
+    args:
+      serviceClassName: "prometheus-monitoring"
+      label: "monitoring-alpha-project-x"
+      parameters:
+        namespace: "alpha-project-x-dev"
+        retention_period: "7d"
+      persist: true
+    expected:
+      success: true
+      contains: ["monitoring-alpha-project-x"]
+      
+  - id: "verify-monitoring-deployed"
+    description: "Then monitoring should be successfully deployed"
+    tool: "core_service_get"
+    args:
+      labelOrServiceId: "monitoring-alpha-project-x"
+    expected:
+      success: true
+      json_path:
+        state: "RUNNING"
+        serviceClass: "prometheus-monitoring"
+        
+  # Phase 6: Validate complete platform functionality
+  - id: "list-all-developer-services"
+    description: "And I should see all developer services in the list"
+    tool: "core_service_list"
+    expected:
+      success: true
+      contains: 
+        - "team-alpha-project-x-dev"
+        - "monitoring-alpha-project-x"
+        
+  - id: "verify-service-persistence"
+    description: "And the services should be marked as persistent for auto-restart"
+    tool: "core_service_get"
+    args:
+      labelOrServiceId: "team-alpha-project-x-dev"
+    expected:
+      success: true
+      # Verify persistence flag is set
+
+cleanup:
+  - id: "cleanup-developer-services"
+    description: "Clean up developer services"
+    tool: "core_service_delete"
+    args:
+      labelOrServiceId: "team-alpha-project-x-dev"
+    expected:
+      success: true
+    timeout: "30s"
+    
+  - id: "cleanup-monitoring-service"
+    description: "Clean up monitoring service"
+    tool: "core_service_delete"
+    args:
+      labelOrServiceId: "monitoring-alpha-project-x"
+    expected:
+      success: true
+    timeout: "30s"
+    
+  - id: "cleanup-serviceclass-dev-namespace"
+    description: "Clean up development namespace ServiceClass"
+    tool: "core_serviceclass_delete"
+    args:
+      name: "dev-namespace"
+    expected:
+      success: true
+    timeout: "30s"
+    
+  - id: "cleanup-serviceclass-monitoring"
+    description: "Clean up monitoring ServiceClass"
+    tool: "core_serviceclass_delete"
+    args:
+      name: "prometheus-monitoring"
+    expected:
+      success: true
+    timeout: "30s"
+    
+  - id: "cleanup-capability"
+    description: "Clean up Kubernetes capability"
+    tool: "core_capability_delete"
+    args:
+      name: "kubernetes-management"
+    expected:
+      success: true
+    timeout: "30s" 

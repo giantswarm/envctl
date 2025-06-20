@@ -1,0 +1,30 @@
+name: "mcpserver-delete"
+category: "behavioral"
+concept: "mcpserver"
+description: "Tests deleting an existing MCPServer."
+tags: ["mcpserver", "delete", "core-api"]
+timeout: "1m"
+
+pre_configuration:
+  mcp_servers:
+  - name: "delete-test-server"
+    config:
+      name: "delete-test-server"
+      type: "localCommand"
+      command: ["echo", "delete"]
+steps:
+- id: "delete-the-server"
+  description: "Delete the pre-configured server"
+  tool: "core_mcpserver_delete"
+  args:
+    name: "delete-test-server"
+  expected:
+    success: true
+- id: "verify-server-is-gone"
+  description: "Attempt to get the deleted server, expecting an error"
+  tool: "core_mcpserver_get"
+  args:
+    name: "delete-test-server"
+  expected:
+    success: false
+    error_contains: ["not found"] 

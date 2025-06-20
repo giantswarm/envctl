@@ -1,0 +1,18 @@
+name: "workflow-validate-invalid"
+category: "behavioral"
+concept: "workflow"
+description: "Tests validating an incorrect workflow definition."
+tags: ["workflow", "validate", "error-handling", "core-api"]
+timeout: "1m"
+
+steps:
+- id: "validate-incorrect-workflow"
+  description: "Validate a workflow with a missing name, expecting failure"
+  tool: "core_workflow_validate"
+  args:
+    yaml_definition: |
+      description: "This workflow is not valid"
+      steps: []
+  expected:
+    success: false
+    error_contains: ["name is required"] 

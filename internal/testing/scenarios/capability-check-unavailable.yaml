@@ -1,0 +1,17 @@
+name: "capability-check-unavailable"
+category: "behavioral"
+concept: "capability"
+description: "Tests checking the availability of a non-existent capability."
+tags: ["capability", "available", "not-found", "core-api"]
+timeout: "1m"
+
+steps:
+- id: "check-is-unavailable"
+  description: "Check that a non-existent capability is not available"
+  tool: "core_capability_available"
+  args:
+    name: "i-do-not-exist"
+  expected:
+    success: true
+    json_path:
+      available: false 

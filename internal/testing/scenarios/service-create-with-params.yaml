@@ -1,0 +1,45 @@
+name: "service-create-with-params"
+category: "behavioral"
+concept: "service"
+description: "Tests creating a service instance with parameters."
+tags: ["service", "create", "parameters", "core-api"]
+timeout: "1m"
+
+pre_configuration:
+  mcp_servers:
+  - name: "echo-provider"
+    config:
+      tools:
+      - name: "echo"
+        input_schema: { type: "object", properties: { text: { type: "string" } } }
+        responses: [ { response: { said: "{{ .text }}" } } ]
+  service_classes:
+  - name: "sc-with-params"
+    config:
+      name: "sc-with-params"
+      type: "basic"
+      serviceConfig:
+        createParameters:
+          message:
+            toolParameter: "text"
+            required: true
+        lifecycleTools:
+          start:
+            tool: "x_echo-provider_echo"
+            arguments:
+              text: "{{ .parameters.message }}"
+          stop: { tool: "core_config_get" }
+steps:
+- id: "create-service-with-params"
+  description: "Create a service and pass it a required parameter"
+  tool: "core_service_create"
+  args:
+    serviceClassName: "sc-with-params"
+    label: "service-with-params"
+    parameters:
+      message: "hello world"
+  expected:
+    success: true
+  cleanup:
+  - tool: "core_service_delete"
+    args: { labelOrServiceId: "service-with-params" } 

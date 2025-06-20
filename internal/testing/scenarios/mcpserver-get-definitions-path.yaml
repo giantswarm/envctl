@@ -1,0 +1,14 @@
+name: "mcpserver-get-definitions-path"
+category: "behavioral"
+concept: "mcpserver"
+description: "Tests getting the MCPServer definitions path."
+tags: ["mcpserver", "definitions-path", "core-api"]
+timeout: "1m"
+
+steps:
+- id: "get-path"
+  description: "Get the path for MCP server definitions"
+  tool: "core_mcpserver_definitions_path"
+  expected:
+    success: true
+    not_empty: true 

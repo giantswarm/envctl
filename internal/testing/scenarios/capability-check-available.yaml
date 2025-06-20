@@ -1,0 +1,24 @@
+name: "capability-check-available"
+category: "behavioral"
+concept: "capability"
+description: "Tests checking the availability of an existing capability."
+tags: ["capability", "available", "core-api"]
+timeout: "1m"
+
+pre_configuration:
+  capabilities:
+    - name: "available-test-capability"
+      config:
+        name: "available-test-capability"
+        type: "test"
+
+steps:
+- id: "check-is-available"
+  description: "Check that a pre-configured capability is available"
+  tool: "core_capability_available"
+  args:
+    name: "available-test-capability"
+  expected:
+    success: true
+    json_path:
+      available: true 

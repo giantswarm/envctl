@@ -1,0 +1,16 @@
+name: "capability-create-invalid-yaml"
+category: "behavioral"
+concept: "capability"
+description: "Tests creating a capability with invalid YAML syntax."
+tags: ["capability", "create", "error-handling", "core-api"]
+timeout: "1m"
+
+steps:
+- id: "create-with-invalid-yaml"
+  description: "Attempt to create a capability using a syntactically incorrect YAML string"
+  tool: "core_capability_create"
+  args:
+    yamlContent: "this: is: not: valid: yaml"
+  expected:
+    success: false
+    error_contains: ["invalid YAML"] 

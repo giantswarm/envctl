@@ -1,0 +1,99 @@
+name: "workflow-crud-scenarios"
+category: "behavioral"
+concept: "workflow"
+description: "Basic CRUD operations for Workflow management using the correct data model"
+tags: ["workflow", "crud", "core-api"]
+timeout: "5m"
+
+steps:
+- id: "list-initial-workflows"
+  description: "Get initial list of workflows to establish a baseline"
+  tool: "core_workflow_list"
+  args:
+    include_system: true
+  expected:
+    success: true
+
+- id: "create-correct-workflow"
+  description: "Create a new workflow using the correct data structure"
+  tool: "core_workflow_create"
+  args:
+    yaml_definition: |
+      name: "correct-workflow"
+      description: "A correctly structured workflow"
+      input_schema:
+        type: "object"
+        properties:
+          target_label:
+            type: "string"
+            description: "The label of the service to check"
+        required:
+          - "target_label"
+      steps:
+        - id: "get_status"
+          tool: "core_service_status"
+          args:
+            label: "{{ .input.target_label }}"
+
+- id: "get-created-workflow"
+  description: "Retrieve and verify the created workflow"
+  tool: "core_workflow_get"
+  args:
+    name: "correct-workflow"
+  expected:
+    success: true
+    json_path:
+      name: "correct-workflow"
+      description: "A correctly structured workflow"
+      inputSchema.properties.target_label.description: "The label of the service to check"
+
+- id: "update-workflow-description"
+  description: "Update the description of the existing workflow"
+  tool: "core_workflow_update"
+  args:
+    name: "correct-workflow"
+    yaml_definition: |
+      name: "correct-workflow"
+      description: "An updated description for the workflow"
+      input_schema:
+        type: "object"
+        properties:
+          target_label:
+            type: "string"
+            description: "The label of the service to check"
+        required:
+          - "target_label"
+      steps:
+        - id: "get_status"
+          tool: "core_service_status"
+          args:
+            label: "{{ .input.target_label }}"
+  expected:
+    success: true
+
+- id: "verify-updated-workflow"
+  description: "Verify the workflow description was updated"
+  tool: "core_workflow_get"
+  args:
+    name: "correct-workflow"
+  expected:
+    success: true
+    json_path:
+      description: "An updated description for the workflow"
+
+- id: "delete-created-workflow"
+  description: "Clean up by deleting the test workflow"
+  tool: "core_workflow_delete"
+  args:
+    name: "correct-workflow"
+  expected:
+    success: true
+
+- id: "verify-workflow-is-deleted"
+  description: "Verify the workflow was completely removed"
+  tool: "core_workflow_get"
+  args:
+    name: "correct-workflow"
+  expected:
+    success: false
+    error_contains: ["not found"] 

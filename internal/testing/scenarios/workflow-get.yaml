@@ -1,0 +1,25 @@
+name: "workflow-get"
+category: "behavioral"
+concept: "workflow"
+description: "Tests getting a specific workflow."
+tags: ["workflow", "get", "core-api"]
+timeout: "1m"
+
+pre_configuration:
+  workflows:
+  - name: "get-test-workflow"
+    config:
+      name: "get-test-workflow"
+      description: "A workflow for testing get"
+      steps: [{id: "s1", tool: "core_service_list"}]
+steps:
+- id: "get-specific-workflow"
+  description: "Get the pre-configured workflow by name"
+  tool: "core_workflow_get"
+  args:
+    name: "get-test-workflow"
+  expected:
+    success: true
+    json_path:
+      name: "get-test-workflow"
+      description: "A workflow for testing get" 

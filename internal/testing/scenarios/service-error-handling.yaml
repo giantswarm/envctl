@@ -1,0 +1,111 @@
+name: "service-error-handling-scenarios"
+category: "behavioral"
+concept: "service"
+description: "Scenarios for error handling in service instance management, based on a correctly defined ServiceClass."
+tags: ["service", "error-handling", "core-api"]
+timeout: "5m"
+
+pre_configuration:
+  mcp_servers:
+    - name: "failing-tool-provider"
+      config:
+        tools:
+          - name: "create_that_fails"
+            description: "A mock tool that always fails"
+            responses:
+              - error: "underlying tool failed"
+
+  service_classes:
+    - name: "bad-sc-for-services"
+      config:
+        name: "bad-sc-for-services"
+        type: "basic"
+        serviceConfig:
+          createParameters:
+            name:
+              required: true
+          lifecycleTools:
+            start: { tool: "x_failing-tool-provider_create_that_fails" }
+            stop: { tool: "core_service_list" } # A valid tool for stop
+
+    - name: "good-sc-for-services"
+      config:
+        name: "good-sc-for-services"
+        type: "basic"
+        serviceConfig:
+          lifecycleTools:
+            start: { tool: "core_service_list" }
+            stop: { tool: "core_service_list" }
+
+steps:
+- id: "create-service-with-non-existent-sc"
+  description: "Attempt to create a service with a non-existent ServiceClass"
+  tool: "core_service_create"
+  args:
+    serviceClassName: "non-existent-sc"
+    label: "my-failed-service-1"
+  expected:
+    success: false
+    error_contains: ["ServiceClass not found"]
+
+- id: "create-service-missing-required-parameter"
+  description: "Attempt to create a service from a SC but miss a required parameter"
+  tool: "core_service_create"
+  args:
+    serviceClassName: "bad-sc-for-services"
+    label: "my-failed-service-2"
+  expected:
+    success: false
+    error_contains: ["missing required parameter: name"]
+
+- id: "create-service-with-failing-start-tool"
+  description: "Attempt to create a service where the underlying start tool fails"
+  tool: "core_service_create"
+  args:
+    serviceClassName: "bad-sc-for-services"
+    label: "my-failed-service-3"
+    parameters:
+      name: "test"
+  expected:
+    success: false
+    error_contains: ["underlying tool failed"]
+
+- id: "get-non-existent-service"
+  description: "Attempt to get a service instance that does not exist"
+  tool: "core_service_get"
+  args:
+    labelOrServiceId: "non-existent-service"
+  expected:
+    success: false
+    error_contains: ["not found"]
+
+- id: "stop-non-existent-service"
+  description: "Attempt to stop a service instance that does not exist"
+  tool: "core_service_stop"
+  args:
+    label: "non-existent-service"
+  expected:
+    success: false
+    error_contains: ["not found"]
+
+- id: "delete-service-that-is-not-persisted"
+  description: "Create a service and then delete it"
+  tool: "core_service_create"
+  args:
+    serviceClassName: "good-sc-for-services"
+    label: "to-be-deleted-service"
+    persist: false
+  expected:
+    success: true
+  cleanup:
+  - tool: "core_service_delete"
+    args: { labelOrServiceId: "to-be-deleted-service" }
+
+- id: "delete-non-existent-service-again"
+  description: "Attempt to delete a service that has already been deleted"
+  tool: "core_service_delete"
+  args:
+    labelOrServiceId: "to-be-deleted-service"
+  expected:
+    success: false
+    error_contains: ["not found"] 

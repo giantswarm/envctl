@@ -1,0 +1,27 @@
+name: "mcpserver-create-container"
+category: "behavioral"
+concept: "mcpserver"
+description: "Tests creating a valid container MCPServer."
+tags: ["mcpserver", "create", "container", "core-api"]
+timeout: "2m"
+
+steps:
+- id: "create-container-server"
+  description: "Create a new container MCPServer"
+  tool: "core_mcpserver_create"
+  args:
+    yaml: |
+      name: "create-container-test-server"
+      type: "container"
+      image: "hello-world"
+  expected:
+    success: true
+  cleanup:
+  - tool: "core_mcpserver_delete"
+    args: { name: "create-container-test-server" }
+- id: "verify-server-in-list"
+  description: "Verify the new container server appears in the list"
+  tool: "core_mcpserver_list"
+  expected:
+    success: true
+    contains: ["create-container-test-server"] 

@@ -1,0 +1,35 @@
+name: "serviceclass-delete"
+category: "behavioral"
+concept: "serviceclass"
+description: "Tests deleting an existing ServiceClass definition."
+tags: ["serviceclass", "delete", "core-api"]
+timeout: "1m"
+
+pre_configuration:
+  service_classes:
+    - name: "delete-test-sc"
+      config:
+        name: "delete-test-sc"
+        type: "basic"
+        serviceConfig:
+          lifecycleTools:
+            start: { tool: "core_service_list" }
+            stop: { tool: "core_service_list" }
+
+steps:
+- id: "delete-the-sc"
+  description: "Delete the pre-configured ServiceClass"
+  tool: "core_serviceclass_delete"
+  args:
+    name: "delete-test-sc"
+  expected:
+    success: true
+
+- id: "verify-sc-is-gone"
+  description: "Attempt to get the deleted ServiceClass, expecting an error"
+  tool: "core_serviceclass_get"
+  args:
+    name: "delete-test-sc"
+  expected:
+    success: false
+    error_contains: ["not found"] 

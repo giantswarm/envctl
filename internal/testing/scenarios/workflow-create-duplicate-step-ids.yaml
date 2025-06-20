@@ -1,0 +1,22 @@
+name: "workflow-create-duplicate-step-ids"
+category: "behavioral"
+concept: "workflow"
+description: "Tests creating a workflow with duplicate step IDs."
+tags: ["workflow", "create", "error-handling", "validation", "core-api"]
+timeout: "1m"
+
+steps:
+- id: "create-with-duplicate-step-ids"
+  description: "Attempt to create a workflow where two steps have the same ID"
+  tool: "core_workflow_create"
+  args:
+    yaml_definition: |
+      name: "duplicate-step-workflow"
+      steps:
+        - id: "my-step"
+          tool: "core_service_list"
+        - id: "my-step"
+          tool: "core_service_list"
+  expected:
+    success: false
+    error_contains: ["duplicate step ID: my-step"] 

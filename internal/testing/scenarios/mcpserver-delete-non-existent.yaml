@@ -1,0 +1,16 @@
+name: "mcpserver-delete-non-existent"
+category: "behavioral"
+concept: "mcpserver"
+description: "Tests deleting an MCPServer that does not exist."
+tags: ["mcpserver", "delete", "error-handling", "core-api"]
+timeout: "1m"
+
+steps:
+- id: "delete-non-existent"
+  description: "Attempt to delete a non-existent server"
+  tool: "core_mcpserver_delete"
+  args:
+    name: "server-does-not-exist"
+  expected:
+    success: false
+    error_contains: ["not found"] 

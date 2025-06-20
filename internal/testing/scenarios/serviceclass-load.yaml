@@ -1,0 +1,28 @@
+name: "serviceclass-load"
+category: "behavioral"
+concept: "serviceclass"
+description: "Tests the 'load' command for ServiceClasses."
+tags: ["serviceclass", "load", "core-api"]
+timeout: "1m"
+
+pre_configuration:
+  service_classes:
+    - name: "load-test-sc"
+      config:
+        name: "load-test-sc"
+        type: "basic"
+        serviceConfig:
+          lifecycleTools: { start: {tool: "core_service_list"}, stop: {tool: "core_service_list"} }
+steps:
+- id: "load-all-scs"
+  description: "Execute the 'load' command"
+  tool: "core_serviceclass_load"
+  expected:
+    success: true
+- id: "verify-sc-still-present"
+  description: "Verify that a pre-configured ServiceClass still exists after a load"
+  tool: "core_serviceclass_get"
+  args:
+    name: "load-test-sc"
+  expected:
+    success: true 

@@ -1,0 +1,13 @@
+name: "serviceclass-list"
+category: "behavioral"
+concept: "serviceclass"
+description: "Tests listing all available ServiceClass definitions."
+tags: ["serviceclass", "list", "core-api"]
+timeout: "1m"
+
+steps:
+- id: "list-all-serviceclasses"
+  description: "List all service classes to ensure the tool runs successfully"
+  tool: "core_serviceclass_list"
+  expected:
+    success: true 

@@ -1,0 +1,25 @@
+name: "capability-create-conflicting-name"
+category: "behavioral"
+concept: "capability"
+description: "Tests creating a capability with a name that already exists."
+tags: ["capability", "create", "error-handling", "conflict", "core-api"]
+timeout: "1m"
+
+pre_configuration:
+  capabilities:
+    - name: "existing-capability"
+      config:
+        name: "existing-capability"
+        type: "test"
+
+steps:
+- id: "attempt-conflicting-create"
+  description: "Attempt to create a capability with the same name as a pre-configured one"
+  tool: "core_capability_create"
+  args:
+    yamlContent: |
+      name: "existing-capability"
+      type: "another-type"
+  expected:
+    success: false
+    error_contains: ["already exists"] 

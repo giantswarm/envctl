@@ -1,0 +1,37 @@
+name: "capability-update"
+category: "behavioral"
+concept: "capability"
+description: "Tests updating an existing capability definition."
+tags: ["capability", "update", "core-api"]
+timeout: "1m"
+
+pre_configuration:
+  capabilities:
+    - name: "update-test-capability"
+      config:
+        name: "update-test-capability"
+        type: "test"
+        description: "Initial description"
+
+steps:
+- id: "update-the-capability"
+  description: "Update the description of the pre-configured capability"
+  tool: "core_capability_update"
+  args:
+    name: "update-test-capability"
+    yamlContent: |
+      name: "update-test-capability"
+      type: "test"
+      description: "Updated description"
+  expected:
+    success: true
+
+- id: "verify-capability-was-updated"
+  description: "Get the capability and verify its description was updated"
+  tool: "core_capability_get"
+  args:
+    name: "update-test-capability"
+  expected:
+    success: true
+    json_path:
+      description: "Updated description" 

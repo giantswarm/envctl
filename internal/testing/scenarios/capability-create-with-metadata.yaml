@@ -1,0 +1,37 @@
+name: "capability-create-with-metadata"
+category: "behavioral"
+concept: "capability"
+description: "Tests creating a capability with a 'metadata' block."
+tags: ["capability", "create", "metadata", "core-api"]
+timeout: "1m"
+
+steps:
+- id: "create-metadata-capability"
+  description: "Create a capability definition that includes a metadata map"
+  tool: "core_capability_create"
+  args:
+    yamlContent: |
+      name: "metadata-capability"
+      type: "test"
+      description: "A capability with metadata"
+      metadata:
+        author: "envctl-test"
+        reference: "ticket-123"
+  expected:
+    success: true
+  cleanup:
+    - id: "delete-metadata-capability"
+      tool: "core_capability_delete"
+      args: { name: "metadata-capability" }
+
+- id: "get-and-verify-metadata"
+  description: "Verify the created capability has the correct metadata"
+  tool: "core_capability_get"
+  args:
+    name: "metadata-capability"
+  expected:
+    success: true
+    json_path:
+      name: "metadata-capability"
+      metadata.author: "envctl-test"
+      metadata.reference: "ticket-123" 

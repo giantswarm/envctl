@@ -1,0 +1,18 @@
+name: "serviceclass-update-non-existent"
+category: "behavioral"
+concept: "serviceclass"
+description: "Tests updating a ServiceClass that does not exist."
+tags: ["serviceclass", "update", "error-handling", "not-found", "core-api"]
+timeout: "1m"
+
+steps:
+- id: "update-non-existent"
+  description: "Attempt to update a ServiceClass by a name that is not registered"
+  tool: "core_serviceclass_update"
+  args:
+    name: "sc-does-not-exist"
+    yaml: |
+      name: "sc-does-not-exist"
+  expected:
+    success: false
+    error_contains: ["not found"] 

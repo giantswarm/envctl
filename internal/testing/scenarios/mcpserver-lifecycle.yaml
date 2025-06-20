@@ -1,0 +1,58 @@
+name: "mcpserver-lifecycle-scenarios"
+category: "behavioral"
+concept: "mcpserver"
+description: "Scenarios for MCPServer lifecycle, including dynamic registration and loading."
+tags: ["mcpserver", "lifecycle", "registration", "core-api"]
+timeout: "5m"
+
+steps:
+- id: "list-initial-servers"
+  description: "List initial servers to get a baseline"
+  tool: "core_mcpserver_list"
+  expected:
+    success: true
+
+- id: "register-dynamic-server"
+  description: "Register a new MCPServer dynamically"
+  tool: "core_mcpserver_register"
+  args:
+    yaml: |
+      name: "dynamic-mcpserver"
+      type: "localCommand"
+      command: ["echo", "dynamic server online"]
+  expected:
+    success: true
+
+- id: "verify-dynamic-server-appears"
+  description: "Verify the dynamically registered server is in the list"
+  tool: "core_mcpserver_list"
+  expected:
+    success: true
+    contains: ["dynamic-mcpserver"]
+
+- id: "unregister-dynamic-server"
+  description: "Unregister the dynamic server"
+  tool: "core_mcpserver_unregister"
+  args:
+    name: "dynamic-mcpserver"
+  expected:
+    success: true
+
+- id: "verify-dynamic-server-disappears"
+  description: "Verify the unregistered server is no longer in the list"
+  tool: "core_mcpserver_list"
+  expected:
+    success: true
+    not_contains: ["dynamic-mcpserver"]
+
+- id: "load-servers-from-disk"
+  description: "Run the 'load' command to re-read all servers from config files"
+  tool: "core_mcpserver_load"
+  expected:
+    success: true
+
+- id: "refresh-server-statuses"
+  description: "Run the 'refresh' command to update server availability"
+  tool: "core_mcpserver_refresh"
+  expected:
+    success: true 

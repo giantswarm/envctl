@@ -1,0 +1,17 @@
+name: "workflow-spec-get-schema"
+category: "behavioral"
+concept: "workflow"
+description: "Tests getting the schema spec for workflows."
+tags: ["workflow", "spec", "core-api"]
+timeout: "1m"
+
+steps:
+- id: "get-schema-spec"
+  description: "Get just the schema part of the workflow specification"
+  tool: "core_workflow_spec"
+  args:
+    format: "schema"
+  expected:
+    success: true
+    contains: ["schema"]
+    not_contains: ["template"] 

@@ -1,0 +1,20 @@
+name: "serviceclass-create-missing-name"
+category: "behavioral"
+concept: "serviceclass"
+description: "Tests creating a ServiceClass with a missing name field."
+tags: ["serviceclass", "create", "error-handling", "validation", "core-api"]
+timeout: "1m"
+
+steps:
+- id: "create-with-missing-name"
+  description: "Attempt to create a ServiceClass without the required 'name' field"
+  tool: "core_serviceclass_create"
+  args:
+    yaml: |
+      type: "basic"
+      serviceConfig:
+        lifecycleTools:
+          start: { tool: "core_service_list" }
+  expected:
+    success: false
+    error_contains: ["name is required"] 

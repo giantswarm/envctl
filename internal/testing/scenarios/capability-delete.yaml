@@ -1,0 +1,31 @@
+name: "capability-delete"
+category: "behavioral"
+concept: "capability"
+description: "Tests deleting an existing capability definition."
+tags: ["capability", "delete", "core-api"]
+timeout: "1m"
+
+pre_configuration:
+  capabilities:
+    - name: "delete-test-capability"
+      config:
+        name: "delete-test-capability"
+        type: "test"
+
+steps:
+- id: "delete-the-capability"
+  description: "Delete the pre-configured capability"
+  tool: "core_capability_delete"
+  args:
+    name: "delete-test-capability"
+  expected:
+    success: true
+
+- id: "verify-capability-is-gone"
+  description: "Attempt to get the deleted capability, expecting an error"
+  tool: "core_capability_get"
+  args:
+    name: "delete-test-capability"
+  expected:
+    success: false
+    error_contains: ["not found"] 

@@ -1,0 +1,27 @@
+name: "mcpserver-create-local-command"
+category: "behavioral"
+concept: "mcpserver"
+description: "Tests creating a valid localCommand MCPServer."
+tags: ["mcpserver", "create", "localCommand", "core-api"]
+timeout: "1m"
+
+steps:
+- id: "create-valid-mcpserver"
+  description: "Create a new localCommand MCPServer"
+  tool: "core_mcpserver_create"
+  args:
+    yaml: |
+      name: "create-lc-test-server"
+      type: "localCommand"
+      command: ["echo", "hello"]
+  expected:
+    success: true
+  cleanup:
+  - tool: "core_mcpserver_delete"
+    args: { name: "create-lc-test-server" }
+- id: "verify-server-in-list"
+  description: "Verify the new server appears in the list"
+  tool: "core_mcpserver_list"
+  expected:
+    success: true
+    contains: ["create-lc-test-server"] 

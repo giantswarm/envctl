@@ -1,0 +1,33 @@
+name: "service-start-already-running"
+category: "behavioral"
+concept: "service"
+description: "Tests starting an already running service."
+tags: ["service", "start", "lifecycle", "idempotency", "core-api"]
+timeout: "1m"
+
+pre_configuration:
+  service_classes:
+  - name: "sc-for-idempotency"
+    config:
+      name: "sc-for-idempotency"
+      type: "basic"
+      serviceConfig:
+        lifecycleTools:
+          start: { tool: "core_config_get" }
+          stop: { tool: "core_config_get" }
+steps:
+- id: "create-service"
+  description: "Create a service"
+  tool: "core_service_create"
+  args: { serviceClassName: "sc-for-idempotency", label: "idempotent-start-test" }
+  expected: { success: true }
+  cleanup:
+  - tool: "core_service_delete"
+    args: { labelOrServiceId: "idempotent-start-test" }
+- id: "start-service-again"
+  description: "Start the already running service, expecting success"
+  tool: "core_service_start"
+  args: { label: "idempotent-start-test" }
+  expected:
+    success: true
+    contains: ["already running"] 

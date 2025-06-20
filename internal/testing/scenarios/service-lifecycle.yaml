@@ -1,0 +1,157 @@
+name: "behavior-developer-service-management"
+category: "behavioral"
+concept: "service"
+description: "As a developer, I want to manage my application services throughout their lifecycle so that I can develop and test my applications efficiently"
+tags: ["service", "lifecycle", "developer-experience", "user-story"]
+timeout: "8m"
+
+# User Story: Developer Managing Application Services
+# Given: I have access to platform services for development
+# When: I create, start, stop, and manage services for my application
+# Then: I should have full control over my development environment
+
+pre_configuration:
+  mcp_servers:
+    - name: "service-tool-provider"
+      config:
+        tools:
+          - name: "create_it"
+            responses: [ { response: { service_id: "inst-{{ .label }}", status: "ok" } } ]
+          - name: "delete_it"
+            responses: [ { response: { status: "ok" } } ]
+
+  service_classes:
+    - name: "lifecycle-sc"
+      config:
+        name: "lifecycle-sc"
+        type: "basic"
+        serviceConfig:
+          createParameters:
+            message:
+              toolParameter: "msg"
+              required: false
+              default: "default message"
+          lifecycleTools:
+            start:
+              tool: "x_service-tool-provider_create_it"
+              arguments:
+                label: "{{ .label }}"
+                msg: "{{ .parameters.message }}"
+              responseMapping:
+                serviceId: "service_id"
+            stop:
+              tool: "x_service-tool-provider_delete_it"
+              arguments:
+                id: "{{ .service.id }}"
+
+steps:
+# Phase 1: Developer Environment Assessment (Given)
+- id: "developer-checks-available-services"
+  description: "Given I'm starting my development work, I want to see what services are currently running"
+  tool: "core_service_list"
+  expected:
+    success: true
+    # Should get current baseline of services
+
+# Phase 2: Developer Creates Application Service (When)
+- id: "developer-provisions-application-service"
+  description: "When I need a service for my application development, I create it with my project settings"
+  tool: "core_service_create"
+  args:
+    serviceClassName: "lifecycle-sc"
+    label: "my-app-backend"
+    parameters:
+      message: "Development environment for my-app backend"
+    persist: true
+    autoStart: true
+  expected:
+    success: true
+    contains: ["my-app-backend"]
+
+# Phase 3: Developer Verifies Service Status (Then)
+- id: "developer-verifies-service-running"
+  description: "Then my application service should be running and ready for development"
+  tool: "core_service_get"
+  args:
+    labelOrServiceId: "my-app-backend"
+  expected:
+    success: true
+    json_path:
+      label: "my-app-backend"
+      serviceClass: "lifecycle-sc"
+      state: "RUNNING"
+      # Service should be auto-started after creation
+
+# Phase 4: Developer Manages Service During Development
+- id: "developer-stops-service-for-maintenance"
+  description: "When I need to perform maintenance or save resources, I can stop my service"
+  tool: "core_service_stop"
+  args:
+    label: "my-app-backend"
+  expected:
+    success: true
+
+- id: "developer-verifies-service-stopped"
+  description: "Then the service should be stopped and not consuming resources"
+  tool: "core_service_status"
+  args:
+    label: "my-app-backend"
+  expected:
+    success: true
+    json_path:
+      state: "STOPPED"
+
+- id: "developer-resumes-development"
+  description: "When I'm ready to continue development, I can restart my service"
+  tool: "core_service_start"
+  args:
+    label: "my-app-backend"
+  expected:
+    success: true
+
+- id: "developer-confirms-service-available"
+  description: "Then my service should be running and available for my development work"
+  tool: "core_service_get"
+  args:
+    labelOrServiceId: "my-app-backend"
+  expected:
+    success: true
+    json_path:
+      state: "RUNNING"
+      label: "my-app-backend"
+
+- id: "developer-restarts-service-during-testing"
+  description: "When I need to reset my service state during testing, I can restart it"
+  tool: "core_service_restart"
+  args:
+    label: "my-app-backend"
+  expected:
+    success: true
+
+- id: "developer-verifies-restart-successful"
+  description: "Then my service should be freshly restarted and ready"
+  tool: "core_service_status"
+  args:
+    label: "my-app-backend"
+  expected:
+    success: true
+    json_path:
+      state: "RUNNING"
+
+# Phase 5: Developer Completes Project (Cleanup)
+- id: "developer-removes-project-service"
+  description: "When my project is complete, I can clean up by removing my development service"
+  tool: "core_service_delete"
+  args:
+    labelOrServiceId: "my-app-backend"
+  expected:
+    success: true
+
+- id: "developer-confirms-service-removed"
+  description: "Then the service should no longer exist in my environment"
+  tool: "core_service_get"
+  args:
+    labelOrServiceId: "my-app-backend"
+  expected:
+    success: false
+    error_contains: ["not found"] 

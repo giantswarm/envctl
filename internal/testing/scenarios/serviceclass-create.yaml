@@ -1,0 +1,40 @@
+name: "serviceclass-create"
+category: "behavioral"
+concept: "serviceclass"
+description: "Tests creating a valid ServiceClass definition."
+tags: ["serviceclass", "create", "core-api"]
+timeout: "1m"
+
+pre_configuration:
+  mcp_servers:
+    - name: "sc-create-provider"
+      config:
+        tools:
+          - name: "start"
+            responses: [{response: {status: "ok"}}]
+          - name: "stop"
+            responses: [{response: {status: "ok"}}]
+steps:
+- id: "create-valid-serviceclass"
+  description: "Create a new ServiceClass with a valid structure"
+  tool: "core_serviceclass_create"
+  args:
+    yaml: |
+      name: "create-test-sc"
+      type: "basic"
+      serviceConfig:
+        lifecycleTools:
+          start: { tool: "x_sc-create-provider_start" }
+          stop: { tool: "x_sc-create-provider_stop" }
+  expected:
+    success: true
+  cleanup:
+  - tool: "core_serviceclass_delete"
+    args: { name: "create-test-sc" }
+
+- id: "verify-sc-in-list"
+  description: "Verify the new ServiceClass appears in the list"
+  tool: "core_serviceclass_list"
+  expected:
+    success: true
+    contains: ["create-test-sc"] 

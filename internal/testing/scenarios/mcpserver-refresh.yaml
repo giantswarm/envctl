@@ -1,0 +1,13 @@
+name: "mcpserver-refresh"
+category: "behavioral"
+concept: "mcpserver"
+description: "Tests the 'refresh' command for MCPServers."
+tags: ["mcpserver", "refresh", "core-api"]
+timeout: "1m"
+
+steps:
+- id: "refresh-servers"
+  description: "Run the refresh command"
+  tool: "core_mcpserver_refresh"
+  expected:
+    success: true 

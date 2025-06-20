@@ -1,0 +1,26 @@
+name: "workflow-run-missing-required-input"
+category: "behavioral"
+concept: "workflow"
+description: "Tests running a workflow without a required parameter."
+tags: ["workflow", "run", "parameters", "error-handling", "core-api"]
+timeout: "1m"
+
+pre_configuration:
+  workflows:
+  - name: "require-input-workflow"
+    config:
+      name: "require-input-workflow"
+      input_schema:
+        type: "object"
+        properties:
+          message: { type: "string" }
+        required: ["message"]
+      steps: [{id: "s1", tool: "core_service_list"}]
+steps:
+- id: "run-workflow-missing-input"
+  description: "Run a workflow without providing a required parameter"
+  tool: "workflow_require-input-workflow"
+  args: {}
+  expected:
+    success: false
+    error_contains: ["missing required parameter: message"] 

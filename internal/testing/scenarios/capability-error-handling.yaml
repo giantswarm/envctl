@@ -1,0 +1,80 @@
+name: "capability-error-handling-scenarios"
+category: "behavioral"
+concept: "capability"
+description: "Error handling for Capability management"
+tags: ["capability", "error-handling", "core-api"]
+timeout: "5m"
+
+steps:
+- id: "create-capability-invalid-yaml"
+  description: "Attempt to create a capability with invalid YAML syntax"
+  tool: "core_capability_create"
+  args:
+    yamlContent: "name: 'my-cap',,, oops"
+  expected:
+    success: false
+    error_contains: ["invalid YAML"]
+
+- id: "create-capability-missing-name"
+  description: "Attempt to create a capability with a missing 'name' field"
+  tool: "core_capability_create"
+  args:
+    yamlContent: |
+      type: "test"
+      description: "This capability is missing a name"
+  expected:
+    success: false
+    error_contains: ["name is required"]
+
+- id: "create-capability-with-conflicting-name"
+  description: "Create a capability, then try to create another with the same name"
+  tool: "core_capability_create"
+  args:
+    yamlContent: |
+      name: "conflicting-cap"
+      type: "test"
+  expected:
+    success: true
+  cleanup:
+  - tool: "core_capability_delete"
+    args: { name: "conflicting-cap" }
+
+- id: "create-conflicting-capability-step-2"
+  description: "Attempt the conflicting creation"
+  tool: "core_capability_create"
+  args:
+    yamlContent: |
+      name: "conflicting-cap"
+      type: "another-test"
+  expected:
+    success: false
+    error_contains: ["already exists"]
+
+- id: "get-non-existent-capability"
+  description: "Attempt to get a capability that does not exist"
+  tool: "core_capability_get"
+  args:
+    name: "non-existent-capability"
+  expected:
+    success: false
+    error_contains: ["not found"]
+
+- id: "update-non-existent-capability"
+  description: "Attempt to update a non-existent capability"
+  tool: "core_capability_update"
+  args:
+    name: "non-existent-capability"
+    yamlContent: |
+      name: "non-existent-capability"
+  expected:
+    success: false
+    error_contains: ["not found"]
+
+- id: "delete-non-existent-capability"
+  description: "Attempt to delete a non-existent capability"
+  tool: "core_capability_delete"
+  args:
+    name: "non-existent-capability"
+  expected:
+    success: false
+    error_contains: ["not found"] 
