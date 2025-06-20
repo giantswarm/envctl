@@ -40,4 +40,4 @@ type PreConfiguration struct {
 type MCPServerConfig struct {
 	Name   string                 `yaml:"name"`
 	Config map[string]interface{} `yaml:"config"`
-} 
+}

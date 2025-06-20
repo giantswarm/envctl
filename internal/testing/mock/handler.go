@@ -33,7 +33,7 @@ func (h *ToolHandler) HandleCall(arguments map[string]interface{}) (interface{},
 
 	// Merge arguments with default values from input schema
 	mergedArgs := h.mergeWithDefaults(arguments)
-	
+
 	if h.debug && len(mergedArgs) != len(arguments) {
 		fmt.Fprintf(os.Stderr, "🔧 Mock tool '%s' merged with defaults: %v\n", h.config.Name, mergedArgs)
 	}
@@ -104,7 +104,7 @@ func (h *ToolHandler) HandleCall(arguments map[string]interface{}) (interface{},
 // mergeWithDefaults merges provided arguments with default values from input schema
 func (h *ToolHandler) mergeWithDefaults(arguments map[string]interface{}) map[string]interface{} {
 	merged := make(map[string]interface{})
-	
+
 	// First, add default values from input schema
 	if h.config.InputSchema != nil {
 		if properties, ok := h.config.InputSchema["properties"].(map[string]interface{}); ok {
@@ -117,12 +117,12 @@ func (h *ToolHandler) mergeWithDefaults(arguments map[string]interface{}) map[st
 			}
 		}
 	}
-	
+
 	// Then, override with provided arguments
 	for key, value := range arguments {
 		merged[key] = value
 	}
-	
+
 	return merged
 }
 
@@ -157,4 +157,4 @@ func (h *ToolHandler) valuesEqual(expected, actual interface{}) bool {
 	}
 
 	return false
-} 
+}

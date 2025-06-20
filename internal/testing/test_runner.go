@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // testRunner implements the TestRunner interface
@@ -443,18 +446,21 @@ func (r *testRunner) validateExpectations(expected TestExpectation, response int
 	// Check if response indicates an error (for MCP responses)
 	isResponseError := false
 	if response != nil {
-		// The response might be a struct with an isError field
-		if mcpResponse, ok := response.(map[string]interface{}); ok {
+		// Check if this is a CallToolResult with IsError field
+		if mcpResult, ok := response.(*mcp.CallToolResult); ok {
+			isResponseError = mcpResult.IsError
+		} else if mcpResponse, ok := response.(map[string]interface{}); ok {
+			// The response might be a map with an isError field
 			if isErr, exists := mcpResponse["isError"]; exists {
 				if isErrBool, ok := isErr.(bool); ok {
 					isResponseError = isErrBool
 				}
 			}
 		} else {
-			// Try to access isError field via reflection or struct field
+			// Try to access IsError field via reflection or struct field
 			// This handles the case where response is a struct type
 			responseStr := fmt.Sprintf("%+v", response)
-			if containsText(responseStr, "isError:true") || containsText(responseStr, "isError: true") {
+			if containsText(responseStr, "IsError:true") || containsText(responseStr, "IsError: true") {
 				isResponseError = true
 			}
 		}
@@ -491,17 +497,27 @@ func (r *testRunner) validateExpectations(expected TestExpectation, response int
 	// Check error content expectations
 	if len(expected.ErrorContains) > 0 {
 		var errorText string
-		
+
 		// First, try to get error text from Go error
 		if err != nil {
 			errorText = err.Error()
 		} else if isResponseError && response != nil {
 			// If no Go error but response indicates error, extract error text from response
-			responseStr := fmt.Sprintf("%v", response)
-			errorText = responseStr
+			if mcpResult, ok := response.(*mcp.CallToolResult); ok {
+				// Extract text from MCP result content
+				for _, content := range mcpResult.Content {
+					if textContent, ok := mcp.AsTextContent(content); ok {
+						errorText += textContent.Text + " "
+					}
+				}
+				errorText = strings.TrimSpace(errorText)
+			} else {
+				responseStr := fmt.Sprintf("%v", response)
+				errorText = responseStr
+			}
 		}
-		
-				if errorText == "" {
+
+		if errorText == "" {
 			if r.debug {
 				r.logger.Debug("❌ Expected error containing text but got no error text (err=%v, isResponseError=%v)\n", err, isResponseError)
 			}
@@ -524,7 +540,19 @@ func (r *testRunner) validateExpectations(expected TestExpectation, response int
 
 	// Check response content expectations
 	if response != nil {
-		responseStr := fmt.Sprintf("%v", response)
+		var responseStr string
+		if mcpResult, ok := response.(*mcp.CallToolResult); ok {
+			// Extract text content from MCP result for text matching
+			var textParts []string
+			for _, content := range mcpResult.Content {
+				if textContent, ok := mcp.AsTextContent(content); ok {
+					textParts = append(textParts, textContent.Text)
+				}
+			}
+			responseStr = strings.Join(textParts, " ")
+		} else {
+			responseStr = fmt.Sprintf("%v", response)
+		}
 
 		// Check contains expectations
 		for _, expectedText := range expected.Contains {
@@ -550,7 +578,7 @@ func (r *testRunner) validateExpectations(expected TestExpectation, response int
 		if len(expected.JSONPath) > 0 {
 			// Parse response as JSON-like map
 			var responseMap map[string]interface{}
-			
+
 			// Handle different response types
 			if respMap, ok := response.(map[string]interface{}); ok {
 				responseMap = respMap
@@ -643,20 +671,20 @@ func toLower(s string) string {
 func (r *testRunner) extractJSONFromMCPResponse(response interface{}) map[string]interface{} {
 	// Try to handle MCP CallToolResult structure
 	responseStr := fmt.Sprintf("%+v", response)
-	
+
 	// Look for patterns that indicate this is an MCP response with JSON content
 	if !containsText(responseStr, "Content:[") {
 		return nil
 	}
-	
+
 	// Try to extract the JSON text from the response structure
 	// The format is usually: Content:[{...Text:{"json":"here"}...}]
 	// We'll use string parsing to extract the JSON content
-	
+
 	// Find the Text: field in the string representation
 	textStart := -1
 	textEnd := -1
-	
+
 	// Look for "Text:" pattern
 	textPattern := "Text:"
 	for i := 0; i <= len(responseStr)-len(textPattern); i++ {
@@ -665,14 +693,14 @@ func (r *testRunner) extractJSONFromMCPResponse(response interface{}) map[string
 			break
 		}
 	}
-	
+
 	if textStart == -1 {
 		if r.debug {
 			r.logger.Debug("🔍 Could not find 'Text:' in response: %s\n", responseStr[:min(200, len(responseStr))])
 		}
 		return nil
 	}
-	
+
 	// Find the end of the JSON text (look for the closing brace followed by '}')
 	braceCount := 0
 	inJson := false
@@ -692,8 +720,8 @@ func (r *testRunner) extractJSONFromMCPResponse(response interface{}) map[string
 			}
 		}
 	}
-	
-		if textEnd == -1 || !inJson {
+
+	if textEnd == -1 || !inJson {
 		if r.debug {
 			r.logger.Debug("🔍 Could not find complete JSON in response text\n")
 		}
@@ -714,7 +742,7 @@ func (r *testRunner) extractJSONFromMCPResponse(response interface{}) map[string
 		}
 		return nil
 	}
-	
+
 	return result
 }
 

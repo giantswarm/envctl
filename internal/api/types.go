@@ -22,11 +22,11 @@ type MCPToolUpdateEvent struct {
 
 // ToolUpdateEvent represents a tool availability change event
 type ToolUpdateEvent struct {
-	Type        string    `json:"type"`        // "server_registered", "server_deregistered", "tools_updated"
-	ServerName  string    `json:"server_name"`
-	Tools       []string  `json:"tools"`       // List of tool names
-	Timestamp   time.Time `json:"timestamp"`
-	Error       string    `json:"error,omitempty"`
+	Type       string    `json:"type"` // "server_registered", "server_deregistered", "tools_updated"
+	ServerName string    `json:"server_name"`
+	Tools      []string  `json:"tools"` // List of tool names
+	Timestamp  time.Time `json:"timestamp"`
+	Error      string    `json:"error,omitempty"`
 }
 
 // MCPResource represents an MCP resource

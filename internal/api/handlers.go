@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // Handler interfaces that services will implement
@@ -139,6 +141,12 @@ type AggregatorHandler interface {
 	GetServiceData() map[string]interface{}
 	GetEndpoint() string
 	GetPort() int
+
+	// Tool calling methods
+	CallTool(ctx context.Context, toolName string, args map[string]interface{}) (*CallToolResult, error)
+	CallToolInternal(ctx context.Context, toolName string, args map[string]interface{}) (*mcp.CallToolResult, error)
+	IsToolAvailable(toolName string) bool
+	GetAvailableTools() []string
 }
 
 // ConfigHandler provides configuration management functionality
@@ -556,7 +564,7 @@ func PublishToolUpdateEvent(event ToolUpdateEvent) {
 	copy(subscribers, toolUpdateSubscribers)
 	toolUpdateMutex.Unlock()
 
-	logging.Debug("API", "Publishing tool update event: type=%s, server=%s, tools=%d, subscribers=%d", 
+	logging.Debug("API", "Publishing tool update event: type=%s, server=%s, tools=%d, subscribers=%d",
 		event.Type, event.ServerName, len(event.Tools), len(subscribers))
 
 	for _, subscriber := range subscribers {

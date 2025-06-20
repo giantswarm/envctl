@@ -72,7 +72,7 @@ func (r *testReporter) ReportScenarioStart(scenario TestScenario) {
 		// Show pre-configuration details
 		if scenario.PreConfiguration != nil {
 			fmt.Printf("   🔧 Pre-configuration:\n")
-			
+
 			if len(scenario.PreConfiguration.MCPServers) > 0 {
 				fmt.Printf("      📡 MCP Servers (%d):\n", len(scenario.PreConfiguration.MCPServers))
 				for _, server := range scenario.PreConfiguration.MCPServers {
@@ -98,7 +98,7 @@ func (r *testReporter) ReportScenarioStart(scenario TestScenario) {
 					}
 				}
 			}
-			
+
 			if len(scenario.PreConfiguration.ServiceClasses) > 0 {
 				fmt.Printf("      🏗️  Service Classes (%d):\n", len(scenario.PreConfiguration.ServiceClasses))
 				for _, sc := range scenario.PreConfiguration.ServiceClasses {
@@ -118,21 +118,21 @@ func (r *testReporter) ReportScenarioStart(scenario TestScenario) {
 					fmt.Printf("\n")
 				}
 			}
-			
+
 			if len(scenario.PreConfiguration.Workflows) > 0 {
 				fmt.Printf("      🔄 Workflows (%d):\n", len(scenario.PreConfiguration.Workflows))
 				for _, wf := range scenario.PreConfiguration.Workflows {
 					fmt.Printf("         • %s\n", wf.Name)
 				}
 			}
-			
+
 			if len(scenario.PreConfiguration.Capabilities) > 0 {
 				fmt.Printf("      ⚡ Capabilities (%d):\n", len(scenario.PreConfiguration.Capabilities))
 				for _, cap := range scenario.PreConfiguration.Capabilities {
 					fmt.Printf("         • %s\n", cap.Name)
 				}
 			}
-			
+
 			if len(scenario.PreConfiguration.Services) > 0 {
 				fmt.Printf("      📦 Services (%d):\n", len(scenario.PreConfiguration.Services))
 				for _, svc := range scenario.PreConfiguration.Services {
@@ -140,7 +140,7 @@ func (r *testReporter) ReportScenarioStart(scenario TestScenario) {
 				}
 			}
 		}
-		
+
 		fmt.Printf("\n")
 	} else {
 		fmt.Printf("🎯 %s... ", scenario.Name)
@@ -161,7 +161,7 @@ func (r *testReporter) ReportStepResult(stepResult TestStepResult) {
 
 		// Show tool call details
 		fmt.Printf("      🔧 Tool: %s\n", stepResult.Step.Tool)
-		
+
 		// Show arguments if provided
 		if stepResult.Step.Args != nil && len(stepResult.Step.Args) > 0 {
 			fmt.Printf("      📥 Arguments:\n")
@@ -314,14 +314,14 @@ func (r *testReporter) trimLogs(logs string, maxChars int) string {
 	if len(logs) <= maxChars {
 		return logs
 	}
-	
+
 	// Try to break at a reasonable line boundary
 	truncated := logs[:maxChars]
 	lastNewline := strings.LastIndex(truncated, "\n")
 	if lastNewline > maxChars/2 {
 		truncated = logs[:lastNewline]
 	}
-	
+
 	return truncated + "\n... (truncated, see full report for complete logs)"
 }
 
@@ -343,7 +343,7 @@ func (r *testReporter) formatValue(value interface{}) string {
 	if value == nil {
 		return "null"
 	}
-	
+
 	switch v := value.(type) {
 	case string:
 		return fmt.Sprintf("\"%s\"", v)
@@ -491,18 +491,18 @@ func (r *testReporter) formatResponse(response interface{}) string {
 func (r *testReporter) extractMCPContent(response interface{}) string {
 	// Convert to string to analyze the structure
 	responseStr := fmt.Sprintf("%+v", response)
-	
+
 	// Try to extract JSON content from MCP text responses
 	// Look for patterns like: text {"key":"value"}
 	if strings.Contains(responseStr, "text ") {
 		// Find all JSON-like content after "text "
 		var jsonContents []string
-		
+
 		// Split by "text " and process each part
 		parts := strings.Split(responseStr, "text ")
 		for i := 1; i < len(parts); i++ { // Skip first part before "text "
 			part := parts[i]
-			
+
 			// Find potential JSON content
 			if jsonStart := strings.Index(part, "{"); jsonStart != -1 {
 				// Find the matching closing brace
@@ -519,7 +519,7 @@ func (r *testReporter) extractMCPContent(response interface{}) string {
 						}
 					}
 				}
-				
+
 				if jsonEnd > jsonStart {
 					jsonCandidate := part[jsonStart:jsonEnd]
 					// Try to parse as JSON to validate
@@ -535,7 +535,7 @@ func (r *testReporter) extractMCPContent(response interface{}) string {
 				}
 			}
 		}
-		
+
 		if len(jsonContents) > 0 {
 			if len(jsonContents) == 1 {
 				return jsonContents[0]
@@ -543,7 +543,7 @@ func (r *testReporter) extractMCPContent(response interface{}) string {
 			return strings.Join(jsonContents, "\n---\n")
 		}
 	}
-	
+
 	// Try to extract other structured content
 	if strings.Contains(responseStr, "IsError:true") || strings.Contains(responseStr, "isError:true") {
 		// This is an error response, try to extract error text
@@ -551,12 +551,12 @@ func (r *testReporter) extractMCPContent(response interface{}) string {
 			return "❌ Error: " + errorText
 		}
 	}
-	
+
 	// Look for simple text content patterns
 	if textContent := r.extractSimpleText(responseStr); textContent != "" {
 		return textContent
 	}
-	
+
 	return ""
 }
 
@@ -570,7 +570,7 @@ func (r *testReporter) extractErrorText(responseStr string) string {
 		"message:",
 		"Message:",
 	}
-	
+
 	for _, pattern := range patterns {
 		if idx := strings.Index(responseStr, pattern); idx != -1 {
 			afterPattern := responseStr[idx+len(pattern):]
@@ -582,14 +582,14 @@ func (r *testReporter) extractErrorText(responseStr string) string {
 					endIdx = pos
 				}
 			}
-			
+
 			extracted := strings.TrimSpace(afterPattern[:endIdx])
 			if extracted != "" {
 				return extracted
 			}
 		}
 	}
-	
+
 	return ""
 }
 
@@ -598,7 +598,7 @@ func (r *testReporter) extractSimpleText(responseStr string) string {
 	// Look for text content that's not JSON
 	if idx := strings.Index(responseStr, "text "); idx != -1 {
 		afterText := responseStr[idx+5:] // Skip "text "
-		
+
 		// If it doesn't start with {, it might be simple text
 		if !strings.HasPrefix(strings.TrimSpace(afterText), "{") {
 			// Extract until next structural element
@@ -609,14 +609,14 @@ func (r *testReporter) extractSimpleText(responseStr string) string {
 					endIdx = pos
 				}
 			}
-			
+
 			extracted := strings.TrimSpace(afterText[:endIdx])
 			if extracted != "" && !strings.HasPrefix(extracted, "&") {
 				return extracted
 			}
 		}
 	}
-	
+
 	return ""
 }
 

@@ -212,9 +212,9 @@ func (m *envCtlInstanceManager) DestroyInstance(ctx context.Context, instance *E
 	if exists && managedProc != nil {
 		// Attempt graceful shutdown first
 		if err := m.gracefulShutdown(managedProc, instance.ID); err != nil {
-					if m.debug {
-			m.logger.Debug("⚠️  Graceful shutdown failed for %s: %v, forcing termination\n", instance.ID, err)
-		}
+			if m.debug {
+				m.logger.Debug("⚠️  Graceful shutdown failed for %s: %v, forcing termination\n", instance.ID, err)
+			}
 		}
 
 		// Collect logs before cleanup
@@ -376,8 +376,8 @@ func (m *envCtlInstanceManager) WaitForReady(ctx context.Context, instance *EnvC
 	expectedWorkflows := m.extractExpectedWorkflowsFromInstance(instance)
 	expectedCapabilities := m.extractExpectedCapabilitiesFromInstance(instance)
 
-	if len(expectedTools) == 0 && len(expectedServiceClasses) == 0 && len(expectedServices) == 0 && 
-	   len(expectedWorkflows) == 0 && len(expectedCapabilities) == 0 {
+	if len(expectedTools) == 0 && len(expectedServiceClasses) == 0 && len(expectedServices) == 0 &&
+		len(expectedWorkflows) == 0 && len(expectedCapabilities) == 0 {
 		if m.debug {
 			m.logger.Debug("ℹ️  No expected resources specified, waiting for basic service readiness\n")
 		}
@@ -555,9 +555,9 @@ func (m *envCtlInstanceManager) extractExpectedTools(config *EnvCtlPreConfigurat
 	if config == nil {
 		return []string{}
 	}
-	
+
 	var expectedTools []string
-	
+
 	// Extract tools from MCP server configurations
 	for _, mcpServer := range config.MCPServers {
 		if tools, hasTools := mcpServer.Config["tools"]; hasTools {
@@ -574,11 +574,11 @@ func (m *envCtlInstanceManager) extractExpectedTools(config *EnvCtlPreConfigurat
 			}
 		}
 	}
-	
+
 	if m.debug && len(expectedTools) > 0 {
 		m.logger.Debug("🎯 Extracted expected tools from configuration: %v\n", expectedTools)
 	}
-	
+
 	return expectedTools
 }
 
@@ -590,7 +590,7 @@ func (m *envCtlInstanceManager) extractExpectedToolsFromInstance(instance *EnvCt
 // findMissingTools returns tools that are expected but not found in available tools
 func (m *envCtlInstanceManager) findMissingTools(expectedTools, availableTools []string) []string {
 	var missing []string
-	
+
 	for _, expected := range expectedTools {
 		found := false
 		for _, available := range availableTools {
@@ -604,7 +604,7 @@ func (m *envCtlInstanceManager) findMissingTools(expectedTools, availableTools [
 			missing = append(missing, expected)
 		}
 	}
-	
+
 	return missing
 }
 
@@ -615,7 +615,7 @@ func (m *envCtlInstanceManager) isToolMatch(availableTool, expectedTool string) 
 	if availableTool == expectedTool {
 		return true
 	}
-	
+
 	// This method is no longer used since we now generate the correct expected tool names
 	// with x_ prefix in extractExpectedTools
 	return false
@@ -767,7 +767,7 @@ func (m *envCtlInstanceManager) isInEnvCtlSource(dir string) bool {
 func (m *envCtlInstanceManager) generateConfigFiles(configPath string, config *EnvCtlPreConfiguration, port int) error {
 	// Create envctl subdirectory - this is where envctl serve will look for configs
 	envctlConfigPath := filepath.Join(configPath, "envctl")
-	
+
 	// Create subdirectories under envctl
 	dirs := []string{"mcpservers", "workflows", "capabilities", "serviceclasses", "services"}
 	for _, dir := range dirs {
@@ -775,7 +775,7 @@ func (m *envCtlInstanceManager) generateConfigFiles(configPath string, config *E
 			return fmt.Errorf("failed to create %s directory: %w", dir, err)
 		}
 	}
-	
+
 	// Create mocks directory for mock configurations
 	if err := os.MkdirAll(filepath.Join(configPath, "mocks"), 0755); err != nil {
 		return fmt.Errorf("failed to create mocks directory: %w", err)
@@ -823,7 +823,7 @@ func (m *envCtlInstanceManager) generateConfigFiles(configPath string, config *E
 				if err != nil {
 					return fmt.Errorf("failed to get envctl binary path: %w", err)
 				}
-				
+
 				// Create the localCommand server definition for envctl serve
 				serverDef := map[string]interface{}{
 					"name":             mcpServer.Name,
@@ -833,12 +833,12 @@ func (m *envCtlInstanceManager) generateConfigFiles(configPath string, config *E
 					"category":         "Test",
 					"command":          []string{envctlPath, "test", "--mock-mcp-server", "--mock-config", filepath.Join(configPath, "mocks", mcpServer.Name+".yaml")},
 				}
-				
+
 				if m.debug {
 					m.logger.Debug("🧪 ServerDef for %s: %+v\n", mcpServer.Name, serverDef)
 					m.logger.Debug("🧪 Tools config for %s: %+v\n", mcpServer.Name, mcpServer.Config)
 				}
-				
+
 				// Save server definition to mcpservers directory (what envctl serve loads)
 				filename := filepath.Join(envctlConfigPath, "mcpservers", mcpServer.Name+".yaml")
 				if err := m.writeYAMLFile(filename, serverDef); err != nil {
@@ -850,7 +850,7 @@ func (m *envCtlInstanceManager) generateConfigFiles(configPath string, config *E
 				if err := m.writeYAMLFile(mockConfigFile, mcpServer.Config); err != nil {
 					return fmt.Errorf("failed to write mock config %s: %w", mcpServer.Name, err)
 				}
-				
+
 				if m.debug {
 					m.logger.Debug("🧪 Created mock server %s with %d tools\n", mcpServer.Name, len(tools.([]interface{})))
 				}
@@ -957,18 +957,18 @@ func (m *envCtlInstanceManager) extractExpectedServiceClasses(config *EnvCtlPreC
 	if config == nil {
 		return []string{}
 	}
-	
+
 	var expectedServiceClasses []string
-	
+
 	// Extract ServiceClass names from service class configurations
 	for _, serviceClass := range config.ServiceClasses {
 		expectedServiceClasses = append(expectedServiceClasses, serviceClass.Name)
 	}
-	
+
 	if m.debug && len(expectedServiceClasses) > 0 {
 		m.logger.Debug("🎯 Extracted expected ServiceClasses from configuration: %v\n", expectedServiceClasses)
 	}
-	
+
 	return expectedServiceClasses
 }
 
@@ -1005,7 +1005,7 @@ func (m *envCtlInstanceManager) checkServiceClassAvailability(client MCPTestClie
 	args := map[string]interface{}{
 		"name": serviceClassName,
 	}
-	
+
 	result, err := client.CallTool(ctx, "core_serviceclass_available", args)
 	if err != nil {
 		return false, fmt.Errorf("failed to call core_serviceclass_available: %w", err)
@@ -1018,13 +1018,13 @@ func (m *envCtlInstanceManager) checkServiceClassAvailability(client MCPTestClie
 	// Try to extract the JSON content from the MCP response
 	// The response structure should have a Content field with text content
 	jsonStr := ""
-	
+
 	// Method 1: Try reflection to access the Content field dynamically
 	resultValue := reflect.ValueOf(result)
 	if resultValue.Kind() == reflect.Ptr {
 		resultValue = resultValue.Elem()
 	}
-	
+
 	if resultValue.Kind() == reflect.Struct {
 		contentField := resultValue.FieldByName("Content")
 		if contentField.IsValid() && contentField.Kind() == reflect.Slice && contentField.Len() > 0 {
@@ -1037,7 +1037,7 @@ func (m *envCtlInstanceManager) checkServiceClassAvailability(client MCPTestClie
 			}
 		}
 	}
-	
+
 	// Method 2: If reflection didn't work, try marshaling and parsing the JSON representation
 	if jsonStr == "" {
 		if resultBytes, err := json.Marshal(result); err == nil {
@@ -1057,7 +1057,7 @@ func (m *envCtlInstanceManager) checkServiceClassAvailability(client MCPTestClie
 			}
 		}
 	}
-	
+
 	// Parse the extracted JSON string
 	if jsonStr != "" {
 		var serviceClassInfo map[string]interface{}
@@ -1094,7 +1094,7 @@ func (m *envCtlInstanceManager) checkServiceAvailability(client MCPTestClient, c
 	args := map[string]interface{}{
 		"labelOrServiceId": serviceName,
 	}
-	
+
 	result, err := client.CallTool(ctx, "core_service_get", args)
 	if err != nil {
 		return false, fmt.Errorf("failed to call core_service_get: %w", err)

@@ -21,9 +21,9 @@ type structuredReporter struct {
 
 // ScenarioState tracks the state of a running scenario
 type ScenarioState struct {
-	Scenario    TestScenario      `json:"scenario"`
-	StartTime   time.Time         `json:"start_time"`
-	StepResults []TestStepResult  `json:"step_results"`
+	Scenario    TestScenario     `json:"scenario"`
+	StartTime   time.Time        `json:"start_time"`
+	StepResults []TestStepResult `json:"step_results"`
 	Status      string           `json:"status"` // "running", "completed", "failed"
 }
 
@@ -42,7 +42,7 @@ func NewStructuredReporter(verbose, debug bool, reportPath string) TestReporter 
 func (r *structuredReporter) ReportStart(config TestConfiguration) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	
+
 	r.config = config
 	r.suiteResult = &TestSuiteResult{
 		StartTime:       time.Now(),
@@ -55,7 +55,7 @@ func (r *structuredReporter) ReportStart(config TestConfiguration) {
 func (r *structuredReporter) ReportScenarioStart(scenario TestScenario) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	
+
 	r.scenarioStates[scenario.Name] = &ScenarioState{
 		Scenario:    scenario,
 		StartTime:   time.Now(),
@@ -68,7 +68,7 @@ func (r *structuredReporter) ReportScenarioStart(scenario TestScenario) {
 func (r *structuredReporter) ReportStepResult(stepResult TestStepResult) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	
+
 	// Find the scenario this step belongs to and add the result
 	for _, state := range r.scenarioStates {
 		// Check if this step belongs to this scenario
@@ -92,7 +92,7 @@ func (r *structuredReporter) ReportStepResult(stepResult TestStepResult) {
 func (r *structuredReporter) ReportScenarioResult(scenarioResult TestScenarioResult) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	
+
 	// Update the scenario state
 	if state, exists := r.scenarioStates[scenarioResult.Scenario.Name]; exists {
 		if scenarioResult.Result == ResultPassed {
@@ -101,10 +101,10 @@ func (r *structuredReporter) ReportScenarioResult(scenarioResult TestScenarioRes
 			state.Status = "failed"
 		}
 	}
-	
+
 	// Add to current results
 	r.currentResults = append(r.currentResults, scenarioResult)
-	
+
 	// Update suite result if it exists
 	if r.suiteResult != nil {
 		r.suiteResult.ScenarioResults = append(r.suiteResult.ScenarioResults, scenarioResult)
@@ -116,9 +116,9 @@ func (r *structuredReporter) ReportScenarioResult(scenarioResult TestScenarioRes
 func (r *structuredReporter) ReportSuiteResult(suiteResult TestSuiteResult) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	
+
 	r.suiteResult = &suiteResult
-	
+
 	// Mark all scenarios as completed
 	for _, state := range r.scenarioStates {
 		if state.Status == "running" {
@@ -131,16 +131,16 @@ func (r *structuredReporter) ReportSuiteResult(suiteResult TestSuiteResult) {
 func (r *structuredReporter) GetCurrentSuiteResult() *TestSuiteResult {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	
+
 	if r.suiteResult == nil {
 		return nil
 	}
-	
+
 	// Return a copy to avoid race conditions
 	result := *r.suiteResult
 	result.ScenarioResults = make([]TestScenarioResult, len(r.suiteResult.ScenarioResults))
 	copy(result.ScenarioResults, r.suiteResult.ScenarioResults)
-	
+
 	return &result
 }
 
@@ -148,7 +148,7 @@ func (r *structuredReporter) GetCurrentSuiteResult() *TestSuiteResult {
 func (r *structuredReporter) GetScenarioStates() map[string]*ScenarioState {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	
+
 	// Return a copy to avoid race conditions
 	states := make(map[string]*ScenarioState)
 	for name, state := range r.scenarioStates {
@@ -157,7 +157,7 @@ func (r *structuredReporter) GetScenarioStates() map[string]*ScenarioState {
 		copy(stateCopy.StepResults, state.StepResults)
 		states[name] = &stateCopy
 	}
-	
+
 	return states
 }
 
@@ -165,7 +165,7 @@ func (r *structuredReporter) GetScenarioStates() map[string]*ScenarioState {
 func (r *structuredReporter) GetCurrentResults() []TestScenarioResult {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	
+
 	// Return a copy to avoid race conditions
 	results := make([]TestScenarioResult, len(r.currentResults))
 	copy(results, r.currentResults)
@@ -178,12 +178,12 @@ func (r *structuredReporter) GetResultsAsJSON() (string, error) {
 	if result == nil {
 		return `{"status": "no_results", "message": "No test results available"}`, nil
 	}
-	
+
 	jsonData, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
 		return "", err
 	}
-	
+
 	return string(jsonData), nil
 }
 
@@ -192,7 +192,7 @@ func (r *structuredReporter) IsVerbose() bool {
 	return r.verbose
 }
 
-// IsDebug returns whether debug reporting is enabled  
+// IsDebug returns whether debug reporting is enabled
 func (r *structuredReporter) IsDebug() bool {
 	return r.debug
 }
@@ -209,6 +209,6 @@ func (r *structuredReporter) updateSuiteCounters(scenarioResult TestScenarioResu
 	case ResultError:
 		r.suiteResult.ErrorScenarios++
 	}
-	
+
 	r.suiteResult.TotalScenarios = len(r.suiteResult.ScenarioResults)
-} 
+}

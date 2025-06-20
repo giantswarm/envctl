@@ -25,55 +25,6 @@ type Services struct {
 	AggregatorPort  int
 }
 
-// aggregatorToolChecker checks tool availability using the aggregator server
-type aggregatorToolChecker struct {
-	serviceRegistry services.ServiceRegistry
-}
-
-func (a *aggregatorToolChecker) IsToolAvailable(toolName string) bool {
-	// Get the aggregator service
-	service, exists := a.serviceRegistry.Get("mcp-aggregator")
-	if !exists {
-		return false
-	}
-
-	// Cast to aggregator service to get the manager
-	if aggService, ok := service.(interface {
-		GetManager() *aggregator.AggregatorManager
-	}); ok {
-		manager := aggService.GetManager()
-		if manager != nil {
-			server := manager.GetAggregatorServer()
-			if server != nil {
-				return server.IsToolAvailable(toolName)
-			}
-		}
-	}
-	return false
-}
-
-func (a *aggregatorToolChecker) GetAvailableTools() []string {
-	// Get the aggregator service
-	service, exists := a.serviceRegistry.Get("mcp-aggregator")
-	if !exists {
-		return []string{}
-	}
-
-	// Cast to aggregator service to get the manager
-	if aggService, ok := service.(interface {
-		GetManager() *aggregator.AggregatorManager
-	}); ok {
-		manager := aggService.GetManager()
-		if manager != nil {
-			server := manager.GetAggregatorServer()
-			if server != nil {
-				return server.GetAvailableTools()
-			}
-		}
-	}
-	return []string{}
-}
-
 // InitializeServices creates and registers all required services
 func InitializeServices(cfg *Config) (*Services, error) {
 	// Create storage for shared use across services including orchestrator persistence
@@ -83,6 +34,10 @@ func InitializeServices(cfg *Config) (*Services, error) {
 	} else {
 		storage = config.NewStorage()
 	}
+
+	// Create API-based tool checker and caller
+	toolChecker := api.NewAPIToolChecker()
+	apiToolCaller := api.NewAPIToolCaller()
 
 	// Create orchestrator without ToolCaller initially
 	orchConfig := orchestrator.Config{
@@ -120,9 +75,6 @@ func InitializeServices(cfg *Config) (*Services, error) {
 	if registryHandler == nil {
 		return nil, fmt.Errorf("service registry handler not available")
 	}
-
-	// Create the tool checker using the API handler
-	toolChecker := &aggregatorToolChecker{serviceRegistry: registry}
 
 	// Use the shared storage created earlier
 	serviceClassManager, err := serviceclass.NewServiceClassManager(toolChecker, storage)
@@ -255,39 +207,43 @@ func InitializeServices(cfg *Config) (*Services, error) {
 			)
 			registry.Register(aggService)
 
+			// Create aggregator API adapter
+			aggAdapter := aggregatorService.NewAPIAdapter(aggService)
+			aggAdapter.Register()
+
 			// Set up ToolCaller for ServiceClass-based services using orchestrator's event system
 			// This follows our architectural principles by using event-driven patterns instead of time.Sleep
 			setupToolCaller := func() {
 				logging.Info("Bootstrap", "Setting up ToolCaller for ServiceClass-based services")
 
-				// Get the aggregator service and create a ToolCaller
-				if service, exists := registry.Get("mcp-aggregator"); exists {
-					if aggSvc, ok := service.(interface {
-						GetManager() *aggregator.AggregatorManager
-					}); ok {
-						manager := aggSvc.GetManager()
-						if manager != nil {
-							server := manager.GetAggregatorServer()
-							if server != nil {
-								// Create AggregatorToolCaller and set it on the orchestrator
-								toolCaller := capability.NewAggregatorToolCaller(server)
-								orch.SetToolCaller(toolCaller)
-								logging.Info("Bootstrap", "Set up ToolCaller for ServiceClass-based services")
+				// Set the API-based tool caller on the orchestrator
+				orch.SetToolCaller(apiToolCaller)
+				logging.Info("Bootstrap", "Set up API-based ToolCaller for ServiceClass-based services")
 
-								// Refresh ServiceClass availability now that ToolCaller is available
-								if serviceClassHandler := api.GetServiceClassManager(); serviceClassHandler != nil {
-									serviceClassHandler.RefreshAvailability()
-									logging.Info("Bootstrap", "Refreshed ServiceClass availability after ToolCaller setup")
-								}
-
-								// Refresh Capability availability now that ToolCaller is available
-								if capabilityHandler := api.GetCapability(); capabilityHandler != nil {
-									capabilityHandler.RefreshAvailability()
-									logging.Info("Bootstrap", "Refreshed Capability availability after ToolCaller setup")
-								}
-							}
-						}
+				// Also set the toolCaller on the workflow manager
+				workflowHandler := api.GetWorkflow()
+				if workflowHandler != nil {
+					logging.Debug("Bootstrap", "Found workflow handler, attempting to set ToolCaller")
+					if workflowSetter, ok := workflowHandler.(interface{ SetToolCaller(interface{}) }); ok {
+						workflowSetter.SetToolCaller(apiToolCaller)
+						logging.Info("Bootstrap", "Set up API-based ToolCaller for workflow execution")
+					} else {
+						logging.Warn("Bootstrap", "Workflow handler does not support SetToolCaller")
 					}
+				} else {
+					logging.Warn("Bootstrap", "Workflow handler not found when setting up ToolCaller")
+				}
+
+				// Refresh ServiceClass availability now that ToolCaller is available
+				if serviceClassHandler := api.GetServiceClassManager(); serviceClassHandler != nil {
+					serviceClassHandler.RefreshAvailability()
+					logging.Info("Bootstrap", "Refreshed ServiceClass availability after ToolCaller setup")
+				}
+
+				// Refresh Capability availability now that ToolCaller is available
+				if capabilityHandler := api.GetCapability(); capabilityHandler != nil {
+					capabilityHandler.RefreshAvailability()
+					logging.Info("Bootstrap", "Refreshed Capability availability after ToolCaller setup")
 				}
 			}
 

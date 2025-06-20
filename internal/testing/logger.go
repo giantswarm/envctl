@@ -75,4 +75,4 @@ func (l *silentLogger) IsDebugEnabled() bool {
 
 func (l *silentLogger) IsVerboseEnabled() bool {
 	return l.verbose
-} 
+}

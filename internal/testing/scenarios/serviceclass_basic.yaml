@@ -5,6 +5,43 @@ description: "Basic ServiceClass management operations - create, list, get, dele
 tags: ["basic", "crud", "serviceclass"]
 timeout: "5m"
 
+# Pre-configure a mock server to provide the lifecycle tools
+pre_configuration:
+  mcp_servers:
+    - name: "test-lifecycle-mock"
+      config:
+        tools:
+          - name: "service_create"
+            description: "Mock service creation tool"
+            input_schema:
+              type: object
+              properties:
+                serviceClassName:
+                  type: string
+                  required: true
+                label:
+                  type: string
+                  required: true
+                parameters:
+                  type: object
+            responses:
+              - response:
+                  status: "created"
+                  serviceId: "mock-service-123"
+                  label: "{{ .label }}"
+          - name: "service_delete"
+            description: "Mock service deletion tool"
+            input_schema:
+              type: object
+              properties:
+                labelOrServiceId:
+                  type: string
+                  required: true
+            responses:
+              - response:
+                  status: "deleted"
+                  serviceId: "{{ .labelOrServiceId }}"
+
 steps:
   - id: "list-initial-serviceclasses"
     description: "Get initial list of ServiceClasses to establish baseline"
@@ -35,10 +72,10 @@ steps:
         serviceConfig:
           lifecycleTools:
             start:
-              tool: "core_service_create"
+              tool: "x_test-lifecycle-mock_service_create"
               description: "Create service instance"
             stop:
-              tool: "core_service_delete"
+              tool: "x_test-lifecycle-mock_service_delete"
               description: "Delete service instance"
         template: |
           apiVersion: v1

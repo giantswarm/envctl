@@ -2,7 +2,6 @@ package aggregator
 
 import (
 	"context"
-	"envctl/internal/capability"
 	"envctl/internal/config"
 	"envctl/pkg/logging"
 	"fmt"
@@ -83,21 +82,6 @@ func (a *AggregatorServer) Start(ctx context.Context) error {
 		if workflowAdapter != nil {
 			workflowAdapter.Register()
 			logging.Info("Aggregator", "Initialized workflow adapter")
-		}
-	}
-
-	// Initialize capability adapter if config directory is provided
-	if a.config.ConfigDir != "" {
-		// Import capability package locally to avoid circular dependencies
-		capabilityAdapter := a.createCapabilityAdapter()
-		if capabilityAdapter != nil {
-			// Do NOT register this adapter globally - it's for local aggregator use only
-			// Load capability definitions
-			if err := capabilityAdapter.LoadDefinitions(); err != nil {
-				logging.Warn("Aggregator", "Failed to load capability definitions: %v", err)
-			} else {
-				logging.Info("Aggregator", "Initialized capability adapter")
-			}
 		}
 	}
 
@@ -254,7 +238,7 @@ func (a *AggregatorServer) monitorRegistryUpdates() {
 		case <-updateChan:
 			// Update server capabilities based on registered servers
 			a.updateCapabilities()
-			
+
 			// Publish tool update event to trigger refresh in dependent managers
 			a.publishToolUpdateEvent()
 		}
@@ -265,18 +249,18 @@ func (a *AggregatorServer) monitorRegistryUpdates() {
 func (a *AggregatorServer) publishToolUpdateEvent() {
 	// Get all available tools
 	tools := a.GetAvailableTools()
-	
+
 	// Create and publish the event
 	event := api.ToolUpdateEvent{
-		Type:      "tools_updated",
+		Type:       "tools_updated",
 		ServerName: "aggregator", // Use aggregator as the source since it aggregates all tools
-		Tools:     tools,
-		Timestamp: time.Now(),
+		Tools:      tools,
+		Timestamp:  time.Now(),
 	}
-	
+
 	// Publish the event - this will notify ServiceClass and Capability managers
 	api.PublishToolUpdateEvent(event)
-	
+
 	logging.Debug("Aggregator", "Published tool update event with %d tools", len(tools))
 }
 
@@ -499,25 +483,6 @@ func (a *AggregatorServer) CallToolInternal(ctx context.Context, toolName string
 
 	// Call the tool through the client using the original name
 	return serverInfo.Client.CallTool(ctx, originalName, args)
-}
-
-// createCapabilityAdapter creates a capability adapter using the new unified pattern
-func (a *AggregatorServer) createCapabilityAdapter() interface {
-	Register()
-	LoadDefinitions() error
-} {
-	// Create a Storage instance for the aggregator
-	storage := config.NewStorage()
-
-	// Create capability adapter with aggregator as tool checker, nil tool caller, and shared storage
-	adapter, err := capability.NewAdapter(a, nil, storage)
-	if err != nil {
-		logging.Error("Aggregator", err, "Failed to create capability adapter")
-		return nil
-	}
-
-	logging.Info("Aggregator", "Created capability adapter successfully")
-	return adapter
 }
 
 // createWorkflowAdapter creates a workflow adapter using the new unified pattern

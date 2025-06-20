@@ -428,11 +428,11 @@ func (cm *CapabilityManager) UnregisterDefinition(name string) {
 
 // OnToolsUpdated implements ToolUpdateSubscriber interface
 func (cm *CapabilityManager) OnToolsUpdated(event api.ToolUpdateEvent) {
-	logging.Debug("CapabilityManager", "Received tool update event: type=%s, server=%s, tools=%d", 
+	logging.Debug("CapabilityManager", "Received tool update event: type=%s, server=%s, tools=%d",
 		event.Type, event.ServerName, len(event.Tools))
-	
+
 	// Refresh Capability availability when tools are updated
 	cm.RefreshAvailability()
-	
+
 	logging.Debug("CapabilityManager", "Refreshed Capability availability due to tool update")
 }

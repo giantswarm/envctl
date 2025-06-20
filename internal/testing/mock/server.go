@@ -55,7 +55,7 @@ func NewServer(configName, scenarioPath string, debug bool) (*Server, error) {
 	for _, toolConfig := range tools {
 		handler := NewToolHandler(toolConfig, mockServer.templateEngine, debug)
 		mockServer.toolHandlers[toolConfig.Name] = handler
-		
+
 		// Register the tool with the MCP server
 		tool := mcp.NewTool(toolConfig.Name, mcp.WithDescription(toolConfig.Description))
 		mcpServer.AddTool(tool, mockServer.createToolHandler(toolConfig.Name))
@@ -113,7 +113,7 @@ func NewServerFromFile(configPath string, debug bool) (*Server, error) {
 	for _, toolConfig := range configData.Tools {
 		handler := NewToolHandler(toolConfig, mockServer.templateEngine, debug)
 		mockServer.toolHandlers[toolConfig.Name] = handler
-		
+
 		// Register the tool with the MCP server
 		tool := mcp.NewTool(toolConfig.Name, mcp.WithDescription(toolConfig.Description))
 		mcpServer.AddTool(tool, mockServer.createToolHandler(toolConfig.Name))
@@ -230,4 +230,4 @@ func loadServerConfig(configName, scenarioPath string) ([]ToolConfig, error) {
 	}
 
 	return tools, nil
-} 
+}

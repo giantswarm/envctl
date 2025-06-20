@@ -57,6 +57,14 @@ func (wm *WorkflowManager) SetConfigPath(configPath string) {
 	wm.configPath = configPath
 }
 
+// SetToolCaller sets the ToolCaller for workflow execution
+func (wm *WorkflowManager) SetToolCaller(toolCaller ToolCaller) {
+	wm.mu.Lock()
+	defer wm.mu.Unlock()
+	wm.executor = NewWorkflowExecutor(toolCaller)
+	logging.Debug("WorkflowManager", "Updated workflow executor with new ToolCaller")
+}
+
 // LoadDefinitions loads all workflow definitions from YAML files.
 // All workflows are just YAML files, regardless of how they were created.
 func (wm *WorkflowManager) LoadDefinitions() error {
@@ -419,9 +427,9 @@ func (wm *WorkflowManager) DeleteWorkflow(name string) error {
 
 // OnToolsUpdated implements ToolUpdateSubscriber interface
 func (wm *WorkflowManager) OnToolsUpdated(event api.ToolUpdateEvent) {
-	logging.Debug("WorkflowManager", "Received tool update event: type=%s, server=%s, tools=%d (workflows use dynamic checking)", 
+	logging.Debug("WorkflowManager", "Received tool update event: type=%s, server=%s, tools=%d (workflows use dynamic checking)",
 		event.Type, event.ServerName, len(event.Tools))
-	
+
 	// Note: Workflows use dynamic checking, so no explicit refresh needed
 	// This subscription is mainly for logging and potential future enhancements
 }

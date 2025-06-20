@@ -64,7 +64,7 @@ type TestLogger interface {
 	Info(format string, args ...interface{})
 	// Error logs error-level messages (always shown)
 	Error(format string, args ...interface{})
-	// IsDebugEnabled returns whether debug logging is enabled  
+	// IsDebugEnabled returns whether debug logging is enabled
 	IsDebugEnabled() bool
 	// IsVerboseEnabled returns whether verbose logging is enabled
 	IsVerboseEnabled() bool
@@ -143,8 +143,6 @@ type MCPServerConfig struct {
 	// Config contains the server-specific configuration (can include tools for mock servers)
 	Config map[string]interface{} `yaml:"config"`
 }
-
-
 
 // WorkflowConfig represents a workflow configuration
 type WorkflowConfig struct {

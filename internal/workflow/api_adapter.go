@@ -14,15 +14,13 @@ import (
 
 // Adapter adapts the workflow system to implement api.WorkflowHandler
 type Adapter struct {
-	manager    *WorkflowManager
-	toolCaller api.ToolCaller
+	manager *WorkflowManager
 }
 
 // NewAdapter creates a new API adapter for the workflow manager
 func NewAdapter(manager *WorkflowManager, toolCaller api.ToolCaller) *Adapter {
 	return &Adapter{
-		manager:    manager,
-		toolCaller: toolCaller,
+		manager: manager,
 	}
 }
 
@@ -30,6 +28,19 @@ func NewAdapter(manager *WorkflowManager, toolCaller api.ToolCaller) *Adapter {
 func (a *Adapter) Register() {
 	api.RegisterWorkflow(a)
 	logging.Info("WorkflowAdapter", "Registered workflow adapter with API")
+}
+
+// SetToolCaller sets the ToolCaller on the underlying workflow manager
+func (a *Adapter) SetToolCaller(toolCaller interface{}) {
+	if a.manager != nil {
+		// Type assert to workflow.ToolCaller
+		if wfToolCaller, ok := toolCaller.(ToolCaller); ok {
+			a.manager.SetToolCaller(wfToolCaller)
+			logging.Debug("WorkflowAdapter", "Set ToolCaller on workflow manager")
+		} else {
+			logging.Warn("WorkflowAdapter", "Provided toolCaller does not implement workflow.ToolCaller interface")
+		}
+	}
 }
 
 // ExecuteWorkflow executes a workflow
@@ -172,10 +183,14 @@ func (a *Adapter) ValidateWorkflow(yamlStr string) error {
 	return nil
 }
 
-// CallToolInternal calls a tool internally
+// CallToolInternal calls a tool internally - required by ToolCaller interface
 func (a *Adapter) CallToolInternal(ctx context.Context, toolName string, args map[string]interface{}) (*mcp.CallToolResult, error) {
-	// Delegate to the tool caller
-	return a.toolCaller.CallToolInternal(ctx, toolName, args)
+	if a.manager == nil {
+		return nil, fmt.Errorf("workflow manager not available")
+	}
+
+	// Delegate to the manager's tool caller (which should be the API-based one)
+	return a.manager.executor.toolCaller.CallToolInternal(ctx, toolName, args)
 }
 
 // Stop stops the workflow adapter

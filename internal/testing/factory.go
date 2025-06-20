@@ -39,13 +39,13 @@ func NewTestFrameworkWithVerbose(verbose, debug bool, basePort int, reportPath s
 }
 
 // NewTestFrameworkForMode creates a fully configured test framework for the specified execution mode
-// 
-// Execution Modes:
-// - ExecutionModeCLI: Uses standard stdio output for reporting (compatible with existing behavior)
-// - ExecutionModeMCPServer: Uses structured reporting that captures data without stdio output
-//   to avoid contaminating the MCP protocol stream. Results can be retrieved programmatically.
 //
-// Note: In MCP server mode, verbose defaults to true and debug output is controlled by the 
+// Execution Modes:
+//   - ExecutionModeCLI: Uses standard stdio output for reporting (compatible with existing behavior)
+//   - ExecutionModeMCPServer: Uses structured reporting that captures data without stdio output
+//     to avoid contaminating the MCP protocol stream. Results can be retrieved programmatically.
+//
+// Note: In MCP server mode, verbose defaults to true and debug output is controlled by the
 // silent logger to prevent stdio contamination.
 func NewTestFrameworkForMode(mode ExecutionMode, verbose, debug bool, basePort int, reportPath string) (*TestFramework, error) {
 	// Create logger based on execution mode

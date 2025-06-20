@@ -542,11 +542,11 @@ func (scm *ServiceClassManager) RefreshAvailability() {
 
 // OnToolsUpdated implements ToolUpdateSubscriber interface
 func (scm *ServiceClassManager) OnToolsUpdated(event api.ToolUpdateEvent) {
-	logging.Debug("ServiceClassManager", "Received tool update event: type=%s, server=%s, tools=%d", 
+	logging.Debug("ServiceClassManager", "Received tool update event: type=%s, server=%s, tools=%d",
 		event.Type, event.ServerName, len(event.Tools))
-	
+
 	// Refresh ServiceClass availability when tools are updated
 	scm.RefreshAvailability()
-	
+
 	logging.Debug("ServiceClassManager", "Refreshed ServiceClass availability due to tool update")
 }
