@@ -69,7 +69,7 @@ func (a *Adapter) GetServiceClass(name string) (*api.ServiceClassDefinition, err
 
 	def, exists := a.manager.GetServiceClassDefinition(name)
 	if !exists {
-		return nil, fmt.Errorf("service class %s not found", name)
+		return nil, api.NewServiceClassNotFoundError(name)
 	}
 
 	// Convert to API type (lightweight version)
@@ -92,7 +92,7 @@ func (a *Adapter) GetStartTool(name string) (toolName string, arguments map[stri
 
 	def, exists := a.manager.GetServiceClassDefinition(name)
 	if !exists {
-		return "", nil, nil, fmt.Errorf("service class %s not found", name)
+		return "", nil, nil, api.NewServiceClassNotFoundError(name)
 	}
 
 	startTool := def.ServiceConfig.LifecycleTools.Start
@@ -119,7 +119,7 @@ func (a *Adapter) GetStopTool(name string) (toolName string, arguments map[strin
 
 	def, exists := a.manager.GetServiceClassDefinition(name)
 	if !exists {
-		return "", nil, nil, fmt.Errorf("service class %s not found", name)
+		return "", nil, nil, api.NewServiceClassNotFoundError(name)
 	}
 
 	stopTool := def.ServiceConfig.LifecycleTools.Stop
@@ -146,7 +146,7 @@ func (a *Adapter) GetRestartTool(name string) (toolName string, arguments map[st
 
 	def, exists := a.manager.GetServiceClassDefinition(name)
 	if !exists {
-		return "", nil, nil, fmt.Errorf("service class %s not found", name)
+		return "", nil, nil, api.NewServiceClassNotFoundError(name)
 	}
 
 	restartTool := def.ServiceConfig.LifecycleTools.Restart
@@ -174,7 +174,7 @@ func (a *Adapter) GetHealthCheckTool(name string) (toolName string, arguments ma
 
 	def, exists := a.manager.GetServiceClassDefinition(name)
 	if !exists {
-		return "", nil, nil, fmt.Errorf("service class %s not found", name)
+		return "", nil, nil, api.NewServiceClassNotFoundError(name)
 	}
 
 	if def.ServiceConfig.LifecycleTools.HealthCheck == nil {
@@ -205,7 +205,7 @@ func (a *Adapter) GetHealthCheckConfig(name string) (enabled bool, interval time
 
 	def, exists := a.manager.GetServiceClassDefinition(name)
 	if !exists {
-		return false, 0, 0, 0, fmt.Errorf("service class %s not found", name)
+		return false, 0, 0, 0, api.NewServiceClassNotFoundError(name)
 	}
 
 	config := def.ServiceConfig.HealthCheck
@@ -220,7 +220,7 @@ func (a *Adapter) GetServiceDependencies(name string) ([]string, error) {
 
 	def, exists := a.manager.GetServiceClassDefinition(name)
 	if !exists {
-		return nil, fmt.Errorf("service class %s not found", name)
+		return nil, api.NewServiceClassNotFoundError(name)
 	}
 
 	return def.ServiceConfig.Dependencies, nil
@@ -441,10 +441,7 @@ func (a *Adapter) handleServiceClassGet(args map[string]interface{}) (*api.CallT
 
 	serviceClass, err := a.GetServiceClass(name)
 	if err != nil {
-		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Failed to get ServiceClass: %v", err)},
-			IsError: true,
-		}, nil
+		return api.HandleErrorWithPrefix(err, "Failed to get ServiceClass"), nil
 	}
 
 	return &api.CallToolResult{
@@ -551,7 +548,7 @@ func (a *Adapter) handleServiceClassUnregister(args map[string]interface{}) (*ap
 		return simpleError("name parameter is required")
 	}
 	if err := a.manager.UnregisterDefinition(name); err != nil {
-		return simpleError(fmt.Sprintf("Unregister failed: %v", err))
+		return api.HandleErrorWithPrefix(err, "Unregister failed"), nil
 	}
 	return simpleOK(fmt.Sprintf("unregistered ServiceClass %s", name))
 }
@@ -568,7 +565,7 @@ func (a *Adapter) handleServiceClassCreate(args map[string]interface{}) (*api.Ca
 	}
 
 	if err := a.manager.CreateServiceClass(def); err != nil {
-		return simpleError(fmt.Sprintf("Create failed: %v", err))
+		return api.HandleErrorWithPrefix(err, "Create failed"), nil
 	}
 
 	return simpleOK(fmt.Sprintf("created service class %s", def.Name))
@@ -590,7 +587,7 @@ func (a *Adapter) handleServiceClassUpdate(args map[string]interface{}) (*api.Ca
 	}
 
 	if err := a.manager.UpdateServiceClass(name, def); err != nil {
-		return simpleError(fmt.Sprintf("Update failed: %v", err))
+		return api.HandleErrorWithPrefix(err, "Update failed"), nil
 	}
 
 	return simpleOK(fmt.Sprintf("updated service class %s", name))
@@ -603,7 +600,7 @@ func (a *Adapter) handleServiceClassDelete(args map[string]interface{}) (*api.Ca
 	}
 
 	if err := a.manager.DeleteServiceClass(name); err != nil {
-		return simpleError(fmt.Sprintf("Delete failed: %v", err))
+		return api.HandleErrorWithPrefix(err, "Delete failed"), nil
 	}
 
 	return simpleOK(fmt.Sprintf("deleted service class %s", name))

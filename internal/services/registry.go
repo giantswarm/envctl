@@ -1,6 +1,7 @@
 package services
 
 import (
+	"envctl/internal/api"
 	"fmt"
 	"sync"
 )
@@ -46,7 +47,7 @@ func (r *registry) Unregister(label string) error {
 	defer r.mu.Unlock()
 
 	if _, exists := r.services[label]; !exists {
-		return fmt.Errorf("service %s not found", label)
+		return api.NewServiceNotFoundError(label)
 	}
 
 	delete(r.services, label)

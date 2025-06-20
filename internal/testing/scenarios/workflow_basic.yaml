@@ -127,5 +127,5 @@ cleanup:
       name: "test-basic-workflow"
     expected:
       success: false
-      error_contains: ["not found", "does not exist"]
+      error_contains: ["not found"]
     timeout: "30s" 

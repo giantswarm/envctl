@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"envctl/internal/api"
 	"envctl/pkg/logging"
 
 	"github.com/google/uuid"
@@ -84,7 +85,7 @@ func (r *Registry) Unregister(capabilityID string) error {
 
 	cap, exists := r.capabilities[capabilityID]
 	if !exists {
-		return fmt.Errorf("capability %s not found", capabilityID)
+		return api.NewCapabilityNotFoundError(capabilityID)
 	}
 
 	// Remove from registry
@@ -115,7 +116,7 @@ func (r *Registry) Update(capabilityID string, status CapabilityStatus) error {
 
 	cap, exists := r.capabilities[capabilityID]
 	if !exists {
-		return fmt.Errorf("capability %s not found", capabilityID)
+		return api.NewCapabilityNotFoundError(capabilityID)
 	}
 
 	// Update status

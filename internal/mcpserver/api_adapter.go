@@ -66,7 +66,7 @@ func (a *Adapter) GetMCPServer(name string) (*api.MCPServerDefinition, error) {
 
 	def, exists := a.manager.GetDefinition(name)
 	if !exists {
-		return nil, fmt.Errorf("MCP server %s not found", name)
+		return nil, api.NewMCPServerNotFoundError(name)
 	}
 
 	// Convert to API type (lightweight version)
@@ -290,10 +290,7 @@ func (a *Adapter) handleMCPServerGet(args map[string]interface{}) (*api.CallTool
 
 	mcpServer, err := a.GetMCPServer(name)
 	if err != nil {
-		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Failed to get MCP server: %v", err)},
-			IsError: true,
-		}, nil
+		return api.HandleErrorWithPrefix(err, "Failed to get MCP server"), nil
 	}
 
 	return &api.CallToolResult{
@@ -414,11 +411,11 @@ func (a *Adapter) handleMCPServerUnregister(args map[string]interface{}) (*api.C
 
 	// Check if it exists
 	if _, exists := a.manager.GetDefinition(name); !exists {
-		return simpleError(fmt.Sprintf("MCP server '%s' not found", name))
+		return api.HandleErrorWithPrefix(api.NewMCPServerNotFoundError(name), "Failed to unregister MCP server"), nil
 	}
 
 	if err := a.manager.DeleteMCPServer(name); err != nil {
-		return simpleError(fmt.Sprintf("Failed to delete MCP server: %v", err))
+		return api.HandleErrorWithPrefix(err, "Failed to delete MCP server"), nil
 	}
 
 	return simpleOK(fmt.Sprintf("MCP server '%s' unregistered successfully", name))
@@ -478,12 +475,12 @@ func (a *Adapter) handleMCPServerUpdate(args map[string]interface{}) (*api.CallT
 
 	// Check if it exists
 	if _, exists := a.manager.GetDefinition(name); !exists {
-		return simpleError(fmt.Sprintf("MCP server '%s' not found", name))
+		return api.HandleErrorWithPrefix(api.NewMCPServerNotFoundError(name), "Failed to update MCP server"), nil
 	}
 
 	// Update the MCP server
 	if err := a.manager.UpdateMCPServer(name, def); err != nil {
-		return simpleError(fmt.Sprintf("Failed to update MCP server: %v", err))
+		return api.HandleErrorWithPrefix(err, "Failed to update MCP server"), nil
 	}
 
 	return simpleOK(fmt.Sprintf("MCP server '%s' updated successfully", name))
@@ -497,12 +494,12 @@ func (a *Adapter) handleMCPServerDelete(args map[string]interface{}) (*api.CallT
 
 	// Check if it exists
 	if _, exists := a.manager.GetDefinition(name); !exists {
-		return simpleError(fmt.Sprintf("MCP server '%s' not found", name))
+		return api.HandleErrorWithPrefix(api.NewMCPServerNotFoundError(name), "Failed to delete MCP server"), nil
 	}
 
 	// Delete the MCP server
 	if err := a.manager.DeleteMCPServer(name); err != nil {
-		return simpleError(fmt.Sprintf("Failed to delete MCP server: %v", err))
+		return api.HandleErrorWithPrefix(err, "Failed to delete MCP server"), nil
 	}
 
 	return simpleOK(fmt.Sprintf("MCP server '%s' deleted successfully", name))

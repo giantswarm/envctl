@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"envctl/internal/api"
 	"envctl/pkg/logging"
 	"fmt"
 	"io"
@@ -173,7 +174,7 @@ func (pm *ProcessManager) StopServer(label string) error {
 	pm.mu.RUnlock()
 
 	if !exists {
-		return fmt.Errorf("server %s not found", label)
+		return api.NewMCPServerNotFoundError(label)
 	}
 
 	// Signal the server to stop

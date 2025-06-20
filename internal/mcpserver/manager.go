@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"envctl/internal/api"
 	"envctl/internal/config"
 	"envctl/pkg/logging"
 
@@ -312,7 +313,7 @@ func (msm *MCPServerManager) UpdateMCPServer(name string, def MCPServerDefinitio
 	defer msm.mu.Unlock()
 
 	if _, exists := msm.definitions[name]; !exists {
-		return fmt.Errorf("MCP server '%s' not found", name)
+		return api.NewMCPServerNotFoundError(name)
 	}
 	def.Name = name
 
@@ -342,7 +343,7 @@ func (msm *MCPServerManager) DeleteMCPServer(name string) error {
 	defer msm.mu.Unlock()
 
 	if _, exists := msm.definitions[name]; !exists {
-		return fmt.Errorf("MCP server '%s' not found", name)
+		return api.NewMCPServerNotFoundError(name)
 	}
 
 	if err := msm.storage.Delete("mcpservers", name); err != nil {

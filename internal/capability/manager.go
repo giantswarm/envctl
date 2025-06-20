@@ -350,7 +350,7 @@ func (cm *CapabilityManager) UpdateCapability(def *CapabilityDefinition) error {
 	defer cm.mu.Unlock()
 
 	if _, exists := cm.definitions[def.Name]; !exists {
-		return fmt.Errorf("capability '%s' not found", def.Name)
+		return api.NewCapabilityNotFoundError(def.Name)
 	}
 
 	// Validate the definition
@@ -383,7 +383,7 @@ func (cm *CapabilityManager) DeleteCapability(name string) error {
 	defer cm.mu.Unlock()
 
 	if _, exists := cm.definitions[name]; !exists {
-		return fmt.Errorf("capability '%s' not found", name)
+		return api.NewCapabilityNotFoundError(name)
 	}
 
 	// Delete from YAML files

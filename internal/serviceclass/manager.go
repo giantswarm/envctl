@@ -152,7 +152,7 @@ func (m *ServiceClassManager) UpdateServiceClass(name string, sc ServiceClassDef
 	defer m.mu.Unlock()
 
 	if _, exists := m.definitions[name]; !exists {
-		return fmt.Errorf("service class '%s' not found", name)
+		return api.NewServiceClassNotFoundError(name)
 	}
 	sc.Name = name
 
@@ -184,7 +184,7 @@ func (m *ServiceClassManager) DeleteServiceClass(name string) error {
 	defer m.mu.Unlock()
 
 	if _, exists := m.definitions[name]; !exists {
-		return fmt.Errorf("service class '%s' not found", name)
+		return api.NewServiceClassNotFoundError(name)
 	}
 
 	if err := m.storage.Delete("serviceclasses", name); err != nil {
@@ -242,7 +242,7 @@ func (scm *ServiceClassManager) UnregisterDefinition(name string) error {
 	defer scm.mu.Unlock()
 
 	if _, exists := scm.definitions[name]; !exists {
-		return fmt.Errorf("service class %s not found", name)
+		return api.NewServiceClassNotFoundError(name)
 	}
 
 	delete(scm.definitions, name)

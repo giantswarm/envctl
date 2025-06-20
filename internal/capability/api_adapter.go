@@ -239,10 +239,7 @@ func (a *Adapter) listCapabilities(ctx context.Context) (*api.CallToolResult, er
 func (a *Adapter) getCapability(ctx context.Context, name string) (*api.CallToolResult, error) {
 	def, exists := a.manager.GetDefinition(name)
 	if !exists {
-		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Capability '%s' not found", name)},
-			IsError: true,
-		}, nil
+		return api.HandleErrorWithPrefix(api.NewCapabilityNotFoundError(name), "Failed to get capability"), nil
 	}
 
 	available := a.manager.IsAvailable(name)
@@ -354,7 +351,7 @@ func (a *Adapter) deleteCapabilityDefinition(name string) error {
 func (a *Adapter) GetCapability(name string) (interface{}, error) {
 	def, exists := a.manager.GetDefinition(name)
 	if !exists {
-		return nil, fmt.Errorf("capability '%s' not found", name)
+		return nil, api.NewCapabilityNotFoundError(name)
 	}
 	return &def, nil
 }
@@ -398,10 +395,7 @@ func (a *Adapter) handleCapabilityCreate(ctx context.Context, yamlContent string
 
 	// Create the capability
 	if err := a.manager.CreateCapability(&def); err != nil {
-		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Failed to create capability: %v", err)},
-			IsError: true,
-		}, nil
+		return api.HandleErrorWithPrefix(err, "Failed to create capability"), nil
 	}
 
 	result := map[string]interface{}{
@@ -454,10 +448,7 @@ func (a *Adapter) handleCapabilityUpdate(ctx context.Context, name, yamlContent 
 
 	// Update the capability
 	if err := a.manager.UpdateCapability(&def); err != nil {
-		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Failed to update capability: %v", err)},
-			IsError: true,
-		}, nil
+		return api.HandleErrorWithPrefix(err, "Failed to update capability"), nil
 	}
 
 	result := map[string]interface{}{
@@ -477,10 +468,7 @@ func (a *Adapter) handleCapabilityDelete(ctx context.Context, name string) (*api
 	// Check if the capability exists and allows dynamic deletion
 	existing, exists := a.manager.GetDefinition(name)
 	if !exists {
-		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Capability '%s' not found", name)},
-			IsError: true,
-		}, nil
+		return api.HandleErrorWithPrefix(api.NewCapabilityNotFoundError(name), "Failed to delete capability"), nil
 	}
 
 	// Validate that this is a dynamic capability
@@ -493,10 +481,7 @@ func (a *Adapter) handleCapabilityDelete(ctx context.Context, name string) (*api
 
 	// Delete the capability
 	if err := a.manager.DeleteCapability(name); err != nil {
-		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Failed to delete capability: %v", err)},
-			IsError: true,
-		}, nil
+		return api.HandleErrorWithPrefix(err, "Failed to delete capability"), nil
 	}
 
 	result := map[string]interface{}{

@@ -295,7 +295,7 @@ func (wm *WorkflowManager) ExecuteWorkflow(ctx context.Context, name string, arg
 
 	workflow, exists := wm.workflows[name]
 	if !exists {
-		return nil, fmt.Errorf("workflow %s not found", name)
+		return nil, api.NewWorkflowNotFoundError(name)
 	}
 
 	// Check if workflow is available before execution
@@ -381,7 +381,7 @@ func (wm *WorkflowManager) UpdateWorkflow(name string, wf WorkflowDefinition) er
 	defer wm.mu.Unlock()
 
 	if _, exists := wm.workflows[name]; !exists {
-		return fmt.Errorf("workflow '%s' not found", name)
+		return api.NewWorkflowNotFoundError(name)
 	}
 	// Ensure the name in the object matches the name being updated
 	wf.Name = name
@@ -412,7 +412,7 @@ func (wm *WorkflowManager) DeleteWorkflow(name string) error {
 	defer wm.mu.Unlock()
 
 	if _, exists := wm.workflows[name]; !exists {
-		return fmt.Errorf("workflow '%s' not found", name)
+		return api.NewWorkflowNotFoundError(name)
 	}
 
 	if err := wm.storage.Delete("workflows", name); err != nil {

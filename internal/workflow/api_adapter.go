@@ -89,7 +89,7 @@ func (a *Adapter) GetWorkflows() []api.WorkflowInfo {
 func (a *Adapter) GetWorkflow(name string) (*api.WorkflowDefinition, error) {
 	workflow, exists := a.manager.GetDefinition(name)
 	if !exists {
-		return nil, fmt.Errorf("workflow %s not found", name)
+		return nil, api.NewWorkflowNotFoundError(name)
 	}
 
 	// Convert workflow.WorkflowConfig to api.WorkflowDefinition
@@ -432,10 +432,7 @@ func (a *Adapter) handleGet(args map[string]interface{}) (*api.CallToolResult, e
 
 	workflow, err := a.GetWorkflow(name)
 	if err != nil {
-		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Failed to get workflow: %v", err)},
-			IsError: true,
-		}, nil
+		return api.HandleErrorWithPrefix(err, "Failed to get workflow"), nil
 	}
 
 	// Convert to YAML for easier viewing
@@ -498,10 +495,7 @@ func (a *Adapter) handleUpdate(args map[string]interface{}) (*api.CallToolResult
 	}
 
 	if err := a.UpdateWorkflow(name, yamlDef); err != nil {
-		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Failed to update workflow: %v", err)},
-			IsError: true,
-		}, nil
+		return api.HandleErrorWithPrefix(err, "Failed to update workflow"), nil
 	}
 
 	return &api.CallToolResult{
@@ -520,10 +514,7 @@ func (a *Adapter) handleDelete(args map[string]interface{}) (*api.CallToolResult
 	}
 
 	if err := a.DeleteWorkflow(name); err != nil {
-		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Failed to delete workflow: %v", err)},
-			IsError: true,
-		}, nil
+		return api.HandleErrorWithPrefix(err, "Failed to delete workflow"), nil
 	}
 
 	return &api.CallToolResult{
