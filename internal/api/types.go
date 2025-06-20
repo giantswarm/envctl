@@ -20,6 +20,15 @@ type MCPToolUpdateEvent struct {
 	Error      error
 }
 
+// ToolUpdateEvent represents a tool availability change event
+type ToolUpdateEvent struct {
+	Type        string    `json:"type"`        // "server_registered", "server_deregistered", "tools_updated"
+	ServerName  string    `json:"server_name"`
+	Tools       []string  `json:"tools"`       // List of tool names
+	Timestamp   time.Time `json:"timestamp"`
+	Error       string    `json:"error,omitempty"`
+}
+
 // MCPResource represents an MCP resource
 type MCPResource struct {
 	URI         string `json:"uri"`
@@ -244,4 +253,9 @@ type ToolProvider interface {
 
 	// Executes a tool by name
 	ExecuteTool(ctx context.Context, toolName string, args map[string]interface{}) (*CallToolResult, error)
+}
+
+// ToolUpdateSubscriber interface for components that want to receive tool update events
+type ToolUpdateSubscriber interface {
+	OnToolsUpdated(event ToolUpdateEvent)
 }

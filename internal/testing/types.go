@@ -201,6 +201,8 @@ type EnvCtlInstance struct {
 	Logs *InstanceLogs
 	// ExpectedTools contains the list of tools expected to be available from MCP servers
 	ExpectedTools []string
+	// ExpectedServiceClasses contains the list of ServiceClasses expected to be available
+	ExpectedServiceClasses []string
 }
 
 // InstanceLogs contains the captured logs from an envctl instance

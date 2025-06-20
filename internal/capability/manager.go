@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sync"
 
+	"envctl/internal/api"
 	"envctl/internal/config"
 	"envctl/pkg/logging"
 
@@ -36,7 +37,7 @@ func NewCapabilityManager(toolChecker config.ToolAvailabilityChecker, registry *
 		// For now, leave it empty
 	}
 
-	return &CapabilityManager{
+	manager := &CapabilityManager{
 		loader:       loader,
 		definitions:  make(map[string]*CapabilityDefinition),
 		toolChecker:  toolChecker,
@@ -44,7 +45,13 @@ func NewCapabilityManager(toolChecker config.ToolAvailabilityChecker, registry *
 		exposedTools: make(map[string]bool),
 		storage:      storage,
 		configPath:   configPath,
-	}, nil
+	}
+
+	// Subscribe to tool update events for auto-refresh
+	api.SubscribeToToolUpdates(manager)
+	logging.Debug("CapabilityManager", "Subscribed to tool update events")
+
+	return manager, nil
 }
 
 // SetConfigPath sets the custom configuration path
@@ -417,4 +424,15 @@ func (cm *CapabilityManager) UnregisterDefinition(name string) {
 
 	delete(cm.definitions, name)
 	cm.updateAvailableCapabilities()
+}
+
+// OnToolsUpdated implements ToolUpdateSubscriber interface
+func (cm *CapabilityManager) OnToolsUpdated(event api.ToolUpdateEvent) {
+	logging.Debug("CapabilityManager", "Received tool update event: type=%s, server=%s, tools=%d", 
+		event.Type, event.ServerName, len(event.Tools))
+	
+	// Refresh Capability availability when tools are updated
+	cm.RefreshAvailability()
+	
+	logging.Debug("CapabilityManager", "Refreshed Capability availability due to tool update")
 }

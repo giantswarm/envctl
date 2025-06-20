@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"envctl/internal/api"
 	"envctl/internal/config"
 	"envctl/pkg/logging"
 
@@ -49,7 +50,7 @@ func NewServiceClassManager(toolChecker config.ToolAvailabilityChecker, storage 
 		// For now, leave it empty
 	}
 
-	return &ServiceClassManager{
+	manager := &ServiceClassManager{
 		loader:          loader,
 		definitions:     make(map[string]*ServiceClassDefinition),
 		toolChecker:     toolChecker,
@@ -59,7 +60,13 @@ func NewServiceClassManager(toolChecker config.ToolAvailabilityChecker, storage 
 		onRegister:      []func(def *ServiceClassDefinition){},
 		onUnregister:    []func(serviceClassName string){},
 		onUpdate:        []func(def *ServiceClassDefinition){},
-	}, nil
+	}
+
+	// Subscribe to tool update events for auto-refresh
+	api.SubscribeToToolUpdates(manager)
+	logging.Debug("ServiceClassManager", "Subscribed to tool update events")
+
+	return manager, nil
 }
 
 // SetConfigPath sets the custom configuration path
@@ -531,4 +538,15 @@ func (scm *ServiceClassManager) RefreshAvailability() {
 	defer scm.mu.Unlock()
 
 	scm.updateServiceAvailability()
+}
+
+// OnToolsUpdated implements ToolUpdateSubscriber interface
+func (scm *ServiceClassManager) OnToolsUpdated(event api.ToolUpdateEvent) {
+	logging.Debug("ServiceClassManager", "Received tool update event: type=%s, server=%s, tools=%d", 
+		event.Type, event.ServerName, len(event.Tools))
+	
+	// Refresh ServiceClass availability when tools are updated
+	scm.RefreshAvailability()
+	
+	logging.Debug("ServiceClassManager", "Refreshed ServiceClass availability due to tool update")
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 
+	"envctl/internal/api"
 	"envctl/internal/config"
 	"envctl/pkg/logging"
 
@@ -41,6 +42,10 @@ func NewWorkflowManager(storage *config.Storage, toolCaller ToolCaller, toolChec
 		toolChecker: toolChecker,
 		configPath:  configPath,
 	}
+
+	// Subscribe to tool update events for logging (workflows use dynamic checking)
+	api.SubscribeToToolUpdates(wm)
+	logging.Debug("WorkflowManager", "Subscribed to tool update events")
 
 	return wm, nil
 }
@@ -410,4 +415,13 @@ func (wm *WorkflowManager) DeleteWorkflow(name string) error {
 	delete(wm.workflows, name)
 	logging.Info("WorkflowManager", "Deleted workflow %s (was tool: action_%s)", name, name)
 	return nil
+}
+
+// OnToolsUpdated implements ToolUpdateSubscriber interface
+func (wm *WorkflowManager) OnToolsUpdated(event api.ToolUpdateEvent) {
+	logging.Debug("WorkflowManager", "Received tool update event: type=%s, server=%s, tools=%d (workflows use dynamic checking)", 
+		event.Type, event.ServerName, len(event.Tools))
+	
+	// Note: Workflows use dynamic checking, so no explicit refresh needed
+	// This subscription is mainly for logging and potential future enhancements
 }

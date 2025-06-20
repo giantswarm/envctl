@@ -2,6 +2,7 @@ package testing
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
@@ -517,8 +518,48 @@ func (r *testRunner) validateExpectations(expected TestExpectation, response int
 			}
 		}
 
-		// TODO: Implement JSON path validation for expected.JSONPath
-		// This would require parsing the response as JSON and checking specific fields
+		// Check JSON path expectations
+		if len(expected.JSONPath) > 0 {
+			// Parse response as JSON-like map
+			var responseMap map[string]interface{}
+			
+			// Handle different response types
+			if respMap, ok := response.(map[string]interface{}); ok {
+				responseMap = respMap
+			} else {
+				// Try to extract JSON from MCP CallToolResult structure
+				responseMap = r.extractJSONFromMCPResponse(response)
+				if responseMap == nil {
+					if r.debug {
+						fmt.Printf("❌ JSON path validation failed: could not extract JSON from response type %T\n", response)
+					}
+					return false
+				}
+			}
+
+			// Check each JSON path expectation
+			for jsonPath, expectedValue := range expected.JSONPath {
+				actualValue, exists := responseMap[jsonPath]
+				if !exists {
+					if r.debug {
+						fmt.Printf("❌ JSON path '%s' not found in response\n", jsonPath)
+					}
+					return false
+				}
+
+				// Compare values
+				if !compareValues(actualValue, expectedValue) {
+					if r.debug {
+						fmt.Printf("❌ JSON path '%s': expected %v, got %v\n", jsonPath, expectedValue, actualValue)
+					}
+					return false
+				}
+
+				if r.debug {
+					fmt.Printf("✅ JSON path '%s': expected %v, got %v ✓\n", jsonPath, expectedValue, actualValue)
+				}
+			}
+		}
 	}
 
 	if r.debug {
@@ -568,6 +609,156 @@ func toLower(s string) string {
 		}
 	}
 	return string(result)
+}
+
+// extractJSONFromMCPResponse attempts to extract JSON from MCP CallToolResult
+func (r *testRunner) extractJSONFromMCPResponse(response interface{}) map[string]interface{} {
+	// Try to handle MCP CallToolResult structure
+	responseStr := fmt.Sprintf("%+v", response)
+	
+	// Look for patterns that indicate this is an MCP response with JSON content
+	if !containsText(responseStr, "Content:[") {
+		return nil
+	}
+	
+	// Try to extract the JSON text from the response structure
+	// The format is usually: Content:[{...Text:{"json":"here"}...}]
+	// We'll use string parsing to extract the JSON content
+	
+	// Find the Text: field in the string representation
+	textStart := -1
+	textEnd := -1
+	
+	// Look for "Text:" pattern
+	textPattern := "Text:"
+	for i := 0; i <= len(responseStr)-len(textPattern); i++ {
+		if responseStr[i:i+len(textPattern)] == textPattern {
+			textStart = i + len(textPattern)
+			break
+		}
+	}
+	
+	if textStart == -1 {
+		if r.debug {
+			fmt.Printf("🔍 Could not find 'Text:' in response: %s\n", responseStr[:min(200, len(responseStr))])
+		}
+		return nil
+	}
+	
+	// Find the end of the JSON text (look for the closing brace followed by '}')
+	braceCount := 0
+	inJson := false
+	for i := textStart; i < len(responseStr); i++ {
+		char := responseStr[i]
+		if char == '{' {
+			if !inJson {
+				inJson = true
+				textStart = i // Start from the actual JSON opening brace
+			}
+			braceCount++
+		} else if char == '}' {
+			braceCount--
+			if braceCount == 0 && inJson {
+				textEnd = i + 1
+				break
+			}
+		}
+	}
+	
+	if textEnd == -1 || !inJson {
+		if r.debug {
+			fmt.Printf("🔍 Could not find complete JSON in response text\n")
+		}
+		return nil
+	}
+	
+	// Extract the JSON string
+	jsonStr := responseStr[textStart:textEnd]
+	if r.debug {
+		fmt.Printf("🔍 Extracted JSON string: %s\n", jsonStr)
+	}
+	
+	// Parse the JSON
+	var result map[string]interface{}
+	if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
+		if r.debug {
+			fmt.Printf("🔍 Failed to parse JSON: %v\n", err)
+		}
+		return nil
+	}
+	
+	return result
+}
+
+// min returns the minimum of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// compareValues compares two values for equality, handling type conversions
+func compareValues(actual, expected interface{}) bool {
+	// Direct equality check first
+	if actual == expected {
+		return true
+	}
+
+	// Handle nil cases
+	if actual == nil || expected == nil {
+		return actual == expected
+	}
+
+	// Handle boolean comparisons
+	if expectedBool, ok := expected.(bool); ok {
+		if actualBool, ok := actual.(bool); ok {
+			return actualBool == expectedBool
+		}
+		// Convert string to bool if needed
+		if actualStr, ok := actual.(string); ok {
+			if actualStr == "true" {
+				return expectedBool == true
+			}
+			if actualStr == "false" {
+				return expectedBool == false
+			}
+		}
+	}
+
+	// Handle string comparisons
+	if expectedStr, ok := expected.(string); ok {
+		if actualStr, ok := actual.(string); ok {
+			return actualStr == expectedStr
+		}
+		// Convert other types to string for comparison
+		actualStr := fmt.Sprintf("%v", actual)
+		return actualStr == expectedStr
+	}
+
+	// Handle numeric comparisons (int, float64, etc.)
+	if expectedFloat, ok := expected.(float64); ok {
+		if actualFloat, ok := actual.(float64); ok {
+			return actualFloat == expectedFloat
+		}
+		if actualInt, ok := actual.(int); ok {
+			return float64(actualInt) == expectedFloat
+		}
+	}
+
+	if expectedInt, ok := expected.(int); ok {
+		if actualInt, ok := actual.(int); ok {
+			return actualInt == expectedInt
+		}
+		if actualFloat, ok := actual.(float64); ok {
+			return actualFloat == float64(expectedInt)
+		}
+	}
+
+	// For other types, convert both to strings and compare
+	actualStr := fmt.Sprintf("%v", actual)
+	expectedStr := fmt.Sprintf("%v", expected)
+	return actualStr == expectedStr
 }
 
 // updateCounters updates the result counters based on a scenario result

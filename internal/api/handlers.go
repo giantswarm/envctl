@@ -306,6 +306,10 @@ var (
 	capabilityHandler          CapabilityHandler
 	workflowHandler            WorkflowHandler
 
+	// Tool update subscribers
+	toolUpdateSubscribers []ToolUpdateSubscriber
+	toolUpdateMutex       sync.Mutex
+
 	handlerMutex sync.RWMutex
 )
 
@@ -535,4 +539,35 @@ func SetMCPServerManagerForTesting(h MCPServerManagerHandler) {
 	handlerMutex.Lock()
 	defer handlerMutex.Unlock()
 	mcpServerManagerHandler = h
+}
+
+// SubscribeToToolUpdates allows managers to subscribe to tool update events
+func SubscribeToToolUpdates(subscriber ToolUpdateSubscriber) {
+	toolUpdateMutex.Lock()
+	defer toolUpdateMutex.Unlock()
+	toolUpdateSubscribers = append(toolUpdateSubscribers, subscriber)
+	logging.Debug("API", "Added tool update subscriber, total subscribers: %d", len(toolUpdateSubscribers))
+}
+
+// PublishToolUpdateEvent publishes a tool update event to all subscribers
+func PublishToolUpdateEvent(event ToolUpdateEvent) {
+	toolUpdateMutex.Lock()
+	subscribers := make([]ToolUpdateSubscriber, len(toolUpdateSubscribers))
+	copy(subscribers, toolUpdateSubscribers)
+	toolUpdateMutex.Unlock()
+
+	logging.Debug("API", "Publishing tool update event: type=%s, server=%s, tools=%d, subscribers=%d", 
+		event.Type, event.ServerName, len(event.Tools), len(subscribers))
+
+	for _, subscriber := range subscribers {
+		// Call subscriber in goroutine to avoid blocking
+		go func(s ToolUpdateSubscriber) {
+			defer func() {
+				if r := recover(); r != nil {
+					logging.Error("API", fmt.Errorf("panic in tool update subscriber: %v", r), "Tool update subscriber panicked")
+				}
+			}()
+			s.OnToolsUpdated(event)
+		}(subscriber)
+	}
 }

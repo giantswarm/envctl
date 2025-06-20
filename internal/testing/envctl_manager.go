@@ -4,12 +4,14 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"syscall"
@@ -166,18 +168,20 @@ func (m *envCtlInstanceManager) CreateInstance(ctx context.Context, scenarioName
 	m.processes[instanceID] = managedProc
 	m.mu.Unlock()
 
-	// Extract expected tools from configuration
+	// Extract expected resources from configuration
 	expectedTools := m.extractExpectedTools(config)
+	expectedServiceClasses := m.extractExpectedServiceClasses(config)
 
 	instance := &EnvCtlInstance{
-		ID:            instanceID,
-		ConfigPath:    configPath,
-		Port:          port,
-		Endpoint:      fmt.Sprintf("http://localhost:%d/mcp", port),
-		Process:       managedProc.cmd.Process,
-		StartTime:     time.Now(),
-		Logs:          nil, // Will be populated when destroying
-		ExpectedTools: expectedTools,
+		ID:                     instanceID,
+		ConfigPath:             configPath,
+		Port:                   port,
+		Endpoint:               fmt.Sprintf("http://localhost:%d/mcp", port),
+		Process:                managedProc.cmd.Process,
+		StartTime:              time.Now(),
+		Logs:                   nil, // Will be populated when destroying
+		ExpectedTools:          expectedTools,
+		ExpectedServiceClasses: expectedServiceClasses,
 	}
 
 	if m.debug {
@@ -277,7 +281,7 @@ func (m *envCtlInstanceManager) gracefulShutdown(managedProc *managedProcess, in
 	}
 }
 
-// WaitForReady waits for an instance to be ready to accept connections and has all expected tools available
+// WaitForReady waits for an instance to be ready to accept connections and has all expected resources available
 func (m *envCtlInstanceManager) WaitForReady(ctx context.Context, instance *EnvCtlInstance) error {
 	if m.debug {
 		fmt.Printf("⏳ Waiting for envctl instance %s to be ready at %s\n", instance.ID, instance.Endpoint)
@@ -321,12 +325,12 @@ func (m *envCtlInstanceManager) WaitForReady(ctx context.Context, instance *EnvC
 		}
 	}
 
-	// Now wait for services to be fully initialized and tools to be available
+	// Now wait for services to be fully initialized
 	if m.debug {
-		fmt.Printf("⏳ Waiting for services to be fully initialized and tools to be available...\n")
+		fmt.Printf("⏳ Waiting for services to be fully initialized and all resources to be available...\n")
 	}
 
-	// Create MCP client to check tool availability
+	// Create MCP client to check availability
 	mcpClient := NewMCPTestClient(m.debug)
 	defer mcpClient.Close()
 
@@ -358,69 +362,182 @@ func (m *envCtlInstanceManager) WaitForReady(ctx context.Context, instance *EnvC
 		}
 	}
 
-	// Extract expected tools from the pre-configuration if available
+	// Extract expected resources from the pre-configuration
 	expectedTools := m.extractExpectedToolsFromInstance(instance)
-	
-	if len(expectedTools) == 0 {
+	expectedServiceClasses := m.extractExpectedServiceClassesFromInstance(instance)
+	expectedServices := m.extractExpectedServicesFromInstance(instance)
+	expectedWorkflows := m.extractExpectedWorkflowsFromInstance(instance)
+	expectedCapabilities := m.extractExpectedCapabilitiesFromInstance(instance)
+
+	if len(expectedTools) == 0 && len(expectedServiceClasses) == 0 && len(expectedServices) == 0 && 
+	   len(expectedWorkflows) == 0 && len(expectedCapabilities) == 0 {
 		if m.debug {
-			fmt.Printf("ℹ️  No expected tools specified, waiting for basic service readiness\n")
+			fmt.Printf("ℹ️  No expected resources specified, waiting for basic service readiness\n")
 		}
-		// If no specific tools expected, wait a bit longer for general readiness
+		// If no specific resources expected, wait a bit longer for general readiness
 		time.Sleep(5 * time.Second)
 		return nil
 	}
 
 	if m.debug {
-		fmt.Printf("🎯 Waiting for %d expected tools to be available: %v\n", len(expectedTools), expectedTools)
+		if len(expectedTools) > 0 {
+			fmt.Printf("🎯 Waiting for %d expected tools: %v\n", len(expectedTools), expectedTools)
+		}
+		if len(expectedServiceClasses) > 0 {
+			fmt.Printf("🎯 Waiting for %d expected ServiceClasses: %v\n", len(expectedServiceClasses), expectedServiceClasses)
+		}
+		if len(expectedServices) > 0 {
+			fmt.Printf("🎯 Waiting for %d expected Services: %v\n", len(expectedServices), expectedServices)
+		}
+		if len(expectedWorkflows) > 0 {
+			fmt.Printf("🎯 Waiting for %d expected Workflows: %v\n", len(expectedWorkflows), expectedWorkflows)
+		}
+		if len(expectedCapabilities) > 0 {
+			fmt.Printf("🎯 Waiting for %d expected Capabilities: %v\n", len(expectedCapabilities), expectedCapabilities)
+		}
 	}
 
-	// Wait for all expected tools to be available
-	toolTimeout := 45 * time.Second
-	toolCtx, toolCancel := context.WithTimeout(readyCtx, toolTimeout)
-	defer toolCancel()
+	// Wait for all expected resources to be available
+	resourceTimeout := 45 * time.Second
+	resourceCtx, resourceCancel := context.WithTimeout(readyCtx, resourceTimeout)
+	defer resourceCancel()
 
-	toolTicker := time.NewTicker(2 * time.Second)
-	defer toolTicker.Stop()
+	resourceTicker := time.NewTicker(2 * time.Second)
+	defer resourceTicker.Stop()
 
 	for {
 		select {
-		case <-toolCtx.Done():
+		case <-resourceCtx.Done():
 			if m.debug {
-				fmt.Printf("⚠️  Tool availability check timed out, checking what's available...\n")
-				// Show what tools are available for debugging
-				if availableTools, err := mcpClient.ListTools(context.Background()); err == nil {
-					fmt.Printf("🛠️  Available tools: %v\n", availableTools)
-					fmt.Printf("🎯 Expected tools: %v\n", expectedTools)
+				fmt.Printf("⚠️  Resource availability check timed out, checking what's available...\n")
+				// Show what's available for debugging
+				if len(expectedTools) > 0 {
+					if availableTools, err := mcpClient.ListTools(context.Background()); err == nil {
+						fmt.Printf("🛠️  Available tools: %v\n", availableTools)
+						fmt.Printf("🎯 Expected tools: %v\n", expectedTools)
+					}
 				}
 			}
-			return fmt.Errorf("timeout waiting for all expected tools to be available")
-		case <-toolTicker.C:
-			// Check if all expected tools are available
-			availableTools, err := mcpClient.ListTools(toolCtx)
-			if err != nil {
-				if m.debug {
-					fmt.Printf("🔍 Failed to list tools: %v\n", err)
+			return fmt.Errorf("timeout waiting for all expected resources to be available")
+		case <-resourceTicker.C:
+			allReady := true
+			var notReadyReasons []string
+
+			// Check tools availability
+			if len(expectedTools) > 0 {
+				availableTools, err := mcpClient.ListTools(resourceCtx)
+				if err != nil {
+					if m.debug {
+						fmt.Printf("🔍 Failed to list tools: %v\n", err)
+					}
+					allReady = false
+					notReadyReasons = append(notReadyReasons, "tools check failed")
+				} else {
+					missingTools := m.findMissingTools(expectedTools, availableTools)
+					if len(missingTools) > 0 {
+						allReady = false
+						notReadyReasons = append(notReadyReasons, fmt.Sprintf("missing tools: %v", missingTools))
+					}
 				}
-				continue
 			}
 
-			if m.debug && len(availableTools) > 0 {
-				fmt.Printf("🛠️  Currently available tools (%d): %v\n", len(availableTools), availableTools)
+			// Check ServiceClass availability
+			if len(expectedServiceClasses) > 0 {
+				for _, serviceClassName := range expectedServiceClasses {
+					available, err := m.checkServiceClassAvailability(mcpClient, resourceCtx, serviceClassName)
+					if err != nil {
+						if m.debug {
+							fmt.Printf("🔍 Failed to check ServiceClass %s: %v\n", serviceClassName, err)
+						}
+						allReady = false
+						notReadyReasons = append(notReadyReasons, fmt.Sprintf("ServiceClass %s check failed", serviceClassName))
+					} else if !available {
+						allReady = false
+						notReadyReasons = append(notReadyReasons, fmt.Sprintf("ServiceClass %s not available", serviceClassName))
+					}
+				}
 			}
 
-			// Check if all expected tools are present
-			missingTools := m.findMissingTools(expectedTools, availableTools)
-			if len(missingTools) == 0 {
-				if m.debug {
-					fmt.Printf("✅ All expected tools are available!\n")
+			// Check Service availability (if any expected)
+			if len(expectedServices) > 0 {
+				for _, serviceName := range expectedServices {
+					available, err := m.checkServiceAvailability(mcpClient, resourceCtx, serviceName)
+					if err != nil {
+						if m.debug {
+							fmt.Printf("🔍 Failed to check Service %s: %v\n", serviceName, err)
+						}
+						allReady = false
+						notReadyReasons = append(notReadyReasons, fmt.Sprintf("Service %s check failed", serviceName))
+					} else if !available {
+						allReady = false
+						notReadyReasons = append(notReadyReasons, fmt.Sprintf("Service %s not available", serviceName))
+					}
 				}
-				// Wait a little bit more to ensure tool registration is fully complete
+			}
+
+			// Check Workflow availability (if any expected)
+			if len(expectedWorkflows) > 0 {
+				availableWorkflows, err := m.checkWorkflowsAvailability(mcpClient, resourceCtx)
+				if err != nil {
+					if m.debug {
+						fmt.Printf("🔍 Failed to list workflows: %v\n", err)
+					}
+					allReady = false
+					notReadyReasons = append(notReadyReasons, "workflows check failed")
+				} else {
+					for _, workflowName := range expectedWorkflows {
+						found := false
+						for _, available := range availableWorkflows {
+							if available == workflowName {
+								found = true
+								break
+							}
+						}
+						if !found {
+							allReady = false
+							notReadyReasons = append(notReadyReasons, fmt.Sprintf("Workflow %s not available", workflowName))
+						}
+					}
+				}
+			}
+
+			// Check Capability availability (if any expected)
+			if len(expectedCapabilities) > 0 {
+				availableCapabilities, err := m.checkCapabilitiesAvailability(mcpClient, resourceCtx)
+				if err != nil {
+					if m.debug {
+						fmt.Printf("🔍 Failed to list capabilities: %v\n", err)
+					}
+					allReady = false
+					notReadyReasons = append(notReadyReasons, "capabilities check failed")
+				} else {
+					for _, capabilityName := range expectedCapabilities {
+						found := false
+						for _, available := range availableCapabilities {
+							if available == capabilityName {
+								found = true
+								break
+							}
+						}
+						if !found {
+							allReady = false
+							notReadyReasons = append(notReadyReasons, fmt.Sprintf("Capability %s not available", capabilityName))
+						}
+					}
+				}
+			}
+
+			if allReady {
+				if m.debug {
+					fmt.Printf("✅ All expected resources are available!\n")
+				}
+				// Wait a little bit more to ensure everything is fully stable
 				time.Sleep(2 * time.Second)
 				return nil
 			}
 
 			if m.debug {
-				fmt.Printf("⏳ Still waiting for tools: %v\n", missingTools)
+				fmt.Printf("⏳ Still waiting for resources: %v\n", notReadyReasons)
 			}
 		}
 	}
@@ -826,4 +943,214 @@ func (m *envCtlInstanceManager) Cleanup() error {
 		return os.RemoveAll(m.tempDir)
 	}
 	return nil
+}
+
+// extractExpectedServiceClasses extracts expected ServiceClass names from the configuration during instance creation
+func (m *envCtlInstanceManager) extractExpectedServiceClasses(config *EnvCtlPreConfiguration) []string {
+	if config == nil {
+		return []string{}
+	}
+	
+	var expectedServiceClasses []string
+	
+	// Extract ServiceClass names from service class configurations
+	for _, serviceClass := range config.ServiceClasses {
+		expectedServiceClasses = append(expectedServiceClasses, serviceClass.Name)
+	}
+	
+	if m.debug && len(expectedServiceClasses) > 0 {
+		fmt.Printf("🎯 Extracted expected ServiceClasses from configuration: %v\n", expectedServiceClasses)
+	}
+	
+	return expectedServiceClasses
+}
+
+// extractExpectedServiceClassesFromInstance extracts expected ServiceClass names from instance configuration
+func (m *envCtlInstanceManager) extractExpectedServiceClassesFromInstance(instance *EnvCtlInstance) []string {
+	// Return the ServiceClasses stored during instance creation
+	return instance.ExpectedServiceClasses
+}
+
+// extractExpectedServicesFromInstance extracts expected Service names from instance configuration
+func (m *envCtlInstanceManager) extractExpectedServicesFromInstance(instance *EnvCtlInstance) []string {
+	// For now, we'll extract this from the instance configuration stored during CreateInstance
+	// In a future enhancement, we could store this information in the EnvCtlInstance struct
+	return []string{} // TODO: Extract from stored configuration
+}
+
+// extractExpectedWorkflowsFromInstance extracts expected Workflow names from instance configuration
+func (m *envCtlInstanceManager) extractExpectedWorkflowsFromInstance(instance *EnvCtlInstance) []string {
+	// For now, we'll extract this from the instance configuration stored during CreateInstance
+	// In a future enhancement, we could store this information in the EnvCtlInstance struct
+	return []string{} // TODO: Extract from stored configuration
+}
+
+// extractExpectedCapabilitiesFromInstance extracts expected Capability names from instance configuration
+func (m *envCtlInstanceManager) extractExpectedCapabilitiesFromInstance(instance *EnvCtlInstance) []string {
+	// For now, we'll extract this from the instance configuration stored during CreateInstance
+	// In a future enhancement, we could store this information in the EnvCtlInstance struct
+	return []string{} // TODO: Extract from stored configuration
+}
+
+// checkServiceClassAvailability checks if a ServiceClass is available and ready
+func (m *envCtlInstanceManager) checkServiceClassAvailability(client MCPTestClient, ctx context.Context, serviceClassName string) (bool, error) {
+	// Use core_serviceclass_available to check availability
+	args := map[string]interface{}{
+		"name": serviceClassName,
+	}
+	
+	result, err := client.CallTool(ctx, "core_serviceclass_available", args)
+	if err != nil {
+		return false, fmt.Errorf("failed to call core_serviceclass_available: %w", err)
+	}
+
+	if m.debug {
+		fmt.Printf("🔍 ServiceClass availability check result for %s: %+v\n", serviceClassName, result)
+	}
+
+	// Try to extract the JSON content from the MCP response
+	// The response structure should have a Content field with text content
+	jsonStr := ""
+	
+	// Method 1: Try reflection to access the Content field dynamically
+	resultValue := reflect.ValueOf(result)
+	if resultValue.Kind() == reflect.Ptr {
+		resultValue = resultValue.Elem()
+	}
+	
+	if resultValue.Kind() == reflect.Struct {
+		contentField := resultValue.FieldByName("Content")
+		if contentField.IsValid() && contentField.Kind() == reflect.Slice && contentField.Len() > 0 {
+			firstContent := contentField.Index(0)
+			if firstContent.Kind() == reflect.Struct {
+				textField := firstContent.FieldByName("Text")
+				if textField.IsValid() && textField.Kind() == reflect.String {
+					jsonStr = textField.String()
+				}
+			}
+		}
+	}
+	
+	// Method 2: If reflection didn't work, try marshaling and parsing the JSON representation
+	if jsonStr == "" {
+		if resultBytes, err := json.Marshal(result); err == nil {
+			var tempMap map[string]interface{}
+			if err := json.Unmarshal(resultBytes, &tempMap); err == nil {
+				if content, exists := tempMap["content"]; exists {
+					if contentArray, ok := content.([]interface{}); ok && len(contentArray) > 0 {
+						if contentItem, ok := contentArray[0].(map[string]interface{}); ok {
+							if textContent, exists := contentItem["text"]; exists {
+								if textStr, ok := textContent.(string); ok {
+									jsonStr = textStr
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	// Parse the extracted JSON string
+	if jsonStr != "" {
+		var serviceClassInfo map[string]interface{}
+		if err := json.Unmarshal([]byte(jsonStr), &serviceClassInfo); err == nil {
+			if available, exists := serviceClassInfo["available"]; exists {
+				if availableBool, ok := available.(bool); ok {
+					if m.debug {
+						fmt.Printf("✅ ServiceClass %s availability: %v\n", serviceClassName, availableBool)
+					}
+					return availableBool, nil
+				}
+			}
+		} else {
+			if m.debug {
+				fmt.Printf("🔍 Failed to parse JSON from text field: %v, content: %s\n", err, jsonStr)
+			}
+		}
+	}
+
+	// If we get here, the parsing failed - let's add more debugging
+	if m.debug {
+		fmt.Printf("🔍 ServiceClass availability check failed to parse response: %+v\n", result)
+		if resultBytes, err := json.MarshalIndent(result, "", "  "); err == nil {
+			fmt.Printf("🔍 Full response JSON:\n%s\n", string(resultBytes))
+		}
+	}
+
+	return false, fmt.Errorf("unexpected response format from core_serviceclass_available")
+}
+
+// checkServiceAvailability checks if a Service is available
+func (m *envCtlInstanceManager) checkServiceAvailability(client MCPTestClient, ctx context.Context, serviceName string) (bool, error) {
+	// Use core_service_get to check if service exists
+	args := map[string]interface{}{
+		"labelOrServiceId": serviceName,
+	}
+	
+	result, err := client.CallTool(ctx, "core_service_get", args)
+	if err != nil {
+		return false, fmt.Errorf("failed to call core_service_get: %w", err)
+	}
+
+	// If the call succeeds, the service exists (result != nil means success)
+	return result != nil, nil
+}
+
+// checkWorkflowsAvailability returns the list of available workflows
+func (m *envCtlInstanceManager) checkWorkflowsAvailability(client MCPTestClient, ctx context.Context) ([]string, error) {
+	// Use core_workflow_list to get available workflows
+	result, err := client.CallTool(ctx, "core_workflow_list", map[string]interface{}{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to call core_workflow_list: %w", err)
+	}
+
+	var workflows []string
+	// Parse the response to extract workflow names
+	if resultData, ok := result.(map[string]interface{}); ok {
+		if workflowList, exists := resultData["workflows"]; exists {
+			if workflowArray, ok := workflowList.([]interface{}); ok {
+				for _, workflow := range workflowArray {
+					if workflowMap, ok := workflow.(map[string]interface{}); ok {
+						if name, exists := workflowMap["name"]; exists {
+							if nameStr, ok := name.(string); ok {
+								workflows = append(workflows, nameStr)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return workflows, nil
+}
+
+// checkCapabilitiesAvailability returns the list of available capabilities
+func (m *envCtlInstanceManager) checkCapabilitiesAvailability(client MCPTestClient, ctx context.Context) ([]string, error) {
+	// Use core_capability_list to get available capabilities
+	result, err := client.CallTool(ctx, "core_capability_list", map[string]interface{}{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to call core_capability_list: %w", err)
+	}
+
+	var capabilities []string
+	// Parse the response to extract capability names
+	if resultData, ok := result.(map[string]interface{}); ok {
+		if capabilityList, exists := resultData["capabilities"]; exists {
+			if capabilityArray, ok := capabilityList.([]interface{}); ok {
+				for _, capability := range capabilityArray {
+					if capabilityMap, ok := capability.(map[string]interface{}); ok {
+						if name, exists := capabilityMap["name"]; exists {
+							if nameStr, ok := name.(string); ok {
+								capabilities = append(capabilities, nameStr)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return capabilities, nil
 }

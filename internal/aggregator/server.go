@@ -11,6 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"envctl/internal/api"
+
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -252,8 +254,30 @@ func (a *AggregatorServer) monitorRegistryUpdates() {
 		case <-updateChan:
 			// Update server capabilities based on registered servers
 			a.updateCapabilities()
+			
+			// Publish tool update event to trigger refresh in dependent managers
+			a.publishToolUpdateEvent()
 		}
 	}
+}
+
+// publishToolUpdateEvent publishes a tool update event to notify dependent managers
+func (a *AggregatorServer) publishToolUpdateEvent() {
+	// Get all available tools
+	tools := a.GetAvailableTools()
+	
+	// Create and publish the event
+	event := api.ToolUpdateEvent{
+		Type:      "tools_updated",
+		ServerName: "aggregator", // Use aggregator as the source since it aggregates all tools
+		Tools:     tools,
+		Timestamp: time.Now(),
+	}
+	
+	// Publish the event - this will notify ServiceClass and Capability managers
+	api.PublishToolUpdateEvent(event)
+	
+	logging.Debug("Aggregator", "Published tool update event with %d tools", len(tools))
 }
 
 // updateCapabilities updates the aggregator's advertised capabilities
