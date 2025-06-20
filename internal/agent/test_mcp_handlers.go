@@ -20,6 +20,7 @@ func (t *TestMCPServer) handleRunScenarios(ctx context.Context, request mcp.Call
 	config.Timeout = 10 * time.Minute // Default timeout
 	config.Parallel = 1               // Default parallel workers
 	config.Verbose = true             // Always verbose for MCP
+	config.Debug = t.debug            // Inherit debug setting from server
 	config.BasePort = 18000           // Default base port for test instances
 
 	// Parse optional parameters
@@ -75,8 +76,6 @@ func (t *TestMCPServer) handleRunScenarios(ctx context.Context, request mcp.Call
 	if verbose, ok := args["verbose"].(bool); ok {
 		config.Verbose = verbose
 	}
-
-	config.Debug = t.debug
 
 	// Determine scenario path
 	scenarioPath := config.ConfigPath
@@ -303,6 +302,18 @@ func (t *TestMCPServer) handleValidateScenario(ctx context.Context, request mcp.
 
 // handleGetResults handles the test_get_results MCP tool
 func (t *TestMCPServer) handleGetResults(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	// Try to get results from structured reporter first
+	if structuredReporter, ok := t.testReporter.(interface {
+		GetResultsAsJSON() (string, error)
+	}); ok {
+		jsonData, err := structuredReporter.GetResultsAsJSON()
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to get structured results: %v", err)), nil
+		}
+		return mcp.NewToolResultText(jsonData), nil
+	}
+
+	// Fallback to lastResult if structured reporter is not available
 	if t.lastResult == nil {
 		return mcp.NewToolResultText("No test results available. Run test_run_scenarios first."), nil
 	}

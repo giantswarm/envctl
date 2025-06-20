@@ -46,6 +46,30 @@ const (
 	ResultError TestResult = "ERROR"
 )
 
+// ExecutionMode represents the mode of test execution
+type ExecutionMode string
+
+const (
+	// ExecutionModeCLI represents command line interface execution
+	ExecutionModeCLI ExecutionMode = "cli"
+	// ExecutionModeMCPServer represents MCP server execution via stdio
+	ExecutionModeMCPServer ExecutionMode = "mcp-server"
+)
+
+// TestLogger provides centralized logging for test execution
+type TestLogger interface {
+	// Debug logs debug-level messages (only shown when debug=true)
+	Debug(format string, args ...interface{})
+	// Info logs info-level messages (shown when verbose=true or debug=true)
+	Info(format string, args ...interface{})
+	// Error logs error-level messages (always shown)
+	Error(format string, args ...interface{})
+	// IsDebugEnabled returns whether debug logging is enabled  
+	IsDebugEnabled() bool
+	// IsVerboseEnabled returns whether verbose logging is enabled
+	IsVerboseEnabled() bool
+}
+
 // TestConfiguration defines the overall test execution configuration
 type TestConfiguration struct {
 	// Timeout is the overall test execution timeout
@@ -373,4 +397,22 @@ type TestReporter interface {
 	ReportScenarioResult(scenarioResult TestScenarioResult)
 	// ReportSuiteResult is called when all tests complete
 	ReportSuiteResult(suiteResult TestSuiteResult)
+}
+
+// StructuredTestReporter extends TestReporter with methods for structured data access
+// This is typically used in MCP server mode where results need to be queried programmatically
+type StructuredTestReporter interface {
+	TestReporter
+	// GetCurrentSuiteResult returns the current test suite result
+	GetCurrentSuiteResult() *TestSuiteResult
+	// GetScenarioStates returns the current state of all scenarios
+	GetScenarioStates() map[string]*ScenarioState
+	// GetCurrentResults returns the current scenario results
+	GetCurrentResults() []TestScenarioResult
+	// GetResultsAsJSON returns the current results as JSON
+	GetResultsAsJSON() (string, error)
+	// IsVerbose returns whether verbose reporting is enabled
+	IsVerbose() bool
+	// IsDebug returns whether debug reporting is enabled
+	IsDebug() bool
 }

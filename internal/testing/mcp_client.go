@@ -15,12 +15,22 @@ type mcpTestClient struct {
 	client   client.MCPClient
 	endpoint string
 	debug    bool
+	logger   TestLogger
 }
 
 // NewMCPTestClient creates a new MCP test client
 func NewMCPTestClient(debug bool) MCPTestClient {
 	return &mcpTestClient{
-		debug: debug,
+		debug:  debug,
+		logger: NewStdoutLogger(false, debug), // Default to stdout logger
+	}
+}
+
+// NewMCPTestClientWithLogger creates a new MCP test client with custom logger
+func NewMCPTestClientWithLogger(debug bool, logger TestLogger) MCPTestClient {
+	return &mcpTestClient{
+		debug:  debug,
+		logger: logger,
 	}
 }
 
@@ -29,7 +39,7 @@ func (c *mcpTestClient) Connect(ctx context.Context, endpoint string) error {
 	c.endpoint = endpoint
 
 	if c.debug {
-		fmt.Printf("🔗 Connecting to MCP aggregator at %s\n", endpoint)
+		c.logger.Debug("🔗 Connecting to MCP aggregator at %s\n", endpoint)
 	}
 
 	// Create streamable HTTP client for envctl aggregator
@@ -73,7 +83,7 @@ func (c *mcpTestClient) Connect(ctx context.Context, endpoint string) error {
 	}
 
 	if c.debug {
-		fmt.Printf("🔗 Successfully connected to MCP aggregator at %s\n", endpoint)
+		c.logger.Debug("🔗 Successfully connected to MCP aggregator at %s\n", endpoint)
 	}
 
 	return nil
@@ -93,8 +103,8 @@ func (c *mcpTestClient) CallTool(ctx context.Context, toolName string, parameter
 
 	if c.debug {
 		argsJSON, _ := json.MarshalIndent(parameters, "", "  ")
-		fmt.Printf("🔧 Calling tool: %s\n", toolName)
-		fmt.Printf("📋 Parameters: %s\n", string(argsJSON))
+		c.logger.Debug("🔧 Calling tool: %s\n", toolName)
+		c.logger.Debug("📋 Parameters: %s\n", string(argsJSON))
 	}
 
 	// Create timeout context for the tool call
@@ -105,13 +115,13 @@ func (c *mcpTestClient) CallTool(ctx context.Context, toolName string, parameter
 	resolvedToolName, err := c.resolveToolName(callCtx, toolName)
 	if err != nil {
 		if c.debug {
-			fmt.Printf("❌ Tool resolution failed: %v\n", err)
+			c.logger.Debug("❌ Tool resolution failed: %v\n", err)
 		}
 		return nil, fmt.Errorf("tool call %s failed: %w", toolName, err)
 	}
 
 	if c.debug && resolvedToolName != toolName {
-		fmt.Printf("🔄 Resolved tool name: %s -> %s\n", toolName, resolvedToolName)
+		c.logger.Debug("🔄 Resolved tool name: %s -> %s\n", toolName, resolvedToolName)
 	}
 
 	// Create the request using the pattern from the existing codebase
@@ -130,14 +140,14 @@ func (c *mcpTestClient) CallTool(ctx context.Context, toolName string, parameter
 	result, err := c.client.CallTool(callCtx, request)
 	if err != nil {
 		if c.debug {
-			fmt.Printf("❌ Tool call failed: %v\n", err)
+			c.logger.Debug("❌ Tool call failed: %v\n", err)
 		}
 		return nil, fmt.Errorf("tool call %s failed: %w", toolName, err)
 	}
 
 	if c.debug {
 		resultJSON, _ := json.MarshalIndent(result, "", "  ")
-		fmt.Printf("✅ Tool call result: %s\n", string(resultJSON))
+		c.logger.Debug("✅ Tool call result: %s\n", string(resultJSON))
 	}
 
 	return result, nil
@@ -152,15 +162,15 @@ func (c *mcpTestClient) resolveToolName(ctx context.Context, toolName string) (s
 	}
 
 	if c.debug {
-		fmt.Printf("🔍 Resolving tool name '%s' from %d available tools\n", toolName, len(availableTools))
-		fmt.Printf("🛠️  Available tools: %v\n", availableTools)
+		c.logger.Debug("🔍 Resolving tool name '%s' from %d available tools\n", toolName, len(availableTools))
+		c.logger.Debug("🛠️  Available tools: %v\n", availableTools)
 	}
 
 	// Check if the exact tool name exists
 	for _, availableTool := range availableTools {
 		if availableTool == toolName {
 			if c.debug {
-				fmt.Printf("✅ Found exact match: %s\n", toolName)
+				c.logger.Debug("✅ Found exact match: %s\n", toolName)
 			}
 			return toolName, nil
 		}
@@ -174,21 +184,21 @@ func (c *mcpTestClient) resolveToolName(ctx context.Context, toolName string) (s
 		if c.isToolMatch(availableTool, toolName) {
 			candidates = append(candidates, availableTool)
 			if c.debug {
-				fmt.Printf("🎯 Found candidate match: %s for %s\n", availableTool, toolName)
+				c.logger.Debug("🎯 Found candidate match: %s for %s\n", availableTool, toolName)
 			}
 		}
 	}
 
 	if len(candidates) == 0 {
 		if c.debug {
-			fmt.Printf("❌ No candidates found for tool '%s'\n", toolName)
+			c.logger.Debug("❌ No candidates found for tool '%s'\n", toolName)
 		}
 		return "", fmt.Errorf("tool '%s' not found: tool not found", toolName)
 	}
 
 	if len(candidates) == 1 {
 		if c.debug {
-			fmt.Printf("✅ Single candidate found: %s\n", candidates[0])
+			c.logger.Debug("✅ Single candidate found: %s\n", candidates[0])
 		}
 		return candidates[0], nil
 	}
@@ -202,7 +212,7 @@ func (c *mcpTestClient) resolveToolName(ctx context.Context, toolName string) (s
 	}
 
 	if c.debug {
-		fmt.Printf("🔍 Multiple tool candidates found for '%s': %v, choosing: %s\n", toolName, candidates, best)
+		c.logger.Debug("🔍 Multiple tool candidates found for '%s': %v, choosing: %s\n", toolName, candidates, best)
 	}
 
 	return best, nil
@@ -219,7 +229,7 @@ func (c *mcpTestClient) isToolMatch(prefixedTool, requestedTool string) bool {
 	suffix := "_" + requestedTool
 	if len(prefixedTool) > len(suffix) && prefixedTool[len(prefixedTool)-len(suffix):] == suffix {
 		if c.debug {
-			fmt.Printf("🎯 Suffix match: %s matches %s (suffix: %s)\n", prefixedTool, requestedTool, suffix)
+			c.logger.Debug("🎯 Suffix match: %s matches %s (suffix: %s)\n", prefixedTool, requestedTool, suffix)
 		}
 		return true
 	}
@@ -228,7 +238,7 @@ func (c *mcpTestClient) isToolMatch(prefixedTool, requestedTool string) bool {
 	dashSuffix := "-" + requestedTool
 	if len(prefixedTool) > len(dashSuffix) && prefixedTool[len(prefixedTool)-len(dashSuffix):] == dashSuffix {
 		if c.debug {
-			fmt.Printf("🎯 Dash suffix match: %s matches %s (suffix: %s)\n", prefixedTool, requestedTool, dashSuffix)
+			c.logger.Debug("🎯 Dash suffix match: %s matches %s (suffix: %s)\n", prefixedTool, requestedTool, dashSuffix)
 		}
 		return true
 	}
@@ -259,7 +269,7 @@ func (c *mcpTestClient) ListTools(ctx context.Context) ([]string, error) {
 	}
 
 	if c.debug {
-		fmt.Printf("🛠️  Available tools (%d): %v\n", len(toolNames), toolNames)
+		c.logger.Debug("🛠️  Available tools (%d): %v\n", len(toolNames), toolNames)
 	}
 
 	return toolNames, nil
@@ -272,7 +282,7 @@ func (c *mcpTestClient) Close() error {
 	}
 
 	if c.debug {
-		fmt.Printf("🔌 Closing MCP client connection to %s\n", c.endpoint)
+		c.logger.Debug("🔌 Closing MCP client connection to %s\n", c.endpoint)
 	}
 
 	err := c.client.Close()

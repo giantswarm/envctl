@@ -31,10 +31,17 @@ func (h *MockToolHandler) HandleCall(arguments map[string]interface{}) (interfac
 		fmt.Fprintf(os.Stderr, "🔧 Mock tool '%s' called with arguments: %v\n", h.config.Name, arguments)
 	}
 
+	// Merge arguments with default values from input schema
+	mergedArgs := h.mergeWithDefaults(arguments)
+	
+	if h.debug && len(mergedArgs) != len(arguments) {
+		fmt.Fprintf(os.Stderr, "🔧 Mock tool '%s' merged with defaults: %v\n", h.config.Name, mergedArgs)
+	}
+
 	// Find the first matching response
 	var selectedResponse *MockToolResponse
 	for _, response := range h.config.Responses {
-		if h.matchesCondition(response.Condition, arguments) {
+		if h.matchesCondition(response.Condition, mergedArgs) {
 			selectedResponse = &response
 			break
 		}
@@ -61,7 +68,7 @@ func (h *MockToolHandler) HandleCall(arguments map[string]interface{}) (interfac
 
 	// Handle error response
 	if selectedResponse.Error != "" {
-		errorMessage, err := h.templateEngine.Replace(selectedResponse.Error, arguments)
+		errorMessage, err := h.templateEngine.Replace(selectedResponse.Error, mergedArgs)
 		if err != nil {
 			if h.debug {
 				fmt.Fprintf(os.Stderr, "❌ Failed to render error message for tool '%s': %v\n", h.config.Name, err)
@@ -78,8 +85,8 @@ func (h *MockToolHandler) HandleCall(arguments map[string]interface{}) (interfac
 		return nil, fmt.Errorf(errorStr)
 	}
 
-	// Render the response using the template engine
-	renderedResponse, err := h.templateEngine.Replace(selectedResponse.Response, arguments)
+	// Render the response using the template engine with merged arguments
+	renderedResponse, err := h.templateEngine.Replace(selectedResponse.Response, mergedArgs)
 	if err != nil {
 		if h.debug {
 			fmt.Fprintf(os.Stderr, "❌ Failed to render response for tool '%s': %v\n", h.config.Name, err)
@@ -92,6 +99,31 @@ func (h *MockToolHandler) HandleCall(arguments map[string]interface{}) (interfac
 	}
 
 	return renderedResponse, nil
+}
+
+// mergeWithDefaults merges provided arguments with default values from input schema
+func (h *MockToolHandler) mergeWithDefaults(arguments map[string]interface{}) map[string]interface{} {
+	merged := make(map[string]interface{})
+	
+	// First, add default values from input schema
+	if h.config.InputSchema != nil {
+		if properties, ok := h.config.InputSchema["properties"].(map[string]interface{}); ok {
+			for propName, propDef := range properties {
+				if propDefMap, ok := propDef.(map[string]interface{}); ok {
+					if defaultValue, hasDefault := propDefMap["default"]; hasDefault {
+						merged[propName] = defaultValue
+					}
+				}
+			}
+		}
+	}
+	
+	// Then, override with provided arguments
+	for key, value := range arguments {
+		merged[key] = value
+	}
+	
+	return merged
 }
 
 // matchesCondition checks if the given arguments match the response condition

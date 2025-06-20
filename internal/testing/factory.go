@@ -25,32 +25,65 @@ type TestFramework struct {
 	Loader          TestScenarioLoader
 	Reporter        TestReporter
 	InstanceManager EnvCtlInstanceManager
+	Logger          TestLogger
 }
 
 // NewTestFramework creates a fully configured test framework
 func NewTestFramework(debug bool, basePort int) (*TestFramework, error) {
-	return NewTestFrameworkWithVerbose(false, debug, basePort, "")
+	return NewTestFrameworkForMode(ExecutionModeCLI, false, debug, basePort, "")
 }
 
 // NewTestFrameworkWithVerbose creates a fully configured test framework with verbose and debug control
 func NewTestFrameworkWithVerbose(verbose, debug bool, basePort int, reportPath string) (*TestFramework, error) {
+	return NewTestFrameworkForMode(ExecutionModeCLI, verbose, debug, basePort, reportPath)
+}
+
+// NewTestFrameworkForMode creates a fully configured test framework for the specified execution mode
+// 
+// Execution Modes:
+// - ExecutionModeCLI: Uses standard stdio output for reporting (compatible with existing behavior)
+// - ExecutionModeMCPServer: Uses structured reporting that captures data without stdio output
+//   to avoid contaminating the MCP protocol stream. Results can be retrieved programmatically.
+//
+// Note: In MCP server mode, verbose defaults to true and debug output is controlled by the 
+// silent logger to prevent stdio contamination.
+func NewTestFrameworkForMode(mode ExecutionMode, verbose, debug bool, basePort int, reportPath string) (*TestFramework, error) {
 	// Create instance manager
 	instanceManager, err := NewEnvCtlInstanceManager(debug, basePort)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create instance manager: %w", err)
 	}
 
-	// Create MCP client
-	client := NewMCPTestClient(debug)
+	// Create logger based on execution mode
+	var logger TestLogger
+	switch mode {
+	case ExecutionModeCLI:
+		logger = NewStdoutLogger(verbose, debug)
+	case ExecutionModeMCPServer:
+		logger = NewSilentLogger(verbose, debug)
+	default:
+		logger = NewStdoutLogger(verbose, debug)
+	}
 
-	// Create scenario loader
-	loader := NewTestScenarioLoader(debug)
+	// Create MCP client with logger
+	client := NewMCPTestClientWithLogger(debug, logger)
 
-	// Create reporter with proper verbose and debug flags
-	reporter := NewTestReporter(verbose, debug, reportPath)
+	// Create scenario loader with logger
+	loader := NewTestScenarioLoaderWithLogger(debug, logger)
 
-	// Create runner
-	runner := NewTestRunner(client, loader, reporter, instanceManager, debug)
+	// Create reporter based on execution mode
+	var reporter TestReporter
+	switch mode {
+	case ExecutionModeCLI:
+		reporter = NewTestReporter(verbose, debug, reportPath)
+	case ExecutionModeMCPServer:
+		reporter = NewStructuredReporter(verbose, debug, reportPath)
+	default:
+		reporter = NewTestReporter(verbose, debug, reportPath)
+	}
+
+	// Create runner with logger
+	runner := NewTestRunnerWithLogger(client, loader, reporter, instanceManager, debug, logger)
 
 	return &TestFramework{
 		Runner:          runner,
@@ -58,6 +91,7 @@ func NewTestFrameworkWithVerbose(verbose, debug bool, basePort int, reportPath s
 		Loader:          loader,
 		Reporter:        reporter,
 		InstanceManager: instanceManager,
+		Logger:          logger,
 	}, nil
 }
 

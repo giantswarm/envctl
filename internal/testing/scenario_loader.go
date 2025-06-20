@@ -12,13 +12,23 @@ import (
 
 // scenarioLoader implements the TestScenarioLoader interface
 type scenarioLoader struct {
-	debug bool
+	debug  bool
+	logger TestLogger
 }
 
 // NewTestScenarioLoader creates a new test scenario loader
 func NewTestScenarioLoader(debug bool) TestScenarioLoader {
 	return &scenarioLoader{
-		debug: debug,
+		debug:  debug,
+		logger: NewStdoutLogger(false, debug), // Default to stdout logger
+	}
+}
+
+// NewTestScenarioLoaderWithLogger creates a new test scenario loader with custom logger
+func NewTestScenarioLoaderWithLogger(debug bool, logger TestLogger) TestScenarioLoader {
+	return &scenarioLoader{
+		debug:  debug,
+		logger: logger,
 	}
 }
 
@@ -27,7 +37,7 @@ func (l *scenarioLoader) LoadScenarios(configPath string) ([]TestScenario, error
 	var scenarios []TestScenario
 
 	if l.debug {
-		fmt.Printf("📁 Loading test scenarios from: %s\n", configPath)
+		l.logger.Debug("📁 Loading test scenarios from: %s\n", configPath)
 	}
 
 	// Check if path exists
@@ -57,9 +67,9 @@ func (l *scenarioLoader) LoadScenarios(configPath string) ([]TestScenario, error
 	}
 
 	if l.debug {
-		fmt.Printf("📋 Loaded %d test scenarios\n", len(scenarios))
+		l.logger.Debug("📋 Loaded %d test scenarios\n", len(scenarios))
 		for _, scenario := range scenarios {
-			fmt.Printf("  • %s (%s/%s) - %d steps\n",
+			l.logger.Debug("  • %s (%s/%s) - %d steps\n",
 				scenario.Name, scenario.Category, scenario.Concept, len(scenario.Steps))
 		}
 	}
@@ -87,7 +97,7 @@ func (l *scenarioLoader) loadScenariosFromDirectory(dirPath string) ([]TestScena
 		}
 
 		if l.debug {
-			fmt.Printf("📄 Loading scenario file: %s\n", path)
+			l.logger.Debug("📄 Loading scenario file: %s\n", path)
 		}
 
 		scenario, err := l.loadScenarioFromFile(path)
@@ -193,10 +203,10 @@ func (l *scenarioLoader) validateStep(step TestStep, index int) error {
 // FilterScenarios filters scenarios based on the configuration
 func (l *scenarioLoader) FilterScenarios(scenarios []TestScenario, config TestConfiguration) []TestScenario {
 	if l.debug {
-		fmt.Printf("🔍 Filtering scenarios based on configuration\n")
-		fmt.Printf("  • Category filter: %s\n", string(config.Category))
-		fmt.Printf("  • Concept filter: %s\n", string(config.Concept))
-		fmt.Printf("  • Scenario filter: %s\n", config.Scenario)
+		l.logger.Debug("🔍 Filtering scenarios based on configuration\n")
+		l.logger.Debug("  • Category filter: %s\n", string(config.Category))
+		l.logger.Debug("  • Concept filter: %s\n", string(config.Concept))
+		l.logger.Debug("  • Scenario filter: %s\n", config.Scenario)
 	}
 
 	var filtered []TestScenario
@@ -221,9 +231,9 @@ func (l *scenarioLoader) FilterScenarios(scenarios []TestScenario, config TestCo
 	}
 
 	if l.debug {
-		fmt.Printf("📊 Filtered to %d scenarios:\n", len(filtered))
+		l.logger.Debug("📊 Filtered to %d scenarios:\n", len(filtered))
 		for _, scenario := range filtered {
-			fmt.Printf("  • %s (%s/%s)\n", scenario.Name, scenario.Category, scenario.Concept)
+			l.logger.Debug("  • %s (%s/%s)\n", scenario.Name, scenario.Category, scenario.Concept)
 		}
 	}
 

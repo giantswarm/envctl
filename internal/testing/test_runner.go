@@ -15,6 +15,7 @@ type testRunner struct {
 	reporter        TestReporter
 	instanceManager EnvCtlInstanceManager
 	debug           bool
+	logger          TestLogger
 }
 
 // NewTestRunner creates a new test runner
@@ -25,6 +26,19 @@ func NewTestRunner(client MCPTestClient, loader TestScenarioLoader, reporter Tes
 		reporter:        reporter,
 		instanceManager: instanceManager,
 		debug:           debug,
+		logger:          NewStdoutLogger(false, debug), // Default to stdout logger
+	}
+}
+
+// NewTestRunnerWithLogger creates a new test runner with custom logger
+func NewTestRunnerWithLogger(client MCPTestClient, loader TestScenarioLoader, reporter TestReporter, instanceManager EnvCtlInstanceManager, debug bool, logger TestLogger) TestRunner {
+	return &testRunner{
+		client:          client,
+		loader:          loader,
+		reporter:        reporter,
+		instanceManager: instanceManager,
+		debug:           debug,
+		logger:          logger,
 	}
 }
 
@@ -119,7 +133,7 @@ func (r *testRunner) runScenariosParallel(ctx context.Context, scenarios []TestS
 
 			for scenario := range scenarioChan {
 				if r.debug {
-					fmt.Printf("🔄 Worker %d executing scenario: %s\n", workerID, scenario.Name)
+					r.logger.Debug("🔄 Worker %d executing scenario: %s\n", workerID, scenario.Name)
 				}
 
 				// Each worker runs scenario with its own envctl instance
@@ -178,7 +192,7 @@ func (r *testRunner) runScenario(ctx context.Context, scenario TestScenario, con
 	var err error
 
 	if r.debug {
-		fmt.Printf("🏗️  Creating envctl instance for scenario: %s\n", scenario.Name)
+		r.logger.Debug("🏗️  Creating envctl instance for scenario: %s\n", scenario.Name)
 	}
 
 	instance, err = r.instanceManager.CreateInstance(scenarioCtx, scenario.Name, scenario.PreConfiguration)
@@ -191,7 +205,7 @@ func (r *testRunner) runScenario(ctx context.Context, scenario TestScenario, con
 	}
 
 	if r.debug {
-		fmt.Printf("✅ Created envctl instance %s (port: %d)\n", instance.ID, instance.Port)
+		r.logger.Debug("✅ Created envctl instance %s (port: %d)\n", instance.ID, instance.Port)
 	}
 
 	// Ensure cleanup of instance
@@ -202,7 +216,7 @@ func (r *testRunner) runScenario(ctx context.Context, scenario TestScenario, con
 
 			if err := r.instanceManager.DestroyInstance(cleanupCtx, instance); err != nil {
 				if r.debug {
-					fmt.Printf("⚠️  Failed to destroy envctl instance %s: %v\n", instance.ID, err)
+					r.logger.Debug("⚠️  Failed to destroy envctl instance %s: %v\n", instance.ID, err)
 				}
 			} else {
 				// Final log storage - may have been updated during destruction
@@ -210,7 +224,7 @@ func (r *testRunner) runScenario(ctx context.Context, scenario TestScenario, con
 					result.InstanceLogs = instance.Logs
 				}
 				if r.debug {
-					fmt.Printf("✅ Cleanup complete for envctl instance %s\n", instance.ID)
+					r.logger.Debug("✅ Cleanup complete for envctl instance %s\n", instance.ID)
 				}
 			}
 		}
@@ -237,7 +251,7 @@ func (r *testRunner) runScenario(ctx context.Context, scenario TestScenario, con
 	// Ensure MCP client is closed properly
 	defer func() {
 		if r.debug {
-			fmt.Printf("🔌 Closing MCP client connection to %s\n", instance.Endpoint)
+			r.logger.Debug("🔌 Closing MCP client connection to %s\n", instance.Endpoint)
 		}
 
 		// Close with timeout to avoid hanging
@@ -253,11 +267,11 @@ func (r *testRunner) runScenario(ctx context.Context, scenario TestScenario, con
 		select {
 		case <-done:
 			if r.debug {
-				fmt.Printf("✅ MCP client closed successfully\n")
+				r.logger.Debug("✅ MCP client closed successfully\n")
 			}
 		case <-closeCtx.Done():
 			if r.debug {
-				fmt.Printf("⏰ MCP client close timeout - connection may have been reset\n")
+				r.logger.Debug("⏰ MCP client close timeout - connection may have been reset\n")
 			}
 		}
 
@@ -266,7 +280,7 @@ func (r *testRunner) runScenario(ctx context.Context, scenario TestScenario, con
 	}()
 
 	if r.debug {
-		fmt.Printf("✅ Connected to envctl instance %s at %s\n", instance.ID, instance.Endpoint)
+		r.logger.Debug("✅ Connected to envctl instance %s at %s\n", instance.ID, instance.Endpoint)
 	}
 
 	// Execute steps
@@ -318,7 +332,7 @@ func (r *testRunner) runScenario(ctx context.Context, scenario TestScenario, con
 				instance.Logs = managedProc.logCapture.getLogs()
 				result.InstanceLogs = instance.Logs
 				if r.debug {
-					fmt.Printf("📋 Collected instance logs for result: stdout=%d chars, stderr=%d chars\n",
+					r.logger.Debug("📋 Collected instance logs for result: stdout=%d chars, stderr=%d chars\n",
 						len(instance.Logs.Stdout), len(instance.Logs.Stderr))
 				}
 			}
@@ -366,7 +380,7 @@ func (r *testRunner) runStep(ctx context.Context, step TestStep, config TestConf
 				}
 
 				if r.debug {
-					fmt.Printf("⏳ Retrying step '%s' in %v (attempt %d/%d)\n", step.ID, delay, attempt+1, maxAttempts)
+					r.logger.Debug("⏳ Retrying step '%s' in %v (attempt %d/%d)\n", step.ID, delay, attempt+1, maxAttempts)
 				}
 
 				select {
@@ -447,21 +461,21 @@ func (r *testRunner) validateExpectations(expected TestExpectation, response int
 	}
 
 	if r.debug {
-		fmt.Printf("🔍 Validation Debug:\n")
-		fmt.Printf("   Expected Success: %v\n", expected.Success)
-		fmt.Printf("   Call Error: %v\n", err)
-		fmt.Printf("   Response Error Flag: %v\n", isResponseError)
-		fmt.Printf("   Response Type: %T\n", response)
-		fmt.Printf("   Response Value: %+v\n", response)
+		r.logger.Debug("🔍 Validation Debug:\n")
+		r.logger.Debug("   Expected Success: %v\n", expected.Success)
+		r.logger.Debug("   Call Error: %v\n", err)
+		r.logger.Debug("   Response Error Flag: %v\n", isResponseError)
+		r.logger.Debug("   Response Type: %T\n", response)
+		r.logger.Debug("   Response Value: %+v\n", response)
 	}
 
 	// Check success expectation
 	if expected.Success && (err != nil || isResponseError) {
 		if r.debug {
 			if err != nil {
-				fmt.Printf("❌ Expected success but got error: %v\n", err)
+				r.logger.Debug("❌ Expected success but got error: %v\n", err)
 			} else {
-				fmt.Printf("❌ Expected success but response indicates error\n")
+				r.logger.Debug("❌ Expected success but response indicates error\n")
 			}
 		}
 		return false
@@ -469,28 +483,42 @@ func (r *testRunner) validateExpectations(expected TestExpectation, response int
 
 	if !expected.Success && err == nil && !isResponseError {
 		if r.debug {
-			fmt.Printf("❌ Expected failure but got success (no error and no response error flag)\n")
+			r.logger.Debug("❌ Expected failure but got success (no error and no response error flag)\n")
 		}
 		return false
 	}
 
 	// Check error content expectations
 	if len(expected.ErrorContains) > 0 {
-		if err == nil {
+		var errorText string
+		
+		// First, try to get error text from Go error
+		if err != nil {
+			errorText = err.Error()
+		} else if isResponseError && response != nil {
+			// If no Go error but response indicates error, extract error text from response
+			responseStr := fmt.Sprintf("%v", response)
+			errorText = responseStr
+		}
+		
+				if errorText == "" {
 			if r.debug {
-				fmt.Printf("❌ Expected error containing text but got no error\n")
+				r.logger.Debug("❌ Expected error containing text but got no error text (err=%v, isResponseError=%v)\n", err, isResponseError)
 			}
 			return false
 		}
 
-		errStr := err.Error()
 		for _, expectedText := range expected.ErrorContains {
-			if !containsText(errStr, expectedText) {
+			if !containsText(errorText, expectedText) {
 				if r.debug {
-					fmt.Printf("❌ Error '%s' does not contain expected text '%s'\n", errStr, expectedText)
+					r.logger.Debug("❌ Error text '%s' does not contain expected text '%s'\n", errorText, expectedText)
 				}
 				return false
 			}
+		}
+
+		if r.debug {
+			r.logger.Debug("✅ Error expectations met: found all expected text in '%s'\n", errorText)
 		}
 	}
 
@@ -502,7 +530,7 @@ func (r *testRunner) validateExpectations(expected TestExpectation, response int
 		for _, expectedText := range expected.Contains {
 			if !containsText(responseStr, expectedText) {
 				if r.debug {
-					fmt.Printf("❌ Response does not contain expected text '%s'\n", expectedText)
+					r.logger.Debug("❌ Response does not contain expected text '%s'\n", expectedText)
 				}
 				return false
 			}
@@ -512,7 +540,7 @@ func (r *testRunner) validateExpectations(expected TestExpectation, response int
 		for _, unexpectedText := range expected.NotContains {
 			if containsText(responseStr, unexpectedText) {
 				if r.debug {
-					fmt.Printf("❌ Response contains unexpected text '%s'\n", unexpectedText)
+					r.logger.Debug("❌ Response contains unexpected text '%s'\n", unexpectedText)
 				}
 				return false
 			}
@@ -531,7 +559,7 @@ func (r *testRunner) validateExpectations(expected TestExpectation, response int
 				responseMap = r.extractJSONFromMCPResponse(response)
 				if responseMap == nil {
 					if r.debug {
-						fmt.Printf("❌ JSON path validation failed: could not extract JSON from response type %T\n", response)
+						r.logger.Debug("❌ JSON path validation failed: could not extract JSON from response type %T\n", response)
 					}
 					return false
 				}
@@ -542,7 +570,7 @@ func (r *testRunner) validateExpectations(expected TestExpectation, response int
 				actualValue, exists := responseMap[jsonPath]
 				if !exists {
 					if r.debug {
-						fmt.Printf("❌ JSON path '%s' not found in response\n", jsonPath)
+						r.logger.Debug("❌ JSON path '%s' not found in response\n", jsonPath)
 					}
 					return false
 				}
@@ -550,20 +578,20 @@ func (r *testRunner) validateExpectations(expected TestExpectation, response int
 				// Compare values
 				if !compareValues(actualValue, expectedValue) {
 					if r.debug {
-						fmt.Printf("❌ JSON path '%s': expected %v, got %v\n", jsonPath, expectedValue, actualValue)
+						r.logger.Debug("❌ JSON path '%s': expected %v, got %v\n", jsonPath, expectedValue, actualValue)
 					}
 					return false
 				}
 
 				if r.debug {
-					fmt.Printf("✅ JSON path '%s': expected %v, got %v ✓\n", jsonPath, expectedValue, actualValue)
+					r.logger.Debug("✅ JSON path '%s': expected %v, got %v ✓\n", jsonPath, expectedValue, actualValue)
 				}
 			}
 		}
 	}
 
 	if r.debug {
-		fmt.Printf("✅ All expectations met for step\n")
+		r.logger.Debug("✅ All expectations met for step\n")
 	}
 
 	return true
@@ -640,7 +668,7 @@ func (r *testRunner) extractJSONFromMCPResponse(response interface{}) map[string
 	
 	if textStart == -1 {
 		if r.debug {
-			fmt.Printf("🔍 Could not find 'Text:' in response: %s\n", responseStr[:min(200, len(responseStr))])
+			r.logger.Debug("🔍 Could not find 'Text:' in response: %s\n", responseStr[:min(200, len(responseStr))])
 		}
 		return nil
 	}
@@ -665,24 +693,24 @@ func (r *testRunner) extractJSONFromMCPResponse(response interface{}) map[string
 		}
 	}
 	
-	if textEnd == -1 || !inJson {
+		if textEnd == -1 || !inJson {
 		if r.debug {
-			fmt.Printf("🔍 Could not find complete JSON in response text\n")
+			r.logger.Debug("🔍 Could not find complete JSON in response text\n")
 		}
 		return nil
 	}
-	
+
 	// Extract the JSON string
 	jsonStr := responseStr[textStart:textEnd]
 	if r.debug {
-		fmt.Printf("🔍 Extracted JSON string: %s\n", jsonStr)
+		r.logger.Debug("🔍 Extracted JSON string: %s\n", jsonStr)
 	}
-	
+
 	// Parse the JSON
 	var result map[string]interface{}
 	if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
 		if r.debug {
-			fmt.Printf("🔍 Failed to parse JSON: %v\n", err)
+			r.logger.Debug("🔍 Failed to parse JSON: %v\n", err)
 		}
 		return nil
 	}

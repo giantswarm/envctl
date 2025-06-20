@@ -26,6 +26,11 @@ type TestMCPServer struct {
 	lastResult   *testing.TestSuiteResult
 }
 
+// GetStructuredReporter returns the structured reporter if available
+func (t *TestMCPServer) GetStructuredReporter() interface{} {
+	return t.testReporter
+}
+
 // NewTestMCPServer creates a new test MCP server that exposes test functionality
 func NewTestMCPServer(endpoint string, logger *Logger, configPath string, debug bool) (*TestMCPServer, error) {
 	// Create MCP server
@@ -37,8 +42,15 @@ func NewTestMCPServer(endpoint string, logger *Logger, configPath string, debug 
 		server.WithPromptCapabilities(false),
 	)
 
-	// Create test framework using factory
-	framework, err := testing.NewTestFramework(debug, 18000)
+	// Create test framework using factory with MCP server mode
+	// For MCP server mode, we default to verbose=true and debug=debug as requested
+	framework, err := testing.NewTestFrameworkForMode(
+		testing.ExecutionModeMCPServer,
+		true,  // verbose - always true for MCP server mode as requested
+		debug, // debug - as specified by caller
+		18000, // base port
+		"",    // no report path for MCP mode
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create test framework: %w", err)
 	}
