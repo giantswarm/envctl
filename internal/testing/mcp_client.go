@@ -50,11 +50,9 @@ func (c *mcpTestClient) Connect(ctx context.Context, endpoint string) error {
 
 	// Start the streamable HTTP transport
 	if err := httpClient.Start(ctx); err != nil {
+		httpClient.Close() // Clean up failed client
 		return fmt.Errorf("failed to start streamable HTTP client: %w", err)
 	}
-
-	// Store the client
-	c.client = httpClient
 
 	// Initialize the MCP protocol
 	initRequest := mcp.InitializeRequest{
@@ -76,14 +74,18 @@ func (c *mcpTestClient) Connect(ctx context.Context, endpoint string) error {
 	initCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	_, err = c.client.Initialize(initCtx, initRequest)
+	// CRITICAL: Only store the client AFTER successful initialization
+	_, err = httpClient.Initialize(initCtx, initRequest)
 	if err != nil {
-		c.client.Close()
+		httpClient.Close() // Clean up failed client
 		return fmt.Errorf("failed to initialize MCP protocol: %w", err)
 	}
 
+	// SUCCESS: Store the client only after full initialization
+	c.client = httpClient
+
 	if c.debug {
-		c.logger.Debug("🔗 Successfully connected to MCP aggregator at %s\n", endpoint)
+		c.logger.Debug("✅ Successfully connected to MCP aggregator at %s\n", endpoint)
 	}
 
 	return nil

@@ -242,8 +242,12 @@ func (r *testRunner) runScenario(ctx context.Context, scenario TestScenario, con
 		return result
 	}
 
-	// Connect MCP client to the instance
-	if err := r.client.Connect(scenarioCtx, instance.Endpoint); err != nil {
+	// Create isolated MCP client for this scenario
+	// This ensures each parallel scenario has its own client and context
+	scenarioClient := NewMCPTestClientWithLogger(r.debug, r.logger)
+	
+	// Connect the isolated MCP client to this specific instance
+	if err := scenarioClient.Connect(scenarioCtx, instance.Endpoint); err != nil {
 		result.Result = ResultError
 		result.Error = fmt.Sprintf("failed to connect to envctl instance: %v", err)
 		result.EndTime = time.Now()
@@ -251,10 +255,10 @@ func (r *testRunner) runScenario(ctx context.Context, scenario TestScenario, con
 		return result
 	}
 
-	// Ensure MCP client is closed properly
+	// Ensure isolated MCP client is closed properly
 	defer func() {
 		if r.debug {
-			r.logger.Debug("🔌 Closing MCP client connection to %s\n", instance.Endpoint)
+			r.logger.Debug("🔌 Closing isolated MCP client connection to %s\n", instance.Endpoint)
 		}
 
 		// Close with timeout to avoid hanging
@@ -263,18 +267,18 @@ func (r *testRunner) runScenario(ctx context.Context, scenario TestScenario, con
 
 		done := make(chan struct{})
 		go func() {
-			r.client.Close()
+			scenarioClient.Close()
 			close(done)
 		}()
 
 		select {
 		case <-done:
 			if r.debug {
-				r.logger.Debug("✅ MCP client closed successfully\n")
+				r.logger.Debug("✅ Isolated MCP client closed successfully\n")
 			}
 		case <-closeCtx.Done():
 			if r.debug {
-				r.logger.Debug("⏰ MCP client close timeout - connection may have been reset\n")
+				r.logger.Debug("⏰ Isolated MCP client close timeout - connection may have been reset\n")
 			}
 		}
 
@@ -283,12 +287,12 @@ func (r *testRunner) runScenario(ctx context.Context, scenario TestScenario, con
 	}()
 
 	if r.debug {
-		r.logger.Debug("✅ Connected to envctl instance %s at %s\n", instance.ID, instance.Endpoint)
+		r.logger.Debug("✅ Connected isolated MCP client to envctl instance %s at %s\n", instance.ID, instance.Endpoint)
 	}
 
-	// Execute steps
+	// Execute steps using the isolated client
 	for _, step := range scenario.Steps {
-		stepResult := r.runStep(scenarioCtx, step, config)
+		stepResult := r.runStepWithClient(scenarioCtx, step, config, scenarioClient)
 		result.StepResults = append(result.StepResults, stepResult)
 
 		// Report step result
@@ -302,10 +306,10 @@ func (r *testRunner) runScenario(ctx context.Context, scenario TestScenario, con
 		}
 	}
 
-	// Execute cleanup steps regardless of main scenario outcome
+	// Execute cleanup steps regardless of main scenario outcome using the isolated client
 	if len(scenario.Cleanup) > 0 {
 		for _, cleanupStep := range scenario.Cleanup {
-			stepResult := r.runStep(scenarioCtx, cleanupStep, config)
+			stepResult := r.runStepWithClient(scenarioCtx, cleanupStep, config, scenarioClient)
 			result.StepResults = append(result.StepResults, stepResult)
 			r.reporter.ReportStepResult(stepResult)
 
@@ -346,8 +350,13 @@ func (r *testRunner) runScenario(ctx context.Context, scenario TestScenario, con
 	return result
 }
 
-// runStep executes a single test step
+// runStep executes a single test step using the shared client (for backward compatibility)
 func (r *testRunner) runStep(ctx context.Context, step TestStep, config TestConfiguration) TestStepResult {
+	return r.runStepWithClient(ctx, step, config, r.client)
+}
+
+// runStepWithClient executes a single test step using the specified MCP client
+func (r *testRunner) runStepWithClient(ctx context.Context, step TestStep, config TestConfiguration, client MCPTestClient) TestStepResult {
 	result := TestStepResult{
 		Step:      step,
 		StartTime: time.Now(),
@@ -399,8 +408,8 @@ func (r *testRunner) runStep(ctx context.Context, step TestStep, config TestConf
 		}
 
 		// Execute the tool call
-		response, err := r.client.CallTool(stepCtx, step.Tool, step.Args)
-		
+		response, err := client.CallTool(stepCtx, step.Tool, step.Args)
+
 		// Store response (even if there's an error)
 		result.Response = response
 
@@ -413,7 +422,7 @@ func (r *testRunner) runStep(ctx context.Context, step TestStep, config TestConf
 			if attempt < maxAttempts-1 {
 				continue // Retry
 			}
-			
+
 			if err != nil {
 				result.Result = ResultError
 				result.Error = fmt.Sprintf("tool call failed: %v", err)
@@ -468,8 +477,6 @@ func (r *testRunner) validateExpectations(expected TestExpectation, response int
 		}
 	}
 
-
-
 	// Check success expectation
 	if expected.Success && (err != nil || isResponseError) {
 		if r.debug {
@@ -513,9 +520,9 @@ func (r *testRunner) validateExpectations(expected TestExpectation, response int
 		}
 
 		if errorText == "" {
-					if r.debug {
-			r.logger.Debug("❌ Expected error containing text but got no error text (err=%v, isResponseError=%v)", err, isResponseError)
-		}
+			if r.debug {
+				r.logger.Debug("❌ Expected error containing text but got no error text (err=%v, isResponseError=%v)", err, isResponseError)
+			}
 			return false
 		}
 

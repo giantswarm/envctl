@@ -105,13 +105,17 @@ type managedProcess struct {
 
 // envCtlInstanceManager implements the EnvCtlInstanceManager interface
 type envCtlInstanceManager struct {
-	debug      bool
-	basePort   int
-	portOffset int
-	tempDir    string
-	processes  map[string]*managedProcess // Track processes by instance ID
-	mu         sync.RWMutex
-	logger     TestLogger
+	debug         bool
+	basePort      int
+	portOffset    int
+	tempDir       string
+	processes     map[string]*managedProcess // Track processes by instance ID
+	mu            sync.RWMutex
+	logger        TestLogger
+	
+	// Port reservation system for thread-safe parallel execution
+	portMu        sync.Mutex     // Protects port allocation
+	reservedPorts map[int]string // port -> instanceID mapping
 }
 
 // NewEnvCtlInstanceManager creates a new envctl instance manager
@@ -128,11 +132,12 @@ func NewEnvCtlInstanceManagerWithLogger(debug bool, basePort int, logger TestLog
 	}
 
 	return &envCtlInstanceManager{
-		debug:     debug,
-		basePort:  basePort,
-		tempDir:   tempDir,
-		processes: make(map[string]*managedProcess),
-		logger:    logger,
+		debug:         debug,
+		basePort:      basePort,
+		tempDir:       tempDir,
+		processes:     make(map[string]*managedProcess),
+		logger:        logger,
+		reservedPorts: make(map[int]string),
 	}, nil
 }
 
@@ -141,8 +146,8 @@ func (m *envCtlInstanceManager) CreateInstance(ctx context.Context, scenarioName
 	// Generate unique instance ID
 	instanceID := fmt.Sprintf("test-%s-%d", sanitizeFileName(scenarioName), time.Now().UnixNano())
 
-	// Find available port
-	port, err := m.findAvailablePort()
+	// Find available port (with atomic reservation)
+	port, err := m.findAvailablePort(instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find available port: %w", err)
 	}
@@ -165,7 +170,8 @@ func (m *envCtlInstanceManager) CreateInstance(ctx context.Context, scenarioName
 	// Start envctl serve process with log capture
 	managedProc, err := m.startEnvCtlProcess(ctx, configPath, port)
 	if err != nil {
-		// Clean up on failure
+		// Clean up on failure: release port and remove config directory
+		m.releasePort(port, instanceID)
 		os.RemoveAll(configPath)
 		return nil, fmt.Errorf("failed to start envctl process: %w", err)
 	}
@@ -229,6 +235,9 @@ func (m *envCtlInstanceManager) DestroyInstance(ctx context.Context, instance *E
 		m.mu.Unlock()
 	}
 
+	// Release the reserved port
+	m.releasePort(instance.Port, instance.ID)
+
 	// Clean up configuration directory
 	if err := os.RemoveAll(instance.ConfigPath); err != nil {
 		if m.debug {
@@ -244,7 +253,7 @@ func (m *envCtlInstanceManager) DestroyInstance(ctx context.Context, instance *E
 	return nil
 }
 
-// gracefulShutdown attempts to gracefully shutdown an envctl process
+// gracefulShutdown attempts to gracefully shutdown an envctl process and all its children
 func (m *envCtlInstanceManager) gracefulShutdown(managedProc *managedProcess, instanceID string) error {
 	if managedProc.cmd == nil || managedProc.cmd.Process == nil {
 		return fmt.Errorf("no process to shutdown")
@@ -252,13 +261,15 @@ func (m *envCtlInstanceManager) gracefulShutdown(managedProc *managedProcess, in
 
 	process := managedProc.cmd.Process
 
-	// Send SIGTERM for graceful shutdown
-	if err := process.Signal(syscall.SIGTERM); err != nil {
-		// If SIGTERM fails, try SIGKILL
+	if m.debug {
+		m.logger.Debug("🛑 Shutting down process group for %s (PID: %d)\n", instanceID, process.Pid)
+	}
+
+	// First, send SIGTERM to the entire process group to terminate all children
+	if err := m.killProcessGroup(process.Pid, syscall.SIGTERM); err != nil {
 		if m.debug {
-			m.logger.Debug("🔄 SIGTERM failed for %s, using SIGKILL: %v\n", instanceID, err)
+			m.logger.Debug("⚠️  Failed to send SIGTERM to process group %d: %v\n", process.Pid, err)
 		}
-		return process.Kill()
 	}
 
 	// Wait for graceful shutdown with timeout
@@ -279,13 +290,31 @@ func (m *envCtlInstanceManager) gracefulShutdown(managedProc *managedProcess, in
 				m.logger.Debug("✅ Process %s exited gracefully\n", instanceID)
 			}
 		}
+		// Ensure any remaining child processes are killed
+		m.killProcessGroup(process.Pid, syscall.SIGKILL)
 		return nil
 	case <-time.After(shutdownTimeout):
 		if m.debug {
-			m.logger.Debug("⏰ Graceful shutdown timeout for %s, forcing kill\n", instanceID)
+			m.logger.Debug("⏰ Graceful shutdown timeout for %s, forcing kill of entire process group\n", instanceID)
 		}
-		return process.Kill()
+		// Force kill the entire process group
+		return m.killProcessGroup(process.Pid, syscall.SIGKILL)
 	}
+}
+
+// killProcessGroup sends a signal to an entire process group to terminate parent and all children
+func (m *envCtlInstanceManager) killProcessGroup(pid int, sig syscall.Signal) error {
+	// Kill the process group (negative PID kills the entire process group)
+	if err := syscall.Kill(-pid, sig); err != nil {
+		// If process group kill fails, try to kill the individual process
+		if err2 := syscall.Kill(pid, sig); err2 != nil {
+			return fmt.Errorf("failed to kill process group -%d: %v, also failed to kill process %d: %v", pid, err, pid, err2)
+		}
+		if m.debug {
+			m.logger.Debug("⚠️  Process group kill failed, but individual process kill succeeded for PID %d\n", pid)
+		}
+	}
+	return nil
 }
 
 // WaitForReady waits for an instance to be ready to accept connections and has all expected resources available
@@ -638,21 +667,69 @@ func (m *envCtlInstanceManager) showLogs(instance *EnvCtlInstance) {
 	}
 }
 
-// findAvailablePort finds an available port starting from the base port
-func (m *envCtlInstanceManager) findAvailablePort() (int, error) {
+// findAvailablePort finds an available port starting from the base port with atomic reservation
+func (m *envCtlInstanceManager) findAvailablePort(instanceID string) (int, error) {
+	m.portMu.Lock()
+	defer m.portMu.Unlock()
+	
 	for i := 0; i < 100; i++ { // Try up to 100 ports
 		port := m.basePort + m.portOffset + i
 
-		// Check if port is available
-		ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
-		if err == nil {
-			ln.Close()
-			m.portOffset = i + 1 // Next search starts from next port
-			return port, nil
+		// Check if already reserved by another instance
+		if existingInstanceID, reserved := m.reservedPorts[port]; reserved {
+			if m.debug {
+				m.logger.Debug("🔒 Port %d already reserved by instance %s, skipping\n", port, existingInstanceID)
+			}
+			continue
 		}
+
+		// Check if port is actually available in general
+		ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+		if err != nil {
+			if m.debug {
+				m.logger.Debug("🔍 Port %d not available (in use): %v\n", port, err)
+			}
+			continue // Port not available, try next
+		}
+		
+		ln.Close() // Close immediately to free the port
+		
+		// ATOMIC: Reserve the port and update offset
+		m.reservedPorts[port] = instanceID
+		m.portOffset = i + 1 // Next search starts from next port
+		
+		if m.debug {
+			m.logger.Debug("✅ Reserved port %d for instance %s\n", port, instanceID)
+		}
+		
+		return port, nil
 	}
 
-	return 0, fmt.Errorf("no available ports found starting from %d", m.basePort)
+	return 0, fmt.Errorf("no available ports found starting from %d (tried 100 ports)", m.basePort)
+}
+
+// releasePort releases a reserved port back to the available pool
+func (m *envCtlInstanceManager) releasePort(port int, instanceID string) {
+	m.portMu.Lock()
+	defer m.portMu.Unlock()
+	
+	// Check if the port is actually reserved by this instance
+	if existingInstanceID, reserved := m.reservedPorts[port]; reserved {
+		if existingInstanceID == instanceID {
+			delete(m.reservedPorts, port)
+			if m.debug {
+				m.logger.Debug("🔓 Released port %d from instance %s\n", port, instanceID)
+			}
+		} else {
+			if m.debug {
+				m.logger.Debug("⚠️  Port %d was reserved by different instance %s, not releasing\n", port, existingInstanceID)
+			}
+		}
+	} else {
+		if m.debug {
+			m.logger.Debug("ℹ️  Port %d was not reserved, nothing to release\n", port)
+		}
+	}
 }
 
 // startEnvCtlProcess starts an envctl serve process
@@ -675,6 +752,12 @@ func (m *envCtlInstanceManager) startEnvCtlProcess(ctx context.Context, configPa
 	}
 
 	cmd := exec.CommandContext(ctx, envctlPath, args...)
+
+	// Configure the process to run in its own process group
+	// This allows us to kill the entire process group (parent + children) later
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true, // Create new process group with this process as leader
+	}
 
 	if m.debug {
 		m.logger.Debug("🚀 Starting command: %s %v\n", envctlPath, args)
