@@ -405,6 +405,33 @@ func (gsi *GenericServiceInstance) GetServiceData() map[string]interface{} {
 	return data
 }
 
+// GetServiceClassName returns the service class name for this instance
+func (gsi *GenericServiceInstance) GetServiceClassName() string {
+	gsi.mu.RLock()
+	defer gsi.mu.RUnlock()
+	return gsi.serviceClassName
+}
+
+// GetCreationParameters returns the creation parameters for this instance
+func (gsi *GenericServiceInstance) GetCreationParameters() map[string]interface{} {
+	gsi.mu.RLock()
+	defer gsi.mu.RUnlock()
+
+	// Return a copy to prevent external modification
+	params := make(map[string]interface{})
+	for k, v := range gsi.creationParameters {
+		params[k] = v
+	}
+	return params
+}
+
+// GetCreatedAt returns the creation time for this instance
+func (gsi *GenericServiceInstance) GetCreatedAt() time.Time {
+	gsi.mu.RLock()
+	defer gsi.mu.RUnlock()
+	return gsi.createdAt
+}
+
 // UpdateState implements the StateUpdater interface
 func (gsi *GenericServiceInstance) UpdateState(state ServiceState, health HealthStatus, err error) {
 	gsi.mu.Lock()

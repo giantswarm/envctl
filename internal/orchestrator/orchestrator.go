@@ -577,15 +577,16 @@ func (o *Orchestrator) validateCreateRequest(req CreateServiceRequest) error {
 // serviceInstanceToInfo converts a GenericServiceInstance to ServiceInstanceInfo
 func (o *Orchestrator) serviceInstanceToInfo(serviceID string, instance *services.GenericServiceInstance) *ServiceInstanceInfo {
 	return &ServiceInstanceInfo{
-		ServiceID:        serviceID,
-		Label:            instance.GetLabel(),
-		ServiceClassName: "unknown", // Will be enhanced when we add ServiceClass tracking
-		ServiceClassType: string(instance.GetType()),
-		State:            string(instance.GetState()),
-		Health:           string(instance.GetHealth()),
-		LastError:        "",
-		CreatedAt:        time.Now(), // Will be enhanced when we add creation time tracking
-		ServiceData:      instance.GetServiceData(),
+		ServiceID:          serviceID,
+		Label:              instance.GetLabel(),
+		ServiceClassName:   instance.GetServiceClassName(),
+		ServiceClassType:   string(instance.GetType()),
+		State:              string(instance.GetState()),
+		Health:             string(instance.GetHealth()),
+		LastError:          "",
+		CreatedAt:          instance.GetCreatedAt(),
+		ServiceData:        instance.GetServiceData(),
+		CreationParameters: instance.GetCreationParameters(),
 	}
 }
 
