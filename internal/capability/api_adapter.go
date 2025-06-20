@@ -385,14 +385,6 @@ func (a *Adapter) handleCapabilityCreate(ctx context.Context, yamlContent string
 		}, nil
 	}
 
-	// Validate that this is a dynamic capability
-	if def.Metadata == nil || def.Metadata["dynamic"] != "true" {
-		return &api.CallToolResult{
-			Content: []interface{}{"Capability must have 'dynamic: true' in metadata to be managed dynamically"},
-			IsError: true,
-		}, nil
-	}
-
 	// Create the capability
 	if err := a.manager.CreateCapability(&def); err != nil {
 		return api.HandleErrorWithPrefix(err, "Failed to create capability"), nil
@@ -429,23 +421,6 @@ func (a *Adapter) handleCapabilityUpdate(ctx context.Context, name, yamlContent 
 		}, nil
 	}
 
-	// Validate that this is a dynamic capability
-	if def.Metadata == nil || def.Metadata["dynamic"] != "true" {
-		return &api.CallToolResult{
-			Content: []interface{}{"Capability must have 'dynamic: true' in metadata to be managed dynamically"},
-			IsError: true,
-		}, nil
-	}
-
-	// Check if the existing capability allows dynamic updates
-	existing, exists := a.manager.GetDefinition(name)
-	if exists && (existing.Metadata == nil || existing.Metadata["dynamic"] != "true") {
-		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Cannot update non-dynamic capability '%s'. Only capabilities with 'dynamic: true' metadata can be modified", name)},
-			IsError: true,
-		}, nil
-	}
-
 	// Update the capability
 	if err := a.manager.UpdateCapability(&def); err != nil {
 		return api.HandleErrorWithPrefix(err, "Failed to update capability"), nil
@@ -465,18 +440,10 @@ func (a *Adapter) handleCapabilityUpdate(ctx context.Context, name, yamlContent 
 }
 
 func (a *Adapter) handleCapabilityDelete(ctx context.Context, name string) (*api.CallToolResult, error) {
-	// Check if the capability exists and allows dynamic deletion
-	existing, exists := a.manager.GetDefinition(name)
+	// Check if the capability exists
+	_, exists := a.manager.GetDefinition(name)
 	if !exists {
 		return api.HandleErrorWithPrefix(api.NewCapabilityNotFoundError(name), "Failed to delete capability"), nil
-	}
-
-	// Validate that this is a dynamic capability
-	if existing.Metadata == nil || existing.Metadata["dynamic"] != "true" {
-		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Cannot delete non-dynamic capability '%s'. Only capabilities with 'dynamic: true' metadata can be modified", name)},
-			IsError: true,
-		}, nil
 	}
 
 	// Delete the capability
