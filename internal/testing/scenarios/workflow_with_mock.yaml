@@ -105,11 +105,11 @@ pre_configuration:
             - app_image
         steps:
           - id: "list_existing_pods"
-            tool: "k8s_pod_list"
+            tool: "x_kubernetes-mock_k8s_pod_list"
             args:
               namespace: "{{ .namespace }}"
           - id: "create_application_pod"
-            tool: "k8s_pod_create"
+            tool: "x_kubernetes-mock_k8s_pod_create"
             args:
               name: "{{ .app_name }}"
               image: "{{ .app_image }}"
@@ -127,7 +127,7 @@ steps:
 
   - id: "test-pod-list-default-namespace"
     description: "Test listing pods in default namespace"
-    tool: "k8s_pod_list"
+    tool: "x_kubernetes-mock_k8s_pod_list"
     args:
       namespace: "default"
     expected:
@@ -137,7 +137,7 @@ steps:
 
   - id: "test-pod-list-kube-system"
     description: "Test listing pods in kube-system namespace"
-    tool: "k8s_pod_list"
+    tool: "x_kubernetes-mock_k8s_pod_list"
     args:
       namespace: "kube-system"
     expected:
@@ -147,7 +147,7 @@ steps:
 
   - id: "test-pod-list-nonexistent-namespace"
     description: "Test listing pods in nonexistent namespace should fail"
-    tool: "k8s_pod_list"
+    tool: "x_kubernetes-mock_k8s_pod_list"
     args:
       namespace: "nonexistent"
     expected:
@@ -171,7 +171,7 @@ steps:
 
   - id: "test-pod-creation-directly"
     description: "Test direct pod creation with mock tool"
-    tool: "k8s_pod_create"
+    tool: "x_kubernetes-mock_k8s_pod_create"
     args:
       name: "direct-test-pod"
       image: "redis:alpine"
@@ -183,7 +183,7 @@ steps:
 
   - id: "test-pod-deletion"
     description: "Test pod deletion with mock tool"
-    tool: "k8s_pod_delete"
+    tool: "x_kubernetes-mock_k8s_pod_delete"
     args:
       name: "direct-test-pod"
       namespace: "default"

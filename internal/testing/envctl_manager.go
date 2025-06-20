@@ -441,7 +441,9 @@ func (m *envCtlInstanceManager) extractExpectedTools(config *EnvCtlPreConfigurat
 				for _, tool := range toolsList {
 					if toolMap, ok := tool.(map[string]interface{}); ok {
 						if name, ok := toolMap["name"].(string); ok {
-							expectedTools = append(expectedTools, name)
+							// For MCP server tools, expect them to be available with x_<server-name>_<tool-name> prefix
+							prefixedName := fmt.Sprintf("x_%s_%s", mcpServer.Name, name)
+							expectedTools = append(expectedTools, prefixedName)
 						}
 					}
 				}
@@ -468,8 +470,8 @@ func (m *envCtlInstanceManager) findMissingTools(expectedTools, availableTools [
 	for _, expected := range expectedTools {
 		found := false
 		for _, available := range availableTools {
-			// Check for exact match or suffix match (for prefixed tools)
-			if available == expected || m.isToolMatch(available, expected) {
+			// Check for exact match
+			if available == expected {
 				found = true
 				break
 			}
@@ -490,18 +492,8 @@ func (m *envCtlInstanceManager) isToolMatch(availableTool, expectedTool string) 
 		return true
 	}
 	
-	// Check for suffix match with underscore (server_tool format)
-	suffix := "_" + expectedTool
-	if len(availableTool) > len(suffix) && availableTool[len(availableTool)-len(suffix):] == suffix {
-		return true
-	}
-	
-	// Check for suffix match with dash (server-tool format)
-	dashSuffix := "-" + expectedTool
-	if len(availableTool) > len(dashSuffix) && availableTool[len(availableTool)-len(dashSuffix):] == dashSuffix {
-		return true
-	}
-	
+	// This method is no longer used since we now generate the correct expected tool names
+	// with x_ prefix in extractExpectedTools
 	return false
 }
 

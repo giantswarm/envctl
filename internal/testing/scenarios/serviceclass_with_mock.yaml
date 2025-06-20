@@ -111,12 +111,12 @@ pre_configuration:
         serviceConfig:
           lifecycleTools:
             start:
-              tool: "storage_volume_create"
+              tool: "x_storage-mock_storage_volume_create"
               arguments:
                 name: "{{ .app_name }}-storage"
                 size: "{{ .storage_size }}"
             stop:
-              tool: "storage_volume_delete"
+              tool: "x_storage-mock_storage_volume_delete"
               arguments:
                 volume_id: "vol-{{ .app_name }}-storage-standard"
 
@@ -168,7 +168,7 @@ steps:
 
   - id: test-storage-creation-directly
     description: "Test direct storage volume creation"
-    tool: "storage_volume_create"
+    tool: "x_storage-mock_storage_volume_create"
     args:
       name: "direct-test-volume"
       size: "5Gi"
@@ -180,7 +180,7 @@ steps:
 
   - id: test-network-service-creation-directly
     description: "Test direct network service creation"
-    tool: "network_create_service"
+    tool: "x_network-mock_network_create_service"
     args:
       name: "direct-test-service"
       port: 3000
@@ -223,7 +223,7 @@ cleanup:
 
   - id: cleanup-direct-storage
     description: "Clean up directly created storage"
-    tool: "storage_volume_delete"
+    tool: "x_storage-mock_storage_volume_delete"
     args:
       volume_id: "vol-direct-test-volume-fast"
     expected:
@@ -233,7 +233,7 @@ cleanup:
 
   - id: cleanup-direct-network
     description: "Clean up directly created network service"
-    tool: "network_delete_service"
+    tool: "x_network-mock_network_delete_service"
     args:
       name: "direct-test-service"
     expected:

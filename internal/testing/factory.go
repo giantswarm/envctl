@@ -29,6 +29,11 @@ type TestFramework struct {
 
 // NewTestFramework creates a fully configured test framework
 func NewTestFramework(debug bool, basePort int) (*TestFramework, error) {
+	return NewTestFrameworkWithVerbose(false, debug, basePort, "")
+}
+
+// NewTestFrameworkWithVerbose creates a fully configured test framework with verbose and debug control
+func NewTestFrameworkWithVerbose(verbose, debug bool, basePort int, reportPath string) (*TestFramework, error) {
 	// Create instance manager
 	instanceManager, err := NewEnvCtlInstanceManager(debug, basePort)
 	if err != nil {
@@ -41,8 +46,8 @@ func NewTestFramework(debug bool, basePort int) (*TestFramework, error) {
 	// Create scenario loader
 	loader := NewTestScenarioLoader(debug)
 
-	// Create reporter
-	reporter := NewTestReporter(debug, debug, "")
+	// Create reporter with proper verbose and debug flags
+	reporter := NewTestReporter(verbose, debug, reportPath)
 
 	// Create runner
 	runner := NewTestRunner(client, loader, reporter, instanceManager, debug)

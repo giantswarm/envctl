@@ -305,8 +305,8 @@ func runTest(cmd *cobra.Command, args []string) error {
 		scenarioPath = testing.GetDefaultScenarioPath()
 	}
 
-	// Create test framework
-	framework, err := testing.NewTestFramework(testDebug, testBasePort)
+	// Create test framework with proper verbose and debug flags
+	framework, err := testing.NewTestFrameworkWithVerbose(testVerbose, testDebug, testBasePort, testReportPath)
 	if err != nil {
 		return fmt.Errorf("failed to create test framework: %w", err)
 	}

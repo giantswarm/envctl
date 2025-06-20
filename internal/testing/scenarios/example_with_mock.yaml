@@ -45,7 +45,7 @@ steps:
     
   - id: test-create-tool
     description: "Test the create tool on mock server"
-    tool: "create"
+    tool: "x_mock1_create"
     args:
       name: "test-item"
     expected:
@@ -55,7 +55,7 @@ steps:
     
   - id: test-list-tool
     description: "Test the list tool on mock server"
-    tool: "list"
+    tool: "x_mock1_list"
     args: {}
     expected:
       success: true

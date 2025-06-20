@@ -189,6 +189,10 @@ func (r *testRunner) runScenario(ctx context.Context, scenario TestScenario, con
 		return result
 	}
 
+	if r.debug {
+		fmt.Printf("✅ Created envctl instance %s (port: %d)\n", instance.ID, instance.Port)
+	}
+
 	// Ensure cleanup of instance
 	defer func() {
 		if instance != nil {
