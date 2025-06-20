@@ -1,4 +1,4 @@
-package testing
+package mock
 
 import (
 	"context"
@@ -15,20 +15,20 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// MockMCPServer represents a mock MCP server for testing
-type MockMCPServer struct {
+// Server represents a mock MCP server for testing
+type Server struct {
 	name           string
-	tools          []MockToolConfig // Direct array of tools instead of config struct
-	toolHandlers   map[string]*MockToolHandler
+	tools          []ToolConfig // Direct array of tools instead of config struct
+	toolHandlers   map[string]*ToolHandler
 	templateEngine *template.Engine
 	mcpServer      *server.MCPServer
 	debug          bool
 }
 
-// NewMockMCPServer creates a new mock MCP server with the given configuration
-func NewMockMCPServer(configName, scenarioPath string, debug bool) (*MockMCPServer, error) {
+// NewServer creates a new mock MCP server with the given configuration
+func NewServer(configName, scenarioPath string, debug bool) (*Server, error) {
 	// Load the mock server configuration
-	tools, err := loadMockServerConfig(configName, scenarioPath)
+	tools, err := loadServerConfig(configName, scenarioPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load mock server config: %w", err)
 	}
@@ -42,10 +42,10 @@ func NewMockMCPServer(configName, scenarioPath string, debug bool) (*MockMCPServ
 		server.WithPromptCapabilities(false),
 	)
 
-	mockServer := &MockMCPServer{
+	mockServer := &Server{
 		name:           configName,
 		tools:          tools,
-		toolHandlers:   make(map[string]*MockToolHandler),
+		toolHandlers:   make(map[string]*ToolHandler),
 		templateEngine: template.New(),
 		mcpServer:      mcpServer,
 		debug:          debug,
@@ -53,7 +53,7 @@ func NewMockMCPServer(configName, scenarioPath string, debug bool) (*MockMCPServ
 
 	// Initialize tool handlers and register tools
 	for _, toolConfig := range tools {
-		handler := NewMockToolHandler(toolConfig, mockServer.templateEngine, debug)
+		handler := NewToolHandler(toolConfig, mockServer.templateEngine, debug)
 		mockServer.toolHandlers[toolConfig.Name] = handler
 		
 		// Register the tool with the MCP server
@@ -71,8 +71,8 @@ func NewMockMCPServer(configName, scenarioPath string, debug bool) (*MockMCPServ
 	return mockServer, nil
 }
 
-// NewMockMCPServerFromFile creates a new mock MCP server from a configuration file
-func NewMockMCPServerFromFile(configPath string, debug bool) (*MockMCPServer, error) {
+// NewServerFromFile creates a new mock MCP server from a configuration file
+func NewServerFromFile(configPath string, debug bool) (*Server, error) {
 	// Read the config file directly
 	content, err := os.ReadFile(configPath)
 	if err != nil {
@@ -81,7 +81,7 @@ func NewMockMCPServerFromFile(configPath string, debug bool) (*MockMCPServer, er
 
 	// Parse the config structure that contains tools directly
 	var configData struct {
-		Tools []MockToolConfig `yaml:"tools"`
+		Tools []ToolConfig `yaml:"tools"`
 	}
 	if err := yaml.Unmarshal(content, &configData); err != nil {
 		return nil, fmt.Errorf("failed to parse mock config file %s: %w", configPath, err)
@@ -100,10 +100,10 @@ func NewMockMCPServerFromFile(configPath string, debug bool) (*MockMCPServer, er
 		server.WithPromptCapabilities(false),
 	)
 
-	mockServer := &MockMCPServer{
+	mockServer := &Server{
 		name:           name,
 		tools:          configData.Tools,
-		toolHandlers:   make(map[string]*MockToolHandler),
+		toolHandlers:   make(map[string]*ToolHandler),
 		templateEngine: template.New(),
 		mcpServer:      mcpServer,
 		debug:          debug,
@@ -111,7 +111,7 @@ func NewMockMCPServerFromFile(configPath string, debug bool) (*MockMCPServer, er
 
 	// Initialize tool handlers and register tools
 	for _, toolConfig := range configData.Tools {
-		handler := NewMockToolHandler(toolConfig, mockServer.templateEngine, debug)
+		handler := NewToolHandler(toolConfig, mockServer.templateEngine, debug)
 		mockServer.toolHandlers[toolConfig.Name] = handler
 		
 		// Register the tool with the MCP server
@@ -131,7 +131,7 @@ func NewMockMCPServerFromFile(configPath string, debug bool) (*MockMCPServer, er
 }
 
 // createToolHandler creates an MCP tool handler function for the given tool name
-func (s *MockMCPServer) createToolHandler(toolName string) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (s *Server) createToolHandler(toolName string) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		handler, exists := s.toolHandlers[toolName]
 		if !exists {
@@ -158,7 +158,7 @@ func (s *MockMCPServer) createToolHandler(toolName string) func(context.Context,
 }
 
 // Start starts the mock MCP server using stdio transport
-func (s *MockMCPServer) Start(ctx context.Context) error {
+func (s *Server) Start(ctx context.Context) error {
 	if s.debug {
 		fmt.Fprintf(os.Stderr, "🚀 Starting mock MCP server '%s' on stdio transport\n", s.name)
 	}
@@ -168,9 +168,9 @@ func (s *MockMCPServer) Start(ctx context.Context) error {
 	return server.ServeStdio(s.mcpServer)
 }
 
-// loadMockServerConfig loads mock server configuration from test scenarios
-func loadMockServerConfig(configName, scenarioPath string) ([]MockToolConfig, error) {
-	var tools []MockToolConfig
+// loadServerConfig loads mock server configuration from test scenarios
+func loadServerConfig(configName, scenarioPath string) ([]ToolConfig, error) {
+	var tools []ToolConfig
 
 	err := filepath.WalkDir(scenarioPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -206,7 +206,7 @@ func loadMockServerConfig(configName, scenarioPath string) ([]MockToolConfig, er
 							continue
 						}
 						var configData struct {
-							Tools []MockToolConfig `yaml:"tools"`
+							Tools []ToolConfig `yaml:"tools"`
 						}
 						if err := yaml.Unmarshal(configBytes, &configData); err != nil {
 							continue
@@ -230,4 +230,4 @@ func loadMockServerConfig(configName, scenarioPath string) ([]MockToolConfig, er
 	}
 
 	return tools, nil
-}
+} 

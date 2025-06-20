@@ -1,4 +1,4 @@
-package testing
+package mock
 
 import (
 	"fmt"
@@ -9,16 +9,16 @@ import (
 	"envctl/internal/template"
 )
 
-// MockToolHandler handles mock tool calls with configurable responses
-type MockToolHandler struct {
-	config         MockToolConfig
+// ToolHandler handles mock tool calls with configurable responses
+type ToolHandler struct {
+	config         ToolConfig
 	templateEngine *template.Engine
 	debug          bool
 }
 
-// NewMockToolHandler creates a new mock tool handler
-func NewMockToolHandler(config MockToolConfig, templateEngine *template.Engine, debug bool) *MockToolHandler {
-	return &MockToolHandler{
+// NewToolHandler creates a new mock tool handler
+func NewToolHandler(config ToolConfig, templateEngine *template.Engine, debug bool) *ToolHandler {
+	return &ToolHandler{
 		config:         config,
 		templateEngine: templateEngine,
 		debug:          debug,
@@ -26,7 +26,7 @@ func NewMockToolHandler(config MockToolConfig, templateEngine *template.Engine, 
 }
 
 // HandleCall processes a tool call and returns the configured response
-func (h *MockToolHandler) HandleCall(arguments map[string]interface{}) (interface{}, error) {
+func (h *ToolHandler) HandleCall(arguments map[string]interface{}) (interface{}, error) {
 	if h.debug {
 		fmt.Fprintf(os.Stderr, "🔧 Mock tool '%s' called with arguments: %v\n", h.config.Name, arguments)
 	}
@@ -39,7 +39,7 @@ func (h *MockToolHandler) HandleCall(arguments map[string]interface{}) (interfac
 	}
 
 	// Find the first matching response
-	var selectedResponse *MockToolResponse
+	var selectedResponse *ToolResponse
 	for _, response := range h.config.Responses {
 		if h.matchesCondition(response.Condition, mergedArgs) {
 			selectedResponse = &response
@@ -82,7 +82,7 @@ func (h *MockToolHandler) HandleCall(arguments map[string]interface{}) (interfac
 		if h.debug {
 			fmt.Fprintf(os.Stderr, "❌ Mock tool '%s' returning error: %s\n", h.config.Name, errorStr)
 		}
-		return nil, fmt.Errorf(errorStr)
+		return nil, fmt.Errorf("%s", errorStr)
 	}
 
 	// Render the response using the template engine with merged arguments
@@ -102,7 +102,7 @@ func (h *MockToolHandler) HandleCall(arguments map[string]interface{}) (interfac
 }
 
 // mergeWithDefaults merges provided arguments with default values from input schema
-func (h *MockToolHandler) mergeWithDefaults(arguments map[string]interface{}) map[string]interface{} {
+func (h *ToolHandler) mergeWithDefaults(arguments map[string]interface{}) map[string]interface{} {
 	merged := make(map[string]interface{})
 	
 	// First, add default values from input schema
@@ -127,7 +127,7 @@ func (h *MockToolHandler) mergeWithDefaults(arguments map[string]interface{}) ma
 }
 
 // matchesCondition checks if the given arguments match the response condition
-func (h *MockToolHandler) matchesCondition(condition map[string]interface{}, arguments map[string]interface{}) bool {
+func (h *ToolHandler) matchesCondition(condition map[string]interface{}, arguments map[string]interface{}) bool {
 	if len(condition) == 0 {
 		return true // No condition means it matches everything
 	}
@@ -143,7 +143,7 @@ func (h *MockToolHandler) matchesCondition(condition map[string]interface{}, arg
 }
 
 // valuesEqual compares two values for equality, handling type conversions
-func (h *MockToolHandler) valuesEqual(expected, actual interface{}) bool {
+func (h *ToolHandler) valuesEqual(expected, actual interface{}) bool {
 	// Direct equality check first
 	if reflect.DeepEqual(expected, actual) {
 		return true
@@ -157,4 +157,4 @@ func (h *MockToolHandler) valuesEqual(expected, actual interface{}) bool {
 	}
 
 	return false
-}
+} 

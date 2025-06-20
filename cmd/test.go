@@ -5,6 +5,7 @@ import (
 	"envctl/internal/agent"
 	"envctl/internal/cli"
 	"envctl/internal/testing"
+	"envctl/internal/testing/mock"
 	"fmt"
 	"os"
 	"os/signal"
@@ -235,7 +236,7 @@ func runTest(cmd *cobra.Command, args []string) error {
 	// Run in Mock MCP Server mode if requested
 	if testMockMCPServer {
 		// Create mock MCP server using the provided config file
-		mockServer, err := testing.NewMockMCPServerFromFile(testMockConfig, testDebug)
+		mockServer, err := mock.NewServerFromFile(testMockConfig, testDebug)
 		if err != nil {
 			return fmt.Errorf("failed to create mock MCP server: %w", err)
 		}
