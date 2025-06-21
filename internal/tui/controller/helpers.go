@@ -13,7 +13,7 @@ import (
 
 // GenerateMcpConfigJson generates MCP configuration JSON
 // This now generates a single aggregator endpoint that provides access to all MCP servers
-func GenerateMcpConfigJson(mcpServerConfigs []api.MCPServerDefinition, mcpServers map[string]*api.MCPServerInfo, aggregatorPort int) string {
+func GenerateMcpConfigJson(mcpServerConfigs []api.MCPServerInfo, mcpServers map[string]*api.MCPServerInfo, aggregatorPort int) string {
 	type entry struct {
 		URL         string `json:"url"`
 		Description string `json:"description,omitempty"`

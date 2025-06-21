@@ -11,7 +11,6 @@ type CapabilityDefinition struct {
 	Version     string                         `yaml:"version"`
 	Description string                         `yaml:"description"`
 	Operations  map[string]OperationDefinition `yaml:"operations"`
-	Metadata    map[string]string              `yaml:"metadata"`
 }
 
 // OperationDefinition defines an operation within a capability
@@ -50,17 +49,18 @@ type WorkflowStep struct {
 // CapabilityType represents the type of capability
 type CapabilityType string
 
-// Capability represents a capability that can be provided by an MCP server
+// Capability represents a runtime capability instance (consolidated from multiple types)
 type Capability struct {
 	ID          string                 `json:"id"`
 	Type        CapabilityType         `json:"type"`
 	Provider    string                 `json:"provider"` // MCP server name
-	Name        string                 `json:"name"`     // Human-readable name
+	Name        string                 `json:"name"`     
 	Description string                 `json:"description"`
-	Features    []string               `json:"features"` // List of supported features
-	Config      map[string]interface{} `json:"config"`   // Provider-specific config
+	Version     string                 `json:"version"`
+	Features    []string               `json:"features"`
+	Config      map[string]interface{} `json:"config"`
 	Status      CapabilityStatus       `json:"status"`
-	Metadata    map[string]string      `json:"metadata"`
+	Operations  []string               `json:"operations"`
 }
 
 // CapabilityStatus represents the current status of a capability
@@ -129,15 +129,13 @@ type CapabilityRegistration struct {
 	Description string                 `json:"description"`
 	Features    []string               `json:"features"`
 	Config      map[string]interface{} `json:"config"`
-	Metadata    map[string]string      `json:"metadata"`
 }
 
 // CapabilityUpdate represents an update to a capability's status
 type CapabilityUpdate struct {
-	CapabilityID string            `json:"capability_id"`
-	State        CapabilityState   `json:"state"`
-	Error        string            `json:"error,omitempty"`
-	Metadata     map[string]string `json:"metadata,omitempty"`
+	CapabilityID string          `json:"capability_id"`
+	State        CapabilityState `json:"state"`
+	Error        string          `json:"error,omitempty"`
 }
 
 // IsValidCapabilityType checks if a capability type is valid

@@ -221,7 +221,7 @@ func (o *Orchestrator) processServiceClassRequirements(ctx context.Context) erro
 }
 
 // processMCPServerServiceClasses processes ServiceClass requirements for a single MCP Server
-func (o *Orchestrator) processMCPServerServiceClasses(ctx context.Context, mcpServerInfo api.MCPServerConfigInfo, serviceClassMgr api.ServiceClassManagerHandler) error {
+func (o *Orchestrator) processMCPServerServiceClasses(ctx context.Context, mcpServerInfo api.MCPServerInfo, serviceClassMgr api.ServiceClassManagerHandler) error {
 	// Extract ServiceClass requirements from MCP server configuration
 	// This logic will depend on how ServiceClasses are specified in the config
 	serviceClassNames := o.extractServiceClassNames(mcpServerInfo)
@@ -264,14 +264,14 @@ func (o *Orchestrator) processMCPServerServiceClasses(ctx context.Context, mcpSe
 // extractServiceClassNames extracts ServiceClass names from MCP Server configuration
 // This is a placeholder - the actual implementation will depend on how ServiceClasses
 // are specified in the MCP server configuration
-func (o *Orchestrator) extractServiceClassNames(mcpServerInfo api.MCPServerConfigInfo) []string {
+func (o *Orchestrator) extractServiceClassNames(mcpServerInfo api.MCPServerInfo) []string {
 	// For now, return empty slice - this will be implemented when we know
 	// how ServiceClasses are specified in the configuration
 	return []string{}
 }
 
 // buildServiceParameters builds parameters for ServiceClass instantiation based on MCP Server config
-func (o *Orchestrator) buildServiceParameters(mcpServerInfo api.MCPServerConfigInfo, serviceClassName string) map[string]interface{} {
+func (o *Orchestrator) buildServiceParameters(mcpServerInfo api.MCPServerInfo, serviceClassName string) map[string]interface{} {
 	return map[string]interface{}{
 		"mcpServerName": mcpServerInfo.Name,
 		"mcpServerType": mcpServerInfo.Type,
@@ -358,7 +358,7 @@ func (o *Orchestrator) CreateServiceClassInstance(ctx context.Context, req Creat
 	}
 
 	// Verify ServiceClass exists and is available
-	serviceClassDef, err := serviceClassMgr.GetServiceClass(req.ServiceClassName)
+	_, err := serviceClassMgr.GetServiceClass(req.ServiceClassName)
 	if err != nil {
 		return nil, fmt.Errorf("ServiceClass %s not found: %w", req.ServiceClassName, err)
 	}
@@ -436,7 +436,7 @@ func (o *Orchestrator) CreateServiceClassInstance(ctx context.Context, req Creat
 		definition := services.CreateDefinitionFromInstance(
 			req.Label,
 			req.ServiceClassName,
-			serviceClassDef.Type,
+			"serviceclass", // Default since Type field removed from API in Phase 3
 			req.Parameters,
 			req.AutoStart,
 		)
@@ -453,7 +453,7 @@ func (o *Orchestrator) CreateServiceClassInstance(ctx context.Context, req Creat
 		ServiceID:          serviceID,
 		Label:              req.Label,
 		ServiceClassName:   req.ServiceClassName,
-		ServiceClassType:   serviceClassDef.Type,
+		ServiceClassType:   "serviceclass", // Default since Type field removed from API in Phase 3
 		State:              string(instance.GetState()),
 		Health:             string(instance.GetHealth()),
 		CreatedAt:          time.Now(),

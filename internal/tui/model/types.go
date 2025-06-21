@@ -37,7 +37,7 @@ const (
 type TUIConfig struct {
 	DebugMode        bool
 	ColorMode        string
-	MCPServerConfig  []api.MCPServerDefinition
+	MCPServerConfig  []api.MCPServerInfo
 	AggregatorConfig config.AggregatorConfig
 	Orchestrator     *orchestrator.Orchestrator
 	OrchestratorAPI  api.OrchestratorAPI
@@ -191,7 +191,7 @@ type Model struct {
 	MCPServerOrder     []string
 
 	// Configuration
-	MCPServerConfig  []api.MCPServerDefinition
+	MCPServerConfig  []api.MCPServerInfo
 	AggregatorConfig config.AggregatorConfig
 
 	// UI State & Output
@@ -311,9 +311,7 @@ func (m *Model) RefreshServiceData() error {
 				if name, ok := data["name"].(string); ok {
 					mcpInfo.Name = name
 				}
-				if icon, ok := data["icon"].(string); ok {
-					mcpInfo.Icon = icon
-				}
+				// Note: Icon field removed in Phase 3 API unification
 				if enabled, ok := data["enabled"].(bool); ok {
 					mcpInfo.Enabled = enabled
 				}

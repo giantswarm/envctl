@@ -73,10 +73,8 @@ func (a *Adapter) GetServiceClass(name string) (*api.ServiceClassDefinition, err
 	// Convert to API type (lightweight version)
 	apiDef := &api.ServiceClassDefinition{
 		Name:        def.Name,
-		Type:        def.Type,
 		Version:     def.Version,
 		Description: def.Description,
-		Metadata:    def.Metadata,
 	}
 
 	return apiDef, nil
@@ -287,12 +285,9 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 			Description: "Create a new service class",
 			Parameters: []api.ParameterMetadata{
 				{Name: "name", Type: "string", Required: true, Description: "ServiceClass name"},
-				{Name: "type", Type: "string", Required: true, Description: "ServiceClass type"},
-				{Name: "version", Type: "string", Required: false, Description: "ServiceClass version"},
-				{Name: "description", Type: "string", Required: false, Description: "ServiceClass description"},
 				{Name: "serviceConfig", Type: "object", Required: true, Description: "Service configuration with lifecycle tools"},
-				{Name: "operations", Type: "object", Required: false, Description: "Operations map"},
-				{Name: "metadata", Type: "object", Required: false, Description: "Metadata key-value pairs"},
+				{Name: "description", Type: "string", Required: false, Description: "ServiceClass description"},
+				{Name: "version", Type: "string", Required: false, Description: "ServiceClass version"},
 			},
 		},
 		{
@@ -300,12 +295,9 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 			Description: "Update an existing service class",
 			Parameters: []api.ParameterMetadata{
 				{Name: "name", Type: "string", Required: true, Description: "Name of the ServiceClass to update"},
-				{Name: "type", Type: "string", Required: true, Description: "ServiceClass type"},
-				{Name: "version", Type: "string", Required: false, Description: "ServiceClass version"},
+				{Name: "serviceConfig", Type: "object", Required: false, Description: "Service configuration with lifecycle tools"},
 				{Name: "description", Type: "string", Required: false, Description: "ServiceClass description"},
-				{Name: "serviceConfig", Type: "object", Required: true, Description: "Service configuration with lifecycle tools"},
-				{Name: "operations", Type: "object", Required: false, Description: "Operations map"},
-				{Name: "metadata", Type: "object", Required: false, Description: "Metadata key-value pairs"},
+				{Name: "version", Type: "string", Required: false, Description: "ServiceClass version"},
 			},
 		},
 		{
@@ -432,12 +424,10 @@ func (a *Adapter) handleServiceClassValidate(args map[string]interface{}) (*api.
 	// Build ServiceClassDefinition from structured parameters (without type and metadata)
 	def := ServiceClassDefinition{
 		Name:          name,
-		Type:          "validated", // Temporary type for validation
 		Version:       version,
 		Description:   description,
 		ServiceConfig: serviceConfig,
 		Operations:    make(map[string]OperationDefinition), // Empty for validation
-		Metadata:      make(map[string]string),              // Empty for validation
 	}
 
 	// Validate without persisting
@@ -468,18 +458,12 @@ func (a *Adapter) handleServiceClassCreate(args map[string]interface{}) (*api.Ca
 	if !ok || name == "" {
 		return simpleError("name parameter is required")
 	}
-	serviceType, ok := args["type"].(string)
-	if !ok || serviceType == "" {
-		return simpleError("type parameter is required")
-	}
 	version, _ := args["version"].(string)
 	description, _ := args["description"].(string)
 	serviceConfigParam, ok := args["serviceConfig"].(map[string]interface{})
 	if !ok {
 		return simpleError("serviceConfig parameter is required")
 	}
-	operationsParam, _ := args["operations"].(map[string]interface{})
-	metadataParam, _ := args["metadata"].(map[string]interface{})
 
 	// Convert serviceConfig from map[string]interface{} to ServiceConfig
 	serviceConfig, err := convertServiceConfig(serviceConfigParam)
@@ -487,43 +471,13 @@ func (a *Adapter) handleServiceClassCreate(args map[string]interface{}) (*api.Ca
 		return simpleError(fmt.Sprintf("invalid serviceConfig: %v", err))
 	}
 
-	// Convert operations from map[string]interface{} to map[string]OperationDefinition
-	operations := make(map[string]OperationDefinition)
-	if operationsParam != nil {
-		for opName, opData := range operationsParam {
-			opMap, ok := opData.(map[string]interface{})
-			if !ok {
-				return simpleError(fmt.Sprintf("invalid operation '%s': must be an object", opName))
-			}
-			operation, err := convertOperationDefinition(opMap)
-			if err != nil {
-				return simpleError(fmt.Sprintf("invalid operation '%s': %v", opName, err))
-			}
-			operations[opName] = operation
-		}
-	}
-
-	// Convert metadata from map[string]interface{} to map[string]string
-	metadata := make(map[string]string)
-	if metadataParam != nil {
-		for key, value := range metadataParam {
-			if strValue, ok := value.(string); ok {
-				metadata[key] = strValue
-			} else {
-				return simpleError(fmt.Sprintf("metadata value for key '%s' must be a string", key))
-			}
-		}
-	}
-
-	// Build ServiceClassDefinition from structured parameters
+	// Build ServiceClassDefinition from structured parameters (type/metadata will be set internally)
 	def := ServiceClassDefinition{
 		Name:          name,
-		Type:          serviceType,
 		Version:       version,
 		Description:   description,
 		ServiceConfig: serviceConfig,
-		Operations:    operations,
-		Metadata:      metadata,
+		Operations:    make(map[string]OperationDefinition), // Not provided via API anymore
 	}
 
 	if err := a.manager.CreateServiceClass(def); err != nil {
@@ -722,62 +676,38 @@ func (a *Adapter) handleServiceClassUpdate(args map[string]interface{}) (*api.Ca
 	if !ok || name == "" {
 		return simpleError("name parameter is required")
 	}
-	serviceType, ok := args["type"].(string)
-	if !ok || serviceType == "" {
-		return simpleError("type parameter is required")
-	}
 	version, _ := args["version"].(string)
 	description, _ := args["description"].(string)
-	serviceConfigParam, ok := args["serviceConfig"].(map[string]interface{})
-	if !ok {
-		return simpleError("serviceConfig parameter is required")
-	}
-	operationsParam, _ := args["operations"].(map[string]interface{})
-	metadataParam, _ := args["metadata"].(map[string]interface{})
+	serviceConfigParam, _ := args["serviceConfig"].(map[string]interface{})
 
-	// Convert serviceConfig from map[string]interface{} to ServiceConfig
-	serviceConfig, err := convertServiceConfig(serviceConfigParam)
-	if err != nil {
-		return simpleError(fmt.Sprintf("invalid serviceConfig: %v", err))
+	// Get existing serviceclass to preserve current type/metadata/operations
+	existingDef, exists := a.manager.GetServiceClassDefinition(name)
+	if !exists {
+		return api.HandleErrorWithPrefix(api.NewServiceClassNotFoundError(name), "Failed to update ServiceClass"), nil
 	}
 
-	// Convert operations from map[string]interface{} to map[string]OperationDefinition
-	operations := make(map[string]OperationDefinition)
-	if operationsParam != nil {
-		for opName, opData := range operationsParam {
-			opMap, ok := opData.(map[string]interface{})
-			if !ok {
-				return simpleError(fmt.Sprintf("invalid operation '%s': must be an object", opName))
-			}
-			operation, err := convertOperationDefinition(opMap)
-			if err != nil {
-				return simpleError(fmt.Sprintf("invalid operation '%s': %v", opName, err))
-			}
-			operations[opName] = operation
-		}
-	}
-
-	// Convert metadata from map[string]interface{} to map[string]string
-	metadata := make(map[string]string)
-	if metadataParam != nil {
-		for key, value := range metadataParam {
-			if strValue, ok := value.(string); ok {
-				metadata[key] = strValue
-			} else {
-				return simpleError(fmt.Sprintf("metadata value for key '%s' must be a string", key))
-			}
-		}
-	}
-
-	// Build ServiceClassDefinition from structured parameters
+	// Start with existing definition and update provided fields
 	def := ServiceClassDefinition{
 		Name:          name,
-		Type:          serviceType,
-		Version:       version,
-		Description:   description,
-		ServiceConfig: serviceConfig,
-		Operations:    operations,
-		Metadata:      metadata,
+		Version:       existingDef.Version,     // Will be updated if provided
+		Description:   existingDef.Description, // Will be updated if provided
+		ServiceConfig: existingDef.ServiceConfig,
+		Operations:    existingDef.Operations, // Preserve existing operations
+	}
+
+	// Update fields if provided
+	if version != "" {
+		def.Version = version
+	}
+	if description != "" {
+		def.Description = description
+	}
+	if serviceConfigParam != nil {
+		serviceConfig, err := convertServiceConfig(serviceConfigParam)
+		if err != nil {
+			return simpleError(fmt.Sprintf("invalid serviceConfig: %v", err))
+		}
+		def.ServiceConfig = serviceConfig
 	}
 
 	if err := a.manager.UpdateServiceClass(name, def); err != nil {

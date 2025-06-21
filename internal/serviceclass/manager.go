@@ -142,7 +142,7 @@ func (m *ServiceClassManager) CreateServiceClass(sc ServiceClassDefinition) erro
 	m.definitions[sc.Name] = &sc
 	m.updateServiceAvailability()
 
-	logging.Info("ServiceClassManager", "Created service class %s (type: %s)", sc.Name, sc.Type)
+	logging.Info("ServiceClassManager", "Created service class %s", sc.Name)
 	return nil
 }
 
@@ -174,7 +174,7 @@ func (m *ServiceClassManager) UpdateServiceClass(name string, sc ServiceClassDef
 	m.definitions[name] = &sc
 	m.updateServiceAvailability()
 
-	logging.Info("ServiceClassManager", "Updated service class %s (type: %s)", name, sc.Type)
+	logging.Info("ServiceClassManager", "Updated service class %s", name)
 	return nil
 }
 
@@ -226,7 +226,7 @@ func (m *ServiceClassManager) RegisterDefinition(def *ServiceClassDefinition) er
 	requiredTools := m.getRequiredTools(def)
 	m.exposedServices[def.Name] = m.areAllToolsAvailable(requiredTools)
 
-	logging.Info("ServiceClassManager", "Registered service class: %s (type: %s)", def.Name, def.Type)
+	logging.Info("ServiceClassManager", "Registered service class: %s", def.Name)
 
 	// Notify registration callbacks
 	for _, callback := range m.onRegister {
@@ -315,10 +315,7 @@ func (scm *ServiceClassManager) validateServiceClassDefinition(def *ServiceClass
 		errors = append(errors, err.(config.ValidationError))
 	}
 
-	// Validate type
-	if err := config.ValidateRequired("type", def.Type, "service class"); err != nil {
-		errors = append(errors, err.(config.ValidationError))
-	}
+	// Note: Type field removed in Phase 3 - no longer required
 
 	// Validate version
 	if err := config.ValidateRequired("version", def.Version, "service class"); err != nil {
@@ -481,7 +478,7 @@ func (scm *ServiceClassManager) ListServiceClasses() []ServiceClassInfo {
 
 		info := ServiceClassInfo{
 			Name:                     def.Name,
-			Type:                     def.Type,
+			Type:                     "serviceclass", // Default type since field removed in Phase 3
 			Version:                  def.Version,
 			Description:              def.Description,
 			ServiceType:              def.ServiceConfig.ServiceType,

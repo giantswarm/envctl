@@ -38,8 +38,6 @@ type MCPServerDefinition struct {
 	Name                string        `yaml:"name"`                          // Unique name for this server, e.g., "kubernetes", "prometheus-main"
 	Type                MCPServerType `yaml:"type"`                          // "localCommand" or "container"
 	Enabled             bool          `yaml:"enabledByDefault"`              // Whether this server is started by default
-	Icon                string        `yaml:"icon,omitempty"`                // Optional: an icon/emoji for display in TUI
-	Category            string        `yaml:"category,omitempty"`            // Optional: for grouping in TUI, e.g., "Core", "Monitoring"
 	HealthCheckInterval time.Duration `yaml:"healthCheckInterval,omitempty"` // Optional: custom health check interval
 	ToolPrefix          string        `yaml:"toolPrefix,omitempty"`          // Custom prefix for tools (defaults to server name with underscore)
 

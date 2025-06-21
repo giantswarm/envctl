@@ -129,18 +129,7 @@ func (msm *MCPServerManager) validateDefinition(def *MCPServerDefinition) error 
 		}
 	}
 
-	// Validate optional fields
-	if def.Category != "" {
-		if err := config.ValidateMaxLength("category", def.Category, 50); err != nil {
-			errors = append(errors, err.(config.ValidationError))
-		}
-	}
-
-	if def.Icon != "" {
-		if err := config.ValidateMaxLength("icon", def.Icon, 10); err != nil {
-			errors = append(errors, err.(config.ValidationError))
-		}
-	}
+	// Note: Category and Icon validation removed in Phase 3
 
 	if errors.HasErrors() {
 		return config.FormatValidationError("mcpserver", def.Name, errors)

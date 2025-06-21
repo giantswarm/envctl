@@ -37,7 +37,6 @@ const (
 type ServiceClassDefinition struct {
 	// Base metadata fields
 	Name        string `yaml:"name"`
-	Type        string `yaml:"type"`
 	Version     string `yaml:"version"`
 	Description string `yaml:"description"`
 
@@ -46,9 +45,6 @@ type ServiceClassDefinition struct {
 
 	// Operations for external API (maintains compatibility with existing capability system)
 	Operations map[string]OperationDefinition `yaml:"operations"`
-
-	// Metadata
-	Metadata map[string]string `yaml:"metadata"`
 }
 
 // ServiceConfig defines the service lifecycle management configuration

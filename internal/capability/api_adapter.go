@@ -74,7 +74,6 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 				{Name: "version", Type: "string", Required: false, Description: "Capability version"},
 				{Name: "description", Type: "string", Required: false, Description: "Capability description"},
 				{Name: "operations", Type: "object", Required: true, Description: "Map of operation name to operation definition"},
-				{Name: "metadata", Type: "object", Required: false, Description: "Key-value metadata pairs"},
 			},
 		},
 		{
@@ -86,7 +85,6 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 				{Name: "version", Type: "string", Required: false, Description: "Capability version"},
 				{Name: "description", Type: "string", Required: false, Description: "Capability description"},
 				{Name: "operations", Type: "object", Required: false, Description: "Map of operation name to operation definition"},
-				{Name: "metadata", Type: "object", Required: false, Description: "Key-value metadata pairs"},
 			},
 		},
 		{
@@ -133,8 +131,7 @@ func (a *Adapter) ExecuteTool(ctx context.Context, toolName string, args map[str
 		if !ok {
 			return nil, fmt.Errorf("operations parameter is required")
 		}
-		metadata, _ := args["metadata"].(map[string]interface{})
-		return a.handleCapabilityCreate(ctx, name, capType, version, description, operations, metadata)
+		return a.handleCapabilityCreate(ctx, name, capType, version, description, operations)
 	case "capability_update":
 		name, ok := args["name"].(string)
 		if !ok {
@@ -144,8 +141,7 @@ func (a *Adapter) ExecuteTool(ctx context.Context, toolName string, args map[str
 		version, _ := args["version"].(string)
 		description, _ := args["description"].(string)
 		operations, _ := args["operations"].(map[string]interface{})
-		metadata, _ := args["metadata"].(map[string]interface{})
-		return a.handleCapabilityUpdate(ctx, name, capType, version, description, operations, metadata)
+		return a.handleCapabilityUpdate(ctx, name, capType, version, description, operations)
 	case "capability_delete":
 		name, ok := args["name"].(string)
 		if !ok {
@@ -271,7 +267,7 @@ func (a *Adapter) getCapability(ctx context.Context, name string) (*api.CallTool
 		"description": def.Description,
 		"available":   available,
 		"operations":  def.Operations,
-		"metadata":    def.Metadata,
+		// Note: metadata field removed in Phase 3
 	}
 
 	return &api.CallToolResult{
@@ -325,14 +321,12 @@ func (a *Adapter) handleCapabilityValidate(ctx context.Context, args map[string]
 	version, _ := args["version"].(string)
 	description, _ := args["description"].(string)
 
-	// Build CapabilityDefinition from structured parameters (without metadata)
 	def := &CapabilityDefinition{
 		Name:        name,
 		Type:        capType,
 		Version:     version,
 		Description: description,
 		Operations:  make(map[string]OperationDefinition),
-		Metadata:    make(map[string]string), // Empty for validation
 	}
 
 	// Convert operations map to OperationDefinition structs
@@ -431,15 +425,15 @@ func (a *Adapter) SetConfigPath(configPath string) {
 
 // Handler methods for new CRUD tools
 
-func (a *Adapter) handleCapabilityCreate(ctx context.Context, name, capType, version, description string, operations map[string]interface{}, metadata map[string]interface{}) (*api.CallToolResult, error) {
-	// Build CapabilityDefinition from structured parameters
+func (a *Adapter) handleCapabilityCreate(ctx context.Context, name, capType, version, description string, operations map[string]interface{}) (*api.CallToolResult, error) {
+	// Build CapabilityDefinition from structured parameters (metadata will be empty)
 	def := &CapabilityDefinition{
 		Name:        name,
 		Type:        capType,
 		Version:     version,
 		Description: description,
 		Operations:  make(map[string]OperationDefinition),
-		Metadata:    make(map[string]string),
+
 	}
 
 	// Convert operations map to OperationDefinition structs
@@ -503,12 +497,7 @@ func (a *Adapter) handleCapabilityCreate(ctx context.Context, name, capType, ver
 		def.Operations[opName] = opDef
 	}
 
-	// Convert metadata map to string map
-	for k, v := range metadata {
-		if strVal, ok := v.(string); ok {
-			def.Metadata[k] = strVal
-		}
-	}
+
 
 	// Create the capability using the manager
 	if err := a.manager.CreateCapability(def); err != nil {
@@ -528,7 +517,7 @@ func (a *Adapter) handleCapabilityCreate(ctx context.Context, name, capType, ver
 	}, nil
 }
 
-func (a *Adapter) handleCapabilityUpdate(ctx context.Context, name, capType, version, description string, operations map[string]interface{}, metadata map[string]interface{}) (*api.CallToolResult, error) {
+func (a *Adapter) handleCapabilityUpdate(ctx context.Context, name, capType, version, description string, operations map[string]interface{}) (*api.CallToolResult, error) {
 	// Get existing capability definition
 	existingDef, exists := a.manager.GetDefinition(name)
 	if !exists {
@@ -542,16 +531,13 @@ func (a *Adapter) handleCapabilityUpdate(ctx context.Context, name, capType, ver
 		Version:     existingDef.Version,
 		Description: existingDef.Description,
 		Operations:  make(map[string]OperationDefinition),
-		Metadata:    make(map[string]string),
 	}
 
-	// Copy existing operations and metadata
+	// Copy existing operations
 	for opName, opDef := range existingDef.Operations {
 		def.Operations[opName] = opDef
 	}
-	for k, v := range existingDef.Metadata {
-		def.Metadata[k] = v
-	}
+	// Note: metadata copying removed in Phase 3
 
 	// Update fields if provided
 	if capType != "" {
@@ -628,15 +614,7 @@ func (a *Adapter) handleCapabilityUpdate(ctx context.Context, name, capType, ver
 		}
 	}
 
-	// Update metadata if provided
-	if metadata != nil {
-		def.Metadata = make(map[string]string)
-		for k, v := range metadata {
-			if strVal, ok := v.(string); ok {
-				def.Metadata[k] = strVal
-			}
-		}
-	}
+
 
 	// Update the capability using the manager
 	if err := a.manager.UpdateCapability(def); err != nil {

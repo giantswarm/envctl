@@ -55,7 +55,7 @@ func ConvertMCPServerToListItem(mcp *api.MCPServerInfo) MCPServerListItem {
 	}
 
 	// Use custom icon if provided, otherwise default
-	icon := mcp.Icon
+	icon := "🔧" // Default icon since Icon field removed in Phase 3
 	if icon == "" {
 		icon = "⚙"
 	}
@@ -99,7 +99,7 @@ func BuildMCPServersList(m *model.Model, width, height int, focused bool) *Servi
 					Name:        config.Name,
 					Status:      StatusStopped,
 					Health:      HealthUnknown,
-					Icon:        design.SafeIcon(config.Icon),
+					Icon:        design.SafeIcon("🔧"), // Default icon since Icon field removed in Phase 3
 					Description: "Not Started",
 					Details:     fmt.Sprintf("MCP Server: %s (Not Started)", config.Name),
 				},

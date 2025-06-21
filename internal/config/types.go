@@ -1,9 +1,5 @@
 package config
 
-import (
-	"time"
-)
-
 // EnvctlConfig is the top-level configuration structure for envctl.
 type EnvctlConfig struct {
 	GlobalSettings GlobalSettings   `yaml:"globalSettings"`
@@ -46,29 +42,7 @@ const (
 // CapabilityType is kept for reference but capabilities are now defined in YAML files
 // and MCP servers just provide tools without capability awareness
 
-// MCPServerDefinition defines how to run and manage an MCP server.
-type MCPServerDefinition struct {
-	Name                string        `yaml:"name"`                          // Unique name for this server, e.g., "kubernetes", "prometheus-main"
-	Type                MCPServerType `yaml:"type"`                          // "localCommand" or "container"
-	Enabled             bool          `yaml:"enabledByDefault"`              // Whether this server is started by default
-	Icon                string        `yaml:"icon,omitempty"`                // Optional: an icon/emoji for display in TUI
-	Category            string        `yaml:"category,omitempty"`            // Optional: for grouping in TUI, e.g., "Core", "Monitoring"
-	HealthCheckInterval time.Duration `yaml:"healthCheckInterval,omitempty"` // Optional: custom health check interval
-	ToolPrefix          string        `yaml:"toolPrefix,omitempty"`          // Custom prefix for tools (defaults to server name with underscore)
-
-	// Fields for Type = "localCommand"
-	Command []string          `yaml:"command,omitempty"` // Command and its arguments, e.g., ["npx", "mcp-server-kubernetes"]
-	Env     map[string]string `yaml:"env,omitempty"`     // Environment variables
-
-	// Fields for Type = "container"
-	Image            string            `yaml:"image,omitempty"`            // Container image, e.g., "giantswarm/mcp-server-prometheus:latest"
-	ContainerPorts   []string          `yaml:"containerPorts,omitempty"`   // Port mappings, e.g., ["8080:8080", "9090:9000"] (host:container)
-	ContainerEnv     map[string]string `yaml:"containerEnv,omitempty"`     // Environment variables for the container
-	ContainerVolumes []string          `yaml:"containerVolumes,omitempty"` // Volume mounts, e.g., ["~/.kube/config:/root/.kube/config"]
-	HealthCheckCmd   []string          `yaml:"healthCheckCmd,omitempty"`   // Optional command to run inside container to check health
-	Entrypoint       []string          `yaml:"entrypoint,omitempty"`       // Optional container entrypoint override
-	ContainerUser    string            `yaml:"containerUser,omitempty"`    // Optional user to run container as
-}
+// Use MCPServerDefinition from mcpserver package to avoid duplication
 
 // AggregatorConfig defines the configuration for the MCP aggregator service.
 type AggregatorConfig struct {

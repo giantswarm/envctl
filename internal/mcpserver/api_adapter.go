@@ -29,24 +29,22 @@ func (a *Adapter) Register() {
 }
 
 // ListMCPServers returns information about all registered MCP servers
-func (a *Adapter) ListMCPServers() []api.MCPServerConfigInfo {
+func (a *Adapter) ListMCPServers() []api.MCPServerInfo {
 	if a.manager == nil {
-		return []api.MCPServerConfigInfo{}
+		return []api.MCPServerInfo{}
 	}
 
 	// Get MCP server info from the manager
 	managerInfo := a.manager.ListDefinitions()
 
 	// Convert to API types
-	result := make([]api.MCPServerConfigInfo, len(managerInfo))
+	result := make([]api.MCPServerInfo, len(managerInfo))
 	for i, def := range managerInfo {
 		available := a.manager.IsAvailable(def.Name)
-		result[i] = api.MCPServerConfigInfo{
+		result[i] = api.MCPServerInfo{
 			Name:        def.Name,
 			Type:        string(def.Type),
 			Enabled:     def.Enabled,
-			Category:    def.Category,
-			Icon:        def.Icon,
 			Available:   available,
 			Description: "", // MCPServerDefinition doesn't have Description field
 			Command:     def.Command,
@@ -58,7 +56,7 @@ func (a *Adapter) ListMCPServers() []api.MCPServerConfigInfo {
 }
 
 // GetMCPServer returns a specific MCP server definition by name
-func (a *Adapter) GetMCPServer(name string) (*api.MCPServerDefinition, error) {
+func (a *Adapter) GetMCPServer(name string) (*api.MCPServerInfo, error) {
 	if a.manager == nil {
 		return nil, fmt.Errorf("MCP server manager not available")
 	}
@@ -69,12 +67,10 @@ func (a *Adapter) GetMCPServer(name string) (*api.MCPServerDefinition, error) {
 	}
 
 	// Convert to API type (lightweight version)
-	apiDef := &api.MCPServerDefinition{
+	apiDef := &api.MCPServerInfo{
 		Name:        def.Name,
 		Type:        string(def.Type),
 		Enabled:     def.Enabled,
-		Category:    def.Category,
-		Icon:        def.Icon,
 		Description: "", // MCPServerDefinition doesn't have Description field
 		Command:     def.Command,
 		Image:       def.Image,
@@ -153,8 +149,6 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 				{Name: "name", Type: "string", Required: true, Description: "MCP server name"},
 				{Name: "type", Type: "string", Required: true, Description: "MCP server type (localCommand or container)"},
 				{Name: "enabled", Type: "boolean", Required: false, Description: "Whether server is enabled by default"},
-				{Name: "icon", Type: "string", Required: false, Description: "Icon/emoji for display"},
-				{Name: "category", Type: "string", Required: false, Description: "Category for grouping"},
 				{Name: "healthCheckInterval", Type: "string", Required: false, Description: "Health check interval duration"},
 				{Name: "toolPrefix", Type: "string", Required: false, Description: "Custom tool prefix"},
 				{Name: "command", Type: "array", Required: false, Description: "Command and arguments (for localCommand type)"},
@@ -175,8 +169,6 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 				{Name: "name", Type: "string", Required: true, Description: "Name of the MCP server to update"},
 				{Name: "type", Type: "string", Required: true, Description: "MCP server type (localCommand or container)"},
 				{Name: "enabled", Type: "boolean", Required: false, Description: "Whether server is enabled by default"},
-				{Name: "icon", Type: "string", Required: false, Description: "Icon/emoji for display"},
-				{Name: "category", Type: "string", Required: false, Description: "Category for grouping"},
 				{Name: "healthCheckInterval", Type: "string", Required: false, Description: "Health check interval duration"},
 				{Name: "toolPrefix", Type: "string", Required: false, Description: "Custom tool prefix"},
 				{Name: "command", Type: "array", Required: false, Description: "Command and arguments (for localCommand type)"},
@@ -352,13 +344,11 @@ func (a *Adapter) handleMCPServerValidate(args map[string]interface{}) (*api.Cal
 
 	image, _ := args["image"].(string)
 
-	// Build MCPServerDefinition from structured parameters (without category, icon, enabled)
+	// Build internal MCPServerDefinition from structured parameters
 	def := MCPServerDefinition{
 		Name:                name,
 		Type:                MCPServerType(serverType),
 		Enabled:             autoStart, // Map autoStart to Enabled for validation
-		Category:            "",        // Empty for validation
-		Icon:                "",        // Empty for validation
 		Image:               image,
 		Command:             command,
 		Env:                 env,
@@ -484,12 +474,7 @@ func convertToMCPServerDefinition(args map[string]interface{}) (MCPServerDefinit
 	if enabled, ok := args["enabled"].(bool); ok {
 		def.Enabled = enabled
 	}
-	if icon, ok := args["icon"].(string); ok {
-		def.Icon = icon
-	}
-	if category, ok := args["category"].(string); ok {
-		def.Category = category
-	}
+	// Note: icon and category parameters are no longer supported in Phase 3
 	if toolPrefix, ok := args["toolPrefix"].(string); ok {
 		def.ToolPrefix = toolPrefix
 	}

@@ -36,11 +36,9 @@ type ServiceClassInfo struct {
 
 // ServiceClassDefinition represents a service class definition (lightweight version for API)
 type ServiceClassDefinition struct {
-	Name        string            `json:"name"`
-	Type        string            `json:"type"`
-	Version     string            `json:"version"`
-	Description string            `json:"description"`
-	Metadata    map[string]string `json:"metadata"`
+	Name        string `json:"name"`
+	Version     string `json:"version"`
+	Description string `json:"description"`
 }
 
 // ServiceClass-based service management types (for unified orchestrator)
@@ -232,48 +230,27 @@ type ServiceClassManagerHandler interface {
 	ToolProvider
 }
 
-// MCPServerConfigInfo provides information about a registered MCP server configuration
-type MCPServerConfigInfo struct {
-	Name        string   `json:"name"`
-	Type        string   `json:"type"`
-	Enabled     bool     `json:"enabled"`
-	Category    string   `json:"category"`
-	Icon        string   `json:"icon"`
-	Available   bool     `json:"available"`
-	Description string   `json:"description,omitempty"`
-	Command     []string `json:"command,omitempty"`
-	Image       string   `json:"image,omitempty"`
-}
-
-// MCPServerInfo contains information about an MCP server (runtime status)
+// MCPServerInfo contains consolidated MCP server information (API response)
 type MCPServerInfo struct {
-	Label   string `json:"label"`
-	Name    string `json:"name"`
-	State   string `json:"state"`
-	Health  string `json:"health"`
-	Icon    string `json:"icon"`
-	Enabled bool   `json:"enabled"`
-	Error   string `json:"error,omitempty"`
-}
-
-// MCPServerDefinition represents an MCP server definition (lightweight version for API)
-type MCPServerDefinition struct {
 	Name        string            `json:"name"`
 	Type        string            `json:"type"`
+	Label       string            `json:"label"`
+	State       string            `json:"state"`
+	Health      string            `json:"health"`
 	Enabled     bool              `json:"enabled"`
-	Category    string            `json:"category"`
-	Icon        string            `json:"icon"`
+	Available   bool              `json:"available"`
 	Description string            `json:"description,omitempty"`
 	Command     []string          `json:"command,omitempty"`
 	Image       string            `json:"image,omitempty"`
 	Env         map[string]string `json:"env,omitempty"`
+	Error       string            `json:"error,omitempty"`
 }
 
 // MCPServerManagerHandler defines the interface for MCP server management operations
 type MCPServerManagerHandler interface {
 	// MCP server definition management
-	ListMCPServers() []MCPServerConfigInfo
-	GetMCPServer(name string) (*MCPServerDefinition, error)
+	ListMCPServers() []MCPServerInfo
+	GetMCPServer(name string) (*MCPServerInfo, error)
 	IsMCPServerAvailable(name string) bool
 
 	// Tool provider interface for exposing MCP server management tools

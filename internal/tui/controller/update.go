@@ -708,7 +708,7 @@ func updateListItems(m *model.Model) {
 						Name:        config.Name,
 						Status:      view.StatusStopped,
 						Health:      view.HealthUnknown,
-						Icon:        design.SafeIcon(config.Icon),
+						Icon:        design.SafeIcon("🔧"), // Default icon since Icon field removed in Phase 3
 						Description: "Not Started",
 						Details:     fmt.Sprintf("MCP Server: %s (Not Started)", config.Name),
 					},

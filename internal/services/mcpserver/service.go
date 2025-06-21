@@ -253,7 +253,7 @@ func (s *MCPServerService) GetServiceData() map[string]interface{} {
 	data := map[string]interface{}{
 		"name":       s.config.Name,
 		"command":    s.config.Command,
-		"icon":       s.config.Icon,
+
 		"enabled":    s.config.Enabled,
 		"type":       s.config.Type,
 		"toolPrefix": s.config.ToolPrefix,

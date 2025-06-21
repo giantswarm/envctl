@@ -346,7 +346,7 @@ func buildMCPServersContent(m *model.Model, innerWidth int) string {
 		}
 
 		// Add icon and name
-		icon := config.Icon
+		icon := "🔧" // Default icon since Icon field removed in Phase 3
 		if icon == "" {
 			icon = design.IconGear
 		}
