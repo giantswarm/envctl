@@ -20,12 +20,12 @@ steps:
   description: "Attempt to create a ServiceClass with the same name as a pre-configured one"
   tool: "core_serviceclass_create"
   args:
-    yaml: |
-      name: "existing-sc"
-      type: "another-type"
-      serviceConfig:
-        lifecycleTools:
-          start: { tool: "core_service_list" }
+    name: "existing-sc"
+    type: "another-type"
+    serviceConfig:
+      lifecycleTools:
+        start:
+          tool: "core_service_list"
   expected:
     success: false
     error_contains: ["already exists"] 

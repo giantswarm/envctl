@@ -73,21 +73,20 @@ steps:
     description: "When I define a Kubernetes management capability for my platform"
     tool: "core_capability_create"
     args:
-      yamlContent: |
-        name: "kubernetes-management"
-        type: "infrastructure"
-        version: "1.0.0"
-        description: "Provides Kubernetes namespace and resource management"
-        operations:
-          - name: "create-namespace"
-            description: "Create a new Kubernetes namespace"
-            tool: "x_kubernetes-provider_create_namespace"
-          - name: "delete-namespace"
-            description: "Delete a Kubernetes namespace"
-            tool: "x_kubernetes-provider_delete_namespace"
-        metadata:
-          owner: "platform-team"
-          category: "infrastructure"
+      name: "kubernetes-management"
+      type: "infrastructure"
+      version: "1.0.0"
+      description: "Provides Kubernetes namespace and resource management"
+      operations:
+        - name: "create-namespace"
+          description: "Create a new Kubernetes namespace"
+          tool: "x_kubernetes-provider_create_namespace"
+        - name: "delete-namespace"
+          description: "Delete a Kubernetes namespace"
+          tool: "x_kubernetes-provider_delete_namespace"
+      metadata:
+        owner: "platform-team"
+        category: "infrastructure"
     expected:
       success: true
       contains: ["kubernetes-management"]
@@ -107,47 +106,46 @@ steps:
     description: "And I create a ServiceClass that developers can use to provision development namespaces"
     tool: "core_serviceclass_create"
     args:
-      yaml: |
-        name: "dev-namespace"
-        type: "infrastructure"
-        version: "1.0.0"
-        description: "Provisions a development namespace with monitoring"
-        serviceConfig:
-          serviceType: "kubernetes-namespace"
-          defaultLabel: "dev-ns-{{ .parameters.team }}-{{ .parameters.project }}"
-          createParameters:
-            team:
-              toolParameter: "team_name"
-              required: true
-              description: "Team name for the namespace"
-            project:
-              toolParameter: "project_name" 
-              required: true
-              description: "Project name for the namespace"
-            monitoring:
-              toolParameter: "enable_monitoring"
-              required: false
-              default: true
-              description: "Enable Prometheus monitoring"
-          lifecycleTools:
-            start:
-              tool: "x_kubernetes-provider_create_namespace"
-              arguments:
-                name: "{{ .parameters.team }}-{{ .parameters.project }}-dev"
-                labels:
-                  team: "{{ .parameters.team }}"
-                  project: "{{ .parameters.project }}"
-                  environment: "development"
-              responseMapping:
-                serviceId: "namespace"
-                status: "status"
-            stop:
-              tool: "x_kubernetes-provider_delete_namespace"
-              arguments:
-                name: "{{ .service.id }}"
-          dependencies:
-            - capability: "kubernetes-management"
-              version: ">=1.0.0"
+      name: "dev-namespace"
+      type: "infrastructure"
+      version: "1.0.0"
+      description: "Provisions a development namespace with monitoring"
+      serviceConfig:
+        serviceType: "kubernetes-namespace"
+        defaultLabel: "dev-ns-{{ .parameters.team }}-{{ .parameters.project }}"
+        createParameters:
+          team:
+            toolParameter: "team_name"
+            required: true
+            description: "Team name for the namespace"
+          project:
+            toolParameter: "project_name"
+            required: true
+            description: "Project name for the namespace"
+          monitoring:
+            toolParameter: "enable_monitoring"
+            required: false
+            default: true
+            description: "Enable Prometheus monitoring"
+        lifecycleTools:
+          start:
+            tool: "x_kubernetes-provider_create_namespace"
+            arguments:
+              name: "{{ .parameters.team }}-{{ .parameters.project }}-dev"
+              labels:
+                team: "{{ .parameters.team }}"
+                project: "{{ .parameters.project }}"
+                environment: "development"
+            responseMapping:
+              serviceId: "namespace"
+              status: "status"
+          stop:
+            tool: "x_kubernetes-provider_delete_namespace"
+            arguments:
+              name: "{{ .service.id }}"
+        dependencies:
+          - capability: "kubernetes-management"
+            version: ">=1.0.0"
     expected:
       success: true
       contains: ["dev-namespace"]
@@ -156,33 +154,32 @@ steps:
     description: "And I create a monitoring ServiceClass for observability"
     tool: "core_serviceclass_create"
     args:
-      yaml: |
-        name: "prometheus-monitoring"
-        type: "observability"
-        version: "1.0.0"
-        description: "Deploys Prometheus monitoring stack"
-        serviceConfig:
-          serviceType: "monitoring-stack"
-          defaultLabel: "monitoring-{{ .parameters.namespace }}"
-          createParameters:
-            namespace:
-              toolParameter: "target_namespace"
-              required: true
-              description: "Namespace to deploy monitoring"
-            retention_period:
-              toolParameter: "retention"
-              required: false
-              default: "30d"
-              description: "Metrics retention period"
-          lifecycleTools:
-            start:
-              tool: "x_monitoring-provider_setup_prometheus"
-              arguments:
-                namespace: "{{ .parameters.namespace }}"
-                retention: "{{ .parameters.retention_period }}"
-              responseMapping:
-                serviceId: "prometheus_url"
-                status: "status"
+      name: "prometheus-monitoring"
+      type: "observability"
+      version: "1.0.0"
+      description: "Deploys Prometheus monitoring stack"
+      serviceConfig:
+        serviceType: "monitoring-stack"
+        defaultLabel: "monitoring-{{ .parameters.namespace }}"
+        createParameters:
+          namespace:
+            toolParameter: "target_namespace"
+            required: true
+            description: "Namespace to deploy monitoring"
+          retention_period:
+            toolParameter: "retention"
+            required: false
+            default: "30d"
+            description: "Metrics retention period"
+        lifecycleTools:
+          start:
+            tool: "x_monitoring-provider_setup_prometheus"
+            arguments:
+              namespace: "{{ .parameters.namespace }}"
+              retention: "{{ .parameters.retention_period }}"
+            responseMapping:
+              serviceId: "prometheus_url"
+              status: "status"
     expected:
       success: true
       contains: ["prometheus-monitoring"]

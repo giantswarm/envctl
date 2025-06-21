@@ -1,16 +1,21 @@
 name: "workflow-create-invalid-yaml"
 category: "behavioral"
 concept: "workflow"
-description: "Tests creating a workflow with invalid YAML syntax."
-tags: ["workflow", "create", "error-handling", "core-api"]
+description: "Tests creating a Workflow with invalid configuration."
+tags: ["workflow", "create", "validation", "error-handling", "core-api"]
 timeout: "1m"
 
 steps:
-- id: "create-with-invalid-yaml"
-  description: "Attempt to create a workflow using an invalid YAML string"
+- id: "create-invalid-workflow"
+  description: "Attempt to create a Workflow with invalid configuration"
   tool: "core_workflow_create"
   args:
-    yaml_definition: "name: yaml is broken"
+    name: "invalid-workflow"
+    description: "Invalid workflow test"
+    steps:
+      - id: ""  # Invalid empty step id
+        description: "Empty step"
+        tool: "core_capability_list"
   expected:
     success: false
-    error_contains: ["invalid YAML"] 
+    error_contains: ["invalid", "step id", "required"] 

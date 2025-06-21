@@ -11,15 +11,24 @@ pre_configuration:
       config:
         name: "existing-capability"
         type: "test"
+        description: "Pre-existing capability for conflict testing"
+        operations:
+          existing_operation:
+            description: "An existing operation"
+            requires: []
 
 steps:
-- id: "attempt-conflicting-create"
-  description: "Attempt to create a capability with the same name as a pre-configured one"
+- id: "create-conflicting-capability"
+  description: "Attempt to create a capability with a name that already exists"
   tool: "core_capability_create"
   args:
-    yamlContent: |
-      name: "existing-capability"
-      type: "another-type"
+    name: "existing-capability"
+    type: "test"
+    description: "This should conflict with the existing capability"
+    operations:
+      test_operation:
+        description: "A test operation"
+        requires: []
   expected:
     success: false
-    error_contains: ["already exists"] 
+    error_contains: ["already exists", "conflict"] 

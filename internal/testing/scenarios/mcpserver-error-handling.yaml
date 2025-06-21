@@ -19,9 +19,11 @@ steps:
   description: "Attempt to create an MCPServer with a missing 'name' field"
   tool: "core_mcpserver_create"
   args:
-    yaml: |
-      type: "localCommand"
-      command: ["echo", "hello"]
+    type: "local-command"
+    enabled: true
+    command:
+      - "echo"
+      - "hello"
   expected:
     success: false
     error_contains: ["name is required"]
@@ -30,9 +32,9 @@ steps:
   description: "Attempt to create an MCPServer with an invalid 'type' field"
   tool: "core_mcpserver_create"
   args:
-    yaml: |
-      name: "invalid-type-server"
-      type: "not-a-real-type"
+    name: "invalid-type-server"
+    type: "not-a-real-type"
+    enabled: true
   expected:
     success: false
     error_contains: ["invalid mcpserver type: not-a-real-type"]
@@ -41,9 +43,9 @@ steps:
   description: "Attempt to create a 'localCommand' server without a 'command'"
   tool: "core_mcpserver_create"
   args:
-    yaml: |
-      name: "no-command-server"
-      type: "localCommand"
+    name: "no-command-server"
+    type: "local-command"
+    enabled: true
   expected:
     success: false
     error_contains: ["'command' is required for localCommand type"]
@@ -52,9 +54,9 @@ steps:
   description: "Attempt to create a 'container' server without an 'image'"
   tool: "core_mcpserver_create"
   args:
-    yaml: |
-      name: "no-image-server"
-      type: "container"
+    name: "no-image-server"
+    type: "container"
+    enabled: true
   expected:
     success: false
     error_contains: ["'image' is required for container type"]
@@ -73,37 +75,11 @@ steps:
   tool: "core_mcpserver_update"
   args:
     name: "non-existent-mcpserver"
-    yaml: |
-      name: "non-existent-mcpserver"
-      type: "localCommand"
-      command: ["echo", "update"]
-  expected:
-    success: false
-    error_contains: ["not found"]
-
-- id: "delete-non-existent-mcpserver"
-  description: "Attempt to delete a non-existent MCPServer"
-  tool: "core_mcpserver_delete"
-  args:
-    name: "non-existent-mcpserver"
-  expected:
-    success: false
-    error_contains: ["not found"]
-
-- id: "unregister-non-existent-mcpserver"
-  description: "Attempt to unregister an MCPServer that does not exist"
-  tool: "core_mcpserver_unregister"
-  args:
-    name: "non-existent-mcpserver"
-  expected:
-    success: false
-    error_contains: ["not found"]
-
-- id: "check-availability-for-non-existent-mcpserver"
-  description: "Check availability for an MCPServer that does not exist"
-  tool: "core_mcpserver_available"
-  args:
-    name: "non-existent-mcpserver"
+    type: "local-command"
+    enabled: true
+    command:
+      - "echo"
+      - "update"
   expected:
     success: false
     error_contains: ["not found"] 

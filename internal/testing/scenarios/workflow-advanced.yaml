@@ -77,10 +77,9 @@ steps:
   description: "Create a workflow that has an empty steps array"
   tool: "core_workflow_create"
   args:
-    yaml_definition: |
-      name: "empty-steps-workflow"
-      description: "A workflow with no steps to run"
-      steps: []
+    name: "empty-steps-workflow"
+    description: "A workflow with no steps to run"
+    steps: []
   expected:
     success: true
   cleanup:
@@ -91,20 +90,23 @@ steps:
   description: "Run a workflow where one step's stored output overwrites another's"
   tool: "core_workflow_create"
   args:
-    yaml_definition: |
-      name: "overwrite-context-workflow"
-      steps:
-        - id: "step1"
-          tool: "x_mock-echo_echo"
-          args: { text: "first" }
-          store: "my_value"
-        - id: "step2"
-          tool: "x_mock-echo_echo"
-          args: { text: "second" }
-          store: "my_value"
-        - id: "step3"
-          tool: "x_mock-echo_echo"
-          args: { text: "final value is {{ .context.my_value.echoed }}" }
+    name: "overwrite-context-workflow"
+    description: "A workflow that overwrites context values"
+    steps:
+      - id: "step1"
+        tool: "x_mock-echo_echo"
+        args:
+          text: "first"
+        store: "my_value"
+      - id: "step2"
+        tool: "x_mock-echo_echo"
+        args:
+          text: "second"
+        store: "my_value"
+      - id: "step3"
+        tool: "x_mock-echo_echo"
+        args:
+          text: "final value is {{ .context.my_value.echoed }}"
   expected:
     success: true
   cleanup:
@@ -123,12 +125,13 @@ steps:
   description: "Run a workflow that templates a non-existent context value"
   tool: "core_workflow_create"
   args:
-    yaml_definition: |
-      name: "bad-template-workflow"
-      steps:
-        - id: "bad-step"
-          tool: "x_mock-echo_echo"
-          args: { text: "{{ .context.non_existent_value }}" }
+    name: "bad-template-workflow"
+    description: "A workflow with invalid template references"
+    steps:
+      - id: "bad-step"
+        tool: "x_mock-echo_echo"
+        args:
+          text: "{{ .context.non_existent_value }}"
   expected:
     success: true # The workflow itself is valid
   cleanup:

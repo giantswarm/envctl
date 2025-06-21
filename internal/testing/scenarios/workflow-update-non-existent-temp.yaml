@@ -11,9 +11,10 @@ steps:
   tool: "core_workflow_update"
   args:
     name: "non-existent-workflow"
-    yaml_definition: |
-      name: "non-existent-workflow"
-      steps: [{id: "s1", tool: "core_service_list"}]
+    description: "Updated non-existent workflow"
+    steps:
+      - id: "s1"
+        tool: "core_service_list"
   expected:
     success: false
     error_contains: ["not found"] 

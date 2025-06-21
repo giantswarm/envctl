@@ -23,14 +23,14 @@ steps:
   tool: "core_serviceclass_update"
   args:
     name: "update-test-sc"
-    yaml: |
-      name: "update-test-sc"
-      type: "basic"
-      description: "Updated description"
-      serviceConfig:
-        lifecycleTools:
-          start: { tool: "core_service_list" }
-          stop: { tool: "core_service_list" }
+    type: "basic"
+    description: "Updated description"
+    serviceConfig:
+      lifecycleTools:
+        start:
+          tool: "core_service_list"
+        stop:
+          tool: "core_service_list"
   expected:
     success: true
 

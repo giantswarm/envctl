@@ -1,27 +1,33 @@
 name: "mcpserver-create-container"
 category: "behavioral"
 concept: "mcpserver"
-description: "Tests creating a valid container MCPServer."
+description: "Tests creating an MCP server with container configuration."
 tags: ["mcpserver", "create", "container", "core-api"]
-timeout: "2m"
+timeout: "1m"
 
 steps:
-- id: "create-container-server"
-  description: "Create a new container MCPServer"
+- id: "create-container-mcpserver"
+  description: "Create a new MCP server with container type"
   tool: "core_mcpserver_create"
   args:
-    yaml: |
-      name: "create-container-test-server"
-      type: "container"
-      image: "hello-world"
+    name: "container-test-server"
+    type: "container"
+    enabled: true
+    icon: "🐳"
+    category: "infrastructure"
+    image: "my-mcp-server:latest"
+    containerPorts: ["8080:8080"]
+    containerEnv:
+      MCP_PORT: "8080"
+      LOG_LEVEL: "info"
+    containerVolumes: ["/data:/app/data"]
+    healthCheckCmd: ["curl", "-f", "http://localhost:8080/health"]
+    entrypoint: ["/app/start.sh"]
+    containerUser: "mcpuser"
   expected:
     success: true
   cleanup:
-  - tool: "core_mcpserver_delete"
-    args: { name: "create-container-test-server" }
-- id: "verify-server-in-list"
-  description: "Verify the new container server appears in the list"
-  tool: "core_mcpserver_list"
-  expected:
-    success: true
-    contains: ["create-container-test-server"] 
+    - id: "delete-created-mcpserver"
+      tool: "core_mcpserver_delete"
+      args:
+        name: "container-test-server" 

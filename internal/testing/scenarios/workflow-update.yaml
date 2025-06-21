@@ -14,14 +14,15 @@ pre_configuration:
       steps: [{id: "s1", tool: "core_service_list"}]
 steps:
 - id: "update-the-workflow"
-  description: "Update the description of the pre-configured workflow"
+  description: "Update the pre-configured workflow with new description"
   tool: "core_workflow_update"
   args:
     name: "update-test-workflow"
-    yaml_definition: |
-      name: "update-test-workflow"
-      description: "Updated description"
-      steps: [{id: "s1", tool: "core_service_list"}]
+    description: "Updated workflow description"
+    steps:
+      - id: "updated-step"
+        description: "Updated step"
+        tool: "core_capability_list"
   expected:
     success: true
 - id: "verify-workflow-was-updated"

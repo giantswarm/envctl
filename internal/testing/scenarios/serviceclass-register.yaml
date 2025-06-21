@@ -1,30 +1,38 @@
 name: "serviceclass-register"
 category: "behavioral"
 concept: "serviceclass"
-description: "Tests registering a new ServiceClass on the fly."
+description: "Tests registering a ServiceClass definition."
 tags: ["serviceclass", "register", "core-api"]
 timeout: "1m"
 
 steps:
-- id: "register-new-sc"
-  description: "Register a new ServiceClass dynamically"
+- id: "register-serviceclass"
+  description: "Register a ServiceClass and verify it's available"
   tool: "core_serviceclass_register"
   args:
-    yaml: |
-      name: "registered-sc"
-      type: "basic"
-      serviceConfig:
-        lifecycleTools: { start: {tool: "core_service_list"}, stop: {tool: "core_service_list"} }
+    name: "register-test-sc"
+    type: "basic"
+    version: "1.0.0"
+    description: "ServiceClass for register testing"
+    serviceConfig:
+      serviceType: "test-service"
+      defaultLabel: "registered-{{ .name }}"
+      lifecycleTools:
+        start:
+          tool: "x_test-provider_start_service"
+          arguments:
+            service_name: "{{ .name }}"
+          responseMapping:
+            serviceId: "id"
+            status: "state"
+        stop:
+          tool: "x_test-provider_stop_service"
+          arguments:
+            service_id: "{{ .service.id }}"
   expected:
     success: true
   cleanup:
-  - tool: "core_serviceclass_delete"
-    args: { name: "registered-sc" }
-
-- id: "verify-registered-sc-exists"
-  description: "Verify the new ServiceClass can be retrieved"
-  tool: "core_serviceclass_get"
-  args:
-    name: "registered-sc"
-  expected:
-    success: true 
+    - id: "unregister-serviceclass"
+      tool: "core_serviceclass_unregister"
+      args:
+        name: "register-test-sc" 

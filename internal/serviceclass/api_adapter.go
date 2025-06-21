@@ -6,8 +6,6 @@ import (
 	"envctl/pkg/logging"
 	"fmt"
 	"time"
-
-	"gopkg.in/yaml.v3"
 )
 
 // Adapter implements the api.ServiceClassManagerHandler interface
@@ -346,9 +344,15 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 		},
 		{
 			Name:        "serviceclass_register",
-			Description: "Register a ServiceClass from YAML on the fly",
+			Description: "Register a ServiceClass with structured parameters",
 			Parameters: []api.ParameterMetadata{
-				{Name: "yaml", Type: "string", Required: true, Description: "Full ServiceClass YAML definition"},
+				{Name: "name", Type: "string", Required: true, Description: "ServiceClass name"},
+				{Name: "type", Type: "string", Required: true, Description: "ServiceClass type"},
+				{Name: "version", Type: "string", Required: false, Description: "ServiceClass version"},
+				{Name: "description", Type: "string", Required: false, Description: "ServiceClass description"},
+				{Name: "serviceConfig", Type: "object", Required: true, Description: "Service configuration with lifecycle tools"},
+				{Name: "operations", Type: "object", Required: false, Description: "Operations map"},
+				{Name: "metadata", Type: "object", Required: false, Description: "Metadata key-value pairs"},
 				{Name: "merge", Type: "boolean", Required: false, Description: "If true, replace existing ServiceClass of the same name"},
 			},
 		},
@@ -363,7 +367,13 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 			Name:        "serviceclass_create",
 			Description: "Create a new service class",
 			Parameters: []api.ParameterMetadata{
-				{Name: "yaml", Type: "string", Required: true, Description: "Full ServiceClass YAML definition"},
+				{Name: "name", Type: "string", Required: true, Description: "ServiceClass name"},
+				{Name: "type", Type: "string", Required: true, Description: "ServiceClass type"},
+				{Name: "version", Type: "string", Required: false, Description: "ServiceClass version"},
+				{Name: "description", Type: "string", Required: false, Description: "ServiceClass description"},
+				{Name: "serviceConfig", Type: "object", Required: true, Description: "Service configuration with lifecycle tools"},
+				{Name: "operations", Type: "object", Required: false, Description: "Operations map"},
+				{Name: "metadata", Type: "object", Required: false, Description: "Metadata key-value pairs"},
 			},
 		},
 		{
@@ -371,7 +381,12 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 			Description: "Update an existing service class",
 			Parameters: []api.ParameterMetadata{
 				{Name: "name", Type: "string", Required: true, Description: "Name of the ServiceClass to update"},
-				{Name: "yaml", Type: "string", Required: true, Description: "Updated ServiceClass YAML definition"},
+				{Name: "type", Type: "string", Required: true, Description: "ServiceClass type"},
+				{Name: "version", Type: "string", Required: false, Description: "ServiceClass version"},
+				{Name: "description", Type: "string", Required: false, Description: "ServiceClass description"},
+				{Name: "serviceConfig", Type: "object", Required: true, Description: "Service configuration with lifecycle tools"},
+				{Name: "operations", Type: "object", Required: false, Description: "Operations map"},
+				{Name: "metadata", Type: "object", Required: false, Description: "Metadata key-value pairs"},
 			},
 		},
 		{
@@ -519,15 +534,67 @@ func simpleOK(msg string) (*api.CallToolResult, error) {
 }
 
 func (a *Adapter) handleServiceClassRegister(args map[string]interface{}) (*api.CallToolResult, error) {
-	yamlStr, ok := args["yaml"].(string)
-	if !ok || yamlStr == "" {
-		return simpleError("yaml parameter is required")
+	name, ok := args["name"].(string)
+	if !ok || name == "" {
+		return simpleError("name parameter is required")
 	}
+	serviceType, ok := args["type"].(string)
+	if !ok || serviceType == "" {
+		return simpleError("type parameter is required")
+	}
+	version, _ := args["version"].(string)
+	description, _ := args["description"].(string)
+	serviceConfigParam, ok := args["serviceConfig"].(map[string]interface{})
+	if !ok {
+		return simpleError("serviceConfig parameter is required")
+	}
+	operationsParam, _ := args["operations"].(map[string]interface{})
+	metadataParam, _ := args["metadata"].(map[string]interface{})
 	merge, _ := args["merge"].(bool)
 
-	var def ServiceClassDefinition
-	if err := yaml.Unmarshal([]byte(yamlStr), &def); err != nil {
-		return simpleError(fmt.Sprintf("YAML parse error: %v", err))
+	// Convert serviceConfig from map[string]interface{} to ServiceConfig
+	serviceConfig, err := convertServiceConfig(serviceConfigParam)
+	if err != nil {
+		return simpleError(fmt.Sprintf("invalid serviceConfig: %v", err))
+	}
+
+	// Convert operations from map[string]interface{} to map[string]OperationDefinition
+	operations := make(map[string]OperationDefinition)
+	if operationsParam != nil {
+		for opName, opData := range operationsParam {
+			opMap, ok := opData.(map[string]interface{})
+			if !ok {
+				return simpleError(fmt.Sprintf("invalid operation '%s': must be an object", opName))
+			}
+			operation, err := convertOperationDefinition(opMap)
+			if err != nil {
+				return simpleError(fmt.Sprintf("invalid operation '%s': %v", opName, err))
+			}
+			operations[opName] = operation
+		}
+	}
+
+	// Convert metadata from map[string]interface{} to map[string]string
+	metadata := make(map[string]string)
+	if metadataParam != nil {
+		for key, value := range metadataParam {
+			if strValue, ok := value.(string); ok {
+				metadata[key] = strValue
+			} else {
+				return simpleError(fmt.Sprintf("metadata value for key '%s' must be a string", key))
+			}
+		}
+	}
+
+	// Build ServiceClassDefinition from structured parameters
+	def := ServiceClassDefinition{
+		Name:          name,
+		Type:          serviceType,
+		Version:       version,
+		Description:   description,
+		ServiceConfig: serviceConfig,
+		Operations:    operations,
+		Metadata:      metadata,
 	}
 
 	// Optionally overwrite existing definition
@@ -554,21 +621,257 @@ func (a *Adapter) handleServiceClassUnregister(args map[string]interface{}) (*ap
 }
 
 func (a *Adapter) handleServiceClassCreate(args map[string]interface{}) (*api.CallToolResult, error) {
-	yamlStr, ok := args["yaml"].(string)
-	if !ok || yamlStr == "" {
-		return simpleError("yaml parameter is required")
+	name, ok := args["name"].(string)
+	if !ok || name == "" {
+		return simpleError("name parameter is required")
+	}
+	serviceType, ok := args["type"].(string)
+	if !ok || serviceType == "" {
+		return simpleError("type parameter is required")
+	}
+	version, _ := args["version"].(string)
+	description, _ := args["description"].(string)
+	serviceConfigParam, ok := args["serviceConfig"].(map[string]interface{})
+	if !ok {
+		return simpleError("serviceConfig parameter is required")
+	}
+	operationsParam, _ := args["operations"].(map[string]interface{})
+	metadataParam, _ := args["metadata"].(map[string]interface{})
+
+	// Convert serviceConfig from map[string]interface{} to ServiceConfig
+	serviceConfig, err := convertServiceConfig(serviceConfigParam)
+	if err != nil {
+		return simpleError(fmt.Sprintf("invalid serviceConfig: %v", err))
 	}
 
-	var def ServiceClassDefinition
-	if err := yaml.Unmarshal([]byte(yamlStr), &def); err != nil {
-		return simpleError(fmt.Sprintf("YAML parse error: %v", err))
+	// Convert operations from map[string]interface{} to map[string]OperationDefinition
+	operations := make(map[string]OperationDefinition)
+	if operationsParam != nil {
+		for opName, opData := range operationsParam {
+			opMap, ok := opData.(map[string]interface{})
+			if !ok {
+				return simpleError(fmt.Sprintf("invalid operation '%s': must be an object", opName))
+			}
+			operation, err := convertOperationDefinition(opMap)
+			if err != nil {
+				return simpleError(fmt.Sprintf("invalid operation '%s': %v", opName, err))
+			}
+			operations[opName] = operation
+		}
+	}
+
+	// Convert metadata from map[string]interface{} to map[string]string
+	metadata := make(map[string]string)
+	if metadataParam != nil {
+		for key, value := range metadataParam {
+			if strValue, ok := value.(string); ok {
+				metadata[key] = strValue
+			} else {
+				return simpleError(fmt.Sprintf("metadata value for key '%s' must be a string", key))
+			}
+		}
+	}
+
+	// Build ServiceClassDefinition from structured parameters
+	def := ServiceClassDefinition{
+		Name:          name,
+		Type:          serviceType,
+		Version:       version,
+		Description:   description,
+		ServiceConfig: serviceConfig,
+		Operations:    operations,
+		Metadata:      metadata,
 	}
 
 	if err := a.manager.CreateServiceClass(def); err != nil {
 		return api.HandleErrorWithPrefix(err, "Create failed"), nil
 	}
 
-	return simpleOK(fmt.Sprintf("created service class %s", def.Name))
+	return simpleOK(fmt.Sprintf("created service class %s", name))
+}
+
+// convertServiceConfig converts a map[string]interface{} to ServiceConfig
+func convertServiceConfig(configMap map[string]interface{}) (ServiceConfig, error) {
+	var config ServiceConfig
+	
+	// Convert lifecycleTools (required)
+	lifecycleToolsMap, ok := configMap["lifecycleTools"].(map[string]interface{})
+	if !ok {
+		return config, fmt.Errorf("lifecycleTools is required")
+	}
+	
+	lifecycleTools, err := convertLifecycleTools(lifecycleToolsMap)
+	if err != nil {
+		return config, fmt.Errorf("invalid lifecycleTools: %v", err)
+	}
+	config.LifecycleTools = lifecycleTools
+	
+	// Convert optional fields
+	if serviceType, ok := configMap["serviceType"].(string); ok {
+		config.ServiceType = serviceType
+	}
+	if defaultLabel, ok := configMap["defaultLabel"].(string); ok {
+		config.DefaultLabel = defaultLabel
+	}
+	if deps, ok := configMap["dependencies"].([]interface{}); ok {
+		config.Dependencies = make([]string, len(deps))
+		for i, dep := range deps {
+			if depStr, ok := dep.(string); ok {
+				config.Dependencies[i] = depStr
+			} else {
+				return config, fmt.Errorf("dependency at index %d must be a string", i)
+			}
+		}
+	}
+	
+	return config, nil
+}
+
+// convertLifecycleTools converts a map[string]interface{} to LifecycleTools
+func convertLifecycleTools(toolsMap map[string]interface{}) (LifecycleTools, error) {
+	var tools LifecycleTools
+	
+	// Convert start tool (required)
+	if startMap, ok := toolsMap["start"].(map[string]interface{}); ok {
+		start, err := convertToolCall(startMap)
+		if err != nil {
+			return tools, fmt.Errorf("invalid start tool: %v", err)
+		}
+		tools.Start = start
+	} else {
+		return tools, fmt.Errorf("start tool is required")
+	}
+	
+	// Convert stop tool (required)
+	if stopMap, ok := toolsMap["stop"].(map[string]interface{}); ok {
+		stop, err := convertToolCall(stopMap)
+		if err != nil {
+			return tools, fmt.Errorf("invalid stop tool: %v", err)
+		}
+		tools.Stop = stop
+	} else {
+		return tools, fmt.Errorf("stop tool is required")
+	}
+	
+	// Convert optional tools
+	if restartMap, ok := toolsMap["restart"].(map[string]interface{}); ok {
+		restart, err := convertToolCall(restartMap)
+		if err != nil {
+			return tools, fmt.Errorf("invalid restart tool: %v", err)
+		}
+		tools.Restart = &restart
+	}
+	
+	if healthCheckMap, ok := toolsMap["healthCheck"].(map[string]interface{}); ok {
+		healthCheck, err := convertToolCall(healthCheckMap)
+		if err != nil {
+			return tools, fmt.Errorf("invalid healthCheck tool: %v", err)
+		}
+		tools.HealthCheck = &healthCheck
+	}
+	
+	if statusMap, ok := toolsMap["status"].(map[string]interface{}); ok {
+		status, err := convertToolCall(statusMap)
+		if err != nil {
+			return tools, fmt.Errorf("invalid status tool: %v", err)
+		}
+		tools.Status = &status
+	}
+	
+	return tools, nil
+}
+
+// convertToolCall converts a map[string]interface{} to ToolCall
+func convertToolCall(toolMap map[string]interface{}) (ToolCall, error) {
+	var tool ToolCall
+	
+	// Tool name is required
+	if toolName, ok := toolMap["tool"].(string); ok {
+		tool.Tool = toolName
+	} else {
+		return tool, fmt.Errorf("tool name is required")
+	}
+	
+	// Arguments are optional
+	if args, ok := toolMap["arguments"].(map[string]interface{}); ok {
+		tool.Arguments = args
+	}
+	
+	// ResponseMapping is optional
+	if respMap, ok := toolMap["responseMapping"].(map[string]interface{}); ok {
+		var responseMapping ResponseMapping
+		if serviceID, ok := respMap["serviceId"].(string); ok {
+			responseMapping.ServiceID = serviceID
+		}
+		if status, ok := respMap["status"].(string); ok {
+			responseMapping.Status = status
+		}
+		if health, ok := respMap["health"].(string); ok {
+			responseMapping.Health = health
+		}
+		if errorField, ok := respMap["error"].(string); ok {
+			responseMapping.Error = errorField
+		}
+		if metadata, ok := respMap["metadata"].(map[string]interface{}); ok {
+			responseMapping.Metadata = make(map[string]string)
+			for key, value := range metadata {
+				if strValue, ok := value.(string); ok {
+					responseMapping.Metadata[key] = strValue
+				}
+			}
+		}
+		tool.ResponseMapping = responseMapping
+	}
+	
+	return tool, nil
+}
+
+// convertOperationDefinition converts a map[string]interface{} to OperationDefinition
+func convertOperationDefinition(opMap map[string]interface{}) (OperationDefinition, error) {
+	var operation OperationDefinition
+	
+	if desc, ok := opMap["description"].(string); ok {
+		operation.Description = desc
+	}
+	
+	if requires, ok := opMap["requires"].([]interface{}); ok {
+		operation.Requires = make([]string, len(requires))
+		for i, req := range requires {
+			if reqStr, ok := req.(string); ok {
+				operation.Requires[i] = reqStr
+			} else {
+				return operation, fmt.Errorf("requires at index %d must be a string", i)
+			}
+		}
+	}
+	
+	if params, ok := opMap["parameters"].(map[string]interface{}); ok {
+		operation.Parameters = make(map[string]Parameter)
+		for paramName, paramData := range params {
+			paramMap, ok := paramData.(map[string]interface{})
+			if !ok {
+				return operation, fmt.Errorf("parameter '%s' must be an object", paramName)
+			}
+			
+			var param Parameter
+			if paramType, ok := paramMap["type"].(string); ok {
+				param.Type = paramType
+			}
+			if required, ok := paramMap["required"].(bool); ok {
+				param.Required = required
+			}
+			if description, ok := paramMap["description"].(string); ok {
+				param.Description = description
+			}
+			if defaultValue, ok := paramMap["default"]; ok {
+				param.Default = defaultValue
+			}
+			
+			operation.Parameters[paramName] = param
+		}
+	}
+	
+	return operation, nil
 }
 
 func (a *Adapter) handleServiceClassUpdate(args map[string]interface{}) (*api.CallToolResult, error) {
@@ -576,14 +879,62 @@ func (a *Adapter) handleServiceClassUpdate(args map[string]interface{}) (*api.Ca
 	if !ok || name == "" {
 		return simpleError("name parameter is required")
 	}
-	yamlStr, ok := args["yaml"].(string)
-	if !ok || yamlStr == "" {
-		return simpleError("yaml parameter is required")
+	serviceType, ok := args["type"].(string)
+	if !ok || serviceType == "" {
+		return simpleError("type parameter is required")
+	}
+	version, _ := args["version"].(string)
+	description, _ := args["description"].(string)
+	serviceConfigParam, ok := args["serviceConfig"].(map[string]interface{})
+	if !ok {
+		return simpleError("serviceConfig parameter is required")
+	}
+	operationsParam, _ := args["operations"].(map[string]interface{})
+	metadataParam, _ := args["metadata"].(map[string]interface{})
+
+	// Convert serviceConfig from map[string]interface{} to ServiceConfig
+	serviceConfig, err := convertServiceConfig(serviceConfigParam)
+	if err != nil {
+		return simpleError(fmt.Sprintf("invalid serviceConfig: %v", err))
 	}
 
-	var def ServiceClassDefinition
-	if err := yaml.Unmarshal([]byte(yamlStr), &def); err != nil {
-		return simpleError(fmt.Sprintf("YAML parse error: %v", err))
+	// Convert operations from map[string]interface{} to map[string]OperationDefinition
+	operations := make(map[string]OperationDefinition)
+	if operationsParam != nil {
+		for opName, opData := range operationsParam {
+			opMap, ok := opData.(map[string]interface{})
+			if !ok {
+				return simpleError(fmt.Sprintf("invalid operation '%s': must be an object", opName))
+			}
+			operation, err := convertOperationDefinition(opMap)
+			if err != nil {
+				return simpleError(fmt.Sprintf("invalid operation '%s': %v", opName, err))
+			}
+			operations[opName] = operation
+		}
+	}
+
+	// Convert metadata from map[string]interface{} to map[string]string
+	metadata := make(map[string]string)
+	if metadataParam != nil {
+		for key, value := range metadataParam {
+			if strValue, ok := value.(string); ok {
+				metadata[key] = strValue
+			} else {
+				return simpleError(fmt.Sprintf("metadata value for key '%s' must be a string", key))
+			}
+		}
+	}
+
+	// Build ServiceClassDefinition from structured parameters
+	def := ServiceClassDefinition{
+		Name:          name,
+		Type:          serviceType,
+		Version:       version,
+		Description:   description,
+		ServiceConfig: serviceConfig,
+		Operations:    operations,
+		Metadata:      metadata,
 	}
 
 	if err := a.manager.UpdateServiceClass(name, def); err != nil {

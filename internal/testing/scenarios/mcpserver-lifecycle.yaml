@@ -16,10 +16,13 @@ steps:
   description: "Register a new MCPServer dynamically"
   tool: "core_mcpserver_register"
   args:
-    yaml: |
-      name: "dynamic-mcpserver"
-      type: "localCommand"
-      command: ["echo", "dynamic server online"]
+    name: "dynamic-mcpserver"
+    type: "local-command"
+    enabled: true
+    command:
+      - "echo"
+      - "dynamic server online"
+    description: "Dynamic MCPServer for testing"
   expected:
     success: true
 

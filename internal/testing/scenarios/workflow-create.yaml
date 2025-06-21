@@ -1,138 +1,98 @@
-name: "behavior-workflow-automation-creation"
+name: "workflow-create"
 category: "behavioral"
 concept: "workflow"
-description: "As a platform engineer, I want to create reusable workflows so that repetitive tasks can be automated for my team"
-tags: ["workflow", "automation", "platform-engineering", "user-story"]
-timeout: "3m"
+description: "Tests creating a valid workflow definition."
+tags: ["workflow", "create", "core-api"]
+timeout: "1m"
 
-# User Story: Platform Engineer Creating Automation Workflows
-# Given: I need to automate repetitive platform tasks
-# When: I create workflows that encapsulate common operations
-# Then: Team members can execute these workflows consistently
+pre_configuration:
+  mcp_servers:
+    - name: "workflow-test-provider"
+      config:
+        tools:
+          - name: "test_action"
+            input_schema: { type: "object", properties: { message: { type: "string" } } }
+            responses: [{ response: { result: "success" } }]
 
 steps:
-- id: "platform-engineer-explores-workflow-capabilities"
-  description: "Given I'm a platform engineer, I want to understand workflow capabilities"
-  tool: "core_workflow_spec"
-  args:
-    format: "full"
-  expected:
-    success: true
-    # Should return schema and examples
-
-- id: "platform-engineer-creates-service-health-check-workflow"
-  description: "When I create a workflow to check the health of all services"
+- id: "create-valid-workflow"
+  description: "Create a new workflow with valid structure"
   tool: "core_workflow_create"
   args:
-    yaml_definition: |
-      name: "service-health-check"
-      description: "Comprehensive health check workflow for all platform services"
-      input_schema:
-        type: "object"
-        properties:
-          notification_channel:
-            type: "string"
-            description: "Where to send health check results"
-            default: "#platform-alerts"
-        required: []
-      steps:
-        - id: "list-all-services"
-          description: "Get current status of all services"
-          tool: "core_service_list"
-        - id: "check-service-classes"
-          description: "Verify all service classes are available"
-          tool: "core_serviceclass_list"
-        - id: "validate-mcp-servers"
-          description: "Ensure MCP servers are responsive"
-          tool: "core_mcpserver_list"
-      metadata:
-        author: "platform-team"
-        version: "1.0.0"
-        category: "health-monitoring"
+    name: "test-workflow"
+    description: "A test workflow for validation"
+    icon: "🚀"
+    agentModifiable: true
+    createdBy: "test-user"
+    version: 1
+    inputSchema:
+      type: "object"
+      properties:
+        message:
+          type: "string"
+          description: "Input message for the workflow"
+      required: ["message"]
+    steps:
+      - id: "step1"
+        tool: "x_workflow-test-provider_test_action"
+        args:
+          message: "{{ .input.message }}"
+        store: "step1_result"
   expected:
     success: true
-    contains: ["service-health-check"]
+  cleanup:
+    - id: "delete-created-workflow"
+      tool: "core_workflow_delete"
+      args:
+        name: "test-workflow"
 
-- id: "platform-engineer-validates-workflow-creation"
-  description: "Then the workflow should be available for execution"
-  tool: "core_workflow_get"
-  args:
-    name: "service-health-check"
-  expected:
-    success: true
-    json_path:
-      name: "service-health-check"
-      description: "Comprehensive health check workflow for all platform services"
-  
-- id: "platform-engineer-verifies-workflow-in-catalog"
-  description: "And the workflow should appear in the team's workflow catalog"
-  tool: "core_workflow_list"
-  args:
-    include_system: true
-  expected:
-    success: true
-    contains: ["service-health-check"]
-
-- id: "platform-engineer-creates-environment-setup-workflow"
-  description: "And I create another workflow for environment setup automation"
-  tool: "core_workflow_create"
-  args:
-    yaml_definition: |
-      name: "environment-setup"
-      description: "Automated environment setup for new projects"
-      input_schema:
-        type: "object"
-        properties:
-          project_name:
-            type: "string"
-            description: "Name of the project"
-          team_name:
-            type: "string"
-            description: "Team responsible for the project"
-          environment_type:
-            type: "string"
-            enum: ["development", "staging", "production"]
-            default: "development"
-        required: ["project_name", "team_name"]
-      steps:
-        - id: "validate-inputs"
-          description: "Validate project and team names"
-          tool: "core_config_get"
-        - id: "check-dependencies"
-          description: "Verify required service classes exist"
-          tool: "core_serviceclass_list"
-      metadata:
-        author: "platform-team"
-        version: "1.0.0"
-        category: "environment-management"
-  expected:
-    success: true
-    contains: ["environment-setup"]
-
-- id: "platform-engineer-validates-workflow-catalog"
-  description: "Then both workflows should be available in the catalog"
+- id: "verify-workflow-in-list"
+  description: "Verify the new workflow appears in the list"
   tool: "core_workflow_list"
   expected:
     success: true
-    contains: 
-      - "service-health-check"
-      - "environment-setup"
+    contains: ["test-workflow"]
 
-cleanup:
-  - id: "cleanup-health-check-workflow"
-    description: "Remove the health check workflow"
-    tool: "core_workflow_delete"
-    args: 
-      name: "service-health-check"
-    expected:
-      success: true
-    timeout: "30s"
-    
-  - id: "cleanup-environment-setup-workflow"
-    description: "Remove the environment setup workflow"
-    tool: "core_workflow_delete"
-    args: 
-      name: "environment-setup"
-    expected:
-      success: true
-    timeout: "30s" 
+- id: "create-advanced-workflow"
+  description: "Create a more complex workflow with multiple steps and dependencies"
+  tool: "core_workflow_create"
+  args:
+    name: "advanced-test-workflow"
+    description: "An advanced test workflow with multiple steps"
+    icon: "⚙️"
+    agentModifiable: false
+    createdBy: "test-admin"
+    version: 2
+    inputSchema:
+      type: "object"
+      properties:
+        count:
+          type: "number"
+          description: "Number of iterations"
+          default: 3
+        prefix:
+          type: "string" 
+          description: "Prefix for messages"
+      required: ["prefix"]
+    steps:
+      - id: "init"
+        tool: "x_workflow-test-provider_test_action"
+        args:
+          message: "Initializing with {{ .input.prefix }}"
+        store: "init_result"
+      - id: "process"
+        tool: "x_workflow-test-provider_test_action"
+        args:
+          message: "Processing {{ .input.count }} items with prefix {{ .input.prefix }}"
+        store: "process_result"
+      - id: "finalize"
+        tool: "x_workflow-test-provider_test_action"
+        args:
+          message: "Finalizing workflow, init: {{ .step1_result }}, process: {{ .process_result }}"
+  expected:
+    success: true
+  cleanup:
+    - id: "delete-advanced-workflow"
+      tool: "core_workflow_delete"
+      args:
+        name: "advanced-test-workflow" 

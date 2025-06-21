@@ -10,11 +10,11 @@ steps:
   description: "Attempt to create a workflow with a step that uses a non-existent tool"
   tool: "core_workflow_create"
   args:
-    yaml_definition: |
-      name: "bad-tool-workflow"
-      steps:
-        - id: "step1"
-          tool: "this_tool_is_not_real"
+    name: "bad-tool-workflow"
+    description: "Workflow with non-existent tool"
+    steps:
+      - id: "step1"
+        tool: "this_tool_is_not_real"
   expected:
     success: false
     error_contains: ["tool 'this_tool_is_not_real' not found"] 

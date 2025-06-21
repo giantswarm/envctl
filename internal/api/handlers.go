@@ -199,17 +199,17 @@ type WorkflowHandler interface {
 	// GetWorkflow returns a specific workflow definition
 	GetWorkflow(name string) (*WorkflowDefinition, error)
 
-	// CreateWorkflow creates a new workflow from YAML
-	CreateWorkflow(yamlStr string) error
+	// CreateWorkflowFromStructured creates a new workflow from structured parameters
+	CreateWorkflowFromStructured(args map[string]interface{}) error
 
-	// UpdateWorkflow updates an existing workflow
-	UpdateWorkflow(name, yamlStr string) error
+	// UpdateWorkflowFromStructured updates an existing workflow from structured parameters
+	UpdateWorkflowFromStructured(name string, args map[string]interface{}) error
 
 	// DeleteWorkflow deletes a workflow
 	DeleteWorkflow(name string) error
 
-	// ValidateWorkflow validates a workflow YAML
-	ValidateWorkflow(yamlStr string) error
+	// ValidateWorkflowFromStructured validates a workflow definition from structured parameters
+	ValidateWorkflowFromStructured(args map[string]interface{}) error
 
 	// Tool availability for workflows
 	ToolCaller
@@ -456,22 +456,6 @@ func ExecuteWorkflow(ctx context.Context, workflowName string, args map[string]i
 		return nil, fmt.Errorf("workflow handler not registered")
 	}
 	return handler.ExecuteWorkflow(ctx, workflowName, args)
-}
-
-// CreateWorkflow is a convenience function for creating workflows
-func CreateWorkflow(yamlDefinition string) error {
-	handler := GetWorkflow()
-	if handler == nil {
-		return fmt.Errorf("workflow handler not registered")
-	}
-
-	// Validate the workflow
-	if err := handler.ValidateWorkflow(yamlDefinition); err != nil {
-		return fmt.Errorf("workflow validation failed: %w", err)
-	}
-
-	// Create the workflow
-	return handler.CreateWorkflow(yamlDefinition)
 }
 
 // IsCapabilityAvailable checks if a capability operation is available

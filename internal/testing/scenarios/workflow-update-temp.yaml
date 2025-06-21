@@ -18,10 +18,10 @@ steps:
   tool: "core_workflow_update"
   args:
     name: "update-test-workflow"
-    yaml_definition: |
-      name: "update-test-workflow"
-      description: "Updated description"
-      steps: [{id: "s1", tool: "core_service_list"}]
+    description: "Updated description"
+    steps:
+      - id: "s1"
+        tool: "core_service_list"
   expected:
     success: true
 - id: "verify-workflow-was-updated"

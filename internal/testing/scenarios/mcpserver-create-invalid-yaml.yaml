@@ -1,16 +1,19 @@
 name: "mcpserver-create-invalid-yaml"
 category: "behavioral"
 concept: "mcpserver"
-description: "Tests creating an MCPServer with invalid YAML."
-tags: ["mcpserver", "create", "error-handling", "core-api"]
+description: "Tests creating an MCPServer with invalid configuration."
+tags: ["mcpserver", "create", "validation", "error-handling", "core-api"]
 timeout: "1m"
 
 steps:
-- id: "create-invalid"
-  description: "Attempt to create a server with invalid YAML"
+- id: "create-invalid-config"
+  description: "Attempt to create an MCPServer with invalid configuration"
   tool: "core_mcpserver_create"
   args:
-    yaml: "name: not valid"
+    name: "invalid-mcp"
+    type: "local-command"
+    command: ""  # Invalid empty command
+    enabled: true
   expected:
     success: false
-    error_contains: ["invalid YAML"] 
+    error_contains: ["invalid", "command", "required"] 

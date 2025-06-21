@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"gopkg.in/yaml.v3"
@@ -137,39 +138,34 @@ func (a *Adapter) GetWorkflow(name string) (*api.WorkflowDefinition, error) {
 	}, nil
 }
 
-// CreateWorkflow creates a new workflow from YAML
-func (a *Adapter) CreateWorkflow(yamlStr string) error {
-	// Parse YAML to workflow definition
-	var wf WorkflowDefinition
-	if err := yaml.Unmarshal([]byte(yamlStr), &wf); err != nil {
-		return fmt.Errorf("failed to parse workflow YAML: %w", err)
+// CreateWorkflowFromStructured creates a new workflow from structured parameters
+func (a *Adapter) CreateWorkflowFromStructured(args map[string]interface{}) error {
+	// Convert structured parameters to WorkflowDefinition
+	wf, err := convertToWorkflowDefinition(args)
+	if err != nil {
+		return err
 	}
 
 	return a.manager.CreateWorkflow(wf)
 }
 
-// UpdateWorkflow updates an existing workflow
-func (a *Adapter) UpdateWorkflow(name, yamlStr string) error {
-	// Parse YAML to workflow definition
-	var wf WorkflowDefinition
-	if err := yaml.Unmarshal([]byte(yamlStr), &wf); err != nil {
-		return fmt.Errorf("failed to parse workflow YAML: %w", err)
+// UpdateWorkflowFromStructured updates an existing workflow from structured parameters
+func (a *Adapter) UpdateWorkflowFromStructured(name string, args map[string]interface{}) error {
+	// Convert structured parameters to WorkflowDefinition
+	wf, err := convertToWorkflowDefinition(args)
+	if err != nil {
+		return err
 	}
 
 	return a.manager.UpdateWorkflow(name, wf)
 }
 
-// DeleteWorkflow deletes a workflow
-func (a *Adapter) DeleteWorkflow(name string) error {
-	return a.manager.DeleteWorkflow(name)
-}
-
-// ValidateWorkflow validates a workflow YAML
-func (a *Adapter) ValidateWorkflow(yamlStr string) error {
-	// Parse YAML to validate structure
-	var wf WorkflowDefinition
-	if err := yaml.Unmarshal([]byte(yamlStr), &wf); err != nil {
-		return fmt.Errorf("invalid workflow YAML: %w", err)
+// ValidateWorkflowFromStructured validates a workflow definition from structured parameters
+func (a *Adapter) ValidateWorkflowFromStructured(args map[string]interface{}) error {
+	// Convert structured parameters to validate structure
+	wf, err := convertToWorkflowDefinition(args)
+	if err != nil {
+		return err
 	}
 
 	// Basic validation
@@ -181,6 +177,13 @@ func (a *Adapter) ValidateWorkflow(yamlStr string) error {
 	}
 
 	return nil
+}
+
+
+
+// DeleteWorkflow deletes a workflow
+func (a *Adapter) DeleteWorkflow(name string) error {
+	return a.manager.DeleteWorkflow(name)
 }
 
 // CallToolInternal calls a tool internally - required by ToolCaller interface
@@ -241,30 +244,28 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 			Name:        "workflow_create",
 			Description: "Create a new workflow",
 			Parameters: []api.ParameterMetadata{
-				{
-					Name:        "yaml_definition",
-					Type:        "string",
-					Required:    true,
-					Description: "YAML definition of the workflow",
-				},
+				{Name: "name", Type: "string", Required: true, Description: "Workflow name"},
+				{Name: "description", Type: "string", Required: false, Description: "Workflow description"},
+				{Name: "icon", Type: "string", Required: false, Description: "Icon/emoji for display"},
+				{Name: "agentModifiable", Type: "boolean", Required: false, Description: "Whether workflow can be modified by agents"},
+				{Name: "createdBy", Type: "string", Required: false, Description: "Creator of the workflow"},
+				{Name: "version", Type: "number", Required: false, Description: "Workflow version"},
+				{Name: "inputSchema", Type: "object", Required: true, Description: "Input schema for the workflow"},
+				{Name: "steps", Type: "array", Required: true, Description: "Array of workflow steps"},
 			},
 		},
 		{
 			Name:        "workflow_update",
 			Description: "Update an existing workflow",
 			Parameters: []api.ParameterMetadata{
-				{
-					Name:        "name",
-					Type:        "string",
-					Required:    true,
-					Description: "Name of the workflow to update",
-				},
-				{
-					Name:        "yaml_definition",
-					Type:        "string",
-					Required:    true,
-					Description: "Updated YAML definition",
-				},
+				{Name: "name", Type: "string", Required: true, Description: "Name of the workflow to update"},
+				{Name: "description", Type: "string", Required: false, Description: "Workflow description"},
+				{Name: "icon", Type: "string", Required: false, Description: "Icon/emoji for display"},
+				{Name: "agentModifiable", Type: "boolean", Required: false, Description: "Whether workflow can be modified by agents"},
+				{Name: "createdBy", Type: "string", Required: false, Description: "Creator of the workflow"},
+				{Name: "version", Type: "number", Required: false, Description: "Workflow version"},
+				{Name: "inputSchema", Type: "object", Required: true, Description: "Input schema for the workflow"},
+				{Name: "steps", Type: "array", Required: true, Description: "Array of workflow steps"},
 			},
 		},
 		{
@@ -281,14 +282,16 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 		},
 		{
 			Name:        "workflow_validate",
-			Description: "Validate a workflow YAML definition",
+			Description: "Validate a workflow definition",
 			Parameters: []api.ParameterMetadata{
-				{
-					Name:        "yaml_definition",
-					Type:        "string",
-					Required:    true,
-					Description: "YAML definition to validate",
-				},
+				{Name: "name", Type: "string", Required: true, Description: "Workflow name"},
+				{Name: "description", Type: "string", Required: false, Description: "Workflow description"},
+				{Name: "icon", Type: "string", Required: false, Description: "Icon/emoji for display"},
+				{Name: "agentModifiable", Type: "boolean", Required: false, Description: "Whether workflow can be modified by agents"},
+				{Name: "createdBy", Type: "string", Required: false, Description: "Creator of the workflow"},
+				{Name: "version", Type: "number", Required: false, Description: "Workflow version"},
+				{Name: "inputSchema", Type: "object", Required: true, Description: "Input schema for the workflow"},
+				{Name: "steps", Type: "array", Required: true, Description: "Array of workflow steps"},
 			},
 		},
 		{
@@ -456,15 +459,7 @@ func (a *Adapter) handleGet(args map[string]interface{}) (*api.CallToolResult, e
 }
 
 func (a *Adapter) handleCreate(args map[string]interface{}) (*api.CallToolResult, error) {
-	yamlDef, ok := args["yaml_definition"].(string)
-	if !ok {
-		return &api.CallToolResult{
-			Content: []interface{}{"yaml_definition is required"},
-			IsError: true,
-		}, nil
-	}
-
-	if err := a.CreateWorkflow(yamlDef); err != nil {
+	if err := a.CreateWorkflowFromStructured(args); err != nil {
 		return &api.CallToolResult{
 			Content: []interface{}{fmt.Sprintf("Failed to create workflow: %v", err)},
 			IsError: true,
@@ -486,15 +481,7 @@ func (a *Adapter) handleUpdate(args map[string]interface{}) (*api.CallToolResult
 		}, nil
 	}
 
-	yamlDef, ok := args["yaml_definition"].(string)
-	if !ok {
-		return &api.CallToolResult{
-			Content: []interface{}{"yaml_definition is required"},
-			IsError: true,
-		}, nil
-	}
-
-	if err := a.UpdateWorkflow(name, yamlDef); err != nil {
+	if err := a.UpdateWorkflowFromStructured(name, args); err != nil {
 		return api.HandleErrorWithPrefix(err, "Failed to update workflow"), nil
 	}
 
@@ -524,15 +511,7 @@ func (a *Adapter) handleDelete(args map[string]interface{}) (*api.CallToolResult
 }
 
 func (a *Adapter) handleValidate(args map[string]interface{}) (*api.CallToolResult, error) {
-	yamlDef, ok := args["yaml_definition"].(string)
-	if !ok {
-		return &api.CallToolResult{
-			Content: []interface{}{"yaml_definition is required"},
-			IsError: true,
-		}, nil
-	}
-
-	if err := a.ValidateWorkflow(yamlDef); err != nil {
+	if err := a.ValidateWorkflowFromStructured(args); err != nil {
 		return &api.CallToolResult{
 			Content: []interface{}{fmt.Sprintf("Validation failed: %v", err)},
 			IsError: true,
@@ -643,4 +622,150 @@ steps:
       cluster: "{{ .input.cluster }}"`,
 		},
 	}
+}
+
+// convertToWorkflowDefinition converts structured parameters to WorkflowDefinition
+func convertToWorkflowDefinition(args map[string]interface{}) (WorkflowDefinition, error) {
+	var wf WorkflowDefinition
+	
+	// Required fields
+	name, ok := args["name"].(string)
+	if !ok || name == "" {
+		return wf, fmt.Errorf("name parameter is required")
+	}
+	wf.Name = name
+	
+	// Optional fields
+	if desc, ok := args["description"].(string); ok {
+		wf.Description = desc
+	}
+	if icon, ok := args["icon"].(string); ok {
+		wf.Icon = icon
+	}
+	if agentModifiable, ok := args["agentModifiable"].(bool); ok {
+		wf.AgentModifiable = agentModifiable
+	}
+	if createdBy, ok := args["createdBy"].(string); ok {
+		wf.CreatedBy = createdBy
+	}
+	if version, ok := args["version"].(int); ok {
+		wf.Version = version
+	} else if versionFloat, ok := args["version"].(float64); ok {
+		wf.Version = int(versionFloat)
+	}
+	
+	// Convert inputSchema
+	if inputSchemaParam, ok := args["inputSchema"].(map[string]interface{}); ok {
+		inputSchema, err := convertInputSchema(inputSchemaParam)
+		if err != nil {
+			return wf, fmt.Errorf("invalid inputSchema: %v", err)
+		}
+		wf.InputSchema = inputSchema
+	} else {
+		return wf, fmt.Errorf("inputSchema parameter is required")
+	}
+	
+	// Convert steps
+	if stepsParam, ok := args["steps"].([]interface{}); ok {
+		steps, err := convertWorkflowSteps(stepsParam)
+		if err != nil {
+			return wf, fmt.Errorf("invalid steps: %v", err)
+		}
+		wf.Steps = steps
+	} else {
+		return wf, fmt.Errorf("steps parameter is required")
+	}
+	
+	// Set timestamps
+	wf.CreatedAt = time.Now()
+	wf.LastModified = time.Now()
+	
+	return wf, nil
+}
+
+// convertInputSchema converts a map[string]interface{} to WorkflowInputSchema
+func convertInputSchema(schemaParam map[string]interface{}) (WorkflowInputSchema, error) {
+	var schema WorkflowInputSchema
+	
+	// Type field
+	if schemaType, ok := schemaParam["type"].(string); ok {
+		schema.Type = schemaType
+	}
+	
+	// Properties field
+	if props, ok := schemaParam["properties"].(map[string]interface{}); ok {
+		schema.Properties = make(map[string]SchemaProperty)
+		for propName, propData := range props {
+			propMap, ok := propData.(map[string]interface{})
+			if !ok {
+				return schema, fmt.Errorf("property '%s' must be an object", propName)
+			}
+			
+			var prop SchemaProperty
+			if propType, ok := propMap["type"].(string); ok {
+				prop.Type = propType
+			}
+			if description, ok := propMap["description"].(string); ok {
+				prop.Description = description
+			}
+			if defaultValue, ok := propMap["default"]; ok {
+				prop.Default = defaultValue
+			}
+			
+			schema.Properties[propName] = prop
+		}
+	}
+	
+	// Required field
+	if required, ok := schemaParam["required"].([]interface{}); ok {
+		schema.Required = make([]string, len(required))
+		for i, req := range required {
+			if reqStr, ok := req.(string); ok {
+				schema.Required[i] = reqStr
+			} else {
+				return schema, fmt.Errorf("required field at index %d must be a string", i)
+			}
+		}
+	}
+	
+	return schema, nil
+}
+
+// convertWorkflowSteps converts a []interface{} to []WorkflowStep
+func convertWorkflowSteps(stepsParam []interface{}) ([]WorkflowStep, error) {
+	steps := make([]WorkflowStep, len(stepsParam))
+	
+	for i, stepData := range stepsParam {
+		stepMap, ok := stepData.(map[string]interface{})
+		if !ok {
+			return steps, fmt.Errorf("step at index %d must be an object", i)
+		}
+		
+		var step WorkflowStep
+		
+		// Required fields
+		if id, ok := stepMap["id"].(string); ok {
+			step.ID = id
+		} else {
+			return steps, fmt.Errorf("step at index %d missing required 'id' field", i)
+		}
+		
+		if tool, ok := stepMap["tool"].(string); ok {
+			step.Tool = tool
+		} else {
+			return steps, fmt.Errorf("step at index %d missing required 'tool' field", i)
+		}
+		
+		// Optional fields
+		if args, ok := stepMap["args"].(map[string]interface{}); ok {
+			step.Args = args
+		}
+		if store, ok := stepMap["store"].(string); ok {
+			step.Store = store
+		}
+		
+		steps[i] = step
+	}
+	
+	return steps, nil
 }

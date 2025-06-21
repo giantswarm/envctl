@@ -35,12 +35,12 @@ steps:
   description: "Create a ServiceClass that requires a specific tool"
   tool: "core_serviceclass_create"
   args:
-    yaml: |
-      name: sc-with-tool-dep
-      type: basic
-      serviceConfig:
-        lifecycleTools:
-          start: { tool: "x_tool-provider-a_tool-a" }
+    name: "sc-with-tool-dep"
+    type: "basic"
+    serviceConfig:
+      lifecycleTools:
+        start:
+          tool: "x_tool-provider-a_tool-a"
   expected:
     success: true
   cleanup:
@@ -59,14 +59,15 @@ steps:
   description: "Create a ServiceClass that requires a capability"
   tool: "core_serviceclass_create"
   args:
-    yaml: |
-      name: sc-with-cap-dep
-      type: basic
-      dependencies:
-        capabilities: ["capability-a"]
-      serviceConfig:
-        lifecycleTools:
-          start: { tool: "core_service_list" }
+    name: "sc-with-cap-dep"
+    type: "basic"
+    dependencies:
+      capabilities:
+        - "capability-a"
+    serviceConfig:
+      lifecycleTools:
+        start:
+          tool: "core_service_list"
   expected:
     success: true
   cleanup:
@@ -85,12 +86,12 @@ steps:
   description: "Create a ServiceClass that requires a non-existent tool"
   tool: "core_serviceclass_create"
   args:
-    yaml: |
-      name: sc-with-unmet-tool-dep
-      type: basic
-      serviceConfig:
-        lifecycleTools:
-          start: { tool: "x_non-existent-provider_tool" }
+    name: "sc-with-unmet-tool-dep"
+    type: "basic"
+    serviceConfig:
+      lifecycleTools:
+        start:
+          tool: "x_non-existent-provider_tool"
   expected:
     success: true
   cleanup:
@@ -105,25 +106,27 @@ steps:
     success: true
     json_path:
       available: false
-      reason: { contains: ["missing tools"] }
+      reason:
+        contains: ["missing tools"]
 
 - id: "create-sc-with-unmet-capability-dependency"
   description: "Create a ServiceClass that requires a non-existent capability"
   tool: "core_serviceclass_create"
   args:
-    yaml: |
-      name: sc-with-unmet-cap-dep
-      type: basic
-      dependencies:
-        capabilities: ["non-existent-capability"]
-      serviceConfig:
-        lifecycleTools:
-          start: { tool: "core_service_list" }
+    name: "sc-with-unmet-cap-dep"
+    type: "basic"
+    dependencies:
+      capabilities:
+        - "non-existent-capability"
+    serviceConfig:
+      lifecycleTools:
+        start:
+          tool: "core_service_list"
   expected:
     success: true
   cleanup:
-  - tool: "core_serviceclass_delete"
-    args: { name: "sc-with-unmet-cap-dep" }
+    - tool: "core_serviceclass_delete"
+      args: { name: "sc-with-unmet-cap-dep" }
 
 - id: "check-sc-with-unmet-cap-dep-is-unavailable"
   description: "Verify the ServiceClass is unavailable when its capability is missing"
@@ -133,4 +136,5 @@ steps:
     success: true
     json_path:
       available: false
-      reason: { contains: ["missing capabilities"] } 
+      reason:
+        contains: ["missing capabilities"] 

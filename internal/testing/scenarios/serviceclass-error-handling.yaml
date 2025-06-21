@@ -19,9 +19,8 @@ steps:
   description: "Attempt to create a ServiceClass with a missing 'name' field"
   tool: "core_serviceclass_create"
   args:
-    yaml: |
-      type: "basic"
-      description: "This ServiceClass is missing its name"
+    type: "basic"
+    description: "This ServiceClass is missing its name"
   expected:
     success: false
     error_contains: ["name is required"]
@@ -30,13 +29,12 @@ steps:
   description: "Attempt to create a SC missing the required 'start' lifecycle tool"
   tool: "core_serviceclass_create"
   args:
-    yaml: |
-      name: "sc-missing-start"
-      type: "basic"
-      serviceConfig:
-        lifecycleTools:
-          stop:
-            tool: "x_some-mock_tool"
+    name: "sc-missing-start"
+    type: "basic"
+    serviceConfig:
+      lifecycleTools:
+        stop:
+          tool: "x_some-mock_tool"
   expected:
     success: false
     error_contains: ["'start' lifecycle tool is required"]
@@ -45,13 +43,14 @@ steps:
   description: "Create a SC that references a tool that does not exist"
   tool: "core_serviceclass_create"
   args:
-    yaml: |
-      name: "sc-bad-tool-ref"
-      type: "basic"
-      serviceConfig:
-        lifecycleTools:
-          start: { tool: "x_fake-provider_fake-tool" }
-          stop: { tool: "x_fake-provider_fake-tool" }
+    name: "sc-bad-tool-ref"
+    type: "basic"
+    serviceConfig:
+      lifecycleTools:
+        start:
+          tool: "x_fake-provider_fake-tool"
+        stop:
+          tool: "x_fake-provider_fake-tool"
   expected:
     success: true # Creation is allowed, but it should be unavailable
   cleanup:
@@ -83,8 +82,8 @@ steps:
   tool: "core_serviceclass_update"
   args:
     name: "non-existent-sc"
-    yaml: |
-      name: "non-existent-sc"
+    type: "basic"
+    description: "Updated description"
   expected:
     success: false
     error_contains: ["not found"]
@@ -102,12 +101,12 @@ steps:
   description: "Create a service class, then attempt to create another with the same name"
   tool: "core_serviceclass_create"
   args:
-    yaml: |
-      name: conflicting-name-serviceclass
-      type: "basic"
-      serviceConfig:
-        lifecycleTools:
-          start: { tool: "core_service_list" }
+    name: "conflicting-name-serviceclass"
+    type: "basic"
+    serviceConfig:
+      lifecycleTools:
+        start:
+          tool: "core_service_list"
   expected:
     success: true
   cleanup:
@@ -118,9 +117,9 @@ steps:
   description: "Attempt to create a service class with a name that already exists"
   tool: "core_serviceclass_create"
   args:
-    yaml: |
-      name: conflicting-name-serviceclass
-      type: "basic"
+    name: "conflicting-name-serviceclass"
+    type: "basic"
+    description: "This should conflict"
   expected:
     success: false
     error_contains: ["already exists"]
@@ -138,12 +137,12 @@ steps:
   description: "Check availability for a ServiceClass with missing lifecycle tools"
   tool: "core_serviceclass_create"
   args:
-    yaml: |
-      name: missing-tools-serviceclass
-      type: "basic"
-      serviceConfig:
-        lifecycleTools:
-          start: { tool: "x_non-existent-mock_start" }
+    name: "missing-tools-serviceclass"
+    type: "basic"
+    serviceConfig:
+      lifecycleTools:
+        start:
+          tool: "x_non-existent-mock_start"
   expected:
     success: true
   cleanup:

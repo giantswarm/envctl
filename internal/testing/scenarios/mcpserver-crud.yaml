@@ -16,13 +16,14 @@ steps:
   description: "Create a valid 'localCommand' type MCPServer"
   tool: "core_mcpserver_create"
   args:
-    yaml: |
-      name: "my-local-command-server"
-      type: "localCommand"
-      enabledByDefault: true
-      command: ["echo", "hello from local command"]
-      env:
-        GREETING: "hello"
+    name: "my-local-command-server"
+    type: "local-command"
+    enabled: true
+    command:
+      - "echo"
+      - "hello from local command"
+    env:
+      GREETING: "hello"
   expected:
     success: true
   cleanup:
@@ -47,12 +48,11 @@ steps:
   description: "Create a 'container' type MCPServer definition"
   tool: "core_mcpserver_create"
   args:
-    yaml: |
-      name: "my-container-server"
-      type: "container"
-      image: "hello-world"
-      containerEnv:
-        MESSAGE: "hello from container"
+    name: "my-container-server"
+    type: "container"
+    image: "hello-world"
+    containerEnv:
+      MESSAGE: "hello from container"
   expected:
     success: true
   cleanup:
@@ -76,11 +76,12 @@ steps:
   tool: "core_mcpserver_update"
   args:
     name: "my-local-command-server"
-    yaml: |
-      name: "my-local-command-server"
-      type: "localCommand"
-      command: ["echo", "updated hello"]
-      icon: "🚀"
+    type: "local-command"
+    enabled: true
+    command:
+      - "echo"
+      - "updated hello"
+    icon: "🚀"
   expected:
     success: true
 

@@ -18,22 +18,20 @@ steps:
   description: "Create a new workflow using the correct data structure"
   tool: "core_workflow_create"
   args:
-    yaml_definition: |
-      name: "correct-workflow"
-      description: "A correctly structured workflow"
-      input_schema:
-        type: "object"
-        properties:
-          target_label:
-            type: "string"
-            description: "The label of the service to check"
-        required:
-          - "target_label"
-      steps:
-        - id: "get_status"
-          tool: "core_service_status"
-          args:
-            label: "{{ .input.target_label }}"
+    name: "correct-workflow"
+    description: "A correctly structured workflow"
+    inputSchema:
+      type: "object"
+      properties:
+        target_label:
+          type: "string"
+          description: "The label of the service to check"
+      required: ["target_label"]
+    steps:
+      - id: "get_status"
+        tool: "core_service_status"
+        args:
+          label: "{{ .input.target_label }}"
 
 - id: "get-created-workflow"
   description: "Retrieve and verify the created workflow"
@@ -52,22 +50,19 @@ steps:
   tool: "core_workflow_update"
   args:
     name: "correct-workflow"
-    yaml_definition: |
-      name: "correct-workflow"
-      description: "An updated description for the workflow"
-      input_schema:
-        type: "object"
-        properties:
-          target_label:
-            type: "string"
-            description: "The label of the service to check"
-        required:
-          - "target_label"
-      steps:
-        - id: "get_status"
-          tool: "core_service_status"
-          args:
-            label: "{{ .input.target_label }}"
+    description: "An updated description for the workflow"
+    inputSchema:
+      type: "object"
+      properties:
+        target_label:
+          type: "string"
+          description: "The label of the service to check"
+      required: ["target_label"]
+    steps:
+      - id: "get_status"
+        tool: "core_service_status"
+        args:
+          label: "{{ .input.target_label }}"
   expected:
     success: true
 
@@ -96,4 +91,87 @@ steps:
     name: "correct-workflow"
   expected:
     success: false
-    error_contains: ["not found"] 
+    error_contains: ["not found"]
+
+- id: "create-workflow"
+  description: "Create a new workflow with a basic structure"
+  tool: "core_workflow_create"
+  args:
+    name: "crud-test-workflow"
+    description: "Test workflow for CRUD operations"
+    icon: "🔄"
+    agentModifiable: false
+    createdBy: "test-suite"
+    version: 1
+    inputSchema:
+      type: "object"
+      properties:
+        operation:
+          type: "string"
+          description: "Operation to perform"
+          default: "test"
+        target:
+          type: "string"
+          description: "Target for the operation"
+      required: ["target"]
+    steps:
+      - id: "perform-operation"
+        tool: "x_workflow-test-provider_execute"
+        args:
+          operation: "{{ .input.operation }}"
+          target: "{{ .input.target }}"
+        store: "operation_result"
+  expected:
+    success: true
+    contains: ["crud-test-workflow"]
+
+- id: "get-workflow"
+  description: "Retrieve the created workflow"
+  tool: "core_workflow_get"
+  args:
+    name: "crud-test-workflow"
+  expected:
+    success: true
+    json_path:
+      name: "crud-test-workflow"
+      description: "Test workflow for CRUD operations"
+
+- id: "update-workflow"
+  description: "Update the workflow with additional step"
+  tool: "core_workflow_update"
+  args:
+    name: "crud-test-workflow"
+    description: "Updated test workflow for CRUD operations"
+    icon: "🔄"
+    agentModifiable: true
+    createdBy: "test-suite"
+    version: 2
+    inputSchema:
+      type: "object"
+      properties:
+        operation:
+          type: "string"
+          description: "Operation to perform"
+          default: "test"
+        target:
+          type: "string"
+          description: "Target for the operation"
+        count:
+          type: "number"
+          description: "Number of iterations"
+          default: 1
+      required: ["target"]
+    steps:
+      - id: "perform-operation"
+        tool: "x_workflow-test-provider_execute"
+        args:
+          operation: "{{ .input.operation }}"
+          target: "{{ .input.target }}"
+          count: "{{ .input.count }}"
+        store: "operation_result"
+      - id: "finalize"
+        tool: "x_workflow-test-provider_finalize"
+        args:
+          result: "{{ .operation_result }}"
+  expected:
+    success: true 

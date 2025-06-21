@@ -5,8 +5,7 @@ import (
 	"envctl/internal/api"
 	"envctl/pkg/logging"
 	"fmt"
-
-	"gopkg.in/yaml.v3"
+	"time"
 )
 
 // Adapter implements the api.MCPServerManagerHandler interface
@@ -195,9 +194,24 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 		},
 		{
 			Name:        "mcpserver_register",
-			Description: "Register an MCP server from YAML on the fly",
+			Description: "Register an MCP server with structured parameters",
 			Parameters: []api.ParameterMetadata{
-				{Name: "yaml", Type: "string", Required: true, Description: "Full MCP server YAML definition"},
+				{Name: "name", Type: "string", Required: true, Description: "MCP server name"},
+				{Name: "type", Type: "string", Required: true, Description: "MCP server type (localCommand or container)"},
+				{Name: "enabled", Type: "boolean", Required: false, Description: "Whether server is enabled by default"},
+				{Name: "icon", Type: "string", Required: false, Description: "Icon/emoji for display"},
+				{Name: "category", Type: "string", Required: false, Description: "Category for grouping"},
+				{Name: "healthCheckInterval", Type: "string", Required: false, Description: "Health check interval duration"},
+				{Name: "toolPrefix", Type: "string", Required: false, Description: "Custom tool prefix"},
+				{Name: "command", Type: "array", Required: false, Description: "Command and arguments (for localCommand type)"},
+				{Name: "env", Type: "object", Required: false, Description: "Environment variables (for localCommand type)"},
+				{Name: "image", Type: "string", Required: false, Description: "Container image (for container type)"},
+				{Name: "containerPorts", Type: "array", Required: false, Description: "Port mappings (for container type)"},
+				{Name: "containerEnv", Type: "object", Required: false, Description: "Container environment variables"},
+				{Name: "containerVolumes", Type: "array", Required: false, Description: "Volume mounts"},
+				{Name: "healthCheckCmd", Type: "array", Required: false, Description: "Health check command"},
+				{Name: "entrypoint", Type: "array", Required: false, Description: "Container entrypoint"},
+				{Name: "containerUser", Type: "string", Required: false, Description: "Container user"},
 				{Name: "merge", Type: "boolean", Required: false, Description: "If true, replace existing MCP server of the same name"},
 			},
 		},
@@ -212,7 +226,22 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 			Name:        "mcpserver_create",
 			Description: "Create a new dynamic MCP server",
 			Parameters: []api.ParameterMetadata{
-				{Name: "yaml", Type: "string", Required: true, Description: "Full MCP server YAML definition"},
+				{Name: "name", Type: "string", Required: true, Description: "MCP server name"},
+				{Name: "type", Type: "string", Required: true, Description: "MCP server type (localCommand or container)"},
+				{Name: "enabled", Type: "boolean", Required: false, Description: "Whether server is enabled by default"},
+				{Name: "icon", Type: "string", Required: false, Description: "Icon/emoji for display"},
+				{Name: "category", Type: "string", Required: false, Description: "Category for grouping"},
+				{Name: "healthCheckInterval", Type: "string", Required: false, Description: "Health check interval duration"},
+				{Name: "toolPrefix", Type: "string", Required: false, Description: "Custom tool prefix"},
+				{Name: "command", Type: "array", Required: false, Description: "Command and arguments (for localCommand type)"},
+				{Name: "env", Type: "object", Required: false, Description: "Environment variables (for localCommand type)"},
+				{Name: "image", Type: "string", Required: false, Description: "Container image (for container type)"},
+				{Name: "containerPorts", Type: "array", Required: false, Description: "Port mappings (for container type)"},
+				{Name: "containerEnv", Type: "object", Required: false, Description: "Container environment variables"},
+				{Name: "containerVolumes", Type: "array", Required: false, Description: "Volume mounts"},
+				{Name: "healthCheckCmd", Type: "array", Required: false, Description: "Health check command"},
+				{Name: "entrypoint", Type: "array", Required: false, Description: "Container entrypoint"},
+				{Name: "containerUser", Type: "string", Required: false, Description: "Container user"},
 			},
 		},
 		{
@@ -220,7 +249,21 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 			Description: "Update an existing MCP server",
 			Parameters: []api.ParameterMetadata{
 				{Name: "name", Type: "string", Required: true, Description: "Name of the MCP server to update"},
-				{Name: "yaml", Type: "string", Required: true, Description: "Updated MCP server YAML definition"},
+				{Name: "type", Type: "string", Required: true, Description: "MCP server type (localCommand or container)"},
+				{Name: "enabled", Type: "boolean", Required: false, Description: "Whether server is enabled by default"},
+				{Name: "icon", Type: "string", Required: false, Description: "Icon/emoji for display"},
+				{Name: "category", Type: "string", Required: false, Description: "Category for grouping"},
+				{Name: "healthCheckInterval", Type: "string", Required: false, Description: "Health check interval duration"},
+				{Name: "toolPrefix", Type: "string", Required: false, Description: "Custom tool prefix"},
+				{Name: "command", Type: "array", Required: false, Description: "Command and arguments (for localCommand type)"},
+				{Name: "env", Type: "object", Required: false, Description: "Environment variables (for localCommand type)"},
+				{Name: "image", Type: "string", Required: false, Description: "Container image (for container type)"},
+				{Name: "containerPorts", Type: "array", Required: false, Description: "Port mappings (for container type)"},
+				{Name: "containerEnv", Type: "object", Required: false, Description: "Container environment variables"},
+				{Name: "containerVolumes", Type: "array", Required: false, Description: "Volume mounts"},
+				{Name: "healthCheckCmd", Type: "array", Required: false, Description: "Health check command"},
+				{Name: "entrypoint", Type: "array", Required: false, Description: "Container entrypoint"},
+				{Name: "containerUser", Type: "string", Required: false, Description: "Container user"},
 			},
 		},
 		{
@@ -367,18 +410,146 @@ func simpleOK(msg string) (*api.CallToolResult, error) {
 	return &api.CallToolResult{Content: []interface{}{msg}, IsError: false}, nil
 }
 
-func (a *Adapter) handleMCPServerRegister(args map[string]interface{}) (*api.CallToolResult, error) {
-	yamlStr, ok := args["yaml"].(string)
-	if !ok || yamlStr == "" {
-		return simpleError("yaml parameter is required")
+// convertToMCPServerDefinition converts structured parameters to MCPServerDefinition
+func convertToMCPServerDefinition(args map[string]interface{}) (MCPServerDefinition, error) {
+	var def MCPServerDefinition
+	
+	// Required fields
+	name, ok := args["name"].(string)
+	if !ok || name == "" {
+		return def, fmt.Errorf("name parameter is required")
 	}
+	def.Name = name
+	
+	serverType, ok := args["type"].(string)
+	if !ok || serverType == "" {
+		return def, fmt.Errorf("type parameter is required")
+	}
+	def.Type = MCPServerType(serverType)
+	
+	// Optional fields
+	if enabled, ok := args["enabled"].(bool); ok {
+		def.Enabled = enabled
+	}
+	if icon, ok := args["icon"].(string); ok {
+		def.Icon = icon
+	}
+	if category, ok := args["category"].(string); ok {
+		def.Category = category
+	}
+	if toolPrefix, ok := args["toolPrefix"].(string); ok {
+		def.ToolPrefix = toolPrefix
+	}
+	if image, ok := args["image"].(string); ok {
+		def.Image = image
+	}
+	if containerUser, ok := args["containerUser"].(string); ok {
+		def.ContainerUser = containerUser
+	}
+	
+	// Convert healthCheckInterval string to time.Duration
+	if healthCheckInterval, ok := args["healthCheckInterval"].(string); ok && healthCheckInterval != "" {
+		duration, err := time.ParseDuration(healthCheckInterval)
+		if err != nil {
+			return def, fmt.Errorf("invalid healthCheckInterval: %v", err)
+		}
+		def.HealthCheckInterval = duration
+	}
+	
+	// Convert command array
+	if command, ok := args["command"].([]interface{}); ok {
+		def.Command = make([]string, len(command))
+		for i, cmd := range command {
+			if cmdStr, ok := cmd.(string); ok {
+				def.Command[i] = cmdStr
+			} else {
+				return def, fmt.Errorf("command element at index %d must be a string", i)
+			}
+		}
+	}
+	
+	// Convert env map
+	if env, ok := args["env"].(map[string]interface{}); ok {
+		def.Env = make(map[string]string)
+		for key, value := range env {
+			if strValue, ok := value.(string); ok {
+				def.Env[key] = strValue
+			} else {
+				return def, fmt.Errorf("env value for key '%s' must be a string", key)
+			}
+		}
+	}
+	
+	// Convert containerPorts array
+	if containerPorts, ok := args["containerPorts"].([]interface{}); ok {
+		def.ContainerPorts = make([]string, len(containerPorts))
+		for i, port := range containerPorts {
+			if portStr, ok := port.(string); ok {
+				def.ContainerPorts[i] = portStr
+			} else {
+				return def, fmt.Errorf("containerPorts element at index %d must be a string", i)
+			}
+		}
+	}
+	
+	// Convert containerEnv map
+	if containerEnv, ok := args["containerEnv"].(map[string]interface{}); ok {
+		def.ContainerEnv = make(map[string]string)
+		for key, value := range containerEnv {
+			if strValue, ok := value.(string); ok {
+				def.ContainerEnv[key] = strValue
+			} else {
+				return def, fmt.Errorf("containerEnv value for key '%s' must be a string", key)
+			}
+		}
+	}
+	
+	// Convert containerVolumes array
+	if containerVolumes, ok := args["containerVolumes"].([]interface{}); ok {
+		def.ContainerVolumes = make([]string, len(containerVolumes))
+		for i, volume := range containerVolumes {
+			if volumeStr, ok := volume.(string); ok {
+				def.ContainerVolumes[i] = volumeStr
+			} else {
+				return def, fmt.Errorf("containerVolumes element at index %d must be a string", i)
+			}
+		}
+	}
+	
+	// Convert healthCheckCmd array
+	if healthCheckCmd, ok := args["healthCheckCmd"].([]interface{}); ok {
+		def.HealthCheckCmd = make([]string, len(healthCheckCmd))
+		for i, cmd := range healthCheckCmd {
+			if cmdStr, ok := cmd.(string); ok {
+				def.HealthCheckCmd[i] = cmdStr
+			} else {
+				return def, fmt.Errorf("healthCheckCmd element at index %d must be a string", i)
+			}
+		}
+	}
+	
+	// Convert entrypoint array
+	if entrypoint, ok := args["entrypoint"].([]interface{}); ok {
+		def.Entrypoint = make([]string, len(entrypoint))
+		for i, entry := range entrypoint {
+			if entryStr, ok := entry.(string); ok {
+				def.Entrypoint[i] = entryStr
+			} else {
+				return def, fmt.Errorf("entrypoint element at index %d must be a string", i)
+			}
+		}
+	}
+	
+	return def, nil
+}
 
+func (a *Adapter) handleMCPServerRegister(args map[string]interface{}) (*api.CallToolResult, error) {
 	merge, _ := args["merge"].(bool)
 
-	// Parse the YAML
-	var def MCPServerDefinition
-	if err := yaml.Unmarshal([]byte(yamlStr), &def); err != nil {
-		return simpleError(fmt.Sprintf("Invalid YAML: %v", err))
+	// Convert structured parameters to MCPServerDefinition
+	def, err := convertToMCPServerDefinition(args)
+	if err != nil {
+		return simpleError(err.Error())
 	}
 
 	// Validate the definition
@@ -422,15 +593,10 @@ func (a *Adapter) handleMCPServerUnregister(args map[string]interface{}) (*api.C
 }
 
 func (a *Adapter) handleMCPServerCreate(args map[string]interface{}) (*api.CallToolResult, error) {
-	yamlStr, ok := args["yaml"].(string)
-	if !ok || yamlStr == "" {
-		return simpleError("yaml parameter is required")
-	}
-
-	// Parse the YAML
-	var def MCPServerDefinition
-	if err := yaml.Unmarshal([]byte(yamlStr), &def); err != nil {
-		return simpleError(fmt.Sprintf("Invalid YAML: %v", err))
+	// Convert structured parameters to MCPServerDefinition
+	def, err := convertToMCPServerDefinition(args)
+	if err != nil {
+		return simpleError(err.Error())
 	}
 
 	// Validate the definition
@@ -457,15 +623,10 @@ func (a *Adapter) handleMCPServerUpdate(args map[string]interface{}) (*api.CallT
 		return simpleError("name parameter is required")
 	}
 
-	yamlStr, ok := args["yaml"].(string)
-	if !ok || yamlStr == "" {
-		return simpleError("yaml parameter is required")
-	}
-
-	// Parse the YAML
-	var def MCPServerDefinition
-	if err := yaml.Unmarshal([]byte(yamlStr), &def); err != nil {
-		return simpleError(fmt.Sprintf("Invalid YAML: %v", err))
+	// Convert structured parameters to MCPServerDefinition
+	def, err := convertToMCPServerDefinition(args)
+	if err != nil {
+		return simpleError(err.Error())
 	}
 
 	// Validate the definition

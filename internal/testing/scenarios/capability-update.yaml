@@ -5,33 +5,45 @@ description: "Tests updating an existing capability definition."
 tags: ["capability", "update", "core-api"]
 timeout: "1m"
 
-pre_configuration:
-  capabilities:
-    - name: "update-test-capability"
-      config:
-        name: "update-test-capability"
-        type: "test"
-        description: "Initial description"
-
 steps:
-- id: "update-the-capability"
-  description: "Update the description of the pre-configured capability"
+- id: "create-initial-capability"
+  description: "Create a capability to update"
+  tool: "core_capability_create"
+  args:
+    name: "update-test-capability"
+    type: "test"
+    description: "Initial capability for testing updates"
+    operations:
+      initial_operation:
+        description: "Initial operation"
+        requires: []
+  expected:
+    success: true
+
+- id: "update-capability"
+  description: "Update the capability with new description and additional operation"
   tool: "core_capability_update"
   args:
     name: "update-test-capability"
-    yamlContent: |
-      name: "update-test-capability"
-      type: "test"
-      description: "Updated description"
+    type: "test" 
+    version: "1.1.0"
+    description: "Updated capability for testing updates"
+    operations:
+      initial_operation:
+        description: "Updated initial operation"
+        requires: []
+      new_operation:
+        description: "New operation added in update"
+        requires: ["initial_operation"]
+        parameters:
+          param1:
+            type: "string"
+            required: true
+            description: "A required parameter"
   expected:
     success: true
-
-- id: "verify-capability-was-updated"
-  description: "Get the capability and verify its description was updated"
-  tool: "core_capability_get"
-  args:
-    name: "update-test-capability"
-  expected:
-    success: true
-    json_path:
-      description: "Updated description" 
+  cleanup:
+    - id: "delete-updated-capability"
+      tool: "core_capability_delete"
+      args:
+        name: "update-test-capability" 

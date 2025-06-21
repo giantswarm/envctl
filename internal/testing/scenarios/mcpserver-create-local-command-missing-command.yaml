@@ -1,18 +1,19 @@
 name: "mcpserver-create-local-command-missing-command"
 category: "behavioral"
 concept: "mcpserver"
-description: "Tests creating a localCommand server without a command."
-tags: ["mcpserver", "create", "error-handling", "core-api"]
+description: "Tests creating a local-command MCPServer without providing a command."
+tags: ["mcpserver", "create", "validation", "error-handling", "core-api"]
 timeout: "1m"
 
 steps:
 - id: "create-missing-command"
-  description: "Attempt to create a localCommand server without the command field"
+  description: "Attempt to create a local-command MCPServer without command"
   tool: "core_mcpserver_create"
   args:
-    yaml: |
-      name: "lc-no-command"
-      type: "localCommand"
+    name: "missing-command-server"
+    type: "local-command"
+    enabled: true
+    description: "Server without command"
   expected:
     success: false
-    error_contains: ["'command' is required for localCommand type"] 
+    error_contains: ["command", "required"] 

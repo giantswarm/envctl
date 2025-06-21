@@ -14,14 +14,16 @@ pre_configuration:
       command: ["echo", "initial"]
 steps:
 - id: "update-the-server"
-  description: "Update the server's command"
+  description: "Update the pre-configured MCPServer"
   tool: "core_mcpserver_update"
   args:
     name: "update-test-server"
-    yaml: |
-      name: "update-test-server"
-      type: "localCommand"
-      command: ["echo", "updated"]
+    type: "local-command"
+    enabled: true
+    command:
+      - "echo"
+      - "updated"
+    description: "Updated description"
   expected:
     success: true
 - id: "verify-server-was-updated"

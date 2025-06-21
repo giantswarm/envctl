@@ -19,9 +19,8 @@ steps:
   description: "Attempt to create a workflow with a missing 'name' field"
   tool: "core_workflow_create"
   args:
-    yaml_definition: |
-      description: "This workflow has no name"
-      steps: []
+    description: "This workflow has no name"
+    steps: []
   expected:
     success: false
     error_contains: ["name is required"]
@@ -30,9 +29,8 @@ steps:
   description: "Attempt to create a workflow with no 'steps' field"
   tool: "core_workflow_create"
   args:
-    yaml_definition: |
-      name: "workflow-no-steps"
-      description: "This workflow has no steps"
+    name: "workflow-no-steps"
+    description: "This workflow has no steps"
   expected:
     success: false
     error_contains: ["steps are required"]
@@ -41,13 +39,13 @@ steps:
   description: "Attempt to create a workflow with duplicate step IDs"
   tool: "core_workflow_create"
   args:
-    yaml_definition: |
-      name: "workflow-duplicate-steps"
-      steps:
-        - id: "step-1"
-          tool: "core_service_list"
-        - id: "step-1"
-          tool: "core_service_list"
+    name: "workflow-duplicate-steps"
+    description: "Workflow with duplicate step IDs"
+    steps:
+      - id: "step-1"
+        tool: "core_service_list"
+      - id: "step-1"
+        tool: "core_service_list"
   expected:
     success: false
     error_contains: ["duplicate step ID: step-1"]
@@ -56,11 +54,11 @@ steps:
   description: "Attempt to create a workflow that references a non-existent tool"
   tool: "core_workflow_create"
   args:
-    yaml_definition: |
-      name: "workflow-bad-tool"
-      steps:
-        - id: "step-1"
-          tool: "this_tool_does_not_exist"
+    name: "workflow-bad-tool"
+    description: "Workflow with non-existent tool"
+    steps:
+      - id: "step-1"
+        tool: "this_tool_does_not_exist"
   expected:
     success: false
     error_contains: ["tool 'this_tool_does_not_exist' not found"]
@@ -79,11 +77,10 @@ steps:
   tool: "core_workflow_update"
   args:
     name: "non-existent-workflow"
-    yaml_definition: |
-      name: non-existent-workflow
-      steps:
-        - id: step1
-          tool: core_service_list
+    description: "Non-existent workflow update"
+    steps:
+      - id: "step1"
+        tool: "core_service_list"
   expected:
     success: false
     error_contains: ["not found"]

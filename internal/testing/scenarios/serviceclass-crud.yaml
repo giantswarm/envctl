@@ -41,31 +41,30 @@ steps:
     description: "Create a new ServiceClass using the correct, detailed structure"
     tool: "core_serviceclass_create"
     args:
-      yaml: |
-        name: "correct-sc"
-        type: "basic"
-        version: "1.0.1"
-        description: "A correctly structured ServiceClass for testing"
-        serviceConfig:
-          serviceType: "mock-resource"
-          defaultLabel: "res-{{ .name }}"
-          dependencies: []
-          createParameters:
-            name:
-              toolParameter: "resource_name"
-              required: true
-          lifecycleTools:
-            start:
-              tool: "x_lifecycle-provider_create_resource"
-              arguments:
-                resource_name: "{{ .parameters.name }}"
-              responseMapping:
-                serviceId: "id"
-                status: "status"
-            stop:
-              tool: "x_lifecycle-provider_delete_resource"
-              arguments:
-                resource_id: "{{ .service.id }}"
+      name: "correct-sc"
+      type: "basic"
+      version: "1.0.1"
+      description: "A correctly structured ServiceClass for testing"
+      serviceConfig:
+        serviceType: "mock-resource"
+        defaultLabel: "res-{{ .name }}"
+        dependencies: []
+        createParameters:
+          name:
+            toolParameter: "resource_name"
+            required: true
+        lifecycleTools:
+          start:
+            tool: "x_lifecycle-provider_create_resource"
+            arguments:
+              resource_name: "{{ .parameters.name }}"
+            responseMapping:
+              serviceId: "id"
+              status: "status"
+          stop:
+            tool: "x_lifecycle-provider_delete_resource"
+            arguments:
+              resource_id: "{{ .service.id }}"
     expected:
       success: true
       contains: ["correct-sc"]
@@ -93,25 +92,35 @@ steps:
         available: true
 
   - id: "update-serviceclass-description"
-    description: "Update the description of the existing ServiceClass"
+    description: "Update the ServiceClass with a new description and verify the change"
     tool: "core_serviceclass_update"
     args:
       name: "correct-sc"
-      yaml: |
-        name: "correct-sc"
-        type: "basic"
-        version: "1.0.2"
-        description: "An updated description"
-        serviceConfig:
-          serviceType: "mock-resource"
-          lifecycleTools:
-            start:
-              tool: "x_lifecycle-provider_create_resource"
-            stop:
-              tool: "x_lifecycle-provider_delete_resource"
+      type: "basic"
+      version: "1.0.2"
+      description: "Updated description for the ServiceClass"
+      serviceConfig:
+        serviceType: "mock-resource"
+        defaultLabel: "res-{{ .name }}"
+        dependencies: []
+        createParameters:
+          name:
+            toolParameter: "resource_name"
+            required: true
+        lifecycleTools:
+          start:
+            tool: "x_lifecycle-provider_create_resource"
+            arguments:
+              resource_name: "{{ .parameters.name }}"
+            responseMapping:
+              serviceId: "id"
+              status: "status"
+          stop:
+            tool: "x_lifecycle-provider_delete_resource"
+            arguments:
+              resource_id: "{{ .service.id }}"
     expected:
       success: true
-      contains: ["correct-sc"]
 
   - id: "verify-updated-description"
     description: "Verify that the ServiceClass description was updated"

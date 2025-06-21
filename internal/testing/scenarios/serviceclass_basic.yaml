@@ -55,36 +55,27 @@ steps:
     description: "Create a new test ServiceClass with basic configuration"
     tool: "core_serviceclass_create"
     args:
-      yaml: |
-        name: test-basic-serviceclass
-        type: "basic"
-        version: "1.0.0"
-        description: "Test ServiceClass for behavioral testing"
-        parameters:
+      name: "test-basic-serviceclass"
+      type: "basic"
+      version: "1.0.0"
+      description: "Test ServiceClass for behavioral testing"
+      serviceConfig:
+        createParameters:
           replicas:
-            type: integer
+            type: "integer"
             default: 1
             description: "Number of service replicas"
           image:
-            type: string
+            type: "string"
             required: true
             description: "Container image to use"
-        serviceConfig:
-          lifecycleTools:
-            start:
-              tool: "x_test-lifecycle-mock_service_create"
-              description: "Create service instance"
-            stop:
-              tool: "x_test-lifecycle-mock_service_delete"
-              description: "Delete service instance"
-        template: |
-          apiVersion: v1
-          kind: ConfigMap
-          metadata:
-            name: "{{ .name }}-config"
-          data:
-            replicas: "{{ .parameters.replicas }}"
-            image: "{{ .parameters.image }}"
+        lifecycleTools:
+          start:
+            tool: "x_test-lifecycle-mock_service_create"
+            description: "Create service instance"
+          stop:
+            tool: "x_test-lifecycle-mock_service_delete"
+            description: "Delete service instance"
     expected:
       success: true
       contains: ["test-basic-serviceclass"]
