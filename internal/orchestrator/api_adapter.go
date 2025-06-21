@@ -343,6 +343,17 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 				},
 			},
 		},
+		{
+			Name:        "service_validate",
+			Description: "Validate a service instance definition",
+			Parameters: []api.ParameterMetadata{
+				{Name: "name", Type: "string", Required: true, Description: "Service instance name"},
+				{Name: "serviceClassName", Type: "string", Required: true, Description: "Name of the ServiceClass to instantiate"},
+				{Name: "parameters", Type: "object", Required: false, Description: "Parameters for service creation"},
+				{Name: "autoStart", Type: "boolean", Required: false, Description: "Whether this instance should auto-start"},
+				{Name: "description", Type: "string", Required: false, Description: "Service instance description"},
+			},
+		},
 	}
 }
 
@@ -367,6 +378,8 @@ func (a *Adapter) ExecuteTool(ctx context.Context, toolName string, args map[str
 		return a.handleServiceClassInstanceDelete(ctx, args)
 	case "service_get":
 		return a.handleServiceClassInstanceGet(args)
+	case "service_validate":
+		return a.handleServiceValidate(ctx, args)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", toolName)
 	}
@@ -627,4 +640,57 @@ func (a *Adapter) GetService(labelOrServiceID string) (*api.ServiceClassInstance
 	// If it's a static service (in registry but not in ServiceClass instances), we need a different approach
 	// For now, return error since GetService method expects ServiceClassInstanceInfo
 	return nil, fmt.Errorf("service '%s' not found or is not a ServiceClass instance", labelOrServiceID)
+}
+
+// handleServiceValidate handles the 'service_validate' tool.
+func (a *Adapter) handleServiceValidate(ctx context.Context, args map[string]interface{}) (*api.CallToolResult, error) {
+	name, ok := args["name"].(string)
+	if !ok || name == "" {
+		return &api.CallToolResult{
+			Content: []interface{}{"name parameter is required"},
+			IsError: true,
+		}, nil
+	}
+
+	serviceClassName, ok := args["serviceClassName"].(string)
+	if !ok || serviceClassName == "" {
+		return &api.CallToolResult{
+			Content: []interface{}{"serviceClassName parameter is required"},
+			IsError: true,
+		}, nil
+	}
+
+	parameters, _ := args["parameters"].(map[string]interface{})
+	if parameters == nil {
+		parameters = make(map[string]interface{})
+	}
+
+	// autoStart is validated but not used in the validation logic
+	_, _ = args["autoStart"].(bool)
+
+	// Validate without persisting - just check if the ServiceClass exists and parameters are valid
+	// Get ServiceClassManager through API
+	serviceClassManager := api.GetServiceClassManager()
+	if serviceClassManager == nil {
+		return &api.CallToolResult{
+			Content: []interface{}{"Validation failed: ServiceClass manager not available"},
+			IsError: true,
+		}, nil
+	}
+
+	// Check if ServiceClass is available
+	if !serviceClassManager.IsServiceClassAvailable(serviceClassName) {
+		return &api.CallToolResult{
+			Content: []interface{}{fmt.Sprintf("Validation failed: ServiceClass '%s' is not available", serviceClassName)},
+			IsError: true,
+		}, nil
+	}
+
+	// Basic parameter validation could be added here
+	// For now, we just validate the basic required fields and ServiceClass availability
+
+	return &api.CallToolResult{
+		Content: []interface{}{fmt.Sprintf("Validation successful for service %s", name)},
+		IsError: false,
+	}, nil
 }

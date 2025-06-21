@@ -93,8 +93,6 @@ func (a *Adapter) IsMCPServerAvailable(name string) bool {
 	return a.manager.IsAvailable(name)
 }
 
-
-
 // GetManager returns the underlying MCPServerManager (for internal use)
 // This should only be used by other internal packages that need direct access
 func (a *Adapter) GetManager() *MCPServerManager {
@@ -134,7 +132,20 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 				},
 			},
 		},
-
+		{
+			Name:        "mcpserver_validate",
+			Description: "Validate an mcpserver definition",
+			Parameters: []api.ParameterMetadata{
+				{Name: "name", Type: "string", Required: true, Description: "MCP server name"},
+				{Name: "type", Type: "string", Required: true, Description: "MCP server type (localCommand or container)"},
+				{Name: "autoStart", Type: "boolean", Required: false, Description: "Whether server should auto-start"},
+				{Name: "command", Type: "array", Required: false, Description: "Command and arguments (for localCommand type)"},
+				{Name: "image", Type: "string", Required: false, Description: "Container image (for container type)"},
+				{Name: "env", Type: "object", Required: false, Description: "Environment variables"},
+				{Name: "containerPorts", Type: "array", Required: false, Description: "Port mappings (for container type)"},
+				{Name: "description", Type: "string", Required: false, Description: "MCP server description"},
+			},
+		},
 		{
 			Name:        "mcpserver_create",
 			Description: "Create a new dynamic MCP server",
@@ -198,7 +209,8 @@ func (a *Adapter) ExecuteTool(ctx context.Context, toolName string, args map[str
 		return a.handleMCPServerGet(args)
 	case "mcpserver_available":
 		return a.handleMCPServerAvailable(args)
-
+	case "mcpserver_validate":
+		return a.handleMCPServerValidate(args)
 	case "mcpserver_create":
 		return a.handleMCPServerCreate(args)
 	case "mcpserver_update":
@@ -268,151 +280,105 @@ func (a *Adapter) handleMCPServerAvailable(args map[string]interface{}) (*api.Ca
 	}, nil
 }
 
-
-
-// helper to create simple error CallToolResult
-func simpleError(msg string) (*api.CallToolResult, error) {
-	return &api.CallToolResult{Content: []interface{}{msg}, IsError: true}, nil
-}
-
-func simpleOK(msg string) (*api.CallToolResult, error) {
-	return &api.CallToolResult{Content: []interface{}{msg}, IsError: false}, nil
-}
-
-// convertToMCPServerDefinition converts structured parameters to MCPServerDefinition
-func convertToMCPServerDefinition(args map[string]interface{}) (MCPServerDefinition, error) {
-	var def MCPServerDefinition
-	
-	// Required fields
+// handleMCPServerValidate validates an mcpserver definition
+func (a *Adapter) handleMCPServerValidate(args map[string]interface{}) (*api.CallToolResult, error) {
+	// Parse parameters (without category, icon, enabled)
 	name, ok := args["name"].(string)
 	if !ok || name == "" {
-		return def, fmt.Errorf("name parameter is required")
+		return &api.CallToolResult{
+			Content: []interface{}{"name parameter is required"},
+			IsError: true,
+		}, nil
 	}
-	def.Name = name
-	
+
 	serverType, ok := args["type"].(string)
 	if !ok || serverType == "" {
-		return def, fmt.Errorf("type parameter is required")
+		return &api.CallToolResult{
+			Content: []interface{}{"type parameter is required"},
+			IsError: true,
+		}, nil
 	}
-	def.Type = MCPServerType(serverType)
-	
-	// Optional fields
-	if enabled, ok := args["enabled"].(bool); ok {
-		def.Enabled = enabled
-	}
-	if icon, ok := args["icon"].(string); ok {
-		def.Icon = icon
-	}
-	if category, ok := args["category"].(string); ok {
-		def.Category = category
-	}
-	if toolPrefix, ok := args["toolPrefix"].(string); ok {
-		def.ToolPrefix = toolPrefix
-	}
-	if image, ok := args["image"].(string); ok {
-		def.Image = image
-	}
-	if containerUser, ok := args["containerUser"].(string); ok {
-		def.ContainerUser = containerUser
-	}
-	
-	// Convert healthCheckInterval string to time.Duration
-	if healthCheckInterval, ok := args["healthCheckInterval"].(string); ok && healthCheckInterval != "" {
-		duration, err := time.ParseDuration(healthCheckInterval)
-		if err != nil {
-			return def, fmt.Errorf("invalid healthCheckInterval: %v", err)
-		}
-		def.HealthCheckInterval = duration
-	}
-	
+
+	// Parse optional parameters (following Phase 2 parameter structure)
+	autoStart, _ := args["autoStart"].(bool)
+
 	// Convert command array
-	if command, ok := args["command"].([]interface{}); ok {
-		def.Command = make([]string, len(command))
-		for i, cmd := range command {
+	var command []string
+	if commandParam, ok := args["command"].([]interface{}); ok {
+		command = make([]string, len(commandParam))
+		for i, cmd := range commandParam {
 			if cmdStr, ok := cmd.(string); ok {
-				def.Command[i] = cmdStr
+				command[i] = cmdStr
 			} else {
-				return def, fmt.Errorf("command element at index %d must be a string", i)
+				return &api.CallToolResult{
+					Content: []interface{}{fmt.Sprintf("command element at index %d must be a string", i)},
+					IsError: true,
+				}, nil
 			}
 		}
 	}
-	
+
 	// Convert env map
-	if env, ok := args["env"].(map[string]interface{}); ok {
-		def.Env = make(map[string]string)
-		for key, value := range env {
+	var env map[string]string
+	if envParam, ok := args["env"].(map[string]interface{}); ok {
+		env = make(map[string]string)
+		for key, value := range envParam {
 			if strValue, ok := value.(string); ok {
-				def.Env[key] = strValue
+				env[key] = strValue
 			} else {
-				return def, fmt.Errorf("env value for key '%s' must be a string", key)
+				return &api.CallToolResult{
+					Content: []interface{}{fmt.Sprintf("env value for key '%s' must be a string", key)},
+					IsError: true,
+				}, nil
 			}
 		}
 	}
-	
+
 	// Convert containerPorts array
-	if containerPorts, ok := args["containerPorts"].([]interface{}); ok {
-		def.ContainerPorts = make([]string, len(containerPorts))
-		for i, port := range containerPorts {
+	var containerPorts []string
+	if containerPortsParam, ok := args["containerPorts"].([]interface{}); ok {
+		containerPorts = make([]string, len(containerPortsParam))
+		for i, port := range containerPortsParam {
 			if portStr, ok := port.(string); ok {
-				def.ContainerPorts[i] = portStr
+				containerPorts[i] = portStr
 			} else {
-				return def, fmt.Errorf("containerPorts element at index %d must be a string", i)
+				return &api.CallToolResult{
+					Content: []interface{}{fmt.Sprintf("containerPorts element at index %d must be a string", i)},
+					IsError: true,
+				}, nil
 			}
 		}
 	}
-	
-	// Convert containerEnv map
-	if containerEnv, ok := args["containerEnv"].(map[string]interface{}); ok {
-		def.ContainerEnv = make(map[string]string)
-		for key, value := range containerEnv {
-			if strValue, ok := value.(string); ok {
-				def.ContainerEnv[key] = strValue
-			} else {
-				return def, fmt.Errorf("containerEnv value for key '%s' must be a string", key)
-			}
-		}
+
+	image, _ := args["image"].(string)
+
+	// Build MCPServerDefinition from structured parameters (without category, icon, enabled)
+	def := MCPServerDefinition{
+		Name:                name,
+		Type:                MCPServerType(serverType),
+		Enabled:             autoStart, // Map autoStart to Enabled for validation
+		Category:            "",        // Empty for validation
+		Icon:                "",        // Empty for validation
+		Image:               image,
+		Command:             command,
+		Env:                 env,
+		ContainerPorts:      containerPorts,
+		HealthCheckInterval: 0, // Default for validation
 	}
-	
-	// Convert containerVolumes array
-	if containerVolumes, ok := args["containerVolumes"].([]interface{}); ok {
-		def.ContainerVolumes = make([]string, len(containerVolumes))
-		for i, volume := range containerVolumes {
-			if volumeStr, ok := volume.(string); ok {
-				def.ContainerVolumes[i] = volumeStr
-			} else {
-				return def, fmt.Errorf("containerVolumes element at index %d must be a string", i)
-			}
-		}
+
+	// Validate without persisting
+	if err := a.manager.ValidateDefinition(&def); err != nil {
+		return &api.CallToolResult{
+			Content: []interface{}{fmt.Sprintf("Validation failed: %v", err)},
+			IsError: true,
+		}, nil
 	}
-	
-	// Convert healthCheckCmd array
-	if healthCheckCmd, ok := args["healthCheckCmd"].([]interface{}); ok {
-		def.HealthCheckCmd = make([]string, len(healthCheckCmd))
-		for i, cmd := range healthCheckCmd {
-			if cmdStr, ok := cmd.(string); ok {
-				def.HealthCheckCmd[i] = cmdStr
-			} else {
-				return def, fmt.Errorf("healthCheckCmd element at index %d must be a string", i)
-			}
-		}
-	}
-	
-	// Convert entrypoint array
-	if entrypoint, ok := args["entrypoint"].([]interface{}); ok {
-		def.Entrypoint = make([]string, len(entrypoint))
-		for i, entry := range entrypoint {
-			if entryStr, ok := entry.(string); ok {
-				def.Entrypoint[i] = entryStr
-			} else {
-				return def, fmt.Errorf("entrypoint element at index %d must be a string", i)
-			}
-		}
-	}
-	
-	return def, nil
+
+	return &api.CallToolResult{
+		Content: []interface{}{fmt.Sprintf("Validation successful for mcpserver %s", def.Name)},
+		IsError: false,
+	}, nil
 }
-
-
 
 func (a *Adapter) handleMCPServerCreate(args map[string]interface{}) (*api.CallToolResult, error) {
 	// Convert structured parameters to MCPServerDefinition
@@ -422,7 +388,7 @@ func (a *Adapter) handleMCPServerCreate(args map[string]interface{}) (*api.CallT
 	}
 
 	// Validate the definition
-	if err := validateMCPServerDefinition(def); err != nil {
+	if err := a.manager.ValidateDefinition(&def); err != nil {
 		return simpleError(fmt.Sprintf("Invalid MCP server definition: %v", err))
 	}
 
@@ -452,7 +418,7 @@ func (a *Adapter) handleMCPServerUpdate(args map[string]interface{}) (*api.CallT
 	}
 
 	// Validate the definition
-	if err := validateMCPServerDefinition(def); err != nil {
+	if err := a.manager.ValidateDefinition(&def); err != nil {
 		return simpleError(fmt.Sprintf("Invalid MCP server definition: %v", err))
 	}
 
@@ -486,4 +452,146 @@ func (a *Adapter) handleMCPServerDelete(args map[string]interface{}) (*api.CallT
 	}
 
 	return simpleOK(fmt.Sprintf("MCP server '%s' deleted successfully", name))
+}
+
+// helper to create simple error CallToolResult
+func simpleError(msg string) (*api.CallToolResult, error) {
+	return &api.CallToolResult{Content: []interface{}{msg}, IsError: true}, nil
+}
+
+func simpleOK(msg string) (*api.CallToolResult, error) {
+	return &api.CallToolResult{Content: []interface{}{msg}, IsError: false}, nil
+}
+
+// convertToMCPServerDefinition converts structured parameters to MCPServerDefinition
+func convertToMCPServerDefinition(args map[string]interface{}) (MCPServerDefinition, error) {
+	var def MCPServerDefinition
+
+	// Required fields
+	name, ok := args["name"].(string)
+	if !ok || name == "" {
+		return def, fmt.Errorf("name parameter is required")
+	}
+	def.Name = name
+
+	serverType, ok := args["type"].(string)
+	if !ok || serverType == "" {
+		return def, fmt.Errorf("type parameter is required")
+	}
+	def.Type = MCPServerType(serverType)
+
+	// Optional fields
+	if enabled, ok := args["enabled"].(bool); ok {
+		def.Enabled = enabled
+	}
+	if icon, ok := args["icon"].(string); ok {
+		def.Icon = icon
+	}
+	if category, ok := args["category"].(string); ok {
+		def.Category = category
+	}
+	if toolPrefix, ok := args["toolPrefix"].(string); ok {
+		def.ToolPrefix = toolPrefix
+	}
+	if image, ok := args["image"].(string); ok {
+		def.Image = image
+	}
+	if containerUser, ok := args["containerUser"].(string); ok {
+		def.ContainerUser = containerUser
+	}
+
+	// Convert healthCheckInterval string to time.Duration
+	if healthCheckInterval, ok := args["healthCheckInterval"].(string); ok && healthCheckInterval != "" {
+		duration, err := time.ParseDuration(healthCheckInterval)
+		if err != nil {
+			return def, fmt.Errorf("invalid healthCheckInterval: %v", err)
+		}
+		def.HealthCheckInterval = duration
+	}
+
+	// Convert command array
+	if command, ok := args["command"].([]interface{}); ok {
+		def.Command = make([]string, len(command))
+		for i, cmd := range command {
+			if cmdStr, ok := cmd.(string); ok {
+				def.Command[i] = cmdStr
+			} else {
+				return def, fmt.Errorf("command element at index %d must be a string", i)
+			}
+		}
+	}
+
+	// Convert env map
+	if env, ok := args["env"].(map[string]interface{}); ok {
+		def.Env = make(map[string]string)
+		for key, value := range env {
+			if strValue, ok := value.(string); ok {
+				def.Env[key] = strValue
+			} else {
+				return def, fmt.Errorf("env value for key '%s' must be a string", key)
+			}
+		}
+	}
+
+	// Convert containerPorts array
+	if containerPorts, ok := args["containerPorts"].([]interface{}); ok {
+		def.ContainerPorts = make([]string, len(containerPorts))
+		for i, port := range containerPorts {
+			if portStr, ok := port.(string); ok {
+				def.ContainerPorts[i] = portStr
+			} else {
+				return def, fmt.Errorf("containerPorts element at index %d must be a string", i)
+			}
+		}
+	}
+
+	// Convert containerEnv map
+	if containerEnv, ok := args["containerEnv"].(map[string]interface{}); ok {
+		def.ContainerEnv = make(map[string]string)
+		for key, value := range containerEnv {
+			if strValue, ok := value.(string); ok {
+				def.ContainerEnv[key] = strValue
+			} else {
+				return def, fmt.Errorf("containerEnv value for key '%s' must be a string", key)
+			}
+		}
+	}
+
+	// Convert containerVolumes array
+	if containerVolumes, ok := args["containerVolumes"].([]interface{}); ok {
+		def.ContainerVolumes = make([]string, len(containerVolumes))
+		for i, volume := range containerVolumes {
+			if volumeStr, ok := volume.(string); ok {
+				def.ContainerVolumes[i] = volumeStr
+			} else {
+				return def, fmt.Errorf("containerVolumes element at index %d must be a string", i)
+			}
+		}
+	}
+
+	// Convert healthCheckCmd array
+	if healthCheckCmd, ok := args["healthCheckCmd"].([]interface{}); ok {
+		def.HealthCheckCmd = make([]string, len(healthCheckCmd))
+		for i, cmd := range healthCheckCmd {
+			if cmdStr, ok := cmd.(string); ok {
+				def.HealthCheckCmd[i] = cmdStr
+			} else {
+				return def, fmt.Errorf("healthCheckCmd element at index %d must be a string", i)
+			}
+		}
+	}
+
+	// Convert entrypoint array
+	if entrypoint, ok := args["entrypoint"].([]interface{}); ok {
+		def.Entrypoint = make([]string, len(entrypoint))
+		for i, entry := range entrypoint {
+			if entryStr, ok := entry.(string); ok {
+				def.Entrypoint[i] = entryStr
+			} else {
+				return def, fmt.Errorf("entrypoint element at index %d must be a string", i)
+			}
+		}
+	}
+
+	return def, nil
 }

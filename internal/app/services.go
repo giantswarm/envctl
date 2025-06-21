@@ -278,5 +278,3 @@ func InitializeServices(cfg *Config) (*Services, error) {
 		AggregatorPort:  cfg.EnvctlConfig.Aggregator.Port,
 	}, nil
 }
-
-

@@ -4,9 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
-	"time"
 
 	"envctl/internal/api"
 	"envctl/internal/config"
@@ -98,19 +96,17 @@ func (msm *MCPServerManager) validateDefinition(def *MCPServerDefinition) error 
 	var errors config.ValidationErrors
 
 	// Validate entity name using common helper
-	if err := config.ValidateEntityName(def.Name, "MCP server"); err != nil {
+	if err := config.ValidateEntityName(def.Name, "mcpserver"); err != nil {
 		errors = append(errors, err.(config.ValidationError))
 	}
 
 	// Validate type
-	validTypes := []string{string(MCPServerTypeLocalCommand), string(MCPServerTypeContainer)}
-	if err := config.ValidateOneOf("type", string(def.Type), validTypes); err != nil {
+	if err := config.ValidateRequired("type", string(def.Type), "mcpserver"); err != nil {
 		errors = append(errors, err.(config.ValidationError))
-	}
-
-	// Validate icon (optional)
-	if def.Icon != "" {
-		if err := config.ValidateMaxLength("icon", def.Icon, 10); err != nil {
+	} else {
+		// Validate specific type
+		validTypes := []string{string(MCPServerTypeLocalCommand), string(MCPServerTypeContainer)}
+		if err := config.ValidateOneOf("type", string(def.Type), validTypes); err != nil {
 			errors = append(errors, err.(config.ValidationError))
 		}
 	}
@@ -119,46 +115,43 @@ func (msm *MCPServerManager) validateDefinition(def *MCPServerDefinition) error 
 	switch def.Type {
 	case MCPServerTypeLocalCommand:
 		if len(def.Command) == 0 {
-			errors.Add("command", "is required for local command MCP servers")
-		} else {
-			// Validate command elements
-			for i, cmd := range def.Command {
-				if strings.TrimSpace(cmd) == "" {
-					errors.Add(fmt.Sprintf("command[%d]", i), "command element cannot be empty")
-				}
-			}
+			errors.Add("command", "is required for localCommand type")
 		}
-
-		// Note: Args are part of Command array, no separate validation needed
-
+		if def.Image != "" {
+			errors.Add("image", "cannot be specified for localCommand type")
+		}
 	case MCPServerTypeContainer:
-		if err := config.ValidateRequired("image", def.Image, "container MCP server"); err != nil {
-			errors = append(errors, err.(config.ValidationError))
+		if def.Image == "" {
+			errors.Add("image", "is required for container type")
 		}
-
-		// Validate environment variables if present
-		for key, value := range def.Env {
-			if key == "" {
-				errors.Add("env", "environment variable key cannot be empty")
-			}
-			if value == "" {
-				errors.Add(fmt.Sprintf("env.%s", key), "environment variable value cannot be empty")
-			}
+		if len(def.Command) > 0 {
+			errors.Add("command", "cannot be specified for container type (use entrypoint instead)")
 		}
 	}
 
-	// Validate health check interval if specified
-	if def.HealthCheckInterval != 0 {
-		if def.HealthCheckInterval < time.Second {
-			errors.Add("healthCheckInterval", "must be at least 1 second")
+	// Validate optional fields
+	if def.Category != "" {
+		if err := config.ValidateMaxLength("category", def.Category, 50); err != nil {
+			errors = append(errors, err.(config.ValidationError))
+		}
+	}
+
+	if def.Icon != "" {
+		if err := config.ValidateMaxLength("icon", def.Icon, 10); err != nil {
+			errors = append(errors, err.(config.ValidationError))
 		}
 	}
 
 	if errors.HasErrors() {
-		return config.FormatValidationError("MCP server", def.Name, errors)
+		return config.FormatValidationError("mcpserver", def.Name, errors)
 	}
 
 	return nil
+}
+
+// ValidateDefinition validates an MCP server definition without persisting it
+func (msm *MCPServerManager) ValidateDefinition(def *MCPServerDefinition) error {
+	return msm.validateDefinition(def)
 }
 
 // GetDefinition returns an MCP server definition by name

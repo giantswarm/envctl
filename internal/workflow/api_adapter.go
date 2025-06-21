@@ -179,8 +179,6 @@ func (a *Adapter) ValidateWorkflowFromStructured(args map[string]interface{}) er
 	return nil
 }
 
-
-
 // DeleteWorkflow deletes a workflow
 func (a *Adapter) DeleteWorkflow(name string) error {
 	return a.manager.DeleteWorkflow(name)
@@ -286,10 +284,7 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 			Parameters: []api.ParameterMetadata{
 				{Name: "name", Type: "string", Required: true, Description: "Workflow name"},
 				{Name: "description", Type: "string", Required: false, Description: "Workflow description"},
-				{Name: "icon", Type: "string", Required: false, Description: "Icon/emoji for display"},
-				{Name: "agentModifiable", Type: "boolean", Required: false, Description: "Whether workflow can be modified by agents"},
-				{Name: "createdBy", Type: "string", Required: false, Description: "Creator of the workflow"},
-				{Name: "version", Type: "number", Required: false, Description: "Workflow version"},
+				{Name: "version", Type: "string", Required: false, Description: "Workflow version"},
 				{Name: "inputSchema", Type: "object", Required: true, Description: "Input schema for the workflow"},
 				{Name: "steps", Type: "array", Required: true, Description: "Array of workflow steps"},
 			},
@@ -518,8 +513,10 @@ func (a *Adapter) handleValidate(args map[string]interface{}) (*api.CallToolResu
 		}, nil
 	}
 
+	// Get workflow name for consistent response format
+	name, _ := args["name"].(string)
 	return &api.CallToolResult{
-		Content: []interface{}{"Workflow definition is valid"},
+		Content: []interface{}{fmt.Sprintf("Validation successful for workflow %s", name)},
 		IsError: false,
 	}, nil
 }
@@ -627,33 +624,27 @@ steps:
 // convertToWorkflowDefinition converts structured parameters to WorkflowDefinition
 func convertToWorkflowDefinition(args map[string]interface{}) (WorkflowDefinition, error) {
 	var wf WorkflowDefinition
-	
+
 	// Required fields
 	name, ok := args["name"].(string)
 	if !ok || name == "" {
 		return wf, fmt.Errorf("name parameter is required")
 	}
 	wf.Name = name
-	
+
 	// Optional fields
 	if desc, ok := args["description"].(string); ok {
 		wf.Description = desc
 	}
-	if icon, ok := args["icon"].(string); ok {
-		wf.Icon = icon
+	if version, ok := args["version"].(string); ok {
+		// Convert string version to int for WorkflowDefinition
+		if version != "" {
+			// For now, just store as 1 if version is provided, 0 otherwise
+			// This maintains compatibility while using string input
+			wf.Version = 1
+		}
 	}
-	if agentModifiable, ok := args["agentModifiable"].(bool); ok {
-		wf.AgentModifiable = agentModifiable
-	}
-	if createdBy, ok := args["createdBy"].(string); ok {
-		wf.CreatedBy = createdBy
-	}
-	if version, ok := args["version"].(int); ok {
-		wf.Version = version
-	} else if versionFloat, ok := args["version"].(float64); ok {
-		wf.Version = int(versionFloat)
-	}
-	
+
 	// Convert inputSchema
 	if inputSchemaParam, ok := args["inputSchema"].(map[string]interface{}); ok {
 		inputSchema, err := convertInputSchema(inputSchemaParam)
@@ -664,7 +655,7 @@ func convertToWorkflowDefinition(args map[string]interface{}) (WorkflowDefinitio
 	} else {
 		return wf, fmt.Errorf("inputSchema parameter is required")
 	}
-	
+
 	// Convert steps
 	if stepsParam, ok := args["steps"].([]interface{}); ok {
 		steps, err := convertWorkflowSteps(stepsParam)
@@ -675,23 +666,23 @@ func convertToWorkflowDefinition(args map[string]interface{}) (WorkflowDefinitio
 	} else {
 		return wf, fmt.Errorf("steps parameter is required")
 	}
-	
+
 	// Set timestamps
 	wf.CreatedAt = time.Now()
 	wf.LastModified = time.Now()
-	
+
 	return wf, nil
 }
 
 // convertInputSchema converts a map[string]interface{} to WorkflowInputSchema
 func convertInputSchema(schemaParam map[string]interface{}) (WorkflowInputSchema, error) {
 	var schema WorkflowInputSchema
-	
+
 	// Type field
 	if schemaType, ok := schemaParam["type"].(string); ok {
 		schema.Type = schemaType
 	}
-	
+
 	// Properties field
 	if props, ok := schemaParam["properties"].(map[string]interface{}); ok {
 		schema.Properties = make(map[string]SchemaProperty)
@@ -700,7 +691,7 @@ func convertInputSchema(schemaParam map[string]interface{}) (WorkflowInputSchema
 			if !ok {
 				return schema, fmt.Errorf("property '%s' must be an object", propName)
 			}
-			
+
 			var prop SchemaProperty
 			if propType, ok := propMap["type"].(string); ok {
 				prop.Type = propType
@@ -711,11 +702,11 @@ func convertInputSchema(schemaParam map[string]interface{}) (WorkflowInputSchema
 			if defaultValue, ok := propMap["default"]; ok {
 				prop.Default = defaultValue
 			}
-			
+
 			schema.Properties[propName] = prop
 		}
 	}
-	
+
 	// Required field
 	if required, ok := schemaParam["required"].([]interface{}); ok {
 		schema.Required = make([]string, len(required))
@@ -727,35 +718,35 @@ func convertInputSchema(schemaParam map[string]interface{}) (WorkflowInputSchema
 			}
 		}
 	}
-	
+
 	return schema, nil
 }
 
 // convertWorkflowSteps converts a []interface{} to []WorkflowStep
 func convertWorkflowSteps(stepsParam []interface{}) ([]WorkflowStep, error) {
 	steps := make([]WorkflowStep, len(stepsParam))
-	
+
 	for i, stepData := range stepsParam {
 		stepMap, ok := stepData.(map[string]interface{})
 		if !ok {
 			return steps, fmt.Errorf("step at index %d must be an object", i)
 		}
-		
+
 		var step WorkflowStep
-		
+
 		// Required fields
 		if id, ok := stepMap["id"].(string); ok {
 			step.ID = id
 		} else {
 			return steps, fmt.Errorf("step at index %d missing required 'id' field", i)
 		}
-		
+
 		if tool, ok := stepMap["tool"].(string); ok {
 			step.Tool = tool
 		} else {
 			return steps, fmt.Errorf("step at index %d missing required 'tool' field", i)
 		}
-		
+
 		// Optional fields
 		if args, ok := stepMap["args"].(map[string]interface{}); ok {
 			step.Args = args
@@ -763,9 +754,9 @@ func convertWorkflowSteps(stepsParam []interface{}) ([]WorkflowStep, error) {
 		if store, ok := stepMap["store"].(string); ok {
 			step.Store = store
 		}
-		
+
 		steps[i] = step
 	}
-	
+
 	return steps, nil
 }

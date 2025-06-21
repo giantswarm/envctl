@@ -408,10 +408,10 @@ metadata:
 	storage := config.NewStorage()
 	manager, err := NewServiceClassManager(mockChecker, storage)
 	require.NoError(t, err)
-	
+
 	// Load definitions explicitly (internal method still needed for startup)
 	require.NoError(t, manager.LoadServiceDefinitions())
-	
+
 	adapter := NewAdapter(manager)
 
 	// Test API methods

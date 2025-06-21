@@ -385,6 +385,11 @@ func (scm *ServiceClassManager) validateServiceClassDefinition(def *ServiceClass
 	return nil
 }
 
+// ValidateDefinition validates a serviceclass definition without persisting it
+func (scm *ServiceClassManager) ValidateDefinition(def *ServiceClassDefinition) error {
+	return scm.validateServiceClassDefinition(def)
+}
+
 // updateServiceAvailability checks tool availability and updates service class availability
 func (scm *ServiceClassManager) updateServiceAvailability() {
 	for name, def := range scm.definitions {

@@ -158,6 +158,11 @@ func (cm *CapabilityManager) validateDefinition(def *CapabilityDefinition) error
 	return nil
 }
 
+// ValidateDefinition validates a capability definition without persisting it
+func (cm *CapabilityManager) ValidateDefinition(def *CapabilityDefinition) error {
+	return cm.validateDefinition(def)
+}
+
 // GetDefinition returns a capability definition by name
 func (cm *CapabilityManager) GetDefinition(name string) (CapabilityDefinition, bool) {
 	cm.mu.RLock()
