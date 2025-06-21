@@ -2,110 +2,106 @@ package mcpserver
 
 import (
 	"fmt"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
 
-	"envctl/internal/config"
+	"envctl/internal/api"
 	"envctl/pkg/logging"
+
+	"gopkg.in/yaml.v3"
 )
 
-// LoadMCPServerDefinitions loads MCP server definitions from YAML files in the mcpservers/ directory
-// with layered user/project override support. It utilizes the ConfigurationLoader to ensure
-// consistency with other configuration types (ServiceClass, Capability, Workflow).
-//
-// The function loads all YAML files from:
-// - User directory: ~/.config/envctl/mcpservers/
-// - Project directory: ./.envctl/mcpservers/
-//
-// Project files override user files with the same base name, ensuring proper precedence.
-//
-// Returns:
-// - []MCPServerDefinition: Successfully loaded and validated definitions
-// - *config.ConfigurationErrorCollection: Detailed error information for troubleshooting
-// - error: Critical errors that prevent loading
-func LoadMCPServerDefinitions() ([]MCPServerDefinition, *config.ConfigurationErrorCollection, error) {
-	logging.Info("MCPServerLoader", "Loading MCP server definitions from mcpservers/ directory")
+// LoadDefinitions loads MCP server definitions from a directory
+func LoadDefinitions(configPath string) ([]api.MCPServer, error) {
+	if configPath == "" {
+		return []api.MCPServer{}, nil
+	}
 
-	// Load and parse YAML files with enhanced error handling
-	definitions, errorCollection, err := config.LoadAndParseYAML[MCPServerDefinition]("mcpservers", validateMCPServerDefinition)
+	// Check if path exists
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		logging.Warn("MCPServerLoader", "Config path does not exist: %s", configPath)
+		return []api.MCPServer{}, nil
+	}
+
+	var definitions []api.MCPServer
+
+	// Walk through the directory
+	err := filepath.Walk(configPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Skip directories
+		if info.IsDir() {
+			return nil
+		}
+
+		// Only process YAML files
+		if !strings.HasSuffix(strings.ToLower(path), ".yaml") && !strings.HasSuffix(strings.ToLower(path), ".yml") {
+			return nil
+		}
+
+		// Load the file
+		def, err := LoadDefinitionFromFile(path)
+		if err != nil {
+			logging.Error("MCPServerLoader", err, "Failed to load definition from %s", path)
+			return nil // Continue with other files
+		}
+
+		if def != nil {
+			definitions = append(definitions, *def)
+		}
+
+		return nil
+	})
+
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to load MCP server definitions: %w", err)
+		return nil, fmt.Errorf("failed to walk config directory: %w", err)
 	}
 
-	// Log loading summary
-	successCount := len(definitions)
-	errorCount := errorCollection.Count()
-
-	if errorCount > 0 {
-		logging.Warn("MCPServerLoader", "Loaded %d MCP server definitions with %d errors", successCount, errorCount)
-
-		// Log detailed error summary for troubleshooting
-		logging.Warn("MCPServerLoader", "MCP server configuration errors:\n%s", errorCollection.GetSummary())
-
-		// Log full error details for debugging
-		logging.Debug("MCPServerLoader", "Detailed error report:\n%s", errorCollection.GetDetailedReport())
-	} else {
-		logging.Info("MCPServerLoader", "Successfully loaded %d MCP server definitions", successCount)
-	}
-
-	return definitions, errorCollection, nil
-}
-
-// LoadMCPServerDefinitionsLegacy provides backward compatibility by returning only the first error
-// for systems that expect the old error handling behavior.
-//
-// Deprecated: Use LoadMCPServerDefinitions for enhanced error handling and graceful degradation.
-func LoadMCPServerDefinitionsLegacy() ([]MCPServerDefinition, error) {
-	definitions, errorCollection, err := LoadMCPServerDefinitions()
-	if err != nil {
-		return nil, err
-	}
-
-	// For backward compatibility, return the first error if any exist
-	if errorCollection.HasErrors() {
-		logging.Warn("MCPServerLoader", "MCP server loading completed with errors (legacy mode)")
-		return definitions, errorCollection.Errors[0]
-	}
-
+	logging.Info("MCPServerLoader", "Loaded %d MCP server definitions from %s", len(definitions), configPath)
 	return definitions, nil
 }
 
-// validateMCPServerDefinition performs validation on an MCP server definition
-// This function is used by the configuration loader to ensure definitions are valid
-func validateMCPServerDefinition(def MCPServerDefinition) error {
-	if def.Name == "" {
-		return fmt.Errorf("MCP server name cannot be empty")
+// LoadDefinitionFromFile loads a single MCP server definition from a YAML file
+func LoadDefinitionFromFile(filepath string) (*api.MCPServer, error) {
+	content, err := ioutil.ReadFile(filepath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file %s: %w", filepath, err)
 	}
 
-	// Validate type
-	if def.Type != MCPServerTypeLocalCommand && def.Type != MCPServerTypeContainer {
-		return fmt.Errorf("unsupported MCP server type: %s, supported types: %s, %s",
-			def.Type, MCPServerTypeLocalCommand, MCPServerTypeContainer)
+	var def api.MCPServer
+	if err := yaml.Unmarshal(content, &def); err != nil {
+		return nil, fmt.Errorf("failed to parse YAML from %s: %w", filepath, err)
 	}
 
-	// Validate type-specific requirements
-	switch def.Type {
-	case MCPServerTypeLocalCommand:
-		if len(def.Command) == 0 {
-			return fmt.Errorf("command is required for local command MCP servers")
-		}
-	case MCPServerTypeContainer:
-		if def.Image == "" {
-			return fmt.Errorf("image is required for container MCP servers")
-		}
+	// Set defaults
+	if def.HealthCheckInterval == 0 {
+		def.HealthCheckInterval = 30 * time.Second
 	}
 
-	return nil
+	// Set initial state
+	def.State = api.StateUnknown
+	def.Health = api.HealthUnknown
+
+	logging.Debug("MCPServerLoader", "Loaded definition for %s from %s", def.Name, filepath)
+	return &def, nil
 }
 
-// GetMCPServerConfigurationPaths returns the paths where MCP server definitions are loaded from
-// This is a utility function for debugging and configuration management
-func GetMCPServerConfigurationPaths() (userPath, projectPath string, err error) {
-	userDir, projectDir, err := config.GetConfigurationPaths()
+// SaveDefinitionToFile saves an MCP server definition to a YAML file
+func SaveDefinitionToFile(def *api.MCPServer, filepath string) error {
+	content, err := yaml.Marshal(def)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to get configuration paths: %w", err)
+		return fmt.Errorf("failed to marshal definition: %w", err)
 	}
 
-	userPath = fmt.Sprintf("%s/mcpservers", userDir)
-	projectPath = fmt.Sprintf("%s/mcpservers", projectDir)
+	if err := ioutil.WriteFile(filepath, content, 0644); err != nil {
+		return fmt.Errorf("failed to write file %s: %w", filepath, err)
+	}
 
-	return userPath, projectPath, nil
+	logging.Debug("MCPServerLoader", "Saved definition for %s to %s", def.Name, filepath)
+	return nil
 }

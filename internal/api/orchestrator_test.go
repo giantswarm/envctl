@@ -265,12 +265,12 @@ func (m *mockOrchestratorHandler) GetAllServices() []ServiceStatus {
 // ServiceClass-based dynamic service instance management methods (for test compatibility)
 func (m *mockOrchestratorHandler) CreateServiceClassInstance(ctx context.Context, req CreateServiceClassRequest) (*ServiceClassInstanceInfo, error) {
 	return &ServiceClassInstanceInfo{
-		ServiceID:        "test-service-id",
+		ID:               "test-service-id",
 		Label:            req.Label,
 		ServiceClassName: req.ServiceClassName,
 		ServiceClassType: "test",
-		State:            "running",
-		Health:           "healthy",
+		State:            StateStopped,
+		Health:           HealthUnknown,
 		CreatedAt:        time.Now(),
 		ServiceData:      make(map[string]interface{}),
 	}, nil
@@ -282,12 +282,12 @@ func (m *mockOrchestratorHandler) DeleteServiceClassInstance(ctx context.Context
 
 func (m *mockOrchestratorHandler) GetServiceClassInstance(serviceID string) (*ServiceClassInstanceInfo, error) {
 	return &ServiceClassInstanceInfo{
-		ServiceID:        serviceID,
+		ID:               serviceID,
 		Label:            "test-label",
 		ServiceClassName: "test-class",
 		ServiceClassType: "test",
-		State:            "running",
-		Health:           "healthy",
+		State:            StateRunning,
+		Health:           HealthHealthy,
 		CreatedAt:        time.Now(),
 		ServiceData:      make(map[string]interface{}),
 	}, nil
@@ -295,12 +295,12 @@ func (m *mockOrchestratorHandler) GetServiceClassInstance(serviceID string) (*Se
 
 func (m *mockOrchestratorHandler) GetServiceClassInstanceByLabel(label string) (*ServiceClassInstanceInfo, error) {
 	return &ServiceClassInstanceInfo{
-		ServiceID:        "test-service-id",
+		ID:               "test-service-id",
 		Label:            label,
 		ServiceClassName: "test-class",
 		ServiceClassType: "test",
-		State:            "running",
-		Health:           "healthy",
+		State:            StateRunning,
+		Health:           HealthHealthy,
 		CreatedAt:        time.Now(),
 		ServiceData:      make(map[string]interface{}),
 	}, nil
@@ -309,12 +309,12 @@ func (m *mockOrchestratorHandler) GetServiceClassInstanceByLabel(label string) (
 func (m *mockOrchestratorHandler) ListServiceClassInstances() []ServiceClassInstanceInfo {
 	return []ServiceClassInstanceInfo{
 		{
-			ServiceID:        "test-service-id-1",
+			ID:               "test-service-id-1",
 			Label:            "test-label-1",
 			ServiceClassName: "test-class",
 			ServiceClassType: "test",
-			State:            "running",
-			Health:           "healthy",
+			State:            StateRunning,
+			Health:           HealthHealthy,
 			CreatedAt:        time.Now(),
 			ServiceData:      make(map[string]interface{}),
 		},
@@ -329,12 +329,12 @@ func (m *mockOrchestratorHandler) SubscribeToServiceInstanceEvents() <-chan Serv
 // Add missing ServiceManagerHandler methods
 func (m *mockOrchestratorHandler) GetService(labelOrServiceID string) (*ServiceClassInstanceInfo, error) {
 	return &ServiceClassInstanceInfo{
-		ServiceID:        "test-service-id",
+		ID:               "test-service-id",
 		Label:            labelOrServiceID,
 		ServiceClassName: "test-class",
 		ServiceClassType: "test",
-		State:            "running",
-		Health:           "healthy",
+		State:            StateRunning,
+		Health:           HealthHealthy,
 		CreatedAt:        time.Now(),
 		ServiceData:      make(map[string]interface{}),
 	}, nil
@@ -342,12 +342,12 @@ func (m *mockOrchestratorHandler) GetService(labelOrServiceID string) (*ServiceC
 
 func (m *mockOrchestratorHandler) CreateService(ctx context.Context, req CreateServiceClassRequest) (*ServiceClassInstanceInfo, error) {
 	return &ServiceClassInstanceInfo{
-		ServiceID:        "test-service-id",
+		ID:               "test-service-id",
 		Label:            req.Label,
 		ServiceClassName: req.ServiceClassName,
 		ServiceClassType: "test",
-		State:            "running",
-		Health:           "healthy",
+		State:            StateRunning,
+		Health:           HealthHealthy,
 		CreatedAt:        time.Now(),
 		ServiceData:      make(map[string]interface{}),
 	}, nil

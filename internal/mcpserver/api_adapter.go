@@ -2,60 +2,61 @@ package mcpserver
 
 import (
 	"context"
-	"envctl/internal/api"
-	"envctl/pkg/logging"
 	"fmt"
 	"time"
+
+	"envctl/internal/api"
+	"envctl/pkg/logging"
 )
 
-// Adapter implements the api.MCPServerManagerHandler interface
-// This adapter bridges the MCPServerManager implementation with the central API layer
+// Adapter implements api.MCPServerManagerHandler for the MCP server manager
 type Adapter struct {
 	manager *MCPServerManager
 }
 
-// NewAdapter creates a new API adapter for the MCPServerManager
+// NewAdapter creates a new MCP server API adapter
 func NewAdapter(manager *MCPServerManager) *Adapter {
 	return &Adapter{
 		manager: manager,
 	}
 }
 
-// Register registers this adapter with the central API layer
-// This method follows the project's API Service Locator Pattern
+// Register registers this adapter with the API layer
 func (a *Adapter) Register() {
 	api.RegisterMCPServerManager(a)
-	logging.Info("MCPServerAdapter", "Registered MCP server manager with API layer")
+	logging.Debug("MCPServerAdapter", "Registered MCP server adapter with API layer")
 }
 
-// ListMCPServers returns information about all registered MCP servers
+// ListMCPServers returns all MCP server definitions with availability status
 func (a *Adapter) ListMCPServers() []api.MCPServerInfo {
 	if a.manager == nil {
 		return []api.MCPServerInfo{}
 	}
 
-	// Get MCP server info from the manager
-	managerInfo := a.manager.ListDefinitions()
+	definitions := a.manager.ListDefinitions()
+	result := make([]api.MCPServerInfo, len(definitions))
 
-	// Convert to API types
-	result := make([]api.MCPServerInfo, len(managerInfo))
-	for i, def := range managerInfo {
-		available := a.manager.IsAvailable(def.Name)
+	for i, def := range definitions {
 		result[i] = api.MCPServerInfo{
 			Name:        def.Name,
 			Type:        string(def.Type),
+			Label:       def.Name, // Use name as label for compatibility
+			State:       string(def.State),
+			Health:      string(def.Health),
 			Enabled:     def.Enabled,
-			Available:   available,
-			Description: "", // MCPServerDefinition doesn't have Description field
+			Available:   a.manager.IsAvailable(def.Name),
+			Description: def.Description,
 			Command:     def.Command,
 			Image:       def.Image,
+			Env:         def.Env,
+			Error:       def.Error,
 		}
 	}
 
 	return result
 }
 
-// GetMCPServer returns a specific MCP server definition by name
+// GetMCPServer returns detailed information about a specific MCP server
 func (a *Adapter) GetMCPServer(name string) (*api.MCPServerInfo, error) {
 	if a.manager == nil {
 		return nil, fmt.Errorf("MCP server manager not available")
@@ -66,18 +67,20 @@ func (a *Adapter) GetMCPServer(name string) (*api.MCPServerInfo, error) {
 		return nil, api.NewMCPServerNotFoundError(name)
 	}
 
-	// Convert to API type (lightweight version)
-	apiDef := &api.MCPServerInfo{
+	return &api.MCPServerInfo{
 		Name:        def.Name,
 		Type:        string(def.Type),
+		Label:       def.Name, // Use name as label for compatibility
+		State:       string(def.State),
+		Health:      string(def.Health),
 		Enabled:     def.Enabled,
-		Description: "", // MCPServerDefinition doesn't have Description field
+		Available:   a.manager.IsAvailable(def.Name),
+		Description: def.Description,
 		Command:     def.Command,
 		Image:       def.Image,
 		Env:         def.Env,
-	}
-
-	return apiDef, nil
+		Error:       def.Error,
+	}, nil
 }
 
 // IsMCPServerAvailable checks if an MCP server is available
@@ -344,10 +347,10 @@ func (a *Adapter) handleMCPServerValidate(args map[string]interface{}) (*api.Cal
 
 	image, _ := args["image"].(string)
 
-	// Build internal MCPServerDefinition from structured parameters
-	def := MCPServerDefinition{
+	// Build internal api.MCPServer from structured parameters
+	def := api.MCPServer{
 		Name:                name,
-		Type:                MCPServerType(serverType),
+		Type:                api.MCPServerType(serverType),
 		Enabled:             autoStart, // Map autoStart to Enabled for validation
 		Image:               image,
 		Command:             command,
@@ -371,8 +374,8 @@ func (a *Adapter) handleMCPServerValidate(args map[string]interface{}) (*api.Cal
 }
 
 func (a *Adapter) handleMCPServerCreate(args map[string]interface{}) (*api.CallToolResult, error) {
-	// Convert structured parameters to MCPServerDefinition
-	def, err := convertToMCPServerDefinition(args)
+	// Convert structured parameters to api.MCPServer
+	def, err := convertToMCPServer(args)
 	if err != nil {
 		return simpleError(err.Error())
 	}
@@ -401,8 +404,8 @@ func (a *Adapter) handleMCPServerUpdate(args map[string]interface{}) (*api.CallT
 		return simpleError("name parameter is required")
 	}
 
-	// Convert structured parameters to MCPServerDefinition
-	def, err := convertToMCPServerDefinition(args)
+	// Convert structured parameters to api.MCPServer
+	def, err := convertToMCPServer(args)
 	if err != nil {
 		return simpleError(err.Error())
 	}
@@ -453,9 +456,9 @@ func simpleOK(msg string) (*api.CallToolResult, error) {
 	return &api.CallToolResult{Content: []interface{}{msg}, IsError: false}, nil
 }
 
-// convertToMCPServerDefinition converts structured parameters to MCPServerDefinition
-func convertToMCPServerDefinition(args map[string]interface{}) (MCPServerDefinition, error) {
-	var def MCPServerDefinition
+// convertToMCPServer converts structured parameters to api.MCPServer
+func convertToMCPServer(args map[string]interface{}) (api.MCPServer, error) {
+	var def api.MCPServer
 
 	// Required fields
 	name, ok := args["name"].(string)
@@ -468,7 +471,7 @@ func convertToMCPServerDefinition(args map[string]interface{}) (MCPServerDefinit
 	if !ok || serverType == "" {
 		return def, fmt.Errorf("type parameter is required")
 	}
-	def.Type = MCPServerType(serverType)
+	def.Type = api.MCPServerType(serverType)
 
 	// Optional fields
 	if enabled, ok := args["enabled"].(bool); ok {

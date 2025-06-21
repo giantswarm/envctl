@@ -1,170 +1,166 @@
 package capability
 
 import (
+	"context"
 	"fmt"
 	"sync"
+
+	"envctl/internal/api"
+	"envctl/pkg/logging"
 )
 
-// Resolver resolves capability requirements to providers
+// Resolver handles capability resolution and fulfillment
 type Resolver struct {
-	registry *Registry
-	mu       sync.RWMutex
-
-	// Track which services are using which capabilities
-	serviceHandles map[string][]CapabilityHandle // service -> handles
+	mu        sync.RWMutex
+	registry  *Registry
+	providers []Provider
+	handles   map[string]*api.CapabilityHandle // service ID -> handles
 }
 
 // NewResolver creates a new capability resolver
 func NewResolver(registry *Registry) *Resolver {
 	return &Resolver{
-		registry:       registry,
-		serviceHandles: make(map[string][]CapabilityHandle),
+		registry:  registry,
+		providers: []Provider{},
+		handles:   make(map[string]*api.CapabilityHandle),
 	}
 }
 
-// ResolveRequirement finds a provider for a capability requirement
-func (r *Resolver) ResolveRequirement(req CapabilityRequirement) (*Capability, error) {
-	request := CapabilityRequest{
+// RegisterProvider registers a capability provider
+func (r *Resolver) RegisterProvider(provider Provider) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.providers = append(r.providers, provider)
+	logging.Info("Resolver", "Registered capability provider for types: %v", provider.GetCapabilityTypes())
+}
+
+// ResolveRequirement attempts to resolve a capability requirement
+func (r *Resolver) ResolveRequirement(ctx context.Context, serviceID string, req api.CapabilityRequirement) (*api.CapabilityHandle, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	logging.Debug("Resolver", "Resolving requirement for service %s: type=%s, features=%v",
+		serviceID, req.Type, req.Features)
+
+	// First, try to find existing capabilities in the registry
+	existing := r.registry.ListByType(req.Type)
+	for _, cap := range existing {
+		if r.matchesRequirement(cap, req) {
+			// Create a handle for the existing capability
+			handle := &api.CapabilityHandle{
+				ID:       fmt.Sprintf("%s-%s", serviceID, cap.ID),
+				Provider: cap.Provider,
+				Type:     req.Type,
+				Config:   req.Config,
+			}
+
+			r.handles[serviceID] = handle
+			logging.Info("Resolver", "Resolved requirement using existing capability: %s", cap.Name)
+			return handle, nil
+		}
+	}
+
+	// If no existing capability found, try providers
+	capReq := api.CapabilityRequest{
 		Type:     req.Type,
 		Features: req.Features,
 		Config:   req.Config,
+		Timeout:  0, // Use default timeout
 	}
 
-	matching := r.registry.FindMatching(request)
+	for _, provider := range r.providers {
+		if provider.CanProvide(req.Type, req.Features) {
+			handle, err := provider.Request(ctx, capReq)
+			if err != nil {
+				logging.Warn("Resolver", "Provider failed to fulfill capability: %v", err)
+				continue
+			}
 
-	if len(matching) == 0 && !req.Optional {
-		return nil, fmt.Errorf("no provider found for required capability %s", req.Type)
-	}
-
-	if len(matching) == 0 {
-		// Optional requirement with no provider
-		return nil, nil
-	}
-
-	// For now, return the first matching provider
-	// In the future, we could add selection logic based on:
-	// - Provider health/status
-	// - Load balancing
-	// - User preferences
-	return matching[0], nil
-}
-
-// RequestCapability requests a capability for a service
-func (r *Resolver) RequestCapability(serviceLabel string, req CapabilityRequest) (*CapabilityHandle, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	// Find matching capability
-	matching := r.registry.FindMatching(req)
-	if len(matching) == 0 {
-		return nil, fmt.Errorf("no provider found for capability %s", req.Type)
-	}
-
-	// Use first matching provider
-	provider := matching[0]
-
-	// Create handle
-	handle := &CapabilityHandle{
-		ID:       fmt.Sprintf("%s-%s-%s", serviceLabel, provider.Provider, provider.ID),
-		Provider: provider.Provider,
-		Type:     provider.Type,
-		Config:   provider.Config,
-	}
-
-	// Track the handle
-	r.serviceHandles[serviceLabel] = append(r.serviceHandles[serviceLabel], *handle)
-
-	return handle, nil
-}
-
-// ReleaseCapability releases a capability handle
-func (r *Resolver) ReleaseCapability(serviceLabel string, handleID string) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	handles, exists := r.serviceHandles[serviceLabel]
-	if !exists {
-		return fmt.Errorf("no capabilities registered for service %s", serviceLabel)
-	}
-
-	// Remove the handle
-	var newHandles []CapabilityHandle
-	found := false
-	for _, h := range handles {
-		if h.ID != handleID {
-			newHandles = append(newHandles, h)
-		} else {
-			found = true
+			r.handles[serviceID] = handle
+			logging.Info("Resolver", "Resolved requirement using provider: %s", provider)
+			return handle, nil
 		}
 	}
 
-	if !found {
-		return fmt.Errorf("handle %s not found for service %s", handleID, serviceLabel)
-	}
-
-	if len(newHandles) == 0 {
-		delete(r.serviceHandles, serviceLabel)
-	} else {
-		r.serviceHandles[serviceLabel] = newHandles
-	}
-
-	return nil
+	return nil, fmt.Errorf("no provider available for capability type %s with features %v", req.Type, req.Features)
 }
 
-// GetServiceHandles returns all capability handles for a service
-func (r *Resolver) GetServiceHandles(serviceLabel string) []CapabilityHandle {
+// ReleaseHandle releases a capability handle for a service
+func (r *Resolver) ReleaseHandle(ctx context.Context, serviceID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	handle, exists := r.handles[serviceID]
+	if !exists {
+		return fmt.Errorf("no handle found for service %s", serviceID)
+	}
+
+	// Find the provider and release the capability
+	for _, provider := range r.providers {
+		if err := provider.Release(ctx, handle); err != nil {
+			logging.Warn("Resolver", "Provider failed to release capability: %v", err)
+			continue
+		}
+
+		delete(r.handles, serviceID)
+		logging.Info("Resolver", "Released capability handle for service %s", serviceID)
+		return nil
+	}
+
+	return fmt.Errorf("failed to release capability handle for service %s", serviceID)
+}
+
+// GetHandle returns the capability handle for a service
+func (r *Resolver) GetHandle(serviceID string) (*api.CapabilityHandle, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	handles := r.serviceHandles[serviceLabel]
-	result := make([]CapabilityHandle, len(handles))
-	copy(result, handles)
+	handle, exists := r.handles[serviceID]
+	return handle, exists
+}
+
+// ListHandles returns all active capability handles
+func (r *Resolver) ListHandles() map[string]*api.CapabilityHandle {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	result := make(map[string]*api.CapabilityHandle)
+	for k, v := range r.handles {
+		result[k] = v
+	}
 	return result
 }
 
-// ReleaseAllForService releases all capabilities for a service
-func (r *Resolver) ReleaseAllForService(serviceLabel string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+// matchesRequirement checks if a capability matches a requirement
+func (r *Resolver) matchesRequirement(cap *api.Capability, req api.CapabilityRequirement) bool {
+	// Check if capability is active
+	if cap.State != api.CapabilityStateActive {
+		return false
+	}
 
-	delete(r.serviceHandles, serviceLabel)
-}
-
-// GetServicesUsingCapability returns all services using a specific capability
-func (r *Resolver) GetServicesUsingCapability(capabilityID string) []string {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	var services []string
-	for service, handles := range r.serviceHandles {
-		for _, handle := range handles {
-			// Check if this handle is for the specified capability
-			// The handle ID format is: serviceLabel-provider-capabilityID
-			if len(handle.ID) > len(capabilityID) &&
-				handle.ID[len(handle.ID)-len(capabilityID):] == capabilityID {
-				services = append(services, service)
+	// Check if all required features are supported
+	for _, requiredFeature := range req.Features {
+		found := false
+		for _, feature := range cap.Features {
+			if feature == requiredFeature {
+				found = true
 				break
 			}
 		}
-	}
-
-	return services
-}
-
-// GetServicesUsingProvider returns all services using a specific provider
-func (r *Resolver) GetServicesUsingProvider(provider string) []string {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	var services []string
-	for service, handles := range r.serviceHandles {
-		for _, handle := range handles {
-			if handle.Provider == provider {
-				services = append(services, service)
-				break
-			}
+		if !found {
+			return false
 		}
 	}
 
-	return services
+	return true
+}
+
+// GetProviders returns all registered providers
+func (r *Resolver) GetProviders() []Provider {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	result := make([]Provider, len(r.providers))
+	copy(result, r.providers)
+	return result
 }

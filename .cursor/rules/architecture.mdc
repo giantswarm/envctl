@@ -1,7 +1,7 @@
 ---
 description: 
 globs: 
-alwaysApply: false
+alwaysApply: true
 ---
 - **Architectural principles**
   - This document outlines the fundamental architectural principles and patterns for the `envctl` codebase. Adherence to these guidelines is **mandatory** to maintain a clean, decoupled, and testable system.

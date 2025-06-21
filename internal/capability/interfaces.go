@@ -2,43 +2,45 @@ package capability
 
 import (
 	"context"
+
+	"envctl/internal/api"
 )
 
-// CapabilityProvider is implemented by services that provide capabilities
-type CapabilityProvider interface {
-	// GetCapabilityType returns the type of capability this provider offers
-	GetCapabilityType() CapabilityType
+// Provider represents something that can provide capabilities
+type Provider interface {
+	// GetCapabilityTypes returns the types of capabilities this provider can offer
+	GetCapabilityTypes() []string
 
-	// GetCapabilityFeatures returns the list of features this provider supports
-	GetCapabilityFeatures() []string
+	// CanProvide checks if this provider can provide a specific capability type with the given features
+	CanProvide(capabilityType string, features []string) bool
 
-	// ValidateCapabilityRequest validates if this provider can fulfill a request
-	ValidateCapabilityRequest(req CapabilityRequest) error
+	// Request requests a capability fulfillment
+	Request(ctx context.Context, req api.CapabilityRequest) (*api.CapabilityHandle, error)
 
-	// ProvideCapability attempts to fulfill a capability request
-	ProvideCapability(ctx context.Context, req CapabilityRequest) (CapabilityHandle, error)
+	// Release releases a previously requested capability
+	Release(ctx context.Context, handle *api.CapabilityHandle) error
 }
 
-// CapabilityConsumer is implemented by services that require capabilities
-type CapabilityConsumer interface {
-	// GetRequiredCapabilities returns the capabilities this service needs
-	GetRequiredCapabilities() []CapabilityRequirement
+// Manager defines the interface for managing capability requirements and fulfillment
+type Manager interface {
+	// AddRequirement adds a capability requirement for a service
+	AddRequirement(serviceID string, req api.CapabilityRequirement) error
 
-	// OnCapabilityProvided is called when a required capability is fulfilled
-	OnCapabilityProvided(cap CapabilityHandle) error
+	// RemoveRequirement removes a capability requirement for a service
+	RemoveRequirement(serviceID string, handle *api.CapabilityHandle) error
 
-	// OnCapabilityLost is called when a capability is no longer available
-	OnCapabilityLost(capabilityID string) error
-}
+	// GetRequirements returns all requirements for a service
+	GetRequirements(serviceID string) []api.CapabilityRequirement
 
-// RegistryObserver can be implemented to receive notifications about registry changes
-type RegistryObserver interface {
-	// OnCapabilityRegistered is called when a new capability is registered
-	OnCapabilityRegistered(cap *Capability)
+	// ListProviders returns all registered providers
+	ListProviders() []Provider
 
-	// OnCapabilityUnregistered is called when a capability is removed
-	OnCapabilityUnregistered(capabilityID string)
+	// RegisterProvider registers a capability provider
+	RegisterProvider(provider Provider)
 
-	// OnCapabilityUpdated is called when a capability is updated
-	OnCapabilityUpdated(cap *Capability)
+	// GetCapability returns an active capability by ID
+	GetCapability(capabilityID string) (*api.Capability, error)
+
+	// ListCapabilities returns all active capabilities
+	ListCapabilities() []*api.Capability
 }

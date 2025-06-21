@@ -213,17 +213,17 @@ func (a *Adapter) SubscribeToServiceInstanceEvents() <-chan api.ServiceClassInst
 // convertToAPIServiceClassInstanceInfo converts internal ServiceInstanceInfo to API ServiceClassInstanceInfo
 func (a *Adapter) convertToAPIServiceClassInstanceInfo(internalInfo *ServiceInstanceInfo) *api.ServiceClassInstanceInfo {
 	return &api.ServiceClassInstanceInfo{
-		ServiceID:          internalInfo.ServiceID,
-		Label:              internalInfo.Label,
-		ServiceClassName:   internalInfo.ServiceClassName,
-		ServiceClassType:   internalInfo.ServiceClassType,
-		State:              internalInfo.State,
-		Health:             internalInfo.Health,
-		LastError:          internalInfo.LastError,
-		CreatedAt:          internalInfo.CreatedAt,
-		LastChecked:        internalInfo.LastChecked,
-		ServiceData:        internalInfo.ServiceData,
-		CreationParameters: internalInfo.CreationParameters,
+		ID:               internalInfo.ServiceID,
+		Label:            internalInfo.Label,
+		ServiceClassName: internalInfo.ServiceClassName,
+		ServiceClassType: internalInfo.ServiceClassType,
+		State:            api.ServiceState(internalInfo.State),
+		Health:           api.HealthStatus(internalInfo.Health),
+		LastError:        internalInfo.LastError,
+		CreatedAt:        internalInfo.CreatedAt,
+		LastChecked:      internalInfo.LastChecked,
+		ServiceData:      internalInfo.ServiceData,
+		Parameters:       internalInfo.CreationParameters,
 	}
 }
 

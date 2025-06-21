@@ -37,28 +37,7 @@ type MCPResource struct {
 	MimeType    string `json:"mimeType,omitempty"`
 }
 
-// Service states
-type ServiceState string
-
-const (
-	StateStopped  ServiceState = "stopped"
-	StateStarting ServiceState = "starting"
-	StateRunning  ServiceState = "running"
-	StateStopping ServiceState = "stopping"
-	StateError    ServiceState = "error"
-	StateFailed   ServiceState = "Failed"
-)
-
-// Health statuses
-type HealthStatus string
-
-const (
-	HealthUnknown   HealthStatus = "unknown"
-	HealthHealthy   HealthStatus = "healthy"
-	HealthDegraded  HealthStatus = "degraded"
-	HealthUnhealthy HealthStatus = "unhealthy"
-	HealthChecking  HealthStatus = "Checking"
-)
+// Service states and health statuses moved to shared.go
 
 // Service types
 type ServiceType string
@@ -182,48 +161,10 @@ type CallToolResult struct {
 	IsError bool          `json:"isError,omitempty"`
 }
 
-// CapabilityInfo provides information about a capability
-type CapabilityInfo struct {
-	Type        string          `json:"type"`
-	Name        string          `json:"name"`
-	Description string          `json:"description"`
-	Version     string          `json:"version"`
-	Operations  []OperationInfo `json:"operations"`
-}
+// Legacy types - moved to consolidated files
+// CapabilityInfo, OperationInfo, WorkflowInfo moved to capability.go and workflow.go
 
-// OperationInfo provides information about a capability operation
-type OperationInfo struct {
-	Name        string
-	Description string
-	Available   bool
-}
-
-// WorkflowInfo provides information about a workflow
-type WorkflowInfo struct {
-	Name        string
-	Description string
-	Version     string
-}
-
-// WorkflowDefinition represents a complete workflow definition
-type WorkflowDefinition struct {
-	Name         string                 `yaml:"name"`
-	Description  string                 `yaml:"description"`
-	Version      string                 `yaml:"version,omitempty"`
-	InputSchema  map[string]interface{} `yaml:"inputSchema,omitempty"`
-	Steps        []WorkflowStep         `yaml:"steps"`
-	OutputSchema map[string]interface{} `yaml:"outputSchema,omitempty"`
-}
-
-// WorkflowStep represents a step in a workflow
-type WorkflowStep struct {
-	ID          string                 `yaml:"id"`
-	Tool        string                 `yaml:"tool"`
-	Args        map[string]interface{} `yaml:"args,omitempty"`
-	Store       string                 `yaml:"store,omitempty"`
-	Condition   string                 `yaml:"condition,omitempty"`
-	Description string                 `yaml:"description,omitempty"`
-}
+// WorkflowDefinition and WorkflowStep moved to workflow.go and shared.go
 
 // ToolCaller defines the interface for calling tools
 type ToolCaller interface {

@@ -1,323 +1,207 @@
 package mcpserver
 
 import (
-	"bufio"
 	"context"
+	"fmt"
+	"strings"
+	"time"
+
+	"envctl/internal/api"
 	"envctl/internal/containerizer"
 	"envctl/pkg/logging"
-	"fmt"
-	"strconv"
-	"strings"
-	"sync"
-	"time"
 )
 
-// StartAndManageContainerizedMcpServer starts and manages a containerized MCP server
-func StartAndManageContainerizedMcpServer(
-	serverConfig MCPServerDefinition,
-	runtime containerizer.ContainerRuntime,
-	updateFn McpUpdateFunc,
-	wg *sync.WaitGroup,
-) (containerID string, stopChan chan struct{}, initialError error) {
-	label := serverConfig.Name
-	subsystem := "MCPContainer-" + label
+// ContainerRunner handles container-based MCP servers
+type ContainerRunner struct {
+	containerizer containerizer.ContainerRuntime
+	definition    *api.MCPServer
+	containerID   string
+	stopChan      chan struct{}
+}
 
-	logging.Info(subsystem, "Initializing containerized MCP server %s (image: %s)", label, serverConfig.Image)
-	if updateFn != nil {
-		updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "ContainerInitializing"})
+// NewContainerRunner creates a new container runner
+func NewContainerRunner(definition *api.MCPServer) (*ContainerRunner, error) {
+	containerRuntime, err := containerizer.NewContainerRuntime("docker")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create container runtime: %w", err)
 	}
 
-	// Validate configuration
-	if serverConfig.Image == "" {
-		errMsg := fmt.Errorf("container image not defined for MCP server %s", label)
-		logging.Error(subsystem, errMsg, "Cannot start containerized MCP server")
-		if updateFn != nil {
-			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "ContainerStartFailed", ProcessErr: errMsg})
-		}
-		return "", nil, errMsg
+	return &ContainerRunner{
+		containerizer: containerRuntime,
+		definition:    definition,
+		stopChan:      make(chan struct{}),
+	}, nil
+}
+
+// Start starts the container
+func (cr *ContainerRunner) Start(ctx context.Context) error {
+	logging.Info("ContainerRunner", "Starting container for MCP server: %s", cr.definition.Name)
+
+	// Validate container configuration
+	if cr.definition.Image == "" {
+		return fmt.Errorf("container image is required for container-type MCP server")
 	}
 
-	ctx := context.Background()
-	currentStopChan := make(chan struct{})
-
-	// Pull the image if needed
-	if err := runtime.PullImage(ctx, serverConfig.Image); err != nil {
-		errMsg := fmt.Errorf("failed to pull image for %s: %w", label, err)
-		logging.Error(subsystem, err, "Failed to pull container image")
-		close(currentStopChan)
-		if updateFn != nil {
-			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "ContainerStartFailed", ProcessErr: errMsg})
-		}
-		return "", nil, errMsg
+	// Prepare container config
+	config := containerizer.ContainerConfig{
+		Name:        fmt.Sprintf("envctl-mcp-%s-%d", cr.definition.Name, time.Now().Unix()),
+		Image:       cr.definition.Image,
+		Env:         cr.convertEnvMap(),
+		Ports:       cr.definition.ContainerPorts,
+		Volumes:     cr.definition.ContainerVolumes,
+		Entrypoint:  cr.definition.Entrypoint,
+		User:        cr.definition.ContainerUser,
+		HealthCheck: cr.definition.HealthCheckCmd,
 	}
 
-	// Prepare container configuration
-	containerConfig := containerizer.ContainerConfig{
-		Name:        fmt.Sprintf("envctl-mcp-%s-%d", label, time.Now().Unix()),
-		Image:       serverConfig.Image,
-		Env:         mergeEnvMaps(serverConfig.Env, serverConfig.ContainerEnv),
-		Ports:       serverConfig.ContainerPorts,
-		Volumes:     serverConfig.ContainerVolumes,
-		Entrypoint:  serverConfig.Entrypoint,
-		User:        serverConfig.ContainerUser,
-		HealthCheck: serverConfig.HealthCheckCmd,
+	// Pull image first
+	if err := cr.containerizer.PullImage(ctx, cr.definition.Image); err != nil {
+		return fmt.Errorf("failed to pull image: %w", err)
 	}
 
 	// Start the container
-	cID, err := runtime.StartContainer(ctx, containerConfig)
+	containerID, err := cr.containerizer.StartContainer(ctx, config)
 	if err != nil {
-		errMsg := fmt.Errorf("failed to start container for %s: %w", label, err)
-		logging.Error(subsystem, err, "Failed to start container")
-		close(currentStopChan)
-		if updateFn != nil {
-			updateFn(McpDiscreteStatusUpdate{Label: label, ProcessStatus: "ContainerStartFailed", ProcessErr: err})
-		}
-		return "", nil, errMsg
+		return fmt.Errorf("failed to start container: %w", err)
 	}
 
-	containerID = cID
-	shortID := containerID
-	if len(containerID) > 12 {
-		shortID = containerID[:12]
-	}
-	logging.Debug(subsystem, "Container started successfully with ID %s", shortID)
+	cr.containerID = containerID
+	logging.Info("ContainerRunner", "Container started with ID: %s", containerID[:12])
 
-	// Get logs reader
-	logsReader, err := runtime.GetContainerLogs(ctx, containerID)
+	// Start health monitoring if configured
+	if len(cr.definition.HealthCheckCmd) > 0 && cr.definition.HealthCheckInterval > 0 {
+		go cr.startHealthMonitoring(ctx)
+	}
+
+	return nil
+}
+
+// Stop stops the container
+func (cr *ContainerRunner) Stop(ctx context.Context) error {
+	if cr.containerID == "" {
+		return nil
+	}
+
+	logging.Info("ContainerRunner", "Stopping container: %s", cr.containerID[:12])
+
+	// Signal health monitoring to stop
+	select {
+	case <-cr.stopChan:
+		// Already closed
+	default:
+		close(cr.stopChan)
+	}
+
+	// Stop the container
+	if err := cr.containerizer.StopContainer(ctx, cr.containerID); err != nil {
+		return fmt.Errorf("failed to stop container: %w", err)
+	}
+
+	// Remove the container
+	if err := cr.containerizer.RemoveContainer(ctx, cr.containerID); err != nil {
+		logging.Warn("ContainerRunner", "Failed to remove container: %v", err)
+	}
+
+	cr.containerID = ""
+	return nil
+}
+
+// IsRunning checks if the container is running
+func (cr *ContainerRunner) IsRunning(ctx context.Context) bool {
+	if cr.containerID == "" {
+		return false
+	}
+
+	running, err := cr.containerizer.IsContainerRunning(ctx, cr.containerID)
 	if err != nil {
-		logging.Error(subsystem, err, "Failed to get container logs, continuing anyway")
+		logging.Warn("ContainerRunner", "Failed to check container status: %v", err)
+		return false
+	}
+	return running
+}
+
+// GetPorts returns the exposed ports of the container
+func (cr *ContainerRunner) GetPorts(ctx context.Context) (map[string]string, error) {
+	if cr.containerID == "" {
+		return nil, fmt.Errorf("container not started")
 	}
 
-	// Initialize with configured port or 0
-	actualPort := 0
-
-	if updateFn != nil {
-		updateFn(McpDiscreteStatusUpdate{
-			Label:         label,
-			ProcessStatus: "ContainerRunning",
-		})
-	}
-
-	// Start goroutine to manage the container
-	go func() {
-		if wg != nil {
-			defer wg.Done()
-		}
-		if logsReader != nil {
-			defer logsReader.Close()
-		}
-
-		// Start log processing if we have a reader
-		if logsReader != nil {
-			go func() {
-				scanner := bufio.NewScanner(logsReader)
-				for scanner.Scan() {
-					line := scanner.Text()
-
-					// Log the line
-					if strings.Contains(line, "ERROR") || strings.Contains(line, "FATAL") {
-						logging.Error(subsystem+"-logs", nil, "%s", line)
-					} else if strings.Contains(line, "WARN") {
-						logging.Warn(subsystem+"-logs", "%s", line)
-					} else {
-						logging.Info(subsystem+"-logs", "%s", line)
-					}
-
-					// Try to detect the actual port if not set
-					if actualPort == 0 {
-						if detectedPort := detectPortFromLog(line); detectedPort > 0 {
-							actualPort = detectedPort
-							logging.Info(subsystem, "Detected container listening on port %d", actualPort)
-							if updateFn != nil {
-								updateFn(McpDiscreteStatusUpdate{
-									Label:         label,
-									ProcessStatus: "ContainerRunning",
-								})
-							}
-						}
-					}
-				}
-			}()
-		}
-
-		// If we still don't have a port and container has port mappings, try to get it from Docker
-		if actualPort == 0 && len(serverConfig.ContainerPorts) > 0 {
-			// Create a channel to wait for port detection
-			portDetected := make(chan int, 1)
-
-			// Try to get port mapping in a goroutine
-			go func() {
-				// Give container a moment to fully initialize port bindings
-				retries := 10
-				for i := 0; i < retries && actualPort == 0; i++ {
-					// Try to get the first container port mapping
-					for _, portMapping := range serverConfig.ContainerPorts {
-						parts := strings.Split(portMapping, ":")
-						if len(parts) >= 2 {
-							containerPort := parts[len(parts)-1]
-							if hostPort, err := runtime.GetContainerPort(ctx, containerID, containerPort); err == nil {
-								if port, err := strconv.Atoi(hostPort); err == nil {
-									portDetected <- port
-									return
-								}
-							}
-						}
-					}
-					// Small delay between retries
-					select {
-					case <-time.After(200 * time.Millisecond):
-					case <-currentStopChan:
-						return
-					}
-				}
-				portDetected <- 0
-			}()
-
-			// Wait for port detection with timeout
-			select {
-			case detectedPort := <-portDetected:
-				if detectedPort > 0 {
-					actualPort = detectedPort
-					logging.Info(subsystem, "Got container port mapping: %d", actualPort)
-					if updateFn != nil {
-						updateFn(McpDiscreteStatusUpdate{
-							Label:         label,
-							ProcessStatus: "ContainerRunning",
-						})
-					}
-				}
-			case <-time.After(3 * time.Second):
-				logging.Warn(subsystem, "Timeout waiting for container port detection")
-			case <-currentStopChan:
-				logging.Debug(subsystem, "Stopped while waiting for port detection")
+	ports := make(map[string]string)
+	for _, portSpec := range cr.definition.ContainerPorts {
+		parts := strings.Split(portSpec, ":")
+		if len(parts) == 2 {
+			containerPort := parts[1]
+			hostPort, err := cr.containerizer.GetContainerPort(ctx, cr.containerID, containerPort)
+			if err != nil {
+				logging.Warn("ContainerRunner", "Failed to get port mapping for %s: %v", containerPort, err)
+				continue
 			}
-		}
-
-		// Monitor container status
-		ticker := time.NewTicker(5 * time.Second)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ticker.C:
-				// Check if container is still running
-				running, err := runtime.IsContainerRunning(ctx, containerID)
-				if err != nil {
-					logging.Error(subsystem, err, "Failed to check container status")
-					if updateFn != nil {
-						updateFn(McpDiscreteStatusUpdate{
-							Label:         label,
-							ProcessStatus: "ContainerStatusCheckFailed",
-							ProcessErr:    err,
-						})
-					}
-				} else if !running {
-					logging.Info(subsystem, "Container has stopped")
-					if updateFn != nil {
-						updateFn(McpDiscreteStatusUpdate{
-							Label:         label,
-							ProcessStatus: "ContainerExited",
-						})
-					}
-					return
-				}
-
-			case <-currentStopChan:
-				shortID := containerID
-				if len(containerID) > 12 {
-					shortID = containerID[:12]
-				}
-				logging.Debug(subsystem, "Received stop signal for container %s", shortID)
-				finalProcessStatus := "ContainerStoppedByUser"
-				var stopErr error
-
-				if err := runtime.StopContainer(ctx, containerID); err != nil {
-					logging.Error(subsystem, err, "Failed to stop container")
-					finalProcessStatus = "ContainerStopFailed"
-					stopErr = err
-				} else {
-					logging.Info(subsystem, "Container stopped successfully")
-					// Clean up by removing the container
-					if err := runtime.RemoveContainer(ctx, containerID); err != nil {
-						logging.Warn(subsystem, "Failed to remove container: %v", err)
-					}
-				}
-
-				if updateFn != nil {
-					updateFn(McpDiscreteStatusUpdate{
-						Label:         label,
-						ProcessStatus: finalProcessStatus,
-						ProcessErr:    stopErr,
-					})
-				}
-				return
-			}
-		}
-	}()
-
-	return containerID, currentStopChan, nil
-}
-
-// mergeEnvMaps merges two environment variable maps, with the second taking precedence
-func mergeEnvMaps(env1, env2 map[string]string) map[string]string {
-	result := make(map[string]string)
-	for k, v := range env1 {
-		result[k] = v
-	}
-	for k, v := range env2 {
-		result[k] = v
-	}
-	return result
-}
-
-// containsPort checks if a port mapping is already in the list
-func containsPort(ports []string, portMapping string) bool {
-	for _, p := range ports {
-		if p == portMapping {
-			return true
+			ports[containerPort] = hostPort
 		}
 	}
-	return false
+
+	return ports, nil
 }
 
-// detectPortFromLog tries to detect port information from log lines
-func detectPortFromLog(line string) int {
-	// Common patterns for port announcements
-	patterns := []string{
-		"Starting MCP SSE server on port",
-		"MCP server running on",
-		"Server running on port",
-		"Listening on port",
-		"listening on :",
-		"Started server on :",
+// GetContainerID returns the container ID
+func (cr *ContainerRunner) GetContainerID() string {
+	return cr.containerID
+}
+
+// convertEnvMap converts the environment map to the format expected by containerizer
+func (cr *ContainerRunner) convertEnvMap() map[string]string {
+	env := make(map[string]string)
+
+	// Add local env variables
+	for k, v := range cr.definition.Env {
+		env[k] = v
 	}
 
-	for _, pattern := range patterns {
-		if strings.Contains(line, pattern) {
-			// Try to extract port number
-			parts := strings.Fields(line)
-			for i, part := range parts {
-				if part == "port" && i+1 < len(parts) {
-					portStr := strings.TrimSuffix(parts[i+1], ",")
-					portStr = strings.TrimSuffix(portStr, ".")
-					if port, err := strconv.Atoi(portStr); err == nil {
-						return port
-					}
-				}
-				// Also check for :PORT pattern
-				if strings.Contains(part, ":") {
-					subparts := strings.Split(part, ":")
-					if len(subparts) >= 2 {
-						portStr := strings.TrimSuffix(subparts[len(subparts)-1], ",")
-						portStr = strings.TrimSuffix(portStr, ".")
-						if port, err := strconv.Atoi(portStr); err == nil {
-							return port
-						}
-					}
-				}
+	// Add container-specific env variables
+	for k, v := range cr.definition.ContainerEnv {
+		env[k] = v
+	}
+
+	return env
+}
+
+// startHealthMonitoring starts health monitoring for the container
+func (cr *ContainerRunner) startHealthMonitoring(ctx context.Context) {
+	ticker := time.NewTicker(cr.definition.HealthCheckInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-cr.stopChan:
+			return
+		case <-ticker.C:
+			if !cr.IsRunning(ctx) {
+				logging.Warn("ContainerRunner", "Container %s is not running", cr.definition.Name)
 			}
 		}
 	}
+}
 
-	return 0
+// GetLogs retrieves container logs
+func (cr *ContainerRunner) GetLogs(ctx context.Context) (string, error) {
+	if cr.containerID == "" {
+		return "", fmt.Errorf("container not started")
+	}
+
+	logsReader, err := cr.containerizer.GetContainerLogs(ctx, cr.containerID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get container logs: %w", err)
+	}
+	defer logsReader.Close()
+
+	// Read a limited amount of logs
+	buffer := make([]byte, 4096)
+	n, err := logsReader.Read(buffer)
+	if err != nil && err.Error() != "EOF" {
+		return "", fmt.Errorf("failed to read container logs: %w", err)
+	}
+
+	return string(buffer[:n]), nil
 }

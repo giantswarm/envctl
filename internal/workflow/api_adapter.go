@@ -2,146 +2,93 @@ package workflow
 
 import (
 	"context"
-	"envctl/internal/api"
-	"envctl/pkg/logging"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
+
+	"envctl/internal/api"
+	"envctl/pkg/logging"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"gopkg.in/yaml.v3"
 )
 
-// Adapter adapts the workflow system to implement api.WorkflowHandler
+// Adapter provides the API adapter for workflow management
 type Adapter struct {
 	manager *WorkflowManager
 }
 
-// NewAdapter creates a new API adapter for the workflow manager
+// NewAdapter creates a new workflow adapter
 func NewAdapter(manager *WorkflowManager, toolCaller api.ToolCaller) *Adapter {
 	return &Adapter{
 		manager: manager,
 	}
 }
 
-// Register registers this adapter with the central API layer
+// Register registers this adapter with the API layer
 func (a *Adapter) Register() {
 	api.RegisterWorkflow(a)
-	logging.Info("WorkflowAdapter", "Registered workflow adapter with API")
+	logging.Debug("WorkflowAdapter", "Registered workflow adapter with API layer")
 }
 
-// SetToolCaller sets the ToolCaller on the underlying workflow manager
+// SetToolCaller sets the ToolCaller for workflow execution
 func (a *Adapter) SetToolCaller(toolCaller interface{}) {
-	if a.manager != nil {
-		// Type assert to workflow.ToolCaller
-		if wfToolCaller, ok := toolCaller.(ToolCaller); ok {
-			a.manager.SetToolCaller(wfToolCaller)
-			logging.Debug("WorkflowAdapter", "Set ToolCaller on workflow manager")
-		} else {
-			logging.Warn("WorkflowAdapter", "Provided toolCaller does not implement workflow.ToolCaller interface")
-		}
+	if tc, ok := toolCaller.(ToolCaller); ok {
+		a.manager.SetToolCaller(tc)
+		logging.Debug("WorkflowAdapter", "Updated ToolCaller for workflow execution")
+	} else {
+		logging.Error("WorkflowAdapter", fmt.Errorf("invalid ToolCaller type"), "Failed to set ToolCaller")
 	}
 }
 
-// ExecuteWorkflow executes a workflow
+// ExecuteWorkflow executes a workflow and returns MCP result
 func (a *Adapter) ExecuteWorkflow(ctx context.Context, workflowName string, args map[string]interface{}) (*api.CallToolResult, error) {
-	logging.Info("WorkflowAdapter", "Executing workflow through API: %s", workflowName)
+	logging.Debug("WorkflowAdapter", "Executing workflow: %s", workflowName)
 
-	// Execute workflow through manager
-	result, err := a.manager.ExecuteWorkflow(ctx, workflowName, args)
+	// Get the MCP result
+	mcpResult, err := a.manager.ExecuteWorkflow(ctx, workflowName, args)
 	if err != nil {
-		return nil, err
+		return &api.CallToolResult{
+			Content: []interface{}{err.Error()},
+			IsError: true,
+		}, nil
 	}
 
 	// Convert mcp.CallToolResult to api.CallToolResult
-	content := make([]interface{}, len(result.Content))
-	for i, c := range result.Content {
-		if textContent, ok := c.(mcp.TextContent); ok {
-			content[i] = textContent.Text
+	var content []interface{}
+	for _, mcpContent := range mcpResult.Content {
+		if textContent, ok := mcpContent.(mcp.TextContent); ok {
+			content = append(content, textContent.Text)
 		} else {
-			content[i] = c
+			content = append(content, mcpContent)
 		}
 	}
 
 	return &api.CallToolResult{
 		Content: content,
-		IsError: result.IsError,
+		IsError: mcpResult.IsError,
 	}, nil
 }
 
 // GetWorkflows returns information about all workflows
-func (a *Adapter) GetWorkflows() []api.WorkflowInfo {
+func (a *Adapter) GetWorkflows() []api.Workflow {
 	workflows := a.manager.ListDefinitions()
-	infos := make([]api.WorkflowInfo, 0, len(workflows))
-
-	for _, wf := range workflows {
-		infos = append(infos, api.WorkflowInfo{
-			Name:        wf.Name,
-			Description: wf.Description,
-			Version:     strconv.Itoa(wf.Version),
-		})
-	}
-
-	return infos
+	return workflows // Already using api.Workflow type
 }
 
 // GetWorkflow returns a specific workflow definition
-func (a *Adapter) GetWorkflow(name string) (*api.WorkflowDefinition, error) {
+func (a *Adapter) GetWorkflow(name string) (*api.Workflow, error) {
 	workflow, exists := a.manager.GetDefinition(name)
 	if !exists {
 		return nil, api.NewWorkflowNotFoundError(name)
 	}
-
-	// Convert workflow.WorkflowConfig to api.WorkflowDefinition
-	steps := make([]api.WorkflowStep, len(workflow.Steps))
-	for i, step := range workflow.Steps {
-		steps[i] = api.WorkflowStep{
-			ID:    step.ID,
-			Tool:  step.Tool,
-			Args:  step.Args,
-			Store: step.Store,
-			// Note: WorkflowStep doesn't have Condition or Description fields
-		}
-	}
-
-	// Convert InputSchema
-	inputSchema := make(map[string]interface{})
-	if workflow.InputSchema.Type != "" {
-		inputSchema["type"] = workflow.InputSchema.Type
-	}
-	if len(workflow.InputSchema.Properties) > 0 {
-		props := make(map[string]interface{})
-		for name, prop := range workflow.InputSchema.Properties {
-			propMap := map[string]interface{}{
-				"type":        prop.Type,
-				"description": prop.Description,
-			}
-			if prop.Default != nil {
-				propMap["default"] = prop.Default
-			}
-			props[name] = propMap
-		}
-		inputSchema["properties"] = props
-	}
-	if len(workflow.InputSchema.Required) > 0 {
-		inputSchema["required"] = workflow.InputSchema.Required
-	}
-
-	return &api.WorkflowDefinition{
-		Name:        workflow.Name,
-		Description: workflow.Description,
-		Version:     strconv.Itoa(workflow.Version),
-		InputSchema: inputSchema,
-		Steps:       steps,
-		// Note: WorkflowDefinition doesn't have OutputSchema
-	}, nil
+	return &workflow, nil
 }
 
 // CreateWorkflowFromStructured creates a new workflow from structured parameters
 func (a *Adapter) CreateWorkflowFromStructured(args map[string]interface{}) error {
-	// Convert structured parameters to WorkflowDefinition
-	wf, err := convertToWorkflowDefinition(args)
+	// Convert structured parameters to api.Workflow
+	wf, err := convertToWorkflow(args)
 	if err != nil {
 		return err
 	}
@@ -151,8 +98,8 @@ func (a *Adapter) CreateWorkflowFromStructured(args map[string]interface{}) erro
 
 // UpdateWorkflowFromStructured updates an existing workflow from structured parameters
 func (a *Adapter) UpdateWorkflowFromStructured(name string, args map[string]interface{}) error {
-	// Convert structured parameters to WorkflowDefinition
-	wf, err := convertToWorkflowDefinition(args)
+	// Convert structured parameters to api.Workflow
+	wf, err := convertToWorkflow(args)
 	if err != nil {
 		return err
 	}
@@ -163,7 +110,7 @@ func (a *Adapter) UpdateWorkflowFromStructured(name string, args map[string]inte
 // ValidateWorkflowFromStructured validates a workflow definition from structured parameters
 func (a *Adapter) ValidateWorkflowFromStructured(args map[string]interface{}) error {
 	// Convert structured parameters to validate structure
-	wf, err := convertToWorkflowDefinition(args)
+	wf, err := convertToWorkflow(args)
 	if err != nil {
 		return err
 	}
@@ -339,38 +286,23 @@ func (a *Adapter) convertWorkflowParameters(workflowName string) []api.Parameter
 	var params []api.ParameterMetadata
 
 	// Extract properties from input schema
-	if workflow.InputSchema != nil {
-		if props, ok := workflow.InputSchema["properties"].(map[string]interface{}); ok {
-			for name, prop := range props {
-				param := api.ParameterMetadata{
-					Name: name,
-				}
+	for name, prop := range workflow.InputSchema.Properties {
+		param := api.ParameterMetadata{
+			Name:        name,
+			Type:        prop.Type,
+			Description: prop.Description,
+			Default:     prop.Default,
+		}
 
-				if propMap, ok := prop.(map[string]interface{}); ok {
-					if t, ok := propMap["type"].(string); ok {
-						param.Type = t
-					}
-					if desc, ok := propMap["description"].(string); ok {
-						param.Description = desc
-					}
-					if def, ok := propMap["default"]; ok {
-						param.Default = def
-					}
-				}
-
-				// Check if required
-				if required, ok := workflow.InputSchema["required"].([]interface{}); ok {
-					for _, req := range required {
-						if reqStr, ok := req.(string); ok && reqStr == name {
-							param.Required = true
-							break
-						}
-					}
-				}
-
-				params = append(params, param)
+		// Check if required
+		for _, req := range workflow.InputSchema.Required {
+			if req == name {
+				param.Required = true
+				break
 			}
 		}
+
+		params = append(params, param)
 	}
 
 	return params
@@ -380,21 +312,13 @@ func (a *Adapter) convertWorkflowParameters(workflowName string) []api.Parameter
 func (a *Adapter) handleList(args map[string]interface{}) (*api.CallToolResult, error) {
 	workflows := a.GetWorkflows()
 
-	// Filter by include_system if provided
-	// includeSystem := true
-	// if val, ok := args["include_system"].(bool); ok {
-	// 	includeSystem = val
-	// }
-	// TODO: implement system workflow filtering when WorkflowInfo has system flag
-
 	var result []map[string]interface{}
 	for _, wf := range workflows {
-		// Skip system workflows if not requested
-		// (would need to add system flag to WorkflowInfo)
 		workflowInfo := map[string]interface{}{
 			"name":        wf.Name,
 			"description": wf.Description,
 			"version":     wf.Version,
+			"available":   wf.Available,
 		}
 		result = append(result, workflowInfo)
 	}
@@ -507,9 +431,9 @@ func (a *Adapter) handleValidate(args map[string]interface{}) (*api.CallToolResu
 	}, nil
 }
 
-// convertToWorkflowDefinition converts structured parameters to WorkflowDefinition
-func convertToWorkflowDefinition(args map[string]interface{}) (WorkflowDefinition, error) {
-	var wf WorkflowDefinition
+// convertToWorkflow converts structured parameters to api.Workflow
+func convertToWorkflow(args map[string]interface{}) (api.Workflow, error) {
+	var wf api.Workflow
 
 	// Required fields
 	name, ok := args["name"].(string)
@@ -522,13 +446,17 @@ func convertToWorkflowDefinition(args map[string]interface{}) (WorkflowDefinitio
 	if desc, ok := args["description"].(string); ok {
 		wf.Description = desc
 	}
-	if version, ok := args["version"].(string); ok {
-		// Convert string version to int for WorkflowDefinition
-		if version != "" {
-			// For now, just store as 1 if version is provided, 0 otherwise
-			// This maintains compatibility while using string input
-			wf.Version = 1
-		}
+	if version, ok := args["version"].(int); ok {
+		wf.Version = version
+	}
+	if icon, ok := args["icon"].(string); ok {
+		wf.Icon = icon
+	}
+	if agentModifiable, ok := args["agentModifiable"].(bool); ok {
+		wf.AgentModifiable = agentModifiable
+	}
+	if createdBy, ok := args["createdBy"].(string); ok {
+		wf.CreatedBy = createdBy
 	}
 
 	// Convert inputSchema
@@ -560,9 +488,9 @@ func convertToWorkflowDefinition(args map[string]interface{}) (WorkflowDefinitio
 	return wf, nil
 }
 
-// convertInputSchema converts a map[string]interface{} to WorkflowInputSchema
-func convertInputSchema(schemaParam map[string]interface{}) (WorkflowInputSchema, error) {
-	var schema WorkflowInputSchema
+// convertInputSchema converts a map[string]interface{} to api.WorkflowInputSchema
+func convertInputSchema(schemaParam map[string]interface{}) (api.WorkflowInputSchema, error) {
+	var schema api.WorkflowInputSchema
 
 	// Type field
 	if schemaType, ok := schemaParam["type"].(string); ok {
@@ -570,78 +498,87 @@ func convertInputSchema(schemaParam map[string]interface{}) (WorkflowInputSchema
 	}
 
 	// Properties field
-	if props, ok := schemaParam["properties"].(map[string]interface{}); ok {
-		schema.Properties = make(map[string]SchemaProperty)
-		for propName, propData := range props {
-			propMap, ok := propData.(map[string]interface{})
-			if !ok {
-				return schema, fmt.Errorf("property '%s' must be an object", propName)
+	if propsParam, ok := schemaParam["properties"].(map[string]interface{}); ok {
+		properties := make(map[string]api.SchemaProperty)
+		for name, prop := range propsParam {
+			if propMap, ok := prop.(map[string]interface{}); ok {
+				var property api.SchemaProperty
+				if propType, ok := propMap["type"].(string); ok {
+					property.Type = propType
+				}
+				if desc, ok := propMap["description"].(string); ok {
+					property.Description = desc
+				}
+				if def, ok := propMap["default"]; ok {
+					property.Default = def
+				}
+				properties[name] = property
 			}
-
-			var prop SchemaProperty
-			if propType, ok := propMap["type"].(string); ok {
-				prop.Type = propType
-			}
-			if description, ok := propMap["description"].(string); ok {
-				prop.Description = description
-			}
-			if defaultValue, ok := propMap["default"]; ok {
-				prop.Default = defaultValue
-			}
-
-			schema.Properties[propName] = prop
 		}
+		schema.Properties = properties
 	}
 
 	// Required field
-	if required, ok := schemaParam["required"].([]interface{}); ok {
-		schema.Required = make([]string, len(required))
-		for i, req := range required {
+	if requiredParam, ok := schemaParam["required"].([]interface{}); ok {
+		var required []string
+		for _, req := range requiredParam {
 			if reqStr, ok := req.(string); ok {
-				schema.Required[i] = reqStr
-			} else {
-				return schema, fmt.Errorf("required field at index %d must be a string", i)
+				required = append(required, reqStr)
 			}
 		}
+		schema.Required = required
 	}
 
 	return schema, nil
 }
 
-// convertWorkflowSteps converts a []interface{} to []WorkflowStep
-func convertWorkflowSteps(stepsParam []interface{}) ([]WorkflowStep, error) {
-	steps := make([]WorkflowStep, len(stepsParam))
+// convertWorkflowSteps converts []interface{} to []api.WorkflowStep
+func convertWorkflowSteps(stepsParam []interface{}) ([]api.WorkflowStep, error) {
+	var steps []api.WorkflowStep
 
-	for i, stepData := range stepsParam {
-		stepMap, ok := stepData.(map[string]interface{})
+	for i, stepParam := range stepsParam {
+		stepMap, ok := stepParam.(map[string]interface{})
 		if !ok {
-			return steps, fmt.Errorf("step at index %d must be an object", i)
+			return nil, fmt.Errorf("step %d is not a valid object", i)
 		}
 
-		var step WorkflowStep
+		var step api.WorkflowStep
 
-		// Required fields
+		// ID is required
 		if id, ok := stepMap["id"].(string); ok {
 			step.ID = id
 		} else {
-			return steps, fmt.Errorf("step at index %d missing required 'id' field", i)
+			return nil, fmt.Errorf("step %d: id is required", i)
 		}
 
+		// Tool is required
 		if tool, ok := stepMap["tool"].(string); ok {
 			step.Tool = tool
 		} else {
-			return steps, fmt.Errorf("step at index %d missing required 'tool' field", i)
+			return nil, fmt.Errorf("step %d: tool is required", i)
 		}
 
-		// Optional fields
+		// Args (optional)
 		if args, ok := stepMap["args"].(map[string]interface{}); ok {
 			step.Args = args
 		}
+
+		// Store (optional)
 		if store, ok := stepMap["store"].(string); ok {
 			step.Store = store
 		}
 
-		steps[i] = step
+		// Condition (optional)
+		if condition, ok := stepMap["condition"].(string); ok {
+			step.Condition = condition
+		}
+
+		// Description (optional)
+		if description, ok := stepMap["description"].(string); ok {
+			step.Description = description
+		}
+
+		steps = append(steps, step)
 	}
 
 	return steps, nil

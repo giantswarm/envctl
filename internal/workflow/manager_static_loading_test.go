@@ -3,6 +3,7 @@ package workflow
 import (
 	"testing"
 
+	"envctl/internal/api"
 	"envctl/internal/config"
 
 	"github.com/stretchr/testify/assert"
@@ -113,16 +114,16 @@ func TestWorkflowManager_ValidationFunction(t *testing.T) {
 
 	testCases := []struct {
 		name        string
-		workflow    WorkflowDefinition
+		workflow    api.Workflow
 		expectError bool
 		errorMsg    string
 	}{
 		{
 			name: "valid workflow",
-			workflow: WorkflowDefinition{
+			workflow: api.Workflow{
 				Name:        "test-workflow",
 				Description: "Test workflow",
-				Steps: []WorkflowStep{
+				Steps: []api.WorkflowStep{
 					{ID: "step1", Tool: "test-tool"},
 				},
 			},
@@ -130,9 +131,9 @@ func TestWorkflowManager_ValidationFunction(t *testing.T) {
 		},
 		{
 			name: "missing name",
-			workflow: WorkflowDefinition{
+			workflow: api.Workflow{
 				Description: "Test workflow",
-				Steps: []WorkflowStep{
+				Steps: []api.WorkflowStep{
 					{ID: "step1", Tool: "test-tool"},
 				},
 			},
@@ -141,20 +142,20 @@ func TestWorkflowManager_ValidationFunction(t *testing.T) {
 		},
 		{
 			name: "no steps",
-			workflow: WorkflowDefinition{
+			workflow: api.Workflow{
 				Name:        "test-workflow",
 				Description: "Test workflow",
-				Steps:       []WorkflowStep{},
+				Steps:       []api.WorkflowStep{},
 			},
 			expectError: true,
 			errorMsg:    "field 'steps': must have at least one step for workflow",
 		},
 		{
 			name: "empty step ID",
-			workflow: WorkflowDefinition{
+			workflow: api.Workflow{
 				Name:        "test-workflow",
 				Description: "Test workflow",
-				Steps: []WorkflowStep{
+				Steps: []api.WorkflowStep{
 					{ID: "", Tool: "test-tool"},
 				},
 			},
@@ -163,10 +164,10 @@ func TestWorkflowManager_ValidationFunction(t *testing.T) {
 		},
 		{
 			name: "empty tool name",
-			workflow: WorkflowDefinition{
+			workflow: api.Workflow{
 				Name:        "test-workflow",
 				Description: "Test workflow",
-				Steps: []WorkflowStep{
+				Steps: []api.WorkflowStep{
 					{ID: "step1", Tool: ""},
 				},
 			},
@@ -223,14 +224,14 @@ func TestWorkflowManager_Storage_Integration(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create a test workflow
-	testWorkflow := WorkflowDefinition{
+	testWorkflow := api.Workflow{
 		Name:        "dynamic-test-workflow",
 		Description: "Test workflow for storage",
-		InputSchema: WorkflowInputSchema{
+		InputSchema: api.WorkflowInputSchema{
 			Type:       "object",
-			Properties: map[string]SchemaProperty{},
+			Properties: map[string]api.SchemaProperty{},
 		},
-		Steps: []WorkflowStep{
+		Steps: []api.WorkflowStep{
 			{ID: "step1", Tool: "test-tool", Args: map[string]interface{}{"param": "value"}},
 		},
 	}
@@ -289,10 +290,10 @@ func TestWorkflowManager_InvalidDynamicWorkflow(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create an invalid workflow (no steps) with unique name
-	invalidWorkflow := WorkflowDefinition{
+	invalidWorkflow := api.Workflow{
 		Name:        "invalid-workflow-test",
 		Description: "Invalid workflow with no steps",
-		Steps:       []WorkflowStep{}, // Empty steps - should fail validation
+		Steps:       []api.WorkflowStep{}, // Empty steps - should fail validation
 	}
 
 	// Save to storage
@@ -419,24 +420,24 @@ func TestWorkflowManager_WorkflowAvailability(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create workflows with different tool availability using unique names
-	availableWorkflow := WorkflowDefinition{
+	availableWorkflow := api.Workflow{
 		Name:        "available-workflow-test",
 		Description: "Workflow with available tools",
-		Steps: []WorkflowStep{
+		Steps: []api.WorkflowStep{
 			{ID: "step1", Tool: "available-tool"},
 		},
 	}
 
-	unavailableWorkflow := WorkflowDefinition{
+	unavailableWorkflow := api.Workflow{
 		Name:        "unavailable-workflow-test",
 		Description: "Workflow with unavailable tools",
-		Steps: []WorkflowStep{
+		Steps: []api.WorkflowStep{
 			{ID: "step1", Tool: "unavailable-tool"},
 		},
 	}
 
 	// Save both workflows
-	for _, wf := range []WorkflowDefinition{availableWorkflow, unavailableWorkflow} {
+	for _, wf := range []api.Workflow{availableWorkflow, unavailableWorkflow} {
 		data, err := yaml.Marshal(wf)
 		require.NoError(t, err)
 		err = storage.Save("workflows", wf.Name, data)
@@ -460,7 +461,7 @@ func TestWorkflowManager_WorkflowAvailability(t *testing.T) {
 	require.Len(t, availableDefinitions, 1)
 	assert.Equal(t, "available-workflow-test", availableDefinitions[0].Name)
 
-	// Clean up
+	// Clean up test files
 	storage.Delete("workflows", "available-workflow-test")
 	storage.Delete("workflows", "unavailable-workflow-test")
 }

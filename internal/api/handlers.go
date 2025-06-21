@@ -14,85 +14,7 @@ import (
 
 // Handler interfaces that services will implement
 
-// ServiceClassInfo provides information about a registered service class
-type ServiceClassInfo struct {
-	Name        string `json:"name"`
-	Type        string `json:"type"`
-	Version     string `json:"version"`
-	Description string `json:"description"`
-	ServiceType string `json:"serviceType"`
-	Available   bool   `json:"available"`
-
-	// Lifecycle tool availability
-	CreateToolAvailable      bool `json:"createToolAvailable"`
-	DeleteToolAvailable      bool `json:"deleteToolAvailable"`
-	HealthCheckToolAvailable bool `json:"healthCheckToolAvailable"`
-	StatusToolAvailable      bool `json:"statusToolAvailable"`
-
-	// Required tools
-	RequiredTools []string `json:"requiredTools"`
-	MissingTools  []string `json:"missingTools"`
-}
-
-// ServiceClassDefinition represents a service class definition (lightweight version for API)
-type ServiceClassDefinition struct {
-	Name        string `json:"name"`
-	Version     string `json:"version"`
-	Description string `json:"description"`
-}
-
-// ServiceClass-based service management types (for unified orchestrator)
-
-// CreateServiceClassRequest represents a request to create a new ServiceClass-based service instance
-type CreateServiceClassRequest struct {
-	// ServiceClass to use
-	ServiceClassName string `json:"serviceClassName"`
-
-	// Label for the service instance (must be unique)
-	Label string `json:"label"`
-
-	// Parameters for service creation
-	Parameters map[string]interface{} `json:"parameters"`
-
-	// Whether to persist this service instance definition to YAML files
-	Persist bool `json:"persist,omitempty"`
-
-	// Optional: Whether this instance should be started automatically on system startup
-	AutoStart bool `json:"autoStart,omitempty"`
-
-	// Override default timeouts (future use)
-	CreateTimeout *time.Duration `json:"createTimeout,omitempty"`
-	DeleteTimeout *time.Duration `json:"deleteTimeout,omitempty"`
-}
-
-// ServiceClassInstanceInfo provides information about a ServiceClass-based service instance
-type ServiceClassInstanceInfo struct {
-	ServiceID          string                 `json:"serviceId"`
-	Label              string                 `json:"label"`
-	ServiceClassName   string                 `json:"serviceClassName"`
-	ServiceClassType   string                 `json:"serviceClassType"`
-	State              string                 `json:"state"`
-	Health             string                 `json:"health"`
-	LastError          string                 `json:"lastError,omitempty"`
-	CreatedAt          time.Time              `json:"createdAt"`
-	LastChecked        *time.Time             `json:"lastChecked,omitempty"`
-	ServiceData        map[string]interface{} `json:"serviceData,omitempty"`
-	CreationParameters map[string]interface{} `json:"creationParameters"`
-}
-
-// ServiceClassInstanceEvent represents a ServiceClass-based service instance state change event
-type ServiceClassInstanceEvent struct {
-	ServiceID   string                 `json:"serviceId"`
-	Label       string                 `json:"label"`
-	ServiceType string                 `json:"serviceType"`
-	OldState    string                 `json:"oldState"`
-	NewState    string                 `json:"newState"`
-	OldHealth   string                 `json:"oldHealth"`
-	NewHealth   string                 `json:"newHealth"`
-	Error       string                 `json:"error,omitempty"`
-	Timestamp   time.Time              `json:"timestamp"`
-	Metadata    map[string]interface{} `json:"metadata,omitempty"`
-}
+// ServiceClass and ServiceInstance types moved to serviceclass.go and serviceinstance.go
 
 // ServiceInfo provides information about a service
 type ServiceInfo interface {
@@ -121,15 +43,15 @@ type ServiceManagerHandler interface {
 	// Service information and status
 	GetServiceStatus(label string) (*ServiceStatus, error)
 	GetAllServices() []ServiceStatus
-	GetService(labelOrServiceID string) (*ServiceClassInstanceInfo, error) // Get detailed service info by label or serviceID
+	GetService(labelOrServiceID string) (*ServiceInstance, error) // Get detailed service info by label or serviceID
 
 	// ServiceClass instance creation and deletion (only for ServiceClass-based services)
-	CreateService(ctx context.Context, req CreateServiceClassRequest) (*ServiceClassInstanceInfo, error)
+	CreateService(ctx context.Context, req CreateServiceInstanceRequest) (*ServiceInstance, error)
 	DeleteService(ctx context.Context, labelOrServiceID string) error // Delete by label or serviceID
 
 	// Event subscriptions
 	SubscribeToStateChanges() <-chan ServiceStateChangedEvent
-	SubscribeToServiceInstanceEvents() <-chan ServiceClassInstanceEvent
+	SubscribeToServiceInstanceEvents() <-chan ServiceInstanceEvent
 
 	ToolProvider
 }
@@ -173,7 +95,7 @@ type CapabilityHandler interface {
 	ExecuteCapability(ctx context.Context, capabilityType, operation string, params map[string]interface{}) (*CallToolResult, error)
 
 	// Capability information and availability
-	ListCapabilities() []CapabilityInfo
+	ListCapabilities() []Capability
 	GetCapability(name string) (interface{}, error)
 	IsCapabilityAvailable(capabilityType, operation string) bool
 
@@ -187,10 +109,10 @@ type WorkflowHandler interface {
 	ExecuteWorkflow(ctx context.Context, workflowName string, args map[string]interface{}) (*CallToolResult, error)
 
 	// GetWorkflows returns information about all workflows
-	GetWorkflows() []WorkflowInfo
+	GetWorkflows() []Workflow
 
 	// GetWorkflow returns a specific workflow definition
-	GetWorkflow(name string) (*WorkflowDefinition, error)
+	GetWorkflow(name string) (*Workflow, error)
 
 	// CreateWorkflowFromStructured creates a new workflow from structured parameters
 	CreateWorkflowFromStructured(args map[string]interface{}) error
@@ -214,8 +136,8 @@ type WorkflowHandler interface {
 // ServiceClassManagerHandler defines the interface for service class management operations
 type ServiceClassManagerHandler interface {
 	// Service class definition management
-	ListServiceClasses() []ServiceClassInfo
-	GetServiceClass(name string) (*ServiceClassDefinition, error)
+	ListServiceClasses() []ServiceClass
+	GetServiceClass(name string) (*ServiceClass, error)
 	IsServiceClassAvailable(name string) bool
 
 	// Lifecycle tool access (for service orchestration without direct coupling)
@@ -422,7 +344,7 @@ func IsCapabilityAvailable(capabilityType, operation string) bool {
 }
 
 // ListCapabilities returns information about all available capabilities
-func ListCapabilities() []CapabilityInfo {
+func ListCapabilities() []Capability {
 	handler := GetCapability()
 	if handler == nil {
 		return nil
@@ -431,7 +353,7 @@ func ListCapabilities() []CapabilityInfo {
 }
 
 // GetWorkflowInfo returns information about all workflows
-func GetWorkflowInfo() []WorkflowInfo {
+func GetWorkflowInfo() []Workflow {
 	handler := GetWorkflow()
 	if handler == nil {
 		return nil
@@ -454,10 +376,9 @@ func ToolNameToCapability(toolName string) (capabilityType, operation string, is
 	capabilities := ListCapabilities()
 	for _, cap := range capabilities {
 		if cap.Type == parts[0] {
-			for _, op := range cap.Operations {
-				if op.Name == parts[1] {
-					return parts[0], parts[1], true
-				}
+			// Check if the operation exists in the operations map
+			if _, exists := cap.Operations[parts[1]]; exists {
+				return parts[0], parts[1], true
 			}
 		}
 	}

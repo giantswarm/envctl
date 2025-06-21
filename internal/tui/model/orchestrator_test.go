@@ -46,7 +46,6 @@ func TestStartOrchestrator(t *testing.T) {
 
 			// Create APIs
 			orchestratorAPI := api.NewOrchestratorAPI()
-			k8sAPI := api.NewK8sServiceAPI()
 
 			// Clean up handlers after test
 			defer func() {
@@ -56,13 +55,10 @@ func TestStartOrchestrator(t *testing.T) {
 
 			// Create model
 			m := &Model{
-				Orchestrator:       orch,
-				OrchestratorAPI:    orchestratorAPI,
-				K8sServiceAPI:      k8sAPI,
-				K8sConnections:     make(map[string]*api.K8sConnectionInfo),
-				MCPServers:         make(map[string]*api.MCPServerInfo),
-				K8sConnectionOrder: []string{},
-				MCPServerOrder:     []string{},
+				Orchestrator:    orch,
+				OrchestratorAPI: orchestratorAPI,
+				MCPServers:      make(map[string]*api.MCPServerInfo),
+				MCPServerOrder:  []string{},
 			}
 
 			// Call startOrchestrator

@@ -42,7 +42,6 @@ func (a *Adapter) ListServiceClasses() []api.ServiceClassInfo {
 	for i, info := range managerInfo {
 		result[i] = api.ServiceClassInfo{
 			Name:                     info.Name,
-			Type:                     info.Type,
 			Version:                  info.Version,
 			Description:              info.Description,
 			ServiceType:              info.ServiceType,

@@ -254,7 +254,18 @@ func (gsi *GenericServiceInstance) GetType() ServiceType {
 		return ServiceType("unknown")
 	}
 
-	// For now, return a generic type since the simplified API definition doesn't include ServiceType
+	// Get the service class definition
+	serviceClass, err := serviceClassMgr.GetServiceClass(gsi.serviceClassName)
+	if err != nil {
+		return ServiceType("unknown")
+	}
+
+	// Return the service type from the service class definition
+	if serviceClass.ServiceType != "" {
+		return ServiceType(serviceClass.ServiceType)
+	}
+
+	// Fallback to generic if no service type is specified
 	return ServiceType("generic")
 }
 

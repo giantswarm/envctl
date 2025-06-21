@@ -3,7 +3,6 @@ package mcpserver
 import (
 	"context"
 	"io"
-	"time"
 )
 
 // MCPClient interface defines what mcpserver needs from an MCP client
@@ -25,32 +24,4 @@ type McpDiscreteStatusUpdate struct {
 // McpUpdateFunc is a callback function type for receiving McpDiscreteStatusUpdate messages.
 type McpUpdateFunc func(update McpDiscreteStatusUpdate)
 
-// MCPServerType defines the type of MCP server.
-type MCPServerType string
-
-const (
-	MCPServerTypeLocalCommand MCPServerType = "localCommand"
-	MCPServerTypeContainer    MCPServerType = "container"
-)
-
-// MCPServerDefinition defines how to run and manage an MCP server.
-type MCPServerDefinition struct {
-	Name                string        `yaml:"name"`                          // Unique name for this server, e.g., "kubernetes", "prometheus-main"
-	Type                MCPServerType `yaml:"type"`                          // "localCommand" or "container"
-	Enabled             bool          `yaml:"enabledByDefault"`              // Whether this server is started by default
-	HealthCheckInterval time.Duration `yaml:"healthCheckInterval,omitempty"` // Optional: custom health check interval
-	ToolPrefix          string        `yaml:"toolPrefix,omitempty"`          // Custom prefix for tools (defaults to server name with underscore)
-
-	// Fields for Type = "localCommand"
-	Command []string          `yaml:"command,omitempty"` // Command and its arguments, e.g., ["npx", "mcp-server-kubernetes"]
-	Env     map[string]string `yaml:"env,omitempty"`     // Environment variables
-
-	// Fields for Type = "container"
-	Image            string            `yaml:"image,omitempty"`            // Container image, e.g., "giantswarm/mcp-server-prometheus:latest"
-	ContainerPorts   []string          `yaml:"containerPorts,omitempty"`   // Port mappings, e.g., ["8080:8080", "9090:9000"] (host:container)
-	ContainerEnv     map[string]string `yaml:"containerEnv,omitempty"`     // Environment variables for the container
-	ContainerVolumes []string          `yaml:"containerVolumes,omitempty"` // Volume mounts, e.g., ["~/.kube/config:/root/.kube/config"]
-	HealthCheckCmd   []string          `yaml:"healthCheckCmd,omitempty"`   // Optional command to run inside container to check health
-	Entrypoint       []string          `yaml:"entrypoint,omitempty"`       // Optional container entrypoint override
-	ContainerUser    string            `yaml:"containerUser,omitempty"`    // Optional user to run container as
-}
+// All other types (MCPServerType, MCPServerDefinition) moved to internal/api package

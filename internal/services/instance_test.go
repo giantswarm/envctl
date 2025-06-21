@@ -266,7 +266,6 @@ func TestNewGenericServiceInstance(t *testing.T) {
 	// Setup test service class
 	mockMgr.SetServiceClass("test-service", &api.ServiceClassDefinition{
 		Name:        "test-service",
-		Type:        "test",
 		Version:     "1.0.0",
 		Description: "Test service class",
 	})
@@ -326,7 +325,6 @@ func TestGenericServiceInstance_Start_Success(t *testing.T) {
 	// Setup test service class
 	mockMgr.SetServiceClass("test-service", &api.ServiceClassDefinition{
 		Name: "test-service",
-		Type: "test",
 	})
 	mockMgr.SetCreateTool("test-service", "test_create_tool",
 		map[string]interface{}{
@@ -382,7 +380,6 @@ func TestGenericServiceInstance_Start_ToolCallError(t *testing.T) {
 	// Setup test service class
 	mockMgr.SetServiceClass("test-service", &api.ServiceClassDefinition{
 		Name: "test-service",
-		Type: "test",
 	})
 	// Use SetCreateTool since GetStartTool delegates to GetCreateTool in the mock
 	mockMgr.SetCreateTool("test-service", "test_create_tool",
@@ -421,7 +418,6 @@ func TestGenericServiceInstance_Start_ToolIndicatesFailure(t *testing.T) {
 	// Setup test service class
 	mockMgr.SetServiceClass("test-service", &api.ServiceClassDefinition{
 		Name: "test-service",
-		Type: "test",
 	})
 	// Use SetCreateTool since GetStartTool delegates to GetCreateTool in the mock
 	mockMgr.SetCreateTool("test-service", "test_create_tool",
@@ -463,7 +459,6 @@ func TestGenericServiceInstance_Stop_Success(t *testing.T) {
 	// Setup test service class
 	mockMgr.SetServiceClass("test-service", &api.ServiceClassDefinition{
 		Name: "test-service",
-		Type: "test",
 	})
 	mockMgr.SetDeleteTool("test-service", "test_delete_tool",
 		map[string]interface{}{
@@ -515,7 +510,6 @@ func TestGenericServiceInstance_Restart(t *testing.T) {
 	// Setup test service class
 	mockMgr.SetServiceClass("test-service", &api.ServiceClassDefinition{
 		Name: "test-service",
-		Type: "test",
 	})
 	// Setup both create and delete tools since restart uses stop/start fallback
 	mockMgr.SetCreateTool("test-service", "test_create_tool",
@@ -572,7 +566,6 @@ func TestGenericServiceInstance_CheckHealth_Success(t *testing.T) {
 	// Setup test service class with health checking
 	mockMgr.SetServiceClass("test-service", &api.ServiceClassDefinition{
 		Name: "test-service",
-		Type: "test",
 	})
 	mockMgr.SetHealthCheckTool("test-service", "test_health_tool",
 		map[string]interface{}{
@@ -624,7 +617,6 @@ func TestGenericServiceInstance_CheckHealth_Disabled(t *testing.T) {
 	// Setup test service class with health checking disabled
 	mockMgr.SetServiceClass("test-service", &api.ServiceClassDefinition{
 		Name: "test-service",
-		Type: "test",
 	})
 	mockMgr.SetHealthCheckConfig("test-service", false, 10*time.Second, 3, 1)
 
@@ -660,8 +652,8 @@ func TestGenericServiceInstance_Getters(t *testing.T) {
 
 	// Setup test service class
 	mockMgr.SetServiceClass("test-service", &api.ServiceClassDefinition{
-		Name: "test-service",
-		Type: "kubernetes-service",
+		Name:        "test-service",
+		ServiceType: "kubernetes-service",
 	})
 	mockMgr.SetDependencies("test-service", []string{"dep1", "dep2"})
 
@@ -708,7 +700,6 @@ func TestGenericServiceInstance_StateChangeCallback(t *testing.T) {
 	// Setup test service class
 	mockMgr.SetServiceClass("test-service", &api.ServiceClassDefinition{
 		Name: "test-service",
-		Type: "test",
 	})
 
 	// Create tool caller

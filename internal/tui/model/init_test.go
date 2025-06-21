@@ -66,9 +66,10 @@ func TestInitializeModel(t *testing.T) {
 				// They are only initialized when the full application is set up
 
 				// Verify data structures are initialized
-				if m.K8sConnections == nil {
-					t.Error("K8sConnections is nil")
-				}
+				// K8s functionality has been removed
+				// if m.K8sConnections == nil {
+				//	t.Error("K8sConnections is nil")
+				// }
 				if m.MCPServers == nil {
 					t.Error("MCPServers is nil")
 				}
@@ -99,13 +100,13 @@ func TestDefaultKeyMap(t *testing.T) {
 		{"NewCollection", keys.NewCollection},
 		{"Restart", keys.Restart},
 		{"Stop", keys.Stop},
-		{"SwitchContext", keys.SwitchContext},
 		{"ToggleDark", keys.ToggleDark},
 		{"ToggleDebug", keys.ToggleDebug},
 		{"CopyLogs", keys.CopyLogs},
 		{"ToggleLog", keys.ToggleLog},
 		{"ToggleMcpConfig", keys.ToggleMcpConfig},
 		{"ToggleMcpTools", keys.ToggleMcpTools},
+		{"ToggleAgentREPL", keys.ToggleAgentREPL},
 	}
 
 	for _, tt := range tests {

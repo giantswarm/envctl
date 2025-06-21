@@ -1,7 +1,7 @@
 ---
 description: 
 globs: 
-alwaysApply: false
+alwaysApply: true
 ---
 - **Debugging envctl via mcp-debug**
   - mcp-debug provides core debugging tools to test and explore the functionality of envctl exposed in its aggregated MCP server. 

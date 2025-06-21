@@ -478,7 +478,6 @@ func (scm *ServiceClassManager) ListServiceClasses() []ServiceClassInfo {
 
 		info := ServiceClassInfo{
 			Name:                     def.Name,
-			Type:                     "serviceclass", // Default type since field removed in Phase 3
 			Version:                  def.Version,
 			Description:              def.Description,
 			ServiceType:              def.ServiceConfig.ServiceType,

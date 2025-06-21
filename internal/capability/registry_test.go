@@ -2,13 +2,15 @@ package capability
 
 import (
 	"testing"
+
+	"envctl/internal/api"
 )
 
 func TestRegistry(t *testing.T) {
 	t.Run("Register and Get", func(t *testing.T) {
 		reg := NewRegistry()
 
-		testCap := &Capability{
+		testCap := &api.Capability{
 			ID:          "test-cap",
 			Type:        "auth",
 			Provider:    "test-provider",
@@ -33,15 +35,15 @@ func TestRegistry(t *testing.T) {
 			t.Errorf("Expected name %s, got %s", testCap.Name, retrieved.Name)
 		}
 
-		if retrieved.Status.State != CapabilityStateActive {
-			t.Errorf("Expected state %s, got %s", CapabilityStateActive, retrieved.Status.State)
+		if retrieved.State != api.CapabilityStateActive {
+			t.Errorf("Expected state %s, got %s", api.CapabilityStateActive, retrieved.State)
 		}
 	})
 
 	t.Run("Register duplicate", func(t *testing.T) {
 		reg := NewRegistry()
 
-		testCap := &Capability{
+		testCap := &api.Capability{
 			ID:       "test-cap-2",
 			Type:     "auth",
 			Provider: "test-provider",
@@ -64,17 +66,17 @@ func TestRegistry(t *testing.T) {
 		reg := NewRegistry()
 
 		// Register multiple capabilities
-		authCap := &Capability{
+		authCap := &api.Capability{
 			Type:     "auth",
 			Provider: "auth-provider",
 			Name:     "Auth Cap",
 		}
-		portForwardCap := &Capability{
+		portForwardCap := &api.Capability{
 			Type:     "port-forward",
 			Provider: "pf-provider",
 			Name:     "Port Forward Cap",
 		}
-		authCap2 := &Capability{
+		authCap2 := &api.Capability{
 			Type:     "auth",
 			Provider: "auth-provider-2",
 			Name:     "Auth Cap 2",
@@ -100,17 +102,17 @@ func TestRegistry(t *testing.T) {
 		reg := NewRegistry()
 
 		// Register capabilities from different providers
-		cap1 := &Capability{
+		cap1 := &api.Capability{
 			Type:     "auth",
 			Provider: "provider-a",
 			Name:     "Cap 1",
 		}
-		cap2 := &Capability{
+		cap2 := &api.Capability{
 			Type:     "discovery",
 			Provider: "provider-a",
 			Name:     "Cap 2",
 		}
-		cap3 := &Capability{
+		cap3 := &api.Capability{
 			Type:     "auth",
 			Provider: "provider-b",
 			Name:     "Cap 3",
@@ -135,7 +137,7 @@ func TestRegistry(t *testing.T) {
 	t.Run("Unregister", func(t *testing.T) {
 		reg := NewRegistry()
 
-		testCap := &Capability{
+		testCap := &api.Capability{
 			ID:       "test-cap-3",
 			Type:     "auth",
 			Provider: "test-provider",
@@ -172,7 +174,7 @@ func TestRegistry(t *testing.T) {
 	t.Run("Update", func(t *testing.T) {
 		reg := NewRegistry()
 
-		testCap := &Capability{
+		testCap := &api.Capability{
 			ID:       "test-cap-4",
 			Type:     "auth",
 			Provider: "test-provider",
@@ -182,24 +184,18 @@ func TestRegistry(t *testing.T) {
 		reg.Register(testCap)
 
 		// Update status
-		newStatus := CapabilityStatus{
-			State:  CapabilityStateUnhealthy,
-			Error:  "Connection failed",
-			Health: HealthStatusUnhealthy,
-		}
-
-		err := reg.Update("test-cap-4", newStatus)
+		err := reg.Update("test-cap-4", api.CapabilityStateUnhealthy, api.HealthUnhealthy, "Connection failed")
 		if err != nil {
 			t.Fatalf("Failed to update capability: %v", err)
 		}
 
 		// Verify update
 		updated, _ := reg.Get("test-cap-4")
-		if updated.Status.State != CapabilityStateUnhealthy {
-			t.Errorf("Expected state %s, got %s", CapabilityStateUnhealthy, updated.Status.State)
+		if updated.State != api.CapabilityStateUnhealthy {
+			t.Errorf("Expected state %s, got %s", api.CapabilityStateUnhealthy, updated.State)
 		}
-		if updated.Status.Error != "Connection failed" {
-			t.Errorf("Expected error 'Connection failed', got %s", updated.Status.Error)
+		if updated.Error != "Connection failed" {
+			t.Errorf("Expected error 'Connection failed', got %s", updated.Error)
 		}
 	})
 
@@ -207,19 +203,19 @@ func TestRegistry(t *testing.T) {
 		reg := NewRegistry()
 
 		// Register capabilities with different features
-		cap1 := &Capability{
+		cap1 := &api.Capability{
 			Type:     "auth",
 			Provider: "provider-1",
 			Name:     "Full Auth",
 			Features: []string{"login", "refresh", "validate"},
 		}
-		cap2 := &Capability{
+		cap2 := &api.Capability{
 			Type:     "auth",
 			Provider: "provider-2",
 			Name:     "Basic Auth",
 			Features: []string{"login"},
 		}
-		cap3 := &Capability{
+		cap3 := &api.Capability{
 			Type:     "auth",
 			Provider: "provider-3",
 			Name:     "Inactive Auth",
@@ -231,13 +227,10 @@ func TestRegistry(t *testing.T) {
 		reg.Register(cap3)
 
 		// Make cap3 inactive
-		reg.Update(cap3.ID, CapabilityStatus{
-			State:  CapabilityStateInactive,
-			Health: HealthStatusUnhealthy,
-		})
+		reg.Update(cap3.ID, api.CapabilityStateInactive, api.HealthUnhealthy, "")
 
 		// Find capabilities with login feature
-		req := CapabilityRequest{
+		req := api.CapabilityRequest{
 			Type:     "auth",
 			Features: []string{"login"},
 		}
@@ -260,23 +253,23 @@ func TestRegistry(t *testing.T) {
 	t.Run("Callbacks", func(t *testing.T) {
 		reg := NewRegistry()
 
-		var registeredCap *Capability
+		var registeredCap *api.Capability
 		var unregisteredID string
-		var updatedCap *Capability
+		var updatedCap *api.Capability
 
 		// Add callbacks
-		reg.OnRegister(func(cap *Capability) {
+		reg.OnRegister(func(cap *api.Capability) {
 			registeredCap = cap
 		})
 		reg.OnUnregister(func(id string) {
 			unregisteredID = id
 		})
-		reg.OnUpdate(func(cap *Capability) {
+		reg.OnUpdate(func(cap *api.Capability) {
 			updatedCap = cap
 		})
 
 		// Test registration callback
-		testCap := &Capability{
+		testCap := &api.Capability{
 			ID:       "test-cap-5",
 			Type:     "auth",
 			Provider: "test-provider",
@@ -289,9 +282,7 @@ func TestRegistry(t *testing.T) {
 		}
 
 		// Test update callback
-		reg.Update("test-cap-5", CapabilityStatus{
-			State: CapabilityStateUnhealthy,
-		})
+		reg.Update("test-cap-5", api.CapabilityStateUnhealthy, api.HealthUnhealthy, "")
 
 		if updatedCap == nil || updatedCap.ID != "test-cap-5" {
 			t.Error("OnUpdate callback not called correctly")
@@ -308,7 +299,7 @@ func TestRegistry(t *testing.T) {
 	t.Run("Auto-generate ID", func(t *testing.T) {
 		reg := NewRegistry()
 
-		testCap := &Capability{
+		testCap := &api.Capability{
 			Type:     "auth",
 			Provider: "test-provider",
 			Name:     "Test Capability",
@@ -332,7 +323,7 @@ func TestConcurrency(t *testing.T) {
 	// Start multiple goroutines registering capabilities
 	for i := 0; i < 10; i++ {
 		go func(id int) {
-			testCap := &Capability{
+			testCap := &api.Capability{
 				Type:     "auth",
 				Provider: "test-provider",
 				Name:     "Test Capability",

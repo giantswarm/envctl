@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"text/template"
 
+	"envctl/internal/api"
 	"envctl/pkg/logging"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -31,7 +32,7 @@ func NewWorkflowExecutor(toolCaller ToolCaller) *WorkflowExecutor {
 }
 
 // ExecuteWorkflow executes a workflow with the given arguments
-func (we *WorkflowExecutor) ExecuteWorkflow(ctx context.Context, workflow *WorkflowDefinition, args map[string]interface{}) (*mcp.CallToolResult, error) {
+func (we *WorkflowExecutor) ExecuteWorkflow(ctx context.Context, workflow *api.Workflow, args map[string]interface{}) (*mcp.CallToolResult, error) {
 	logging.Debug("WorkflowExecutor", "Executing workflow %s", workflow.Name)
 
 	// Validate inputs against schema
@@ -110,7 +111,7 @@ type executionContext struct {
 }
 
 // validateInputs validates the input arguments against the schema
-func (we *WorkflowExecutor) validateInputs(schema WorkflowInputSchema, args map[string]interface{}) error {
+func (we *WorkflowExecutor) validateInputs(schema api.WorkflowInputSchema, args map[string]interface{}) error {
 	// Check required fields
 	for _, required := range schema.Required {
 		if _, exists := args[required]; !exists {

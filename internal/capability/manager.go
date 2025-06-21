@@ -15,7 +15,7 @@ import (
 type CapabilityManager struct {
 	mu           sync.RWMutex
 	loader       *config.ConfigurationLoader
-	definitions  map[string]*CapabilityDefinition // capability name -> definition
+	definitions  map[string]*api.Capability // capability name -> definition
 	toolChecker  config.ToolAvailabilityChecker
 	registry     *Registry
 	exposedTools map[string]bool // Track which capability tools we've exposed
@@ -24,7 +24,7 @@ type CapabilityManager struct {
 }
 
 // NewCapabilityManager creates a new capability manager
-func NewCapabilityManager(toolChecker config.ToolAvailabilityChecker, registry *Registry, storage *config.Storage) (*CapabilityManager, error) {
+func NewCapabilityManager(storage *config.Storage, toolChecker config.ToolAvailabilityChecker) (*CapabilityManager, error) {
 	loader, err := config.NewConfigurationLoader()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create configuration loader: %w", err)
@@ -39,9 +39,8 @@ func NewCapabilityManager(toolChecker config.ToolAvailabilityChecker, registry *
 
 	manager := &CapabilityManager{
 		loader:       loader,
-		definitions:  make(map[string]*CapabilityDefinition),
+		definitions:  make(map[string]*api.Capability),
 		toolChecker:  toolChecker,
-		registry:     registry,
 		exposedTools: make(map[string]bool),
 		storage:      storage,
 		configPath:   configPath,
@@ -68,11 +67,11 @@ func (cm *CapabilityManager) LoadDefinitions() error {
 	defer cm.mu.Unlock()
 
 	// Clear existing definitions
-	cm.definitions = make(map[string]*CapabilityDefinition)
+	cm.definitions = make(map[string]*api.Capability)
 	cm.exposedTools = make(map[string]bool)
 
 	// Load all capability YAML files using the config path-aware helper
-	definitions, errorCollection, err := config.LoadAndParseYAMLWithConfig[CapabilityDefinition](cm.configPath, "capabilities", func(def CapabilityDefinition) error {
+	definitions, errorCollection, err := config.LoadAndParseYAMLWithConfig[api.Capability](cm.configPath, "capabilities", func(def api.Capability) error {
 		return cm.validateDefinition(&def)
 	})
 	if err != nil {
@@ -99,7 +98,7 @@ func (cm *CapabilityManager) LoadDefinitions() error {
 }
 
 // validateDefinition validates a capability definition with comprehensive checks
-func (cm *CapabilityManager) validateDefinition(def *CapabilityDefinition) error {
+func (cm *CapabilityManager) validateDefinition(def *api.Capability) error {
 	var errors config.ValidationErrors
 
 	// Validate entity name using common helper
@@ -147,7 +146,7 @@ func (cm *CapabilityManager) validateDefinition(def *CapabilityDefinition) error
 	}
 
 	// Validate the capability type using existing logic
-	if def.Type != "" && !IsValidCapabilityType(def.Type) {
+	if def.Type != "" && !api.IsValidCapabilityType(def.Type) {
 		errors.Add("type", "is not a valid capability type")
 	}
 
@@ -159,28 +158,28 @@ func (cm *CapabilityManager) validateDefinition(def *CapabilityDefinition) error
 }
 
 // ValidateDefinition validates a capability definition without persisting it
-func (cm *CapabilityManager) ValidateDefinition(def *CapabilityDefinition) error {
+func (cm *CapabilityManager) ValidateDefinition(def *api.Capability) error {
 	return cm.validateDefinition(def)
 }
 
 // GetDefinition returns a capability definition by name
-func (cm *CapabilityManager) GetDefinition(name string) (CapabilityDefinition, bool) {
+func (cm *CapabilityManager) GetDefinition(name string) (api.Capability, bool) {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 
 	def, exists := cm.definitions[name]
 	if !exists {
-		return CapabilityDefinition{}, false
+		return api.Capability{}, false
 	}
 	return *def, true
 }
 
 // ListDefinitions returns all capability definitions
-func (cm *CapabilityManager) ListDefinitions() []CapabilityDefinition {
+func (cm *CapabilityManager) ListDefinitions() []api.Capability {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 
-	result := make([]CapabilityDefinition, 0, len(cm.definitions))
+	result := make([]api.Capability, 0, len(cm.definitions))
 	for _, def := range cm.definitions {
 		result = append(result, *def)
 	}
@@ -188,11 +187,11 @@ func (cm *CapabilityManager) ListDefinitions() []CapabilityDefinition {
 }
 
 // ListAvailableDefinitions returns only capability definitions that have all required tools available
-func (cm *CapabilityManager) ListAvailableDefinitions() []CapabilityDefinition {
+func (cm *CapabilityManager) ListAvailableDefinitions() []api.Capability {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 
-	result := make([]CapabilityDefinition, 0)
+	result := make([]api.Capability, 0)
 	for _, def := range cm.definitions {
 		if cm.isDefinitionAvailable(def) {
 			result = append(result, *def)
@@ -214,7 +213,7 @@ func (cm *CapabilityManager) IsAvailable(name string) bool {
 }
 
 // isDefinitionAvailable checks if a capability definition has all required tools available
-func (cm *CapabilityManager) isDefinitionAvailable(def *CapabilityDefinition) bool {
+func (cm *CapabilityManager) isDefinitionAvailable(def *api.Capability) bool {
 	for _, op := range def.Operations {
 		if !cm.areRequiredToolsAvailable(op.Requires) {
 			return false
@@ -296,7 +295,7 @@ func (cm *CapabilityManager) GetAvailableCapabilityTools() []string {
 }
 
 // GetOperationForTool returns the operation definition for a capability tool
-func (cm *CapabilityManager) GetOperationForTool(toolName string) (*OperationDefinition, *CapabilityDefinition, error) {
+func (cm *CapabilityManager) GetOperationForTool(toolName string) (*api.OperationDefinition, *api.Capability, error) {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 
@@ -317,7 +316,7 @@ func (cm *CapabilityManager) GetOperationForTool(toolName string) (*OperationDef
 }
 
 // CreateCapability creates a new capability definition
-func (cm *CapabilityManager) CreateCapability(def *CapabilityDefinition) error {
+func (cm *CapabilityManager) CreateCapability(def *api.Capability) error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
@@ -350,7 +349,7 @@ func (cm *CapabilityManager) CreateCapability(def *CapabilityDefinition) error {
 }
 
 // UpdateCapability updates an existing capability definition
-func (cm *CapabilityManager) UpdateCapability(def *CapabilityDefinition) error {
+func (cm *CapabilityManager) UpdateCapability(def *api.Capability) error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
@@ -405,7 +404,7 @@ func (cm *CapabilityManager) DeleteCapability(name string) error {
 }
 
 // RegisterDefinition adds a capability definition to the in-memory registry
-func (cm *CapabilityManager) RegisterDefinition(def *CapabilityDefinition) {
+func (cm *CapabilityManager) RegisterDefinition(def *api.Capability) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
@@ -414,7 +413,7 @@ func (cm *CapabilityManager) RegisterDefinition(def *CapabilityDefinition) {
 }
 
 // UpdateDefinition updates a capability definition in the in-memory registry
-func (cm *CapabilityManager) UpdateDefinition(def *CapabilityDefinition) {
+func (cm *CapabilityManager) UpdateDefinition(def *api.Capability) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 

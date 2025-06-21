@@ -17,7 +17,7 @@ import (
 type MCPServerManager struct {
 	mu          sync.RWMutex
 	loader      *config.ConfigurationLoader
-	definitions map[string]*MCPServerDefinition // server name -> definition
+	definitions map[string]*api.MCPServer // server name -> definition
 	storage     *config.Storage
 	configPath  string // Optional custom config path
 }
@@ -42,7 +42,7 @@ func NewMCPServerManager(storage *config.Storage) (*MCPServerManager, error) {
 
 	return &MCPServerManager{
 		loader:      loader,
-		definitions: make(map[string]*MCPServerDefinition),
+		definitions: make(map[string]*api.MCPServer),
 		storage:     storage,
 		configPath:  configPath,
 	}, nil
@@ -59,11 +59,11 @@ func (msm *MCPServerManager) SetConfigPath(configPath string) {
 // All MCP servers are just YAML files, regardless of how they were created.
 func (msm *MCPServerManager) LoadDefinitions() error {
 	// Load all MCP server YAML files using the config path-aware helper
-	validator := func(def MCPServerDefinition) error {
+	validator := func(def api.MCPServer) error {
 		return msm.validateDefinition(&def)
 	}
 
-	definitions, errorCollection, err := config.LoadAndParseYAMLWithConfig[MCPServerDefinition](msm.configPath, "mcpservers", validator)
+	definitions, errorCollection, err := config.LoadAndParseYAMLWithConfig[api.MCPServer](msm.configPath, "mcpservers", validator)
 	if err != nil {
 		logging.Warn("MCPServerManager", "Error loading MCP servers: %v", err)
 		return err
@@ -79,7 +79,7 @@ func (msm *MCPServerManager) LoadDefinitions() error {
 	defer msm.mu.Unlock()
 
 	// Clear the old definitions
-	msm.definitions = make(map[string]*MCPServerDefinition)
+	msm.definitions = make(map[string]*api.MCPServer)
 
 	// Add all valid definitions to in-memory store
 	for i := range definitions {
@@ -92,7 +92,7 @@ func (msm *MCPServerManager) LoadDefinitions() error {
 }
 
 // validateDefinition performs comprehensive validation on an MCP server definition
-func (msm *MCPServerManager) validateDefinition(def *MCPServerDefinition) error {
+func (msm *MCPServerManager) validateDefinition(def *api.MCPServer) error {
 	var errors config.ValidationErrors
 
 	// Validate entity name using common helper
@@ -105,7 +105,7 @@ func (msm *MCPServerManager) validateDefinition(def *MCPServerDefinition) error 
 		errors = append(errors, err.(config.ValidationError))
 	} else {
 		// Validate specific type
-		validTypes := []string{string(MCPServerTypeLocalCommand), string(MCPServerTypeContainer)}
+		validTypes := []string{string(api.MCPServerTypeLocalCommand), string(api.MCPServerTypeContainer)}
 		if err := config.ValidateOneOf("type", string(def.Type), validTypes); err != nil {
 			errors = append(errors, err.(config.ValidationError))
 		}
@@ -113,14 +113,14 @@ func (msm *MCPServerManager) validateDefinition(def *MCPServerDefinition) error 
 
 	// Validate type-specific requirements
 	switch def.Type {
-	case MCPServerTypeLocalCommand:
+	case api.MCPServerTypeLocalCommand:
 		if len(def.Command) == 0 {
 			errors.Add("command", "is required for localCommand type")
 		}
 		if def.Image != "" {
 			errors.Add("image", "cannot be specified for localCommand type")
 		}
-	case MCPServerTypeContainer:
+	case api.MCPServerTypeContainer:
 		if def.Image == "" {
 			errors.Add("image", "is required for container type")
 		}
@@ -139,28 +139,28 @@ func (msm *MCPServerManager) validateDefinition(def *MCPServerDefinition) error 
 }
 
 // ValidateDefinition validates an MCP server definition without persisting it
-func (msm *MCPServerManager) ValidateDefinition(def *MCPServerDefinition) error {
+func (msm *MCPServerManager) ValidateDefinition(def *api.MCPServer) error {
 	return msm.validateDefinition(def)
 }
 
 // GetDefinition returns an MCP server definition by name
-func (msm *MCPServerManager) GetDefinition(name string) (MCPServerDefinition, bool) {
+func (msm *MCPServerManager) GetDefinition(name string) (api.MCPServer, bool) {
 	msm.mu.RLock()
 	defer msm.mu.RUnlock()
 
 	def, exists := msm.definitions[name]
 	if !exists {
-		return MCPServerDefinition{}, false
+		return api.MCPServer{}, false
 	}
 	return *def, true
 }
 
 // ListDefinitions returns all MCP server definitions
-func (msm *MCPServerManager) ListDefinitions() []MCPServerDefinition {
+func (msm *MCPServerManager) ListDefinitions() []api.MCPServer {
 	msm.mu.RLock()
 	defer msm.mu.RUnlock()
 
-	result := make([]MCPServerDefinition, 0, len(msm.definitions))
+	result := make([]api.MCPServer, 0, len(msm.definitions))
 	for _, def := range msm.definitions {
 		result = append(result, *def)
 	}
@@ -168,7 +168,7 @@ func (msm *MCPServerManager) ListDefinitions() []MCPServerDefinition {
 }
 
 // ListAvailableDefinitions returns all MCP server definitions (since no tool checking is done)
-func (msm *MCPServerManager) ListAvailableDefinitions() []MCPServerDefinition {
+func (msm *MCPServerManager) ListAvailableDefinitions() []api.MCPServer {
 	// For MCP servers, all definitions are considered available since we don't check tool availability
 	return msm.ListDefinitions()
 }
@@ -204,12 +204,12 @@ func (msm *MCPServerManager) GetDefinitionsPath() string {
 }
 
 // GetAllDefinitions returns all MCP server definitions (for internal use)
-func (msm *MCPServerManager) GetAllDefinitions() map[string]*MCPServerDefinition {
+func (msm *MCPServerManager) GetAllDefinitions() map[string]*api.MCPServer {
 	msm.mu.RLock()
 	defer msm.mu.RUnlock()
 
 	// Return a copy to prevent external modifications
-	result := make(map[string]*MCPServerDefinition)
+	result := make(map[string]*api.MCPServer)
 	for name, def := range msm.definitions {
 		result[name] = def
 	}
@@ -217,9 +217,14 @@ func (msm *MCPServerManager) GetAllDefinitions() map[string]*MCPServerDefinition
 }
 
 // RegisterDefinition registers a new MCP server definition
-func (msm *MCPServerManager) RegisterDefinition(def MCPServerDefinition) error {
+func (msm *MCPServerManager) RegisterDefinition(def api.MCPServer) error {
 	msm.mu.Lock()
 	defer msm.mu.Unlock()
+
+	// Check for duplicate
+	if _, exists := msm.definitions[def.Name]; exists {
+		return fmt.Errorf("MCP server '%s' already exists", def.Name)
+	}
 
 	if err := msm.validateDefinition(&def); err != nil {
 		return fmt.Errorf("invalid MCP server definition: %w", err)
@@ -230,7 +235,7 @@ func (msm *MCPServerManager) RegisterDefinition(def MCPServerDefinition) error {
 }
 
 // UpdateDefinition updates an existing MCP server definition
-func (msm *MCPServerManager) UpdateDefinition(name string, def MCPServerDefinition) error {
+func (msm *MCPServerManager) UpdateDefinition(name string, def api.MCPServer) error {
 	msm.mu.Lock()
 	defer msm.mu.Unlock()
 
@@ -261,7 +266,7 @@ func (msm *MCPServerManager) UnregisterDefinition(name string) error {
 }
 
 // CreateMCPServer creates and persists a new MCP server
-func (msm *MCPServerManager) CreateMCPServer(def MCPServerDefinition) error {
+func (msm *MCPServerManager) CreateMCPServer(def api.MCPServer) error {
 	msm.mu.Lock()
 	defer msm.mu.Unlock()
 
@@ -290,7 +295,7 @@ func (msm *MCPServerManager) CreateMCPServer(def MCPServerDefinition) error {
 }
 
 // UpdateMCPServer updates and persists an existing MCP server
-func (msm *MCPServerManager) UpdateMCPServer(name string, def MCPServerDefinition) error {
+func (msm *MCPServerManager) UpdateMCPServer(name string, def api.MCPServer) error {
 	msm.mu.Lock()
 	defer msm.mu.Unlock()
 

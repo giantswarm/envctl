@@ -4,6 +4,8 @@ import (
 	"envctl/internal/config"
 	"testing"
 
+	"envctl/internal/api"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -25,40 +27,40 @@ func TestMCPServerManager_validateDefinition(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		def     *MCPServerDefinition
+		def     *api.MCPServer
 		wantErr bool
 		errMsg  string
 	}{
 		{
 			name: "valid local command server",
-			def: &MCPServerDefinition{
+			def: &api.MCPServer{
 				Name:    "test-server",
-				Type:    MCPServerTypeLocalCommand,
+				Type:    api.MCPServerTypeLocalCommand,
 				Command: []string{"echo", "hello"},
 			},
 			wantErr: false,
 		},
 		{
 			name: "valid container server",
-			def: &MCPServerDefinition{
+			def: &api.MCPServer{
 				Name:  "test-container",
-				Type:  MCPServerTypeContainer,
+				Type:  api.MCPServerTypeContainer,
 				Image: "nginx:latest",
 			},
 			wantErr: false,
 		},
 		{
 			name: "empty name",
-			def: &MCPServerDefinition{
-				Type:    MCPServerTypeLocalCommand,
+			def: &api.MCPServer{
+				Type:    api.MCPServerTypeLocalCommand,
 				Command: []string{"echo", "hello"},
 			},
 			wantErr: true,
-			errMsg:  "field 'name': is required for MCP server",
+			errMsg:  "field 'name': is required for mcpserver",
 		},
 		{
 			name: "invalid type",
-			def: &MCPServerDefinition{
+			def: &api.MCPServer{
 				Name: "test-server",
 				Type: "invalid-type",
 			},
@@ -67,21 +69,21 @@ func TestMCPServerManager_validateDefinition(t *testing.T) {
 		},
 		{
 			name: "local command without command",
-			def: &MCPServerDefinition{
+			def: &api.MCPServer{
 				Name: "test-server",
-				Type: MCPServerTypeLocalCommand,
+				Type: api.MCPServerTypeLocalCommand,
 			},
 			wantErr: true,
-			errMsg:  "field 'command': is required for local command MCP servers",
+			errMsg:  "field 'command': is required for localCommand type",
 		},
 		{
 			name: "container without image",
-			def: &MCPServerDefinition{
+			def: &api.MCPServer{
 				Name: "test-server",
-				Type: MCPServerTypeContainer,
+				Type: api.MCPServerTypeContainer,
 			},
 			wantErr: true,
-			errMsg:  "field 'image': is required for container MCP server",
+			errMsg:  "field 'image': is required for container type",
 		},
 	}
 
@@ -106,12 +108,12 @@ func TestMCPServerManager_GetDefinition(t *testing.T) {
 	// Test getting non-existent definition
 	def, exists := manager.GetDefinition("non-existent")
 	assert.False(t, exists)
-	assert.Equal(t, MCPServerDefinition{}, def)
+	assert.Equal(t, api.MCPServer{}, def)
 
 	// Add a definition directly to test getting it
-	testDef := &MCPServerDefinition{
+	testDef := &api.MCPServer{
 		Name:    "test-server",
-		Type:    MCPServerTypeLocalCommand,
+		Type:    api.MCPServerTypeLocalCommand,
 		Command: []string{"echo", "hello"},
 		Enabled: true,
 	}
@@ -133,15 +135,15 @@ func TestMCPServerManager_ListDefinitions(t *testing.T) {
 	assert.Empty(t, defs)
 
 	// Add some definitions
-	testDef1 := &MCPServerDefinition{
+	testDef1 := &api.MCPServer{
 		Name:    "server1",
-		Type:    MCPServerTypeLocalCommand,
+		Type:    api.MCPServerTypeLocalCommand,
 		Command: []string{"echo", "hello"},
 		Enabled: true,
 	}
-	testDef2 := &MCPServerDefinition{
+	testDef2 := &api.MCPServer{
 		Name:    "server2",
-		Type:    MCPServerTypeContainer,
+		Type:    api.MCPServerTypeContainer,
 		Image:   "nginx:latest",
 		Enabled: false,
 	}
@@ -168,15 +170,15 @@ func TestMCPServerManager_ListAvailableDefinitions(t *testing.T) {
 	require.NoError(t, err)
 
 	// Add some definitions
-	testDef1 := &MCPServerDefinition{
+	testDef1 := &api.MCPServer{
 		Name:    "server1",
-		Type:    MCPServerTypeLocalCommand,
+		Type:    api.MCPServerTypeLocalCommand,
 		Command: []string{"echo", "hello"},
 		Enabled: true,
 	}
-	testDef2 := &MCPServerDefinition{
+	testDef2 := &api.MCPServer{
 		Name:    "server2",
-		Type:    MCPServerTypeContainer,
+		Type:    api.MCPServerTypeContainer,
 		Image:   "nginx:latest",
 		Enabled: false,
 	}
@@ -210,9 +212,9 @@ func TestMCPServerManager_IsAvailable(t *testing.T) {
 	assert.False(t, manager.IsAvailable("non-existent"))
 
 	// Add a definition
-	testDef := &MCPServerDefinition{
+	testDef := &api.MCPServer{
 		Name:    "test-server",
-		Type:    MCPServerTypeLocalCommand,
+		Type:    api.MCPServerTypeLocalCommand,
 		Command: []string{"echo", "hello"},
 		Enabled: true,
 	}
@@ -253,15 +255,15 @@ func TestMCPServerManager_GetAllDefinitions(t *testing.T) {
 	assert.Empty(t, allDefs)
 
 	// Add some definitions
-	testDef1 := &MCPServerDefinition{
+	testDef1 := &api.MCPServer{
 		Name:    "server1",
-		Type:    MCPServerTypeLocalCommand,
+		Type:    api.MCPServerTypeLocalCommand,
 		Command: []string{"echo", "hello"},
 		Enabled: true,
 	}
-	testDef2 := &MCPServerDefinition{
+	testDef2 := &api.MCPServer{
 		Name:    "server2",
-		Type:    MCPServerTypeContainer,
+		Type:    api.MCPServerTypeContainer,
 		Image:   "nginx:latest",
 		Enabled: false,
 	}
@@ -278,4 +280,135 @@ func TestMCPServerManager_GetAllDefinitions(t *testing.T) {
 	// Verify it's a copy (modifying returned map shouldn't affect original)
 	delete(allDefs, "server1")
 	assert.Len(t, manager.definitions, 2) // Original should still have both
+}
+
+func TestMCPServerManager_Register(t *testing.T) {
+	storage := config.NewStorage()
+	manager, err := NewMCPServerManager(storage)
+	require.NoError(t, err)
+
+	// Test registering a local command server
+	def1 := api.MCPServer{
+		Name:    "test-server-1",
+		Type:    api.MCPServerTypeLocalCommand,
+		Command: []string{"echo", "hello"},
+	}
+
+	err = manager.RegisterDefinition(def1)
+	assert.NoError(t, err)
+
+	// Test registering a container server
+	def2 := api.MCPServer{
+		Name:  "test-server-2",
+		Type:  api.MCPServerTypeContainer,
+		Image: "nginx:latest",
+	}
+
+	err = manager.RegisterDefinition(def2)
+	assert.NoError(t, err)
+
+	// Test registering with duplicate name
+	def3 := api.MCPServer{
+		Name:    "test-server-1", // Same name as def1
+		Type:    api.MCPServerTypeLocalCommand,
+		Command: []string{"some", "command"}, // Add required command
+	}
+
+	err = manager.RegisterDefinition(def3)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "already exists")
+}
+
+func TestMCPServerManager_Get(t *testing.T) {
+	storage := config.NewStorage()
+	manager, err := NewMCPServerManager(storage)
+	require.NoError(t, err)
+
+	// Register a server
+	def := api.MCPServer{
+		Name:    "test-server",
+		Type:    api.MCPServerTypeLocalCommand,
+		Command: []string{"echo", "hello"},
+	}
+
+	err = manager.RegisterDefinition(def)
+	assert.NoError(t, err)
+
+	// Test getting existing server
+	retrieved, exists := manager.GetDefinition("test-server")
+	assert.True(t, exists)
+	assert.Equal(t, def.Name, retrieved.Name)
+	assert.Equal(t, def.Type, retrieved.Type)
+
+	// Test getting non-existent server
+	_, exists = manager.GetDefinition("non-existent")
+	assert.False(t, exists)
+}
+
+func TestMCPServerManager_List(t *testing.T) {
+	storage := config.NewStorage()
+	manager, err := NewMCPServerManager(storage)
+	require.NoError(t, err)
+
+	// Test empty list
+	servers := manager.ListDefinitions()
+	assert.Len(t, servers, 0)
+
+	// Register some servers
+	def1 := api.MCPServer{
+		Name:    "server-1",
+		Type:    api.MCPServerTypeLocalCommand,
+		Command: []string{"cmd1"},
+	}
+
+	def2 := api.MCPServer{
+		Name:  "server-2",
+		Type:  api.MCPServerTypeContainer,
+		Image: "image2",
+	}
+
+	manager.RegisterDefinition(def1)
+	manager.RegisterDefinition(def2)
+
+	// Test list with servers
+	servers = manager.ListDefinitions()
+	assert.Len(t, servers, 2)
+
+	// Verify servers are in the list
+	names := make(map[string]bool)
+	for _, server := range servers {
+		names[server.Name] = true
+	}
+
+	assert.True(t, names["server-1"])
+	assert.True(t, names["server-2"])
+}
+
+func TestMCPServerManager_Unregister(t *testing.T) {
+	storage := config.NewStorage()
+	manager, err := NewMCPServerManager(storage)
+	require.NoError(t, err)
+
+	// Register a server
+	def := api.MCPServer{
+		Name:    "test-server",
+		Type:    api.MCPServerTypeLocalCommand,
+		Command: []string{"echo", "hello"},
+	}
+
+	err = manager.RegisterDefinition(def)
+	assert.NoError(t, err)
+
+	// Test unregistering existing server
+	err = manager.UnregisterDefinition("test-server")
+	assert.NoError(t, err)
+
+	// Verify server is removed
+	_, exists := manager.GetDefinition("test-server")
+	assert.False(t, exists)
+
+	// Test unregistering non-existent server
+	err = manager.UnregisterDefinition("non-existent")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "does not exist")
 }

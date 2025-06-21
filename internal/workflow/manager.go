@@ -15,8 +15,8 @@ import (
 
 // WorkflowManager manages workflows and their execution
 type WorkflowManager struct {
-	storage     *config.Storage                // Use the new Storage
-	workflows   map[string]*WorkflowDefinition // In-memory workflow storage
+	storage     *config.Storage          // Use the new Storage
+	workflows   map[string]*api.Workflow // In-memory workflow storage
 	executor    *WorkflowExecutor
 	toolChecker config.ToolAvailabilityChecker
 	configPath  string // Optional custom config path
@@ -37,7 +37,7 @@ func NewWorkflowManager(storage *config.Storage, toolCaller ToolCaller, toolChec
 
 	wm := &WorkflowManager{
 		storage:     storage,
-		workflows:   make(map[string]*WorkflowDefinition),
+		workflows:   make(map[string]*api.Workflow),
 		executor:    executor,
 		toolChecker: toolChecker,
 		configPath:  configPath,
@@ -72,14 +72,14 @@ func (wm *WorkflowManager) LoadDefinitions() error {
 	defer wm.mu.Unlock()
 
 	// Clear existing in-memory workflows
-	wm.workflows = make(map[string]*WorkflowDefinition)
+	wm.workflows = make(map[string]*api.Workflow)
 
 	// Load all workflow YAML files using the config path-aware helper
-	validator := func(def WorkflowDefinition) error {
+	validator := func(def api.Workflow) error {
 		return wm.validateWorkflowDefinition(&def)
 	}
 
-	definitions, errorCollection, err := config.LoadAndParseYAMLWithConfig[WorkflowDefinition](wm.configPath, "workflows", validator)
+	definitions, errorCollection, err := config.LoadAndParseYAMLWithConfig[api.Workflow](wm.configPath, "workflows", validator)
 	if err != nil {
 		logging.Warn("WorkflowManager", "Error loading workflows: %v", err)
 		return err
@@ -101,7 +101,7 @@ func (wm *WorkflowManager) LoadDefinitions() error {
 }
 
 // validateWorkflowDefinition performs comprehensive validation on a workflow definition
-func (wm *WorkflowManager) validateWorkflowDefinition(def *WorkflowDefinition) error {
+func (wm *WorkflowManager) validateWorkflowDefinition(def *api.Workflow) error {
 	var errors config.ValidationErrors
 
 	// Validate entity name using common helper
@@ -183,23 +183,23 @@ func (wm *WorkflowManager) validateWorkflowDefinition(def *WorkflowDefinition) e
 }
 
 // GetDefinition returns a workflow definition by name (implements common manager interface)
-func (wm *WorkflowManager) GetDefinition(name string) (WorkflowDefinition, bool) {
+func (wm *WorkflowManager) GetDefinition(name string) (api.Workflow, bool) {
 	wm.mu.RLock()
 	defer wm.mu.RUnlock()
 
 	workflow, exists := wm.workflows[name]
 	if !exists {
-		return WorkflowDefinition{}, false
+		return api.Workflow{}, false
 	}
 	return *workflow, true
 }
 
 // ListDefinitions returns all workflow definitions (implements common manager interface)
-func (wm *WorkflowManager) ListDefinitions() []WorkflowDefinition {
+func (wm *WorkflowManager) ListDefinitions() []api.Workflow {
 	wm.mu.RLock()
 	defer wm.mu.RUnlock()
 
-	workflows := make([]WorkflowDefinition, 0, len(wm.workflows))
+	workflows := make([]api.Workflow, 0, len(wm.workflows))
 	for _, wf := range wm.workflows {
 		workflows = append(workflows, *wf)
 	}
@@ -207,11 +207,11 @@ func (wm *WorkflowManager) ListDefinitions() []WorkflowDefinition {
 }
 
 // ListAvailableDefinitions returns only workflow definitions that have all required tools available
-func (wm *WorkflowManager) ListAvailableDefinitions() []WorkflowDefinition {
+func (wm *WorkflowManager) ListAvailableDefinitions() []api.Workflow {
 	wm.mu.RLock()
 	defer wm.mu.RUnlock()
 
-	var available []WorkflowDefinition
+	var available []api.Workflow
 	for _, wf := range wm.workflows {
 		if wm.isWorkflowAvailable(wf) {
 			available = append(available, *wf)
@@ -235,7 +235,7 @@ func (wm *WorkflowManager) IsAvailable(name string) bool {
 }
 
 // isWorkflowAvailable checks if a workflow has all required tools available
-func (wm *WorkflowManager) isWorkflowAvailable(workflow *WorkflowDefinition) bool {
+func (wm *WorkflowManager) isWorkflowAvailable(workflow *api.Workflow) bool {
 	if wm.toolChecker == nil {
 		return true // Assume available if no tool checker
 	}
@@ -314,7 +314,7 @@ func (wm *WorkflowManager) Stop() {
 }
 
 // workflowToTool converts a workflow definition to an MCP tool
-func (wm *WorkflowManager) workflowToTool(workflow WorkflowDefinition) mcp.Tool {
+func (wm *WorkflowManager) workflowToTool(workflow api.Workflow) mcp.Tool {
 	// Convert workflow input schema to MCP tool input schema
 	properties := make(map[string]interface{})
 	required := workflow.InputSchema.Required
@@ -347,7 +347,7 @@ func (wm *WorkflowManager) workflowToTool(workflow WorkflowDefinition) mcp.Tool 
 }
 
 // CreateWorkflow creates and persists a new workflow
-func (wm *WorkflowManager) CreateWorkflow(wf WorkflowDefinition) error {
+func (wm *WorkflowManager) CreateWorkflow(wf api.Workflow) error {
 	wm.mu.Lock()
 	defer wm.mu.Unlock()
 
@@ -376,7 +376,7 @@ func (wm *WorkflowManager) CreateWorkflow(wf WorkflowDefinition) error {
 }
 
 // UpdateWorkflow updates and persists an existing workflow
-func (wm *WorkflowManager) UpdateWorkflow(name string, wf WorkflowDefinition) error {
+func (wm *WorkflowManager) UpdateWorkflow(name string, wf api.Workflow) error {
 	wm.mu.Lock()
 	defer wm.mu.Unlock()
 

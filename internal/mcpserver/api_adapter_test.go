@@ -92,11 +92,12 @@ func TestAdapterGetTools(t *testing.T) {
 		t.Error("GetTools returned nil")
 	}
 
-	// Should have the expected tools (Phase 1: removed obsolete methods)
+	// Should have the expected tools (updated to include mcpserver_validate)
 	expectedTools := []string{
 		"mcpserver_list",
 		"mcpserver_get",
 		"mcpserver_available",
+		"mcpserver_validate",
 		"mcpserver_create",
 		"mcpserver_update",
 		"mcpserver_delete",

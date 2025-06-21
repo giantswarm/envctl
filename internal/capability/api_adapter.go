@@ -2,22 +2,22 @@ package capability
 
 import (
 	"context"
+	"fmt"
+
 	"envctl/internal/api"
 	"envctl/internal/config"
 	"envctl/pkg/logging"
-	"fmt"
 )
 
-// Adapter adapts the capability system to implement api.CapabilityHandler
+// Adapter provides the API adapter for capability management
 type Adapter struct {
 	manager          *CapabilityManager
 	workflowExecutor api.ToolCaller
 }
 
-// NewAdapter creates a new capability adapter
+// NewAdapter creates a new capability API adapter
 func NewAdapter(toolChecker config.ToolAvailabilityChecker, workflowExecutor api.ToolCaller, storage *config.Storage) (*Adapter, error) {
-	registry := GetRegistry()
-	manager, err := NewCapabilityManager(toolChecker, registry, storage)
+	manager, err := NewCapabilityManager(storage, toolChecker)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create capability manager: %w", err)
 	}
@@ -28,41 +28,50 @@ func NewAdapter(toolChecker config.ToolAvailabilityChecker, workflowExecutor api
 	}, nil
 }
 
-// Register registers this adapter with the API
+// Register registers this adapter with the API layer
 func (a *Adapter) Register() {
 	api.RegisterCapability(a)
+	logging.Debug("CapabilityAdapter", "Registered capability adapter with API layer")
 }
 
-// GetTools returns MCP tools for capability management
+// GetTools returns all tools this provider offers
 func (a *Adapter) GetTools() []api.ToolMetadata {
 	return []api.ToolMetadata{
 		{
 			Name:        "capability_list",
 			Description: "List all capability definitions",
+			Parameters: []api.ParameterMetadata{
+				{
+					Name:        "available_only",
+					Type:        "boolean",
+					Required:    false,
+					Description: "Only show capabilities that have all required tools available",
+					Default:     false,
+				},
+			},
 		},
 		{
 			Name:        "capability_get",
-			Description: "Get a specific capability definition",
+			Description: "Get details of a specific capability definition",
 			Parameters: []api.ParameterMetadata{
-				{Name: "name", Type: "string", Required: true, Description: "Capability name"},
+				{
+					Name:        "name",
+					Type:        "string",
+					Required:    true,
+					Description: "Name of the capability to retrieve",
+				},
 			},
 		},
 		{
-			Name:        "capability_available",
-			Description: "Check if a capability is available",
+			Name:        "capability_check",
+			Description: "Check if a capability is available (all required tools are available)",
 			Parameters: []api.ParameterMetadata{
-				{Name: "name", Type: "string", Required: true, Description: "Capability name"},
-			},
-		},
-		{
-			Name:        "capability_validate",
-			Description: "Validate a capability definition",
-			Parameters: []api.ParameterMetadata{
-				{Name: "name", Type: "string", Required: true, Description: "Capability name"},
-				{Name: "type", Type: "string", Required: true, Description: "Capability type"},
-				{Name: "version", Type: "string", Required: false, Description: "Capability version"},
-				{Name: "description", Type: "string", Required: false, Description: "Capability description"},
-				{Name: "operations", Type: "object", Required: true, Description: "Map of operation name to operation definition"},
+				{
+					Name:        "name",
+					Type:        "string",
+					Required:    true,
+					Description: "Name of the capability to check",
+				},
 			},
 		},
 		{
@@ -70,10 +79,10 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 			Description: "Create a new capability definition",
 			Parameters: []api.ParameterMetadata{
 				{Name: "name", Type: "string", Required: true, Description: "Capability name"},
-				{Name: "type", Type: "string", Required: true, Description: "Capability type"},
+				{Name: "type", Type: "string", Required: true, Description: "Capability type identifier"},
 				{Name: "version", Type: "string", Required: false, Description: "Capability version"},
 				{Name: "description", Type: "string", Required: false, Description: "Capability description"},
-				{Name: "operations", Type: "object", Required: true, Description: "Map of operation name to operation definition"},
+				{Name: "operations", Type: "object", Required: true, Description: "Operations map with operation definitions"},
 			},
 		},
 		{
@@ -81,76 +90,164 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 			Description: "Update an existing capability definition",
 			Parameters: []api.ParameterMetadata{
 				{Name: "name", Type: "string", Required: true, Description: "Name of the capability to update"},
-				{Name: "type", Type: "string", Required: false, Description: "Capability type"},
+				{Name: "type", Type: "string", Required: false, Description: "Capability type identifier"},
 				{Name: "version", Type: "string", Required: false, Description: "Capability version"},
 				{Name: "description", Type: "string", Required: false, Description: "Capability description"},
-				{Name: "operations", Type: "object", Required: false, Description: "Map of operation name to operation definition"},
+				{Name: "operations", Type: "object", Required: false, Description: "Operations map with operation definitions"},
 			},
 		},
 		{
 			Name:        "capability_delete",
-			Description: "Delete a capability definition from YAML files",
+			Description: "Delete a capability definition",
 			Parameters: []api.ParameterMetadata{
-				{Name: "name", Type: "string", Required: true, Description: "Name of the capability to delete"},
+				{
+					Name:        "name",
+					Type:        "string",
+					Required:    true,
+					Description: "Name of the capability to delete",
+				},
+			},
+		},
+		{
+			Name:        "capability_validate",
+			Description: "Validate a capability definition",
+			Parameters: []api.ParameterMetadata{
+				{Name: "name", Type: "string", Required: true, Description: "Capability name"},
+				{Name: "type", Type: "string", Required: true, Description: "Capability type identifier"},
+				{Name: "version", Type: "string", Required: false, Description: "Capability version"},
+				{Name: "description", Type: "string", Required: false, Description: "Capability description"},
+				{Name: "operations", Type: "object", Required: true, Description: "Operations map with operation definitions"},
 			},
 		},
 	}
 }
 
-// ExecuteTool executes a capability management tool
+// ExecuteTool executes a tool by name
 func (a *Adapter) ExecuteTool(ctx context.Context, toolName string, args map[string]interface{}) (*api.CallToolResult, error) {
 	switch toolName {
 	case "capability_list":
+		availableOnly := false
+		if val, ok := args["available_only"].(bool); ok {
+			availableOnly = val
+		}
+		if availableOnly {
+			return a.listAvailableCapabilities(ctx)
+		}
 		return a.listCapabilities(ctx)
+
 	case "capability_get":
 		name, ok := args["name"].(string)
 		if !ok {
-			return nil, fmt.Errorf("name parameter is required")
+			return &api.CallToolResult{
+				Content: []interface{}{"name parameter is required"},
+				IsError: true,
+			}, nil
 		}
 		return a.getCapability(ctx, name)
-	case "capability_available":
+
+	case "capability_check":
 		name, ok := args["name"].(string)
 		if !ok {
-			return nil, fmt.Errorf("name parameter is required")
+			return &api.CallToolResult{
+				Content: []interface{}{"name parameter is required"},
+				IsError: true,
+			}, nil
 		}
 		return a.checkCapabilityAvailable(ctx, name)
-	case "capability_validate":
-		return a.handleCapabilityValidate(ctx, args)
+
 	case "capability_create":
-		name, ok := args["name"].(string)
-		if !ok {
-			return nil, fmt.Errorf("name parameter is required")
-		}
-		capType, ok := args["type"].(string)
-		if !ok {
-			return nil, fmt.Errorf("type parameter is required")
-		}
-		version, _ := args["version"].(string)
-		description, _ := args["description"].(string)
-		operations, ok := args["operations"].(map[string]interface{})
-		if !ok {
-			return nil, fmt.Errorf("operations parameter is required")
-		}
-		return a.handleCapabilityCreate(ctx, name, capType, version, description, operations)
+		return a.handleCapabilityCreateFromArgs(ctx, args)
+
 	case "capability_update":
-		name, ok := args["name"].(string)
-		if !ok {
-			return nil, fmt.Errorf("name parameter is required")
-		}
-		capType, _ := args["type"].(string)
-		version, _ := args["version"].(string)
-		description, _ := args["description"].(string)
-		operations, _ := args["operations"].(map[string]interface{})
-		return a.handleCapabilityUpdate(ctx, name, capType, version, description, operations)
+		return a.handleCapabilityUpdateFromArgs(ctx, args)
+
 	case "capability_delete":
 		name, ok := args["name"].(string)
 		if !ok {
-			return nil, fmt.Errorf("name parameter is required")
+			return &api.CallToolResult{
+				Content: []interface{}{"name parameter is required"},
+				IsError: true,
+			}, nil
 		}
 		return a.handleCapabilityDelete(ctx, name)
+
+	case "capability_validate":
+		return a.handleCapabilityValidate(ctx, args)
+
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", toolName)
 	}
+}
+
+// Helper methods for handling creation and update from args
+func (a *Adapter) handleCapabilityCreateFromArgs(ctx context.Context, args map[string]interface{}) (*api.CallToolResult, error) {
+	name, ok := args["name"].(string)
+	if !ok || name == "" {
+		return &api.CallToolResult{
+			Content: []interface{}{"name parameter is required"},
+			IsError: true,
+		}, nil
+	}
+
+	capType, ok := args["type"].(string)
+	if !ok || capType == "" {
+		return &api.CallToolResult{
+			Content: []interface{}{"type parameter is required"},
+			IsError: true,
+		}, nil
+	}
+
+	operations, ok := args["operations"].(map[string]interface{})
+	if !ok {
+		return &api.CallToolResult{
+			Content: []interface{}{"operations parameter is required"},
+			IsError: true,
+		}, nil
+	}
+
+	version, _ := args["version"].(string)
+	description, _ := args["description"].(string)
+
+	return a.handleCapabilityCreate(ctx, name, capType, version, description, operations)
+}
+
+func (a *Adapter) handleCapabilityUpdateFromArgs(ctx context.Context, args map[string]interface{}) (*api.CallToolResult, error) {
+	name, ok := args["name"].(string)
+	if !ok || name == "" {
+		return &api.CallToolResult{
+			Content: []interface{}{"name parameter is required"},
+			IsError: true,
+		}, nil
+	}
+
+	capType, _ := args["type"].(string)
+	version, _ := args["version"].(string)
+	description, _ := args["description"].(string)
+	operations, _ := args["operations"].(map[string]interface{})
+
+	return a.handleCapabilityUpdate(ctx, name, capType, version, description, operations)
+}
+
+// listAvailableCapabilities lists only available capabilities
+func (a *Adapter) listAvailableCapabilities(ctx context.Context) (*api.CallToolResult, error) {
+	definitions := a.manager.ListAvailableDefinitions()
+
+	result := make([]map[string]interface{}, len(definitions))
+	for i, def := range definitions {
+		result[i] = map[string]interface{}{
+			"name":        def.Name,
+			"type":        def.Type,
+			"version":     def.Version,
+			"description": def.Description,
+			"available":   true, // All listed are available
+			"operations":  len(def.Operations),
+		}
+	}
+
+	return &api.CallToolResult{
+		Content: []interface{}{fmt.Sprintf("Found %d available capability definitions", len(result)), result},
+		IsError: false,
+	}, nil
 }
 
 // ExecuteCapability executes a capability operation (implements CapabilityHandler interface)
@@ -202,26 +299,18 @@ func (a *Adapter) IsCapabilityAvailable(capabilityType, operation string) bool {
 }
 
 // ListCapabilities returns information about all available capabilities (implements CapabilityHandler interface)
-func (a *Adapter) ListCapabilities() []api.CapabilityInfo {
+func (a *Adapter) ListCapabilities() []api.Capability {
 	definitions := a.manager.ListDefinitions()
-	result := make([]api.CapabilityInfo, len(definitions))
+	result := make([]api.Capability, len(definitions))
 
 	for i, def := range definitions {
-		operations := make([]api.OperationInfo, 0, len(def.Operations))
-		for opName, opDef := range def.Operations {
-			operations = append(operations, api.OperationInfo{
-				Name:        opName,
-				Description: opDef.Description,
-				Available:   a.IsCapabilityAvailable(def.Type, opName),
-			})
-		}
-
-		result[i] = api.CapabilityInfo{
-			Type:        def.Type,
+		result[i] = api.Capability{
 			Name:        def.Name,
+			Type:        def.Type,
 			Description: def.Description,
 			Version:     def.Version,
-			Operations:  operations,
+			Operations:  def.Operations,
+			Available:   a.manager.IsAvailable(def.Name),
 		}
 	}
 
@@ -267,7 +356,6 @@ func (a *Adapter) getCapability(ctx context.Context, name string) (*api.CallTool
 		"description": def.Description,
 		"available":   available,
 		"operations":  def.Operations,
-		// Note: metadata field removed in Phase 3
 	}
 
 	return &api.CallToolResult{
@@ -293,7 +381,7 @@ func (a *Adapter) checkCapabilityAvailable(ctx context.Context, name string) (*a
 
 // handleCapabilityValidate validates a capability definition
 func (a *Adapter) handleCapabilityValidate(ctx context.Context, args map[string]interface{}) (*api.CallToolResult, error) {
-	// Parse parameters same as create method (without metadata)
+	// Parse parameters same as create method
 	name, ok := args["name"].(string)
 	if !ok || name == "" {
 		return &api.CallToolResult{
@@ -321,12 +409,12 @@ func (a *Adapter) handleCapabilityValidate(ctx context.Context, args map[string]
 	version, _ := args["version"].(string)
 	description, _ := args["description"].(string)
 
-	def := &CapabilityDefinition{
+	def := &api.Capability{
 		Name:        name,
 		Type:        capType,
 		Version:     version,
 		Description: description,
-		Operations:  make(map[string]OperationDefinition),
+		Operations:  make(map[string]api.OperationDefinition),
 	}
 
 	// Convert operations map to OperationDefinition structs
@@ -339,8 +427,8 @@ func (a *Adapter) handleCapabilityValidate(ctx context.Context, args map[string]
 			}, nil
 		}
 
-		opDef := OperationDefinition{
-			Parameters: make(map[string]Parameter),
+		opDef := api.OperationDefinition{
+			Parameters: make(map[string]api.Parameter),
 			Requires:   []string{},
 		}
 
@@ -360,7 +448,7 @@ func (a *Adapter) handleCapabilityValidate(ctx context.Context, args map[string]
 					}, nil
 				}
 
-				param := Parameter{}
+				param := api.Parameter{}
 				if paramType, ok := paramMap["type"].(string); ok {
 					param.Type = paramType
 				}
@@ -426,13 +514,13 @@ func (a *Adapter) SetConfigPath(configPath string) {
 // Handler methods for new CRUD tools
 
 func (a *Adapter) handleCapabilityCreate(ctx context.Context, name, capType, version, description string, operations map[string]interface{}) (*api.CallToolResult, error) {
-	// Build CapabilityDefinition from structured parameters (metadata will be empty)
-	def := &CapabilityDefinition{
+	// Build api.Capability from structured parameters
+	def := &api.Capability{
 		Name:        name,
 		Type:        capType,
 		Version:     version,
 		Description: description,
-		Operations:  make(map[string]OperationDefinition),
+		Operations:  make(map[string]api.OperationDefinition),
 	}
 
 	// Convert operations map to OperationDefinition structs
@@ -445,8 +533,8 @@ func (a *Adapter) handleCapabilityCreate(ctx context.Context, name, capType, ver
 			}, nil
 		}
 
-		opDef := OperationDefinition{
-			Parameters: make(map[string]Parameter),
+		opDef := api.OperationDefinition{
+			Parameters: make(map[string]api.Parameter),
 			Requires:   []string{},
 		}
 
@@ -466,7 +554,7 @@ func (a *Adapter) handleCapabilityCreate(ctx context.Context, name, capType, ver
 					}, nil
 				}
 
-				param := Parameter{}
+				param := api.Parameter{}
 				if paramType, ok := paramMap["type"].(string); ok {
 					param.Type = paramType
 				}
@@ -522,19 +610,18 @@ func (a *Adapter) handleCapabilityUpdate(ctx context.Context, name, capType, ver
 	}
 
 	// Start with existing definition and update provided fields
-	def := &CapabilityDefinition{
+	def := &api.Capability{
 		Name:        name,
 		Type:        existingDef.Type,
 		Version:     existingDef.Version,
 		Description: existingDef.Description,
-		Operations:  make(map[string]OperationDefinition),
+		Operations:  make(map[string]api.OperationDefinition),
 	}
 
 	// Copy existing operations
 	for opName, opDef := range existingDef.Operations {
 		def.Operations[opName] = opDef
 	}
-	// Note: metadata copying removed in Phase 3
 
 	// Update fields if provided
 	if capType != "" {
@@ -549,7 +636,7 @@ func (a *Adapter) handleCapabilityUpdate(ctx context.Context, name, capType, ver
 
 	// Update operations if provided
 	if operations != nil {
-		def.Operations = make(map[string]OperationDefinition)
+		def.Operations = make(map[string]api.OperationDefinition)
 		for opName, opData := range operations {
 			opMap, ok := opData.(map[string]interface{})
 			if !ok {
@@ -559,8 +646,8 @@ func (a *Adapter) handleCapabilityUpdate(ctx context.Context, name, capType, ver
 				}, nil
 			}
 
-			opDef := OperationDefinition{
-				Parameters: make(map[string]Parameter),
+			opDef := api.OperationDefinition{
+				Parameters: make(map[string]api.Parameter),
 				Requires:   []string{},
 			}
 
@@ -580,7 +667,7 @@ func (a *Adapter) handleCapabilityUpdate(ctx context.Context, name, capType, ver
 						}, nil
 					}
 
-					param := Parameter{}
+					param := api.Parameter{}
 					if paramType, ok := paramMap["type"].(string); ok {
 						param.Type = paramType
 					}

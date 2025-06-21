@@ -158,7 +158,11 @@ func InitializeServices(cfg *Config) (*Services, error) {
 	mcpServerDefinitions := mcpServerManager.ListDefinitions()
 	for _, mcpDef := range mcpServerDefinitions {
 		if mcpDef.Enabled {
-			mcpService := mcpserver.NewMCPServerService(mcpDef)
+			mcpService, err := mcpserver.NewService(&mcpDef, mcpServerManager)
+			if err != nil {
+				logging.Warn("Services", "Failed to create MCP server service %s: %v", mcpDef.Name, err)
+				continue
+			}
 			if mcpService != nil {
 				registry.Register(mcpService)
 			}

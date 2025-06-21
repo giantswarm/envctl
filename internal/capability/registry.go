@@ -14,30 +14,30 @@ import (
 // Registry manages registered capabilities
 type Registry struct {
 	mu           sync.RWMutex
-	capabilities map[string]*Capability           // capability ID -> capability
-	byType       map[CapabilityType][]*Capability // type -> capabilities
-	byProvider   map[string][]*Capability         // provider -> capabilities
+	capabilities map[string]*api.Capability   // capability ID -> capability
+	byType       map[string][]*api.Capability // type -> capabilities
+	byProvider   map[string][]*api.Capability // provider -> capabilities
 
 	// Callbacks
-	onRegister   []func(cap *Capability)
+	onRegister   []func(cap *api.Capability)
 	onUnregister []func(capabilityID string)
-	onUpdate     []func(cap *Capability)
+	onUpdate     []func(cap *api.Capability)
 }
 
 // NewRegistry creates a new capability registry
 func NewRegistry() *Registry {
 	return &Registry{
-		capabilities: make(map[string]*Capability),
-		byType:       make(map[CapabilityType][]*Capability),
-		byProvider:   make(map[string][]*Capability),
-		onRegister:   []func(cap *Capability){},
+		capabilities: make(map[string]*api.Capability),
+		byType:       make(map[string][]*api.Capability),
+		byProvider:   make(map[string][]*api.Capability),
+		onRegister:   []func(cap *api.Capability){},
 		onUnregister: []func(capabilityID string){},
-		onUpdate:     []func(cap *Capability){},
+		onUpdate:     []func(cap *api.Capability){},
 	}
 }
 
 // Register registers a new capability
-func (r *Registry) Register(cap *Capability) error {
+func (r *Registry) Register(cap *api.Capability) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -52,11 +52,9 @@ func (r *Registry) Register(cap *Capability) error {
 	}
 
 	// Set initial status
-	cap.Status = CapabilityStatus{
-		State:     CapabilityStateRegistering,
-		LastCheck: time.Now(),
-		Health:    HealthStatusUnknown,
-	}
+	cap.State = api.CapabilityStateRegistering
+	cap.LastCheck = time.Now()
+	cap.Health = api.HealthUnknown
 
 	// Add to registry
 	r.capabilities[cap.ID] = cap
@@ -64,8 +62,8 @@ func (r *Registry) Register(cap *Capability) error {
 	r.byProvider[cap.Provider] = append(r.byProvider[cap.Provider], cap)
 
 	// Update status to active
-	cap.Status.State = CapabilityStateActive
-	cap.Status.Health = HealthStatusHealthy
+	cap.State = api.CapabilityStateActive
+	cap.Health = api.HealthHealthy
 
 	logging.Info("Registry", "Registered capability %s (type: %s, provider: %s)",
 		cap.Name, cap.Type, cap.Provider)
@@ -110,7 +108,7 @@ func (r *Registry) Unregister(capabilityID string) error {
 }
 
 // Update updates a capability's status
-func (r *Registry) Update(capabilityID string, status CapabilityStatus) error {
+func (r *Registry) Update(capabilityID string, state api.CapabilityState, health api.HealthStatus, error string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -120,10 +118,12 @@ func (r *Registry) Update(capabilityID string, status CapabilityStatus) error {
 	}
 
 	// Update status
-	cap.Status = status
-	cap.Status.LastCheck = time.Now()
+	cap.State = state
+	cap.Health = health
+	cap.Error = error
+	cap.LastCheck = time.Now()
 
-	logging.Debug("Registry", "Updated capability %s status to %s", cap.Name, status.State)
+	logging.Debug("Registry", "Updated capability %s status to %s", cap.Name, state)
 
 	// Notify observers
 	for _, callback := range r.onUpdate {
@@ -134,7 +134,7 @@ func (r *Registry) Update(capabilityID string, status CapabilityStatus) error {
 }
 
 // Get retrieves a capability by ID
-func (r *Registry) Get(capabilityID string) (*Capability, bool) {
+func (r *Registry) Get(capabilityID string) (*api.Capability, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -143,33 +143,33 @@ func (r *Registry) Get(capabilityID string) (*Capability, bool) {
 }
 
 // ListByType returns all capabilities of a given type
-func (r *Registry) ListByType(capType CapabilityType) []*Capability {
+func (r *Registry) ListByType(capType string) []*api.Capability {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	caps := r.byType[capType]
-	result := make([]*Capability, len(caps))
+	result := make([]*api.Capability, len(caps))
 	copy(result, caps)
 	return result
 }
 
 // ListByProvider returns all capabilities from a provider
-func (r *Registry) ListByProvider(provider string) []*Capability {
+func (r *Registry) ListByProvider(provider string) []*api.Capability {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	caps := r.byProvider[provider]
-	result := make([]*Capability, len(caps))
+	result := make([]*api.Capability, len(caps))
 	copy(result, caps)
 	return result
 }
 
 // ListAll returns all registered capabilities
-func (r *Registry) ListAll() []*Capability {
+func (r *Registry) ListAll() []*api.Capability {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	result := make([]*Capability, 0, len(r.capabilities))
+	result := make([]*api.Capability, 0, len(r.capabilities))
 	for _, cap := range r.capabilities {
 		result = append(result, cap)
 	}
@@ -177,12 +177,12 @@ func (r *Registry) ListAll() []*Capability {
 }
 
 // FindMatching finds capabilities matching a request
-func (r *Registry) FindMatching(req CapabilityRequest) []*Capability {
+func (r *Registry) FindMatching(req api.CapabilityRequest) []*api.Capability {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	candidates := r.byType[req.Type]
-	var matching []*Capability
+	var matching []*api.Capability
 
 	for _, cap := range candidates {
 		if r.matchesRequest(cap, req) {
@@ -194,7 +194,7 @@ func (r *Registry) FindMatching(req CapabilityRequest) []*Capability {
 }
 
 // OnRegister adds a callback for capability registration
-func (r *Registry) OnRegister(callback func(cap *Capability)) {
+func (r *Registry) OnRegister(callback func(cap *api.Capability)) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.onRegister = append(r.onRegister, callback)
@@ -208,16 +208,16 @@ func (r *Registry) OnUnregister(callback func(capabilityID string)) {
 }
 
 // OnUpdate adds a callback for capability updates
-func (r *Registry) OnUpdate(callback func(cap *Capability)) {
+func (r *Registry) OnUpdate(callback func(cap *api.Capability)) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.onUpdate = append(r.onUpdate, callback)
 }
 
 // matchesRequest checks if a capability matches a request
-func (r *Registry) matchesRequest(cap *Capability, req CapabilityRequest) bool {
+func (r *Registry) matchesRequest(cap *api.Capability, req api.CapabilityRequest) bool {
 	// Check if capability is active
-	if cap.Status.State != CapabilityStateActive {
+	if cap.State != api.CapabilityStateActive {
 		return false
 	}
 
@@ -241,7 +241,7 @@ func (r *Registry) matchesRequest(cap *Capability, req CapabilityRequest) bool {
 }
 
 // removeCapabilityFromSlice removes a capability from a slice and returns the new slice
-func (r *Registry) removeCapabilityFromSlice(slice []*Capability, cap *Capability) []*Capability {
+func (r *Registry) removeCapabilityFromSlice(slice []*api.Capability, cap *api.Capability) []*api.Capability {
 	for i, c := range slice {
 		if c.ID == cap.ID {
 			return append(slice[:i], slice[i+1:]...)
@@ -251,7 +251,7 @@ func (r *Registry) removeCapabilityFromSlice(slice []*Capability, cap *Capabilit
 }
 
 // GetProvider retrieves a capability by provider name
-func (r *Registry) GetProvider(providerName string) (*Capability, error) {
+func (r *Registry) GetProvider(providerName string) (*api.Capability, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 

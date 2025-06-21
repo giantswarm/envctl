@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"envctl/internal/api"
+
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -35,12 +37,12 @@ func TestWorkflowExecutor_ExecuteWorkflow(t *testing.T) {
 	mock := &mockToolCaller{}
 	executor := NewWorkflowExecutor(mock)
 
-	workflow := &WorkflowDefinition{
+	workflow := &api.Workflow{
 		Name:        "test_workflow",
 		Description: "Test workflow",
-		InputSchema: WorkflowInputSchema{
+		InputSchema: api.WorkflowInputSchema{
 			Type: "object",
-			Properties: map[string]SchemaProperty{
+			Properties: map[string]api.SchemaProperty{
 				"cluster": {
 					Type:        "string",
 					Description: "Cluster name",
@@ -48,7 +50,7 @@ func TestWorkflowExecutor_ExecuteWorkflow(t *testing.T) {
 			},
 			Required: []string{"cluster"},
 		},
-		Steps: []WorkflowStep{
+		Steps: []api.WorkflowStep{
 			{
 				ID:   "step1",
 				Tool: "test_tool",
@@ -79,9 +81,9 @@ func TestWorkflowExecutor_ExecuteWorkflow(t *testing.T) {
 func TestWorkflowExecutor_ValidateInputs(t *testing.T) {
 	executor := NewWorkflowExecutor(nil)
 
-	schema := WorkflowInputSchema{
+	schema := api.WorkflowInputSchema{
 		Type: "object",
-		Properties: map[string]SchemaProperty{
+		Properties: map[string]api.SchemaProperty{
 			"required_string": {
 				Type:        "string",
 				Description: "Required string field",
@@ -171,14 +173,14 @@ func TestWorkflowExecutor_StoreResults(t *testing.T) {
 	mock := &mockToolCaller{}
 	executor := NewWorkflowExecutor(mock)
 
-	workflow := &WorkflowDefinition{
+	workflow := &api.Workflow{
 		Name:        "test_workflow",
 		Description: "Test workflow with result storage",
-		InputSchema: WorkflowInputSchema{
+		InputSchema: api.WorkflowInputSchema{
 			Type:       "object",
-			Properties: map[string]SchemaProperty{},
+			Properties: map[string]api.SchemaProperty{},
 		},
-		Steps: []WorkflowStep{
+		Steps: []api.WorkflowStep{
 			{
 				ID:    "step1",
 				Tool:  "test_tool",
