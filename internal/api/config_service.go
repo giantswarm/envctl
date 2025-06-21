@@ -13,17 +13,12 @@ type ConfigServiceAPI interface {
 	GetConfig(ctx context.Context) (*config.EnvctlConfig, error)
 
 	// Get specific configuration sections
-	GetMCPServers(ctx context.Context) ([]MCPServerDefinition, error)
 	GetAggregatorConfig(ctx context.Context) (*config.AggregatorConfig, error)
 	GetGlobalSettings(ctx context.Context) (*config.GlobalSettings, error)
 
 	// Update configuration sections
-	UpdateMCPServer(ctx context.Context, server MCPServerDefinition) error
 	UpdateAggregatorConfig(ctx context.Context, aggregator config.AggregatorConfig) error
 	UpdateGlobalSettings(ctx context.Context, settings config.GlobalSettings) error
-
-	// Delete configuration items
-	DeleteMCPServer(ctx context.Context, name string) error
 
 	// Save configuration to file
 	SaveConfig(ctx context.Context) error
@@ -51,39 +46,6 @@ func (c *configServiceAPI) GetConfig(ctx context.Context) (*config.EnvctlConfig,
 	return handler.GetConfig(ctx)
 }
 
-// GetMCPServers returns all MCP server definitions
-func (c *configServiceAPI) GetMCPServers(ctx context.Context) ([]MCPServerDefinition, error) {
-	handler := GetMCPServerManager()
-	if handler == nil {
-		return nil, fmt.Errorf("MCP server manager not registered")
-	}
-
-	// Convert MCPServerConfigInfo to MCPServerDefinition
-	configInfos := handler.ListMCPServers()
-	definitions := make([]MCPServerDefinition, len(configInfos))
-
-	for i, info := range configInfos {
-		// Get detailed definition
-		if def, err := handler.GetMCPServer(info.Name); err == nil {
-			definitions[i] = *def
-		} else {
-			// Fallback to basic info if detailed get fails
-			definitions[i] = MCPServerDefinition{
-				Name:        info.Name,
-				Type:        info.Type,
-				Enabled:     info.Enabled,
-				Category:    info.Category,
-				Icon:        info.Icon,
-				Description: info.Description,
-				Command:     info.Command,
-				Image:       info.Image,
-			}
-		}
-	}
-
-	return definitions, nil
-}
-
 // GetAggregatorConfig returns the aggregator configuration
 func (c *configServiceAPI) GetAggregatorConfig(ctx context.Context) (*config.AggregatorConfig, error) {
 	handler := GetConfigHandler()
@@ -102,15 +64,6 @@ func (c *configServiceAPI) GetGlobalSettings(ctx context.Context) (*config.Globa
 	return handler.GetGlobalSettings(ctx)
 }
 
-// UpdateMCPServer updates or adds an MCP server definition
-func (c *configServiceAPI) UpdateMCPServer(ctx context.Context, server MCPServerDefinition) error {
-	handler := GetMCPServerManager()
-	if handler == nil {
-		return fmt.Errorf("MCP server manager not registered")
-	}
-	return handler.RegisterDefinition(&server)
-}
-
 // UpdateAggregatorConfig updates the aggregator configuration
 func (c *configServiceAPI) UpdateAggregatorConfig(ctx context.Context, aggregator config.AggregatorConfig) error {
 	handler := GetConfigHandler()
@@ -127,15 +80,6 @@ func (c *configServiceAPI) UpdateGlobalSettings(ctx context.Context, settings co
 		return fmt.Errorf("config handler not registered")
 	}
 	return handler.UpdateGlobalSettings(ctx, settings)
-}
-
-// DeleteMCPServer removes an MCP server by name
-func (c *configServiceAPI) DeleteMCPServer(ctx context.Context, name string) error {
-	handler := GetMCPServerManager()
-	if handler == nil {
-		return fmt.Errorf("MCP server manager not registered")
-	}
-	return handler.UnregisterDefinition(name)
 }
 
 // SaveConfig persists the configuration to file

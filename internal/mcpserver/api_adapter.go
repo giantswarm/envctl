@@ -93,53 +93,7 @@ func (a *Adapter) IsMCPServerAvailable(name string) bool {
 	return a.manager.IsAvailable(name)
 }
 
-// LoadDefinitions loads all MCP server definitions from the configured path
-func (a *Adapter) LoadDefinitions() error {
-	if a.manager == nil {
-		return fmt.Errorf("MCP server manager not available")
-	}
 
-	return a.manager.LoadDefinitions()
-}
-
-// RefreshAvailability refreshes the availability status of all MCP servers
-func (a *Adapter) RefreshAvailability() {
-	if a.manager == nil {
-		logging.Warn("MCPServerAdapter", "Cannot refresh availability: manager not available")
-		return
-	}
-
-	a.manager.RefreshAvailability()
-}
-
-// RegisterDefinition registers an MCP server definition programmatically
-func (a *Adapter) RegisterDefinition(apiDef *api.MCPServerDefinition) error {
-	if a.manager == nil {
-		return fmt.Errorf("MCP server manager not available")
-	}
-
-	// TODO: Convert from API type to internal type and use RegisterDefinition once it's implemented
-	return fmt.Errorf("RegisterDefinition not yet implemented")
-}
-
-// UnregisterDefinition unregisters an MCP server definition
-func (a *Adapter) UnregisterDefinition(name string) error {
-	if a.manager == nil {
-		return fmt.Errorf("MCP server manager not available")
-	}
-
-	// TODO: Add UnregisterDefinition method to MCPServerManager
-	return fmt.Errorf("UnregisterDefinition not yet implemented")
-}
-
-// GetDefinitionsPath returns the path where MCP server definitions are loaded from
-func (a *Adapter) GetDefinitionsPath() string {
-	if a.manager == nil {
-		return ""
-	}
-
-	return a.manager.GetDefinitionsPath()
-}
 
 // GetManager returns the underlying MCPServerManager (for internal use)
 // This should only be used by other internal packages that need direct access
@@ -180,48 +134,7 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 				},
 			},
 		},
-		{
-			Name:        "mcpserver_refresh",
-			Description: "Refresh the availability status of all MCP server definitions",
-		},
-		{
-			Name:        "mcpserver_load",
-			Description: "Load MCP server definitions from the configured directory",
-		},
-		{
-			Name:        "mcpserver_definitions_path",
-			Description: "Get the path where MCP server definitions are loaded from",
-		},
-		{
-			Name:        "mcpserver_register",
-			Description: "Register an MCP server with structured parameters",
-			Parameters: []api.ParameterMetadata{
-				{Name: "name", Type: "string", Required: true, Description: "MCP server name"},
-				{Name: "type", Type: "string", Required: true, Description: "MCP server type (localCommand or container)"},
-				{Name: "enabled", Type: "boolean", Required: false, Description: "Whether server is enabled by default"},
-				{Name: "icon", Type: "string", Required: false, Description: "Icon/emoji for display"},
-				{Name: "category", Type: "string", Required: false, Description: "Category for grouping"},
-				{Name: "healthCheckInterval", Type: "string", Required: false, Description: "Health check interval duration"},
-				{Name: "toolPrefix", Type: "string", Required: false, Description: "Custom tool prefix"},
-				{Name: "command", Type: "array", Required: false, Description: "Command and arguments (for localCommand type)"},
-				{Name: "env", Type: "object", Required: false, Description: "Environment variables (for localCommand type)"},
-				{Name: "image", Type: "string", Required: false, Description: "Container image (for container type)"},
-				{Name: "containerPorts", Type: "array", Required: false, Description: "Port mappings (for container type)"},
-				{Name: "containerEnv", Type: "object", Required: false, Description: "Container environment variables"},
-				{Name: "containerVolumes", Type: "array", Required: false, Description: "Volume mounts"},
-				{Name: "healthCheckCmd", Type: "array", Required: false, Description: "Health check command"},
-				{Name: "entrypoint", Type: "array", Required: false, Description: "Container entrypoint"},
-				{Name: "containerUser", Type: "string", Required: false, Description: "Container user"},
-				{Name: "merge", Type: "boolean", Required: false, Description: "If true, replace existing MCP server of the same name"},
-			},
-		},
-		{
-			Name:        "mcpserver_unregister",
-			Description: "Unregister an MCP server by name",
-			Parameters: []api.ParameterMetadata{
-				{Name: "name", Type: "string", Required: true, Description: "Name of the MCP server to remove"},
-			},
-		},
+
 		{
 			Name:        "mcpserver_create",
 			Description: "Create a new dynamic MCP server",
@@ -285,16 +198,7 @@ func (a *Adapter) ExecuteTool(ctx context.Context, toolName string, args map[str
 		return a.handleMCPServerGet(args)
 	case "mcpserver_available":
 		return a.handleMCPServerAvailable(args)
-	case "mcpserver_refresh":
-		return a.handleMCPServerRefresh()
-	case "mcpserver_load":
-		return a.handleMCPServerLoad()
-	case "mcpserver_definitions_path":
-		return a.handleMCPServerDefinitionsPath()
-	case "mcpserver_register":
-		return a.handleMCPServerRegister(args)
-	case "mcpserver_unregister":
-		return a.handleMCPServerUnregister(args)
+
 	case "mcpserver_create":
 		return a.handleMCPServerCreate(args)
 	case "mcpserver_update":
@@ -364,42 +268,7 @@ func (a *Adapter) handleMCPServerAvailable(args map[string]interface{}) (*api.Ca
 	}, nil
 }
 
-func (a *Adapter) handleMCPServerRefresh() (*api.CallToolResult, error) {
-	a.RefreshAvailability()
 
-	return &api.CallToolResult{
-		Content: []interface{}{"MCP server availability refreshed successfully"},
-		IsError: false,
-	}, nil
-}
-
-func (a *Adapter) handleMCPServerLoad() (*api.CallToolResult, error) {
-	err := a.LoadDefinitions()
-	if err != nil {
-		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Failed to load MCP server definitions: %v", err)},
-			IsError: true,
-		}, nil
-	}
-
-	return &api.CallToolResult{
-		Content: []interface{}{"MCP server definitions loaded successfully"},
-		IsError: false,
-	}, nil
-}
-
-func (a *Adapter) handleMCPServerDefinitionsPath() (*api.CallToolResult, error) {
-	path := a.GetDefinitionsPath()
-
-	result := map[string]interface{}{
-		"definitionsPath": path,
-	}
-
-	return &api.CallToolResult{
-		Content: []interface{}{result},
-		IsError: false,
-	}, nil
-}
 
 // helper to create simple error CallToolResult
 func simpleError(msg string) (*api.CallToolResult, error) {
@@ -543,54 +412,7 @@ func convertToMCPServerDefinition(args map[string]interface{}) (MCPServerDefinit
 	return def, nil
 }
 
-func (a *Adapter) handleMCPServerRegister(args map[string]interface{}) (*api.CallToolResult, error) {
-	merge, _ := args["merge"].(bool)
 
-	// Convert structured parameters to MCPServerDefinition
-	def, err := convertToMCPServerDefinition(args)
-	if err != nil {
-		return simpleError(err.Error())
-	}
-
-	// Validate the definition
-	if err := validateMCPServerDefinition(def); err != nil {
-		return simpleError(fmt.Sprintf("Invalid MCP server definition: %v", err))
-	}
-
-	// Check if it already exists and merge flag
-	if _, exists := a.manager.GetDefinition(def.Name); exists && !merge {
-		return simpleError(fmt.Sprintf("MCP server '%s' already exists. Use merge=true to replace.", def.Name))
-	} else if exists && merge {
-		logging.Info("MCPServerAdapter", "Replacing existing MCP server '%s'", def.Name)
-		if err := a.manager.UpdateMCPServer(def.Name, def); err != nil {
-			return simpleError(fmt.Sprintf("Failed to update MCP server: %v", err))
-		}
-	} else {
-		if err := a.manager.CreateMCPServer(def); err != nil {
-			return simpleError(fmt.Sprintf("Failed to create MCP server: %v", err))
-		}
-	}
-
-	return simpleOK(fmt.Sprintf("MCP server '%s' registered successfully", def.Name))
-}
-
-func (a *Adapter) handleMCPServerUnregister(args map[string]interface{}) (*api.CallToolResult, error) {
-	name, ok := args["name"].(string)
-	if !ok || name == "" {
-		return simpleError("name parameter is required")
-	}
-
-	// Check if it exists
-	if _, exists := a.manager.GetDefinition(name); !exists {
-		return api.HandleErrorWithPrefix(api.NewMCPServerNotFoundError(name), "Failed to unregister MCP server"), nil
-	}
-
-	if err := a.manager.DeleteMCPServer(name); err != nil {
-		return api.HandleErrorWithPrefix(err, "Failed to delete MCP server"), nil
-	}
-
-	return simpleOK(fmt.Sprintf("MCP server '%s' unregistered successfully", name))
-}
 
 func (a *Adapter) handleMCPServerCreate(args map[string]interface{}) (*api.CallToolResult, error) {
 	// Convert structured parameters to MCPServerDefinition

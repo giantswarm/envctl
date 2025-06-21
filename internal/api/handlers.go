@@ -179,11 +179,6 @@ type CapabilityHandler interface {
 	GetCapability(name string) (interface{}, error)
 	IsCapabilityAvailable(capabilityType, operation string) bool
 
-	// Capability definition management
-	LoadDefinitions() error
-	RefreshAvailability()
-	GetDefinitionsPath() string
-
 	// Embed ToolProvider for tool generation
 	ToolProvider
 }
@@ -224,8 +219,6 @@ type ServiceClassManagerHandler interface {
 	ListServiceClasses() []ServiceClassInfo
 	GetServiceClass(name string) (*ServiceClassDefinition, error)
 	IsServiceClassAvailable(name string) bool
-	LoadServiceDefinitions() error
-	RefreshAvailability()
 
 	// Lifecycle tool access (for service orchestration without direct coupling)
 	GetStartTool(name string) (toolName string, arguments map[string]interface{}, responseMapping map[string]string, err error)
@@ -234,13 +227,6 @@ type ServiceClassManagerHandler interface {
 	GetHealthCheckTool(name string) (toolName string, arguments map[string]interface{}, responseMapping map[string]string, err error)
 	GetHealthCheckConfig(name string) (enabled bool, interval time.Duration, failureThreshold, successThreshold int, err error)
 	GetServiceDependencies(name string) ([]string, error)
-
-	// Service class registration (for programmatic definitions)
-	RegisterDefinition(def *ServiceClassDefinition) error
-	UnregisterDefinition(name string) error
-
-	// Utility methods
-	GetDefinitionsPath() string
 
 	// Tool provider interface for exposing ServiceClass management tools
 	ToolProvider
@@ -289,15 +275,6 @@ type MCPServerManagerHandler interface {
 	ListMCPServers() []MCPServerConfigInfo
 	GetMCPServer(name string) (*MCPServerDefinition, error)
 	IsMCPServerAvailable(name string) bool
-	LoadDefinitions() error
-	RefreshAvailability()
-
-	// MCP server registration (for programmatic definitions)
-	RegisterDefinition(def *MCPServerDefinition) error
-	UnregisterDefinition(name string) error
-
-	// Utility methods
-	GetDefinitionsPath() string
 
 	// Tool provider interface for exposing MCP server management tools
 	ToolProvider

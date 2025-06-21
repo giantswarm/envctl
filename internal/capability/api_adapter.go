@@ -54,14 +54,7 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 				{Name: "name", Type: "string", Required: true, Description: "Capability name"},
 			},
 		},
-		{
-			Name:        "capability_definitions_path",
-			Description: "Get the paths where capability definitions are loaded from",
-		},
-		{
-			Name:        "capability_load",
-			Description: "Reload capability definitions from disk",
-		},
+
 		{
 			Name:        "capability_create",
 			Description: "Create a new capability definition",
@@ -113,10 +106,7 @@ func (a *Adapter) ExecuteTool(ctx context.Context, toolName string, args map[str
 			return nil, fmt.Errorf("name parameter is required")
 		}
 		return a.checkCapabilityAvailable(ctx, name)
-	case "capability_definitions_path":
-		return a.getDefinitionsPath(ctx)
-	case "capability_load":
-		return a.loadCapabilities(ctx)
+
 	case "capability_create":
 		name, ok := args["name"].(string)
 		if !ok {
@@ -294,43 +284,7 @@ func (a *Adapter) checkCapabilityAvailable(ctx context.Context, name string) (*a
 	}, nil
 }
 
-// getDefinitionsPath returns the paths where capability definitions are loaded from
-func (a *Adapter) getDefinitionsPath(ctx context.Context) (*api.CallToolResult, error) {
-	path := a.manager.GetDefinitionsPath()
 
-	result := map[string]interface{}{
-		"path": path,
-	}
-
-	return &api.CallToolResult{
-		Content: []interface{}{fmt.Sprintf("Capability definitions path: %s", path), result},
-		IsError: false,
-	}, nil
-}
-
-// loadCapabilities reloads capability definitions from disk
-func (a *Adapter) loadCapabilities(ctx context.Context) (*api.CallToolResult, error) {
-	err := a.manager.LoadDefinitions()
-	if err != nil {
-		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Failed to load capabilities: %v", err)},
-			IsError: true,
-		}, nil
-	}
-
-	definitions := a.manager.ListDefinitions()
-	available := a.manager.ListAvailableDefinitions()
-
-	result := map[string]interface{}{
-		"loaded":    len(definitions),
-		"available": len(available),
-	}
-
-	return &api.CallToolResult{
-		Content: []interface{}{fmt.Sprintf("Loaded %d capabilities, %d available", len(definitions), len(available)), result},
-		IsError: false,
-	}, nil
-}
 
 // GetCapability returns a specific capability definition (implements CapabilityHandler interface)
 func (a *Adapter) GetCapability(name string) (interface{}, error) {
@@ -341,22 +295,17 @@ func (a *Adapter) GetCapability(name string) (interface{}, error) {
 	return &def, nil
 }
 
-// LoadDefinitions reloads capability definitions from disk (implements CapabilityHandler interface)
+// LoadDefinitions loads capability definitions from YAML files
 func (a *Adapter) LoadDefinitions() error {
 	return a.manager.LoadDefinitions()
 }
 
-// RefreshAvailability refreshes the availability status of all capabilities (implements CapabilityHandler interface)
-func (a *Adapter) RefreshAvailability() {
-	// The manager automatically checks availability when needed
-	// This method provides a way to force a refresh if needed in the future
-	logging.Debug("CapabilityAdapter", "Refreshing capability availability")
+// SetConfigPath sets the custom configuration path for the capability manager
+func (a *Adapter) SetConfigPath(configPath string) {
+	a.manager.SetConfigPath(configPath)
 }
 
-// GetDefinitionsPath returns the path where capability definitions are loaded from (implements CapabilityHandler interface)
-func (a *Adapter) GetDefinitionsPath() string {
-	return a.manager.GetDefinitionsPath()
-}
+
 
 // Handler methods for new CRUD tools
 

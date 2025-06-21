@@ -233,63 +233,7 @@ func (a *Adapter) IsServiceClassAvailable(name string) bool {
 	return a.manager.IsServiceClassAvailable(name)
 }
 
-// LoadServiceDefinitions loads all service class definitions from the configured path
-func (a *Adapter) LoadServiceDefinitions() error {
-	if a.manager == nil {
-		return fmt.Errorf("service class manager not available")
-	}
 
-	return a.manager.LoadServiceDefinitions()
-}
-
-// RefreshAvailability refreshes the availability status of all service classes
-func (a *Adapter) RefreshAvailability() {
-	if a.manager == nil {
-		logging.Warn("ServiceClassAdapter", "Cannot refresh availability: manager not available")
-		return
-	}
-
-	a.manager.RefreshAvailability()
-}
-
-// RegisterDefinition registers a service class definition programmatically
-func (a *Adapter) RegisterDefinition(apiDef *api.ServiceClassDefinition) error {
-	if a.manager == nil {
-		return fmt.Errorf("service class manager not available")
-	}
-
-	// Convert from API type to internal type
-	// Note: This is a basic conversion - full ServiceClassDefinition would need more fields
-	internalDef := &ServiceClassDefinition{
-		Name:        apiDef.Name,
-		Type:        apiDef.Type,
-		Version:     apiDef.Version,
-		Description: apiDef.Description,
-		Metadata:    apiDef.Metadata,
-		// ServiceConfig and Operations would need to be provided separately
-		// for a complete programmatic registration
-	}
-
-	return a.manager.RegisterDefinition(internalDef)
-}
-
-// UnregisterDefinition unregisters a service class definition
-func (a *Adapter) UnregisterDefinition(name string) error {
-	if a.manager == nil {
-		return fmt.Errorf("service class manager not available")
-	}
-
-	return a.manager.UnregisterDefinition(name)
-}
-
-// GetDefinitionsPath returns the path where service class definitions are loaded from
-func (a *Adapter) GetDefinitionsPath() string {
-	if a.manager == nil {
-		return ""
-	}
-
-	return a.manager.GetDefinitionsPath()
-}
 
 // GetManager returns the underlying ServiceClassManager (for internal use)
 // This should only be used by other internal packages that need direct access
@@ -330,39 +274,7 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 				},
 			},
 		},
-		{
-			Name:        "serviceclass_refresh",
-			Description: "Refresh the availability status of all ServiceClass definitions",
-		},
-		{
-			Name:        "serviceclass_load",
-			Description: "Load ServiceClass definitions from the configured directory",
-		},
-		{
-			Name:        "serviceclass_definitions_path",
-			Description: "Get the path where ServiceClass definitions are loaded from",
-		},
-		{
-			Name:        "serviceclass_register",
-			Description: "Register a ServiceClass with structured parameters",
-			Parameters: []api.ParameterMetadata{
-				{Name: "name", Type: "string", Required: true, Description: "ServiceClass name"},
-				{Name: "type", Type: "string", Required: true, Description: "ServiceClass type"},
-				{Name: "version", Type: "string", Required: false, Description: "ServiceClass version"},
-				{Name: "description", Type: "string", Required: false, Description: "ServiceClass description"},
-				{Name: "serviceConfig", Type: "object", Required: true, Description: "Service configuration with lifecycle tools"},
-				{Name: "operations", Type: "object", Required: false, Description: "Operations map"},
-				{Name: "metadata", Type: "object", Required: false, Description: "Metadata key-value pairs"},
-				{Name: "merge", Type: "boolean", Required: false, Description: "If true, replace existing ServiceClass of the same name"},
-			},
-		},
-		{
-			Name:        "serviceclass_unregister",
-			Description: "Unregister a ServiceClass by name",
-			Parameters: []api.ParameterMetadata{
-				{Name: "name", Type: "string", Required: true, Description: "Name of the ServiceClass to remove"},
-			},
-		},
+
 		{
 			Name:        "serviceclass_create",
 			Description: "Create a new service class",
@@ -408,16 +320,7 @@ func (a *Adapter) ExecuteTool(ctx context.Context, toolName string, args map[str
 		return a.handleServiceClassGet(args)
 	case "serviceclass_available":
 		return a.handleServiceClassAvailable(args)
-	case "serviceclass_refresh":
-		return a.handleServiceClassRefresh()
-	case "serviceclass_load":
-		return a.handleServiceClassLoad()
-	case "serviceclass_definitions_path":
-		return a.handleServiceClassDefinitionsPath()
-	case "serviceclass_register":
-		return a.handleServiceClassRegister(args)
-	case "serviceclass_unregister":
-		return a.handleServiceClassUnregister(args)
+
 	case "serviceclass_create":
 		return a.handleServiceClassCreate(args)
 	case "serviceclass_update":
@@ -487,42 +390,7 @@ func (a *Adapter) handleServiceClassAvailable(args map[string]interface{}) (*api
 	}, nil
 }
 
-func (a *Adapter) handleServiceClassRefresh() (*api.CallToolResult, error) {
-	a.RefreshAvailability()
 
-	return &api.CallToolResult{
-		Content: []interface{}{"ServiceClass availability refreshed successfully"},
-		IsError: false,
-	}, nil
-}
-
-func (a *Adapter) handleServiceClassLoad() (*api.CallToolResult, error) {
-	err := a.LoadServiceDefinitions()
-	if err != nil {
-		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Failed to load ServiceClass definitions: %v", err)},
-			IsError: true,
-		}, nil
-	}
-
-	return &api.CallToolResult{
-		Content: []interface{}{"ServiceClass definitions loaded successfully"},
-		IsError: false,
-	}, nil
-}
-
-func (a *Adapter) handleServiceClassDefinitionsPath() (*api.CallToolResult, error) {
-	path := a.GetDefinitionsPath()
-
-	result := map[string]interface{}{
-		"definitionsPath": path,
-	}
-
-	return &api.CallToolResult{
-		Content: []interface{}{result},
-		IsError: false,
-	}, nil
-}
 
 // helper to create simple error CallToolResult
 func simpleError(msg string) (*api.CallToolResult, error) {
@@ -533,92 +401,7 @@ func simpleOK(msg string) (*api.CallToolResult, error) {
 	return &api.CallToolResult{Content: []interface{}{msg}, IsError: false}, nil
 }
 
-func (a *Adapter) handleServiceClassRegister(args map[string]interface{}) (*api.CallToolResult, error) {
-	name, ok := args["name"].(string)
-	if !ok || name == "" {
-		return simpleError("name parameter is required")
-	}
-	serviceType, ok := args["type"].(string)
-	if !ok || serviceType == "" {
-		return simpleError("type parameter is required")
-	}
-	version, _ := args["version"].(string)
-	description, _ := args["description"].(string)
-	serviceConfigParam, ok := args["serviceConfig"].(map[string]interface{})
-	if !ok {
-		return simpleError("serviceConfig parameter is required")
-	}
-	operationsParam, _ := args["operations"].(map[string]interface{})
-	metadataParam, _ := args["metadata"].(map[string]interface{})
-	merge, _ := args["merge"].(bool)
 
-	// Convert serviceConfig from map[string]interface{} to ServiceConfig
-	serviceConfig, err := convertServiceConfig(serviceConfigParam)
-	if err != nil {
-		return simpleError(fmt.Sprintf("invalid serviceConfig: %v", err))
-	}
-
-	// Convert operations from map[string]interface{} to map[string]OperationDefinition
-	operations := make(map[string]OperationDefinition)
-	if operationsParam != nil {
-		for opName, opData := range operationsParam {
-			opMap, ok := opData.(map[string]interface{})
-			if !ok {
-				return simpleError(fmt.Sprintf("invalid operation '%s': must be an object", opName))
-			}
-			operation, err := convertOperationDefinition(opMap)
-			if err != nil {
-				return simpleError(fmt.Sprintf("invalid operation '%s': %v", opName, err))
-			}
-			operations[opName] = operation
-		}
-	}
-
-	// Convert metadata from map[string]interface{} to map[string]string
-	metadata := make(map[string]string)
-	if metadataParam != nil {
-		for key, value := range metadataParam {
-			if strValue, ok := value.(string); ok {
-				metadata[key] = strValue
-			} else {
-				return simpleError(fmt.Sprintf("metadata value for key '%s' must be a string", key))
-			}
-		}
-	}
-
-	// Build ServiceClassDefinition from structured parameters
-	def := ServiceClassDefinition{
-		Name:          name,
-		Type:          serviceType,
-		Version:       version,
-		Description:   description,
-		ServiceConfig: serviceConfig,
-		Operations:    operations,
-		Metadata:      metadata,
-	}
-
-	// Optionally overwrite existing definition
-	if merge {
-		_ = a.manager.UnregisterDefinition(def.Name)
-	}
-	if err := a.manager.RegisterDefinition(&def); err != nil {
-		return simpleError(fmt.Sprintf("Register failed: %v", err))
-	}
-	// after registering, refresh availability so missing tools list is updated
-	a.manager.RefreshAvailability()
-	return simpleOK(fmt.Sprintf("registered ServiceClass %s", def.Name))
-}
-
-func (a *Adapter) handleServiceClassUnregister(args map[string]interface{}) (*api.CallToolResult, error) {
-	name, ok := args["name"].(string)
-	if !ok || name == "" {
-		return simpleError("name parameter is required")
-	}
-	if err := a.manager.UnregisterDefinition(name); err != nil {
-		return api.HandleErrorWithPrefix(err, "Unregister failed"), nil
-	}
-	return simpleOK(fmt.Sprintf("unregistered ServiceClass %s", name))
-}
 
 func (a *Adapter) handleServiceClassCreate(args map[string]interface{}) (*api.CallToolResult, error) {
 	name, ok := args["name"].(string)

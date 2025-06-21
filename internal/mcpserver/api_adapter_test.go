@@ -92,16 +92,11 @@ func TestAdapterGetTools(t *testing.T) {
 		t.Error("GetTools returned nil")
 	}
 
-	// Should have the expected tools
+	// Should have the expected tools (Phase 1: removed obsolete methods)
 	expectedTools := []string{
 		"mcpserver_list",
 		"mcpserver_get",
 		"mcpserver_available",
-		"mcpserver_refresh",
-		"mcpserver_load",
-		"mcpserver_definitions_path",
-		"mcpserver_register",
-		"mcpserver_unregister",
 		"mcpserver_create",
 		"mcpserver_update",
 		"mcpserver_delete",
@@ -169,13 +164,6 @@ func TestAdapterNilManager(t *testing.T) {
 		t.Error("Expected unavailable with nil manager")
 	}
 
-	err = adapter.LoadDefinitions()
-	if err == nil {
-		t.Error("Expected error loading definitions with nil manager")
-	}
-
-	path := adapter.GetDefinitionsPath()
-	if path != "" {
-		t.Error("Expected empty path with nil manager")
-	}
+	// Phase 1: LoadDefinitions and GetDefinitionsPath methods removed
+	// These methods are no longer available as loading is transparent
 }
