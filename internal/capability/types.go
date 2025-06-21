@@ -54,7 +54,7 @@ type Capability struct {
 	ID          string                 `json:"id"`
 	Type        CapabilityType         `json:"type"`
 	Provider    string                 `json:"provider"` // MCP server name
-	Name        string                 `json:"name"`     
+	Name        string                 `json:"name"`
 	Description string                 `json:"description"`
 	Version     string                 `json:"version"`
 	Features    []string               `json:"features"`

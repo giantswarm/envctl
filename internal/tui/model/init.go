@@ -17,21 +17,12 @@ import (
 // InitializeModel creates and initializes a new TUI model with the new architecture
 func InitializeModel(cfg TUIConfig, logChannel <-chan logging.LogEntry) (*Model, error) {
 
-	// Get current kube context if not provided
-	// Note: K8s functionality has been removed as part of the generic orchestrator refactoring
-	currentContext := "kubernetes-context-unavailable"
-
 	// Create the model
 	m := &Model{
 		// Service Architecture
 		Orchestrator:    cfg.Orchestrator,
 		OrchestratorAPI: cfg.OrchestratorAPI,
-		PortForwardAPI:  cfg.PortForwardAPI,
-		K8sServiceAPI:   cfg.K8sServiceAPI,
 		AggregatorAPI:   cfg.AggregatorAPI,
-
-		// Connection info
-		CurrentKubeContext: currentContext,
 
 		// Configuration
 		MCPServerConfig:  cfg.MCPServerConfig,
@@ -43,10 +34,8 @@ func InitializeModel(cfg TUIConfig, logChannel <-chan logging.LogEntry) (*Model,
 		DebugMode:      cfg.DebugMode,
 
 		// Data structures
-		K8sConnections: make(map[string]*api.K8sConnectionInfo),
-		PortForwards:   make(map[string]*api.PortForwardServiceInfo),
-		MCPServers:     make(map[string]*api.MCPServerInfo),
-		MCPTools:       make(map[string][]api.MCPTool),
+		MCPServers: make(map[string]*api.MCPServerInfo),
+		MCPTools:   make(map[string][]api.MCPTool),
 
 		// UI Components
 		Spinner:            spinner.New(),
@@ -137,10 +126,6 @@ func DefaultKeyMap() KeyMap {
 			key.WithKeys("x"),
 			key.WithHelp("x", "stop service"),
 		),
-		SwitchContext: key.NewBinding(
-			key.WithKeys("s"),
-			key.WithHelp("s", "switch k8s context"),
-		),
 		ToggleDark: key.NewBinding(
 			key.WithKeys("D"),
 			key.WithHelp("D", "toggle dark/light mode"),
@@ -197,9 +182,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *Model) View() string {
 	// For now, return a simple view
 	// The actual view will be handled by a wrapper
-	return fmt.Sprintf("envctl - Services: %d K8s, %d Port Forwards, %d MCP Servers\n\nPress ? for help, q to quit",
-		len(m.K8sConnections),
-		len(m.PortForwards),
+	return fmt.Sprintf("envctl - Services: %d MCP Servers\n\nPress ? for help, q to quit",
 		len(m.MCPServers),
 	)
 }

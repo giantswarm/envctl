@@ -433,7 +433,6 @@ func (a *Adapter) handleCapabilityCreate(ctx context.Context, name, capType, ver
 		Version:     version,
 		Description: description,
 		Operations:  make(map[string]OperationDefinition),
-
 	}
 
 	// Convert operations map to OperationDefinition structs
@@ -496,8 +495,6 @@ func (a *Adapter) handleCapabilityCreate(ctx context.Context, name, capType, ver
 
 		def.Operations[opName] = opDef
 	}
-
-
 
 	// Create the capability using the manager
 	if err := a.manager.CreateCapability(def); err != nil {
@@ -613,8 +610,6 @@ func (a *Adapter) handleCapabilityUpdate(ctx context.Context, name, capType, ver
 			def.Operations[opName] = opDef
 		}
 	}
-
-
 
 	// Update the capability using the manager
 	if err := a.manager.UpdateCapability(def); err != nil {

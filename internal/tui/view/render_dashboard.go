@@ -37,7 +37,7 @@ func renderMainDashboard(m *model.Model) string {
 	// 2. Render Aggregator Panel
 	aggregatorPanel := renderAggregatorPanel(m, width, aggregatorHeight)
 
-	// 3. Render Bottom Panels (Clusters and MCP Servers)
+	// 3. Render Bottom Panels (MCP Servers)
 	bottomPanels := renderBottomPanelsNew(m, width, bottomHeight)
 
 	// 4. Render Status Bar
@@ -192,97 +192,13 @@ func buildAggregatorContent(m *model.Model, innerWidth int) string {
 	return strings.Join(lines, "\n")
 }
 
-// renderBottomPanelsNew renders the clusters and MCP servers panels
+// renderBottomPanelsNew renders the MCP servers panels
 func renderBottomPanelsNew(m *model.Model, width, height int) string {
-	layout := components.NewLayout(width, height)
-
-	// Split width: 33% clusters, 67% MCP servers
-	clustersWidth, mcpWidth := layout.SplitVertical(0.33)
-
-	// Render clusters panel
-	clustersPanel := renderClustersPanel(m, clustersWidth, height)
-
 	// Render MCP servers panel
-	mcpPanel := renderMCPServersPanel(m, mcpWidth-1, height) // -1 for gap
+	mcpPanel := renderMCPServersPanel(m, width, height) // -1 for gap
 
 	// Join with gap
-	return components.JoinHorizontal(1, clustersPanel, mcpPanel)
-}
-
-// renderClustersPanel renders the Kubernetes clusters panel
-func renderClustersPanel(m *model.Model, width, height int) string {
-	content := buildClustersContent(m, width-4)
-
-	// Determine panel type based on overall cluster health
-	panelType := components.PanelTypeDefault
-	hasConnected := false
-	hasFailed := false
-
-	for _, conn := range m.K8sConnections {
-		if conn.State == "Connected" || conn.State == "connected" {
-			hasConnected = true
-		} else if conn.State == "Failed" || conn.State == "failed" {
-			hasFailed = true
-		}
-	}
-
-	if hasFailed {
-		panelType = components.PanelTypeError
-	} else if hasConnected {
-		panelType = components.PanelTypeSuccess
-	}
-
-	panel := components.NewPanel("Kubernetes Clusters").
-		WithContent(content).
-		WithDimensions(width, height).
-		WithType(panelType).
-		WithIcon(design.SafeIcon(design.IconKubernetes)).
-		SetFocused(m.FocusedPanelKey == "clusters")
-
-	return panel.Render()
-}
-
-// buildClustersContent builds the content for the clusters panel
-func buildClustersContent(m *model.Model, innerWidth int) string {
-	var lines []string
-
-	for _, label := range m.K8sConnectionOrder {
-		if conn, exists := m.K8sConnections[label]; exists {
-			selected := m.FocusedPanelKey == "clusters" && getSelectedLabel(m) == label
-
-			// Build line
-			var line string
-			if selected {
-				line = design.ListItemSelectedStyle.Render("▶ ")
-			} else {
-				line = "  "
-			}
-
-			// Add cluster icon and name
-			line += fmt.Sprintf("%s %s", design.SafeIcon(design.IconKubernetes), conn.Label)
-
-			// Add status
-			statusIndicator := components.NewStatusIndicator(
-				components.StatusFromString(conn.State),
-			).IconOnly()
-			line += " " + statusIndicator.Render()
-
-			lines = append(lines, line)
-
-			// Add node info if selected
-			if selected && (conn.State == "Connected" || conn.State == "connected") {
-				nodeInfo := design.TextSecondaryStyle.Render(
-					fmt.Sprintf("    Nodes: %d/%d Ready", conn.ReadyNodes, conn.TotalNodes))
-				lines = append(lines, nodeInfo)
-			}
-		}
-	}
-
-	if len(lines) == 0 {
-		lines = append(lines, design.TextSecondaryStyle.Render("No clusters configured"))
-	}
-
-	return strings.Join(lines, "\n")
+	return components.JoinHorizontal(1, mcpPanel)
 }
 
 // renderMCPServersPanel renders the MCP servers panel
@@ -353,24 +269,6 @@ func buildMCPServersContent(m *model.Model, innerWidth int) string {
 		line += fmt.Sprintf("%s %s MCP %s", design.SafeIcon(icon), config.Name, statusIndicator.Render())
 
 		lines = append(lines, line)
-
-		// Port forward dependencies have been removed
-		if false {
-			for _, pfName := range []string{} {
-				pfLine := fmt.Sprintf("    └─ %s %s", design.SafeIcon(design.IconLink), pfName)
-
-				if pf, exists := m.PortForwards[pfName]; exists {
-					if pf.State == "Running" || pf.State == "running" {
-						pfLine += design.TextSuccessStyle.Render(
-							fmt.Sprintf(" (%d:%d) %s", pf.LocalPort, pf.RemotePort, design.SafeIcon(design.IconCheck)))
-					} else {
-						pfLine += " " + design.TextErrorStyle.Render(design.SafeIcon(design.IconCross))
-					}
-				}
-
-				lines = append(lines, pfLine)
-			}
-		}
 	}
 
 	if len(lines) == 0 {
@@ -417,11 +315,6 @@ func renderStatusBar(m *model.Model, width int) string {
 	return renderDashboardStatusBar(m, width)
 }
 
-// Keep existing helper functions
-func renderClustersContent(m *model.Model, width int, height int) string {
-	return buildClustersContent(m, width)
-}
-
 func renderMCPServersContent(m *model.Model, width int, height int) string {
 	return buildMCPServersContent(m, width)
 }
@@ -429,13 +322,6 @@ func renderMCPServersContent(m *model.Model, width int, height int) string {
 func getSelectedLabel(m *model.Model) string {
 	// Get the selected item from the appropriate list
 	switch m.FocusedPanelKey {
-	case "clusters":
-		if m.ClustersList != nil {
-			listModel := m.ClustersList.(*ServiceListModel)
-			if item := listModel.GetSelectedItem(); item != nil {
-				return item.GetID()
-			}
-		}
 	case "mcpservers":
 		if m.MCPServersList != nil {
 			listModel := m.MCPServersList.(*ServiceListModel)

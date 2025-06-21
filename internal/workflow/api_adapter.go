@@ -289,7 +289,6 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 				{Name: "steps", Type: "array", Required: true, Description: "Array of workflow steps"},
 			},
 		},
-
 	}
 
 	// Add a tool for each workflow
@@ -507,8 +506,6 @@ func (a *Adapter) handleValidate(args map[string]interface{}) (*api.CallToolResu
 		IsError: false,
 	}, nil
 }
-
-
 
 // convertToWorkflowDefinition converts structured parameters to WorkflowDefinition
 func convertToWorkflowDefinition(args map[string]interface{}) (WorkflowDefinition, error) {

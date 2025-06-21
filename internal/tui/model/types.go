@@ -7,7 +7,6 @@ import (
 	"envctl/internal/dependency"
 	"envctl/internal/orchestrator"
 	"envctl/pkg/logging"
-	"fmt"
 	"time"
 
 	"github.com/charmbracelet/bubbles/help"
@@ -41,8 +40,6 @@ type TUIConfig struct {
 	AggregatorConfig config.AggregatorConfig
 	Orchestrator     *orchestrator.Orchestrator
 	OrchestratorAPI  api.OrchestratorAPI
-	PortForwardAPI   api.PortForwardServiceAPI
-	K8sServiceAPI    api.K8sServiceAPI
 	AggregatorAPI    api.AggregatorAPI
 }
 
@@ -169,13 +166,9 @@ type Model struct {
 	// Service Architecture Components
 	Orchestrator    *orchestrator.Orchestrator
 	OrchestratorAPI api.OrchestratorAPI
-	PortForwardAPI  api.PortForwardServiceAPI
-	K8sServiceAPI   api.K8sServiceAPI
 	AggregatorAPI   api.AggregatorAPI
 
 	// Cached service data for display
-	K8sConnections map[string]*api.K8sConnectionInfo
-	PortForwards   map[string]*api.PortForwardServiceInfo
 	MCPServers     map[string]*api.MCPServerInfo
 	MCPTools       map[string][]api.MCPTool
 	AggregatorInfo *api.AggregatorInfo
@@ -186,9 +179,7 @@ type Model struct {
 	MCPPrompts         []api.MCPPrompt
 
 	// Service ordering for display
-	K8sConnectionOrder []string
-	PortForwardOrder   []string
-	MCPServerOrder     []string
+	MCPServerOrder []string
 
 	// Configuration
 	MCPServerConfig  []api.MCPServerInfo
@@ -229,68 +220,19 @@ type Model struct {
 	StateChangeEvents <-chan api.ServiceStateChangedEvent
 
 	// List models for the new UI (stored as interface{} to avoid circular import)
-	ClustersList     interface{}
-	PortForwardsList interface{}
-	MCPServersList   interface{}
-	MCPToolsList     interface{} // List for MCP tools display
+	ClustersList   interface{}
+	MCPServersList interface{}
+	MCPToolsList   interface{} // List for MCP tools display
 }
 
 // RefreshServiceData fetches the latest service data from APIs
 func (m *Model) RefreshServiceData() error {
 	// Skip if APIs are nil (e.g., in tests)
-	if m.K8sServiceAPI == nil || m.PortForwardAPI == nil || m.OrchestratorAPI == nil {
+	if m.OrchestratorAPI == nil {
 		return nil
 	}
 
 	ctx := context.Background()
-
-	// Refresh K8s connections
-	k8sConns, err := m.K8sServiceAPI.ListConnections(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to list K8s connections: %w", err)
-	}
-
-	// Update K8s connections while preserving order
-	newK8sConnections := make(map[string]*api.K8sConnectionInfo)
-	for _, conn := range k8sConns {
-		newK8sConnections[conn.Label] = conn
-	}
-
-	// Update order - add any new connections that aren't in the order yet
-	existingInOrder := make(map[string]bool)
-	for _, label := range m.K8sConnectionOrder {
-		existingInOrder[label] = true
-	}
-	for _, conn := range k8sConns {
-		if !existingInOrder[conn.Label] {
-			m.K8sConnectionOrder = append(m.K8sConnectionOrder, conn.Label)
-		}
-	}
-	m.K8sConnections = newK8sConnections
-
-	// Refresh port forwards
-	portForwards, err := m.PortForwardAPI.ListForwards(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to list port forwards: %w", err)
-	}
-
-	// Update port forwards while preserving order
-	newPortForwards := make(map[string]*api.PortForwardServiceInfo)
-	for _, pf := range portForwards {
-		newPortForwards[pf.Label] = pf
-	}
-
-	// Update order - add any new port forwards that aren't in the order yet
-	existingPFInOrder := make(map[string]bool)
-	for _, label := range m.PortForwardOrder {
-		existingPFInOrder[label] = true
-	}
-	for _, pf := range portForwards {
-		if !existingPFInOrder[pf.Label] {
-			m.PortForwardOrder = append(m.PortForwardOrder, pf.Label)
-		}
-	}
-	m.PortForwards = newPortForwards
 
 	// Refresh MCP servers - get them from the service registry instead
 	if registry := api.GetServiceRegistry(); registry != nil {
@@ -376,15 +318,6 @@ func (m *Model) RefreshServiceData() error {
 	return nil
 }
 
-// GetK8sConnectionHealth returns the health info for a K8s connection
-func (m *Model) GetK8sConnectionHealth(label string) (ready int, total int, healthy bool) {
-	if conn, exists := m.K8sConnections[label]; exists {
-		healthy = conn.Health == "healthy"
-		return conn.ReadyNodes, conn.TotalNodes, healthy
-	}
-	return 0, 0, false
-}
-
 // GetMCPServerStatus returns the status of an mcp server
 func (m *Model) GetMCPServerStatus(label string) (running bool) {
 	if mcp, exists := m.MCPServers[label]; exists {
@@ -392,15 +325,6 @@ func (m *Model) GetMCPServerStatus(label string) (running bool) {
 		return running
 	}
 	return false
-}
-
-// GetPortForwardStatus returns the status of a port forward
-func (m *Model) GetPortForwardStatus(label string) (running bool, localPort int, remotePort int) {
-	if pf, exists := m.PortForwards[label]; exists {
-		running = pf.State == "running"
-		return running, pf.LocalPort, pf.RemotePort
-	}
-	return false, 0, 0
 }
 
 // StartService starts a service through the orchestrator API

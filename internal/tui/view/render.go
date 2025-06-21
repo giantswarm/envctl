@@ -86,18 +86,6 @@ func trimStatusMessage(status string) string {
 
 // initializeLists ensures the list models are initialized
 func initializeLists(m *model.Model) {
-	// Initialize clusters list if needed
-	if m.ClustersList == nil && len(m.K8sConnections) > 0 {
-		// Calculate reasonable dimensions
-		width := m.Width / 3
-		height := m.Height / 2
-		m.ClustersList = BuildClustersList(m, width, height, m.FocusedPanelKey == "clusters")
-	} else if m.ClustersList != nil {
-		// Update focus state
-		listModel := m.ClustersList.(*ServiceListModel)
-		listModel.SetFocused(m.FocusedPanelKey == "clusters")
-	}
-
 	// Initialize MCP servers list if needed
 	if m.MCPServersList == nil && len(m.MCPServerConfig) > 0 {
 		// Calculate reasonable dimensions

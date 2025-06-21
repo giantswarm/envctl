@@ -8,8 +8,6 @@ import "sync"
 type Registry struct {
 	mu              sync.RWMutex
 	orchestratorAPI OrchestratorAPI
-	portForwardAPI  PortForwardServiceAPI
-	k8sServiceAPI   K8sServiceAPI
 }
 
 // Global registry instance
@@ -29,41 +27,11 @@ func GetOrchestratorAPI() OrchestratorAPI {
 	return globalRegistry.orchestratorAPI
 }
 
-// SetPortForwardServiceAPI sets the port forward service API in the registry
-func SetPortForwardServiceAPI(api PortForwardServiceAPI) {
-	globalRegistry.mu.Lock()
-	defer globalRegistry.mu.Unlock()
-	globalRegistry.portForwardAPI = api
-}
-
-// GetPortForwardServiceAPI gets the port forward service API from the registry
-func GetPortForwardServiceAPI() PortForwardServiceAPI {
-	globalRegistry.mu.RLock()
-	defer globalRegistry.mu.RUnlock()
-	return globalRegistry.portForwardAPI
-}
-
-// SetK8sServiceAPI sets the K8s service API in the registry
-func SetK8sServiceAPI(api K8sServiceAPI) {
-	globalRegistry.mu.Lock()
-	defer globalRegistry.mu.Unlock()
-	globalRegistry.k8sServiceAPI = api
-}
-
-// GetK8sServiceAPI gets the K8s service API from the registry
-func GetK8sServiceAPI() K8sServiceAPI {
-	globalRegistry.mu.RLock()
-	defer globalRegistry.mu.RUnlock()
-	return globalRegistry.k8sServiceAPI
-}
-
 // SetAll sets all APIs at once (convenience method for initialization)
-func SetAll(orchestrator OrchestratorAPI, pf PortForwardServiceAPI, k8s K8sServiceAPI) {
+func SetAll(orchestrator OrchestratorAPI) {
 	globalRegistry.mu.Lock()
 	defer globalRegistry.mu.Unlock()
 	globalRegistry.orchestratorAPI = orchestrator
-	globalRegistry.portForwardAPI = pf
-	globalRegistry.k8sServiceAPI = k8s
 }
 
 // Clear clears all APIs from the registry (useful for testing)
@@ -71,6 +39,4 @@ func Clear() {
 	globalRegistry.mu.Lock()
 	defer globalRegistry.mu.Unlock()
 	globalRegistry.orchestratorAPI = nil
-	globalRegistry.portForwardAPI = nil
-	globalRegistry.k8sServiceAPI = nil
 }

@@ -479,26 +479,6 @@ func handleMainDashboardKeys(m *model.Model, key tea.KeyMsg) tea.Cmd {
 				if svc, exists := m.MCPServers[serviceLabel]; exists && svc.State != "running" {
 					return m.StartService(serviceLabel)
 				}
-				if pf, exists := m.PortForwards[serviceLabel]; exists && pf.State != "running" {
-					return m.StartService(serviceLabel)
-				}
-			}
-		}
-
-	case "s":
-		// Context switch for K8s connections
-		if m.FocusedPanelKey == "clusters" {
-			// Get selected cluster from list
-			if m.ClustersList != nil {
-				listModel := m.ClustersList.(*view.ServiceListModel)
-				if item := listModel.GetSelectedItem(); item != nil {
-					if clusterItem, ok := item.(view.ClusterListItem); ok {
-						// Get the K8s connection for context switch
-						if conn, exists := m.K8sConnections[clusterItem.GetID()]; exists {
-							return PerformSwitchKubeContextCmd(conn.Context)
-						}
-					}
-				}
 			}
 		}
 
@@ -660,13 +640,6 @@ func isListPanel(focusedKey string) bool {
 // getSelectedServiceLabel returns the label of the currently selected service in a list
 func getSelectedServiceLabel(m *model.Model) string {
 	switch m.FocusedPanelKey {
-	case "clusters":
-		if m.ClustersList != nil {
-			listModel := m.ClustersList.(*view.ServiceListModel)
-			if item := listModel.GetSelectedItem(); item != nil {
-				return item.GetID()
-			}
-		}
 	case "mcpservers":
 		if m.MCPServersList != nil {
 			listModel := m.MCPServersList.(*view.ServiceListModel)
@@ -680,18 +653,6 @@ func getSelectedServiceLabel(m *model.Model) string {
 
 // updateListItems updates the items in all list models with fresh data
 func updateListItems(m *model.Model) {
-	// Update clusters list
-	if m.ClustersList != nil {
-		listModel := m.ClustersList.(*view.ServiceListModel)
-		items := []list.Item{}
-		for _, label := range m.K8sConnectionOrder {
-			if conn, exists := m.K8sConnections[label]; exists {
-				items = append(items, view.ConvertK8sConnectionToListItem(conn))
-			}
-		}
-		listModel.List.SetItems(items)
-	}
-
 	// Update MCP servers list
 	if m.MCPServersList != nil {
 		// Temporarily use simple list
@@ -723,10 +684,6 @@ func updateListItems(m *model.Model) {
 func handleListNavigation(m *model.Model, key tea.KeyMsg) tea.Cmd {
 	var listModel *view.ServiceListModel
 	switch m.FocusedPanelKey {
-	case "clusters":
-		if m.ClustersList != nil {
-			listModel = m.ClustersList.(*view.ServiceListModel)
-		}
 	case "mcpservers":
 		if m.MCPServersList != nil {
 			listModel = m.MCPServersList.(*view.ServiceListModel)
@@ -748,10 +705,7 @@ func cycleFocus(m *model.Model, direction int) {
 	// Aggregator is always present (primary component)
 	focusableItems = append(focusableItems, "mcp-aggregator")
 
-	// Bottom row: Clusters and MCP Servers
-	if len(m.K8sConnections) > 0 {
-		focusableItems = append(focusableItems, "clusters")
-	}
+	// Bottom row: MCP Servers
 	if len(m.MCPServerConfig) > 0 {
 		focusableItems = append(focusableItems, "mcpservers")
 	}
