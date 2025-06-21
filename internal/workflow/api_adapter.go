@@ -289,19 +289,7 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 				{Name: "steps", Type: "array", Required: true, Description: "Array of workflow steps"},
 			},
 		},
-		{
-			Name:        "workflow_spec",
-			Description: "Get the workflow specification and examples",
-			Parameters: []api.ParameterMetadata{
-				{
-					Name:        "format",
-					Type:        "string",
-					Required:    false,
-					Description: "Format of response: 'schema', 'template', 'examples', or 'full'",
-					Default:     "full",
-				},
-			},
-		},
+
 	}
 
 	// Add a tool for each workflow
@@ -332,8 +320,7 @@ func (a *Adapter) ExecuteTool(ctx context.Context, toolName string, args map[str
 		return a.handleDelete(args)
 	case toolName == "workflow_validate":
 		return a.handleValidate(args)
-	case toolName == "workflow_spec":
-		return a.handleSpec(args)
+
 	case strings.HasPrefix(toolName, "action_"):
 		// Execute workflow
 		workflowName := strings.TrimPrefix(toolName, "action_")
@@ -521,105 +508,7 @@ func (a *Adapter) handleValidate(args map[string]interface{}) (*api.CallToolResu
 	}, nil
 }
 
-func (a *Adapter) handleSpec(args map[string]interface{}) (*api.CallToolResult, error) {
-	format := "full"
-	if f, ok := args["format"].(string); ok {
-		format = f
-	}
 
-	// Return workflow specification based on format
-	spec := map[string]interface{}{
-		"description": "Workflows are defined in YAML format",
-	}
-
-	// Add components based on format
-	switch format {
-	case "schema":
-		spec["schema"] = getWorkflowSchema()
-	case "template":
-		spec["template"] = getWorkflowTemplate()
-	case "examples":
-		spec["examples"] = getWorkflowExamples()
-	case "full":
-		spec["schema"] = getWorkflowSchema()
-		spec["template"] = getWorkflowTemplate()
-		spec["examples"] = getWorkflowExamples()
-	}
-
-	return &api.CallToolResult{
-		Content: []interface{}{spec},
-		IsError: false,
-	}, nil
-}
-
-// Workflow specification helpers
-func getWorkflowSchema() map[string]interface{} {
-	return map[string]interface{}{
-		"name": map[string]interface{}{
-			"type":        "string",
-			"required":    true,
-			"description": "Unique workflow identifier",
-		},
-		"description": map[string]interface{}{
-			"type":        "string",
-			"required":    true,
-			"description": "Human-readable description",
-		},
-		"inputSchema": map[string]interface{}{
-			"type":        "object",
-			"required":    true,
-			"description": "JSON Schema defining workflow inputs",
-		},
-		"steps": map[string]interface{}{
-			"type":        "array",
-			"required":    true,
-			"description": "Sequential list of tool calls",
-		},
-	}
-}
-
-func getWorkflowTemplate() string {
-	return `name: my_workflow
-description: "Clear description of what this workflow does"
-inputSchema:
-  type: object
-  properties:
-    param1:
-      type: string
-      description: "Description of parameter 1"
-  required:
-    - param1
-steps:
-  - id: step1
-    tool: some_tool
-    args:
-      arg1: "{{ .input.param1 }}"`
-}
-
-func getWorkflowExamples() []map[string]interface{} {
-	return []map[string]interface{}{
-		{
-			"name":        "simple_connection",
-			"description": "Basic example of connecting to a cluster",
-			"yaml": `name: connect_cluster
-description: "Connect to a Teleport cluster"
-inputSchema:
-  type: object
-  properties:
-    cluster:
-      type: string
-      description: "Cluster name"
-  required:
-    - cluster
-steps:
-  - id: login
-    tool: teleport_kube
-    args:
-      command: "login"
-      cluster: "{{ .input.cluster }}"`,
-		},
-	}
-}
 
 // convertToWorkflowDefinition converts structured parameters to WorkflowDefinition
 func convertToWorkflowDefinition(args map[string]interface{}) (WorkflowDefinition, error) {
