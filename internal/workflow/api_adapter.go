@@ -364,6 +364,14 @@ func (a *Adapter) handleGet(args map[string]interface{}) (*api.CallToolResult, e
 }
 
 func (a *Adapter) handleCreate(args map[string]interface{}) (*api.CallToolResult, error) {
+	var req api.WorkflowCreateRequest
+	if err := api.ParseRequest(args, &req); err != nil {
+		return &api.CallToolResult{
+			Content: []interface{}{err.Error()},
+			IsError: true,
+		}, nil
+	}
+
 	if err := a.CreateWorkflowFromStructured(args); err != nil {
 		return &api.CallToolResult{
 			Content: []interface{}{fmt.Sprintf("Failed to create workflow: %v", err)},
@@ -378,20 +386,20 @@ func (a *Adapter) handleCreate(args map[string]interface{}) (*api.CallToolResult
 }
 
 func (a *Adapter) handleUpdate(args map[string]interface{}) (*api.CallToolResult, error) {
-	name, ok := args["name"].(string)
-	if !ok {
+	var req api.WorkflowUpdateRequest
+	if err := api.ParseRequest(args, &req); err != nil {
 		return &api.CallToolResult{
-			Content: []interface{}{"name is required"},
+			Content: []interface{}{err.Error()},
 			IsError: true,
 		}, nil
 	}
 
-	if err := a.UpdateWorkflowFromStructured(name, args); err != nil {
+	if err := a.UpdateWorkflowFromStructured(req.Name, args); err != nil {
 		return api.HandleErrorWithPrefix(err, "Failed to update workflow"), nil
 	}
 
 	return &api.CallToolResult{
-		Content: []interface{}{fmt.Sprintf("Workflow '%s' updated successfully", name)},
+		Content: []interface{}{fmt.Sprintf("Workflow '%s' updated successfully", req.Name)},
 		IsError: false,
 	}, nil
 }
@@ -416,6 +424,14 @@ func (a *Adapter) handleDelete(args map[string]interface{}) (*api.CallToolResult
 }
 
 func (a *Adapter) handleValidate(args map[string]interface{}) (*api.CallToolResult, error) {
+	var req api.WorkflowValidateRequest
+	if err := api.ParseRequest(args, &req); err != nil {
+		return &api.CallToolResult{
+			Content: []interface{}{err.Error()},
+			IsError: true,
+		}, nil
+	}
+
 	if err := a.ValidateWorkflowFromStructured(args); err != nil {
 		return &api.CallToolResult{
 			Content: []interface{}{fmt.Sprintf("Validation failed: %v", err)},
@@ -423,10 +439,8 @@ func (a *Adapter) handleValidate(args map[string]interface{}) (*api.CallToolResu
 		}, nil
 	}
 
-	// Get workflow name for consistent response format
-	name, _ := args["name"].(string)
 	return &api.CallToolResult{
-		Content: []interface{}{fmt.Sprintf("Validation successful for workflow %s", name)},
+		Content: []interface{}{fmt.Sprintf("Validation successful for workflow %s", req.Name)},
 		IsError: false,
 	}, nil
 }

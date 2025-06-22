@@ -277,85 +277,23 @@ func (a *Adapter) handleMCPServerAvailable(args map[string]interface{}) (*api.Ca
 
 // handleMCPServerValidate validates an mcpserver definition
 func (a *Adapter) handleMCPServerValidate(args map[string]interface{}) (*api.CallToolResult, error) {
-	// Parse parameters (without category, icon, enabled)
-	name, ok := args["name"].(string)
-	if !ok || name == "" {
+	var req api.MCPServerValidateRequest
+	if err := api.ParseRequest(args, &req); err != nil {
 		return &api.CallToolResult{
-			Content: []interface{}{"name parameter is required"},
+			Content: []interface{}{err.Error()},
 			IsError: true,
 		}, nil
 	}
-
-	serverType, ok := args["type"].(string)
-	if !ok || serverType == "" {
-		return &api.CallToolResult{
-			Content: []interface{}{"type parameter is required"},
-			IsError: true,
-		}, nil
-	}
-
-	// Parse optional parameters (following Phase 2 parameter structure)
-	autoStart, _ := args["autoStart"].(bool)
-
-	// Convert command array
-	var command []string
-	if commandParam, ok := args["command"].([]interface{}); ok {
-		command = make([]string, len(commandParam))
-		for i, cmd := range commandParam {
-			if cmdStr, ok := cmd.(string); ok {
-				command[i] = cmdStr
-			} else {
-				return &api.CallToolResult{
-					Content: []interface{}{fmt.Sprintf("command element at index %d must be a string", i)},
-					IsError: true,
-				}, nil
-			}
-		}
-	}
-
-	// Convert env map
-	var env map[string]string
-	if envParam, ok := args["env"].(map[string]interface{}); ok {
-		env = make(map[string]string)
-		for key, value := range envParam {
-			if strValue, ok := value.(string); ok {
-				env[key] = strValue
-			} else {
-				return &api.CallToolResult{
-					Content: []interface{}{fmt.Sprintf("env value for key '%s' must be a string", key)},
-					IsError: true,
-				}, nil
-			}
-		}
-	}
-
-	// Convert containerPorts array
-	var containerPorts []string
-	if containerPortsParam, ok := args["containerPorts"].([]interface{}); ok {
-		containerPorts = make([]string, len(containerPortsParam))
-		for i, port := range containerPortsParam {
-			if portStr, ok := port.(string); ok {
-				containerPorts[i] = portStr
-			} else {
-				return &api.CallToolResult{
-					Content: []interface{}{fmt.Sprintf("containerPorts element at index %d must be a string", i)},
-					IsError: true,
-				}, nil
-			}
-		}
-	}
-
-	image, _ := args["image"].(string)
 
 	// Build internal api.MCPServer from structured parameters
 	def := api.MCPServer{
-		Name:                name,
-		Type:                api.MCPServerType(serverType),
-		Enabled:             autoStart, // Map autoStart to Enabled for validation
-		Image:               image,
-		Command:             command,
-		Env:                 env,
-		ContainerPorts:      containerPorts,
+		Name:                req.Name,
+		Type:                api.MCPServerType(req.Type),
+		Enabled:             req.AutoStart, // Map autoStart to Enabled for validation
+		Image:               req.Image,
+		Command:             req.Command,
+		Env:                 req.Env,
+		ContainerPorts:      req.ContainerPorts,
 		HealthCheckInterval: 0, // Default for validation
 	}
 
@@ -374,8 +312,16 @@ func (a *Adapter) handleMCPServerValidate(args map[string]interface{}) (*api.Cal
 }
 
 func (a *Adapter) handleMCPServerCreate(args map[string]interface{}) (*api.CallToolResult, error) {
-	// Convert structured parameters to api.MCPServer
-	def, err := convertToMCPServer(args)
+	var req api.MCPServerCreateRequest
+	if err := api.ParseRequest(args, &req); err != nil {
+		return &api.CallToolResult{
+			Content: []interface{}{err.Error()},
+			IsError: true,
+		}, nil
+	}
+
+	// Convert typed request to api.MCPServer
+	def, err := convertCreateRequestToMCPServer(req)
 	if err != nil {
 		return simpleError(err.Error())
 	}
@@ -399,13 +345,16 @@ func (a *Adapter) handleMCPServerCreate(args map[string]interface{}) (*api.CallT
 }
 
 func (a *Adapter) handleMCPServerUpdate(args map[string]interface{}) (*api.CallToolResult, error) {
-	name, ok := args["name"].(string)
-	if !ok || name == "" {
-		return simpleError("name parameter is required")
+	var req api.MCPServerUpdateRequest
+	if err := api.ParseRequest(args, &req); err != nil {
+		return &api.CallToolResult{
+			Content: []interface{}{err.Error()},
+			IsError: true,
+		}, nil
 	}
 
-	// Convert structured parameters to api.MCPServer
-	def, err := convertToMCPServer(args)
+	// Convert typed request to api.MCPServer
+	def, err := convertRequestToMCPServer(req)
 	if err != nil {
 		return simpleError(err.Error())
 	}
@@ -416,16 +365,16 @@ func (a *Adapter) handleMCPServerUpdate(args map[string]interface{}) (*api.CallT
 	}
 
 	// Check if it exists
-	if _, exists := a.manager.GetDefinition(name); !exists {
-		return api.HandleErrorWithPrefix(api.NewMCPServerNotFoundError(name), "Failed to update MCP server"), nil
+	if _, exists := a.manager.GetDefinition(req.Name); !exists {
+		return api.HandleErrorWithPrefix(api.NewMCPServerNotFoundError(req.Name), "Failed to update MCP server"), nil
 	}
 
 	// Update the MCP server
-	if err := a.manager.UpdateMCPServer(name, def); err != nil {
+	if err := a.manager.UpdateMCPServer(req.Name, def); err != nil {
 		return api.HandleErrorWithPrefix(err, "Failed to update MCP server"), nil
 	}
 
-	return simpleOK(fmt.Sprintf("MCP server '%s' updated successfully", name))
+	return simpleOK(fmt.Sprintf("MCP server '%s' updated successfully", req.Name))
 }
 
 func (a *Adapter) handleMCPServerDelete(args map[string]interface{}) (*api.CallToolResult, error) {
@@ -579,6 +528,66 @@ func convertToMCPServer(args map[string]interface{}) (api.MCPServer, error) {
 				return def, fmt.Errorf("entrypoint element at index %d must be a string", i)
 			}
 		}
+	}
+
+	return def, nil
+}
+
+// convertRequestToMCPServer converts a typed request to api.MCPServer
+func convertRequestToMCPServer(req api.MCPServerUpdateRequest) (api.MCPServer, error) {
+	def := api.MCPServer{
+		Name:             req.Name,
+		Type:             api.MCPServerType(req.Type),
+		Enabled:          req.Enabled,
+		ToolPrefix:       req.ToolPrefix,
+		Image:            req.Image,
+		Command:          req.Command,
+		Env:              req.Env,
+		ContainerPorts:   req.ContainerPorts,
+		ContainerEnv:     req.ContainerEnv,
+		ContainerVolumes: req.ContainerVolumes,
+		HealthCheckCmd:   req.HealthCheckCmd,
+		Entrypoint:       req.Entrypoint,
+		ContainerUser:    req.ContainerUser,
+	}
+
+	// Convert healthCheckInterval string to time.Duration
+	if req.HealthCheckInterval != "" {
+		duration, err := time.ParseDuration(req.HealthCheckInterval)
+		if err != nil {
+			return def, fmt.Errorf("invalid healthCheckInterval: %v", err)
+		}
+		def.HealthCheckInterval = duration
+	}
+
+	return def, nil
+}
+
+// convertCreateRequestToMCPServer converts a typed request to api.MCPServer
+func convertCreateRequestToMCPServer(req api.MCPServerCreateRequest) (api.MCPServer, error) {
+	def := api.MCPServer{
+		Name:             req.Name,
+		Type:             api.MCPServerType(req.Type),
+		Enabled:          req.Enabled,
+		ToolPrefix:       req.ToolPrefix,
+		Image:            req.Image,
+		Command:          req.Command,
+		Env:              req.Env,
+		ContainerPorts:   req.ContainerPorts,
+		ContainerEnv:     req.ContainerEnv,
+		ContainerVolumes: req.ContainerVolumes,
+		HealthCheckCmd:   req.HealthCheckCmd,
+		Entrypoint:       req.Entrypoint,
+		ContainerUser:    req.ContainerUser,
+	}
+
+	// Convert healthCheckInterval string to time.Duration
+	if req.HealthCheckInterval != "" {
+		duration, err := time.ParseDuration(req.HealthCheckInterval)
+		if err != nil {
+			return def, fmt.Errorf("invalid healthCheckInterval: %v", err)
+		}
+		def.HealthCheckInterval = duration
 	}
 
 	return def, nil

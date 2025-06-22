@@ -365,45 +365,23 @@ func (a *Adapter) handleServiceClassAvailable(args map[string]interface{}) (*api
 
 // handleServiceClassValidate validates a serviceclass definition
 func (a *Adapter) handleServiceClassValidate(args map[string]interface{}) (*api.CallToolResult, error) {
-	// Parse parameters
-	name, ok := args["name"].(string)
-	if !ok || name == "" {
+	var req api.ServiceClassValidateRequest
+	if err := api.ParseRequest(args, &req); err != nil {
 		return &api.CallToolResult{
-			Content: []interface{}{"name parameter is required"},
-			IsError: true,
-		}, nil
-	}
-
-	serviceConfigParam, ok := args["serviceConfig"].(map[string]interface{})
-	if !ok {
-		return &api.CallToolResult{
-			Content: []interface{}{"serviceConfig parameter is required"},
-			IsError: true,
-		}, nil
-	}
-
-	version, _ := args["version"].(string)
-	description, _ := args["description"].(string)
-
-	// Convert serviceConfig using JSON marshaling/unmarshaling
-	serviceConfig, err := convertServiceConfigViJSON(serviceConfigParam)
-	if err != nil {
-		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("invalid serviceConfig: %v", err)},
+			Content: []interface{}{err.Error()},
 			IsError: true,
 		}, nil
 	}
 
 	// Build ServiceClass definition
 	def := api.ServiceClass{
-		Name:          name,
-		Version:       version,
-		Description:   description,
-		ServiceConfig: serviceConfig,
-		Operations:    make(map[string]api.OperationDefinition), // Empty for validation
+		Name:          req.Name,
+		Version:       req.Version,
+		Description:   req.Description,
+		ServiceConfig: req.ServiceConfig,                        // Already properly typed
+		Operations:    make(map[string]api.OperationDefinition), // Not provided in validation requests
 	}
 
-	// Validate without persisting
 	if err := a.manager.ValidateDefinition(&def); err != nil {
 		return &api.CallToolResult{
 			Content: []interface{}{fmt.Sprintf("Validation failed: %v", err)},
@@ -412,7 +390,7 @@ func (a *Adapter) handleServiceClassValidate(args map[string]interface{}) (*api.
 	}
 
 	return &api.CallToolResult{
-		Content: []interface{}{fmt.Sprintf("Validation successful for serviceclass %s", def.Name)},
+		Content: []interface{}{fmt.Sprintf("Validation successful for serviceclass %s", req.Name)},
 		IsError: false,
 	}, nil
 }
@@ -427,77 +405,75 @@ func simpleOK(msg string) (*api.CallToolResult, error) {
 }
 
 func (a *Adapter) handleServiceClassCreate(args map[string]interface{}) (*api.CallToolResult, error) {
-	name, ok := args["name"].(string)
-	if !ok || name == "" {
-		return simpleError("name parameter is required")
-	}
-	version, _ := args["version"].(string)
-	description, _ := args["description"].(string)
-	serviceConfigParam, ok := args["serviceConfig"].(map[string]interface{})
-	if !ok {
-		return simpleError("serviceConfig parameter is required")
-	}
-
-	// Convert serviceConfig using JSON marshaling/unmarshaling
-	serviceConfig, err := convertServiceConfigViJSON(serviceConfigParam)
-	if err != nil {
-		return simpleError(fmt.Sprintf("invalid serviceConfig: %v", err))
+	var req api.ServiceClassCreateRequest
+	if err := api.ParseRequest(args, &req); err != nil {
+		return &api.CallToolResult{
+			Content: []interface{}{err.Error()},
+			IsError: true,
+		}, nil
 	}
 
 	// Build ServiceClass definition
 	def := api.ServiceClass{
-		Name:          name,
-		Version:       version,
-		Description:   description,
-		ServiceConfig: serviceConfig,
-		Operations:    make(map[string]api.OperationDefinition), // Not provided via API anymore
+		Name:          req.Name,
+		Version:       req.Version,
+		Description:   req.Description,
+		ServiceConfig: req.ServiceConfig,                        // Already properly typed
+		Operations:    make(map[string]api.OperationDefinition), // Not provided in create requests
 	}
 
+	// Validate the definition
+	if err := a.manager.ValidateDefinition(&def); err != nil {
+		return simpleError(fmt.Sprintf("Invalid ServiceClass definition: %v", err))
+	}
+
+	// Check if it already exists
+	if _, exists := a.manager.GetServiceClassDefinition(def.Name); exists {
+		return simpleError(fmt.Sprintf("ServiceClass '%s' already exists", def.Name))
+	}
+
+	// Create the new ServiceClass
 	if err := a.manager.CreateServiceClass(def); err != nil {
-		return api.HandleErrorWithPrefix(err, "Create failed"), nil
+		return simpleError(fmt.Sprintf("Failed to create ServiceClass: %v", err))
 	}
 
-	return simpleOK(fmt.Sprintf("created service class %s", name))
+	return simpleOK(fmt.Sprintf("ServiceClass '%s' created successfully", def.Name))
 }
 
 func (a *Adapter) handleServiceClassUpdate(args map[string]interface{}) (*api.CallToolResult, error) {
-	name, ok := args["name"].(string)
-	if !ok || name == "" {
-		return simpleError("name parameter is required")
-	}
-	version, _ := args["version"].(string)
-	description, _ := args["description"].(string)
-	serviceConfigParam, _ := args["serviceConfig"].(map[string]interface{})
-
-	// Get existing serviceclass to preserve current operations
-	existingDef, exists := a.manager.GetServiceClassDefinition(name)
-	if !exists {
-		return api.HandleErrorWithPrefix(api.NewServiceClassNotFoundError(name), "Failed to update ServiceClass"), nil
+	var req api.ServiceClassUpdateRequest
+	if err := api.ParseRequest(args, &req); err != nil {
+		return &api.CallToolResult{
+			Content: []interface{}{err.Error()},
+			IsError: true,
+		}, nil
 	}
 
-	// Start with existing definition and update provided fields
-	def := *existingDef // Copy the existing definition
-
-	// Update fields if provided
-	if version != "" {
-		def.Version = version
-	}
-	if description != "" {
-		def.Description = description
-	}
-	if serviceConfigParam != nil {
-		serviceConfig, err := convertServiceConfigViJSON(serviceConfigParam)
-		if err != nil {
-			return simpleError(fmt.Sprintf("invalid serviceConfig: %v", err))
-		}
-		def.ServiceConfig = serviceConfig
+	// Build ServiceClass definition
+	def := api.ServiceClass{
+		Name:          req.Name,
+		Version:       req.Version,
+		Description:   req.Description,
+		ServiceConfig: req.ServiceConfig,                        // Already properly typed
+		Operations:    make(map[string]api.OperationDefinition), // Not provided in update requests
 	}
 
-	if err := a.manager.UpdateServiceClass(name, def); err != nil {
-		return api.HandleErrorWithPrefix(err, "Update failed"), nil
+	// Validate the definition
+	if err := a.manager.ValidateDefinition(&def); err != nil {
+		return simpleError(fmt.Sprintf("Invalid ServiceClass definition: %v", err))
 	}
 
-	return simpleOK(fmt.Sprintf("updated service class %s", name))
+	// Check if it exists
+	if _, exists := a.manager.GetServiceClassDefinition(req.Name); !exists {
+		return api.HandleErrorWithPrefix(api.NewServiceClassNotFoundError(req.Name), "Failed to update ServiceClass"), nil
+	}
+
+	// Update the ServiceClass
+	if err := a.manager.UpdateServiceClass(req.Name, def); err != nil {
+		return api.HandleErrorWithPrefix(err, "Failed to update ServiceClass"), nil
+	}
+
+	return simpleOK(fmt.Sprintf("ServiceClass '%s' updated successfully", req.Name))
 }
 
 func (a *Adapter) handleServiceClassDelete(args map[string]interface{}) (*api.CallToolResult, error) {

@@ -625,29 +625,13 @@ func (a *Adapter) GetService(labelOrServiceID string) (*api.ServiceInstance, err
 
 // handleServiceValidate handles the 'service_validate' tool.
 func (a *Adapter) handleServiceValidate(ctx context.Context, args map[string]interface{}) (*api.CallToolResult, error) {
-	name, ok := args["name"].(string)
-	if !ok || name == "" {
+	var req api.ServiceValidateRequest
+	if err := api.ParseRequest(args, &req); err != nil {
 		return &api.CallToolResult{
-			Content: []interface{}{"name parameter is required"},
+			Content: []interface{}{err.Error()},
 			IsError: true,
 		}, nil
 	}
-
-	serviceClassName, ok := args["serviceClassName"].(string)
-	if !ok || serviceClassName == "" {
-		return &api.CallToolResult{
-			Content: []interface{}{"serviceClassName parameter is required"},
-			IsError: true,
-		}, nil
-	}
-
-	parameters, _ := args["parameters"].(map[string]interface{})
-	if parameters == nil {
-		parameters = make(map[string]interface{})
-	}
-
-	// autoStart is validated but not used in the validation logic
-	_, _ = args["autoStart"].(bool)
 
 	// Validate without persisting - just check if the ServiceClass exists and parameters are valid
 	// Get ServiceClassManager through API
@@ -660,9 +644,9 @@ func (a *Adapter) handleServiceValidate(ctx context.Context, args map[string]int
 	}
 
 	// Check if ServiceClass is available
-	if !serviceClassManager.IsServiceClassAvailable(serviceClassName) {
+	if !serviceClassManager.IsServiceClassAvailable(req.ServiceClassName) {
 		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Validation failed: ServiceClass '%s' is not available", serviceClassName)},
+			Content: []interface{}{fmt.Sprintf("Validation failed: ServiceClass '%s' is not available", req.ServiceClassName)},
 			IsError: true,
 		}, nil
 	}
@@ -671,7 +655,7 @@ func (a *Adapter) handleServiceValidate(ctx context.Context, args map[string]int
 	// For now, we just validate the basic required fields and ServiceClass availability
 
 	return &api.CallToolResult{
-		Content: []interface{}{fmt.Sprintf("Validation successful for service %s", name)},
+		Content: []interface{}{fmt.Sprintf("Validation successful for service %s", req.Name)},
 		IsError: false,
 	}, nil
 }
