@@ -1,7 +1,6 @@
 name: "service-create-missing-required-param"
 category: "behavioral"
 concept: "service"
-description: "Tests creating a service without a required parameter."
 tags: ["service", "create", "parameters", "error-handling", "core-api"]
 timeout: "1m"
 
@@ -10,7 +9,6 @@ pre_configuration:
   - name: "sc-requires-param"
     config:
       name: "sc-requires-param"
-      type: "basic"
       serviceConfig:
         createParameters:
           message:
@@ -20,11 +18,10 @@ pre_configuration:
           stop: { tool: "core_config_get" }
 steps:
 - id: "create-missing-param"
-  description: "Attempt to create a service without providing a required parameter"
   tool: "core_service_create"
   args:
     serviceClassName: "sc-requires-param"
-    label: "my-failed-service"
+    name: "my-failed-service"
   expected:
     success: false
  

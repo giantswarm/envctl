@@ -1,20 +1,12 @@
 name: "workflow-update-non-existent"
 category: "behavioral"
 concept: "workflow"
-description: "Tests updating a workflow that does not exist."
 tags: ["workflow", "update", "error-handling", "not-found", "core-api"]
 timeout: "1m"
 
 steps:
 - id: "update-non-existent"
-  description: "Attempt to update a workflow by a name that is not registered"
   tool: "core_workflow_update"
-  args:
-    name: "non-existent-workflow"
-    description: "Updated non-existent workflow"
-    steps:
-      - id: "s1"
-        tool: "core_service_list"
   expected:
     success: false
     error_contains: ["not found"] 

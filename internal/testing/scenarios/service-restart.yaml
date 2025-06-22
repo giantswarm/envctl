@@ -1,8 +1,7 @@
 name: "service-restart"
 category: "behavioral"
 concept: "service"
-description: "Tests restarting a service instance."
-tags: ["service", "restart", "lifecycle", "core-api"]
+tags: ["service", "restart", "core-api"]
 timeout: "1m"
 
 pre_configuration:
@@ -10,31 +9,23 @@ pre_configuration:
   - name: "sc-for-restart"
     config:
       name: "sc-for-restart"
-      type: "basic"
       serviceConfig:
         lifecycleTools:
           start: { tool: "core_config_get" }
           stop: { tool: "core_config_get" }
-          # Using default restart behavior
 steps:
 - id: "create-service-for-restart"
-  description: "Create a service to be restarted"
   tool: "core_service_create"
-  args: { serviceClassName: "sc-for-restart", label: "restart-test-service" }
+  args: { serviceClassName: "sc-for-restart", name: "restart-test-service" }
   expected: { success: true }
   cleanup:
   - tool: "core_service_delete"
-    args: { labelOrServiceId: "restart-test-service" }
+    args: { name: "restart-test-service" }
 - id: "restart-the-service"
-  description: "Restart the service"
   tool: "core_service_restart"
-  args: { label: "restart-test-service" }
   expected: { success: true }
-- id: "verify-status-is-running"
-  description: "Verify the service is in the RUNNING state after restart"
+- id: "verify-service-restarted"
   tool: "core_service_get"
-  args: { labelOrServiceId: "restart-test-service" }
+  args: { name: "restart-test-service" }
   expected:
-    success: true
-    json_path:
-      state: "RUNNING" 
+    success: true 

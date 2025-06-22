@@ -1,13 +1,11 @@
 name: "serviceclass-delete-non-existent"
 category: "behavioral"
 concept: "serviceclass"
-description: "Tests deleting a ServiceClass that does not exist."
 tags: ["serviceclass", "delete", "error-handling", "not-found", "core-api"]
 timeout: "1m"
 
 steps:
 - id: "delete-non-existent"
-  description: "Attempt to delete a ServiceClass by a name that is not registered"
   tool: "core_serviceclass_delete"
   args:
     name: "sc-does-not-exist"

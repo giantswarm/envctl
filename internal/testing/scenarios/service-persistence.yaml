@@ -1,7 +1,6 @@
 name: "service-persistence-scenarios"
 category: "behavioral"
 concept: "service"
-description: "Scenarios for service persistence"
 tags: ["service", "persistence", "core-api"]
 timeout: "5m"
 
@@ -22,24 +21,21 @@ steps:
 # We are defining the intended behavior. The test runner implementation
 # would need a way to inspect the instance's storage to fully validate.
 - id: "create-persistent-service"
-  description: "Create a service instance with persistence enabled"
   tool: "core_service_create"
   args:
     serviceClassName: "persistent-sc"
-    label: "my-persistent-service"
-    persist: true
+    name: "my-persistent-service"
   expected:
     success: true
     contains: ["my-persistent-service"]
   cleanup:
   # We still need to clean up the running instance
   - tool: "core_service_delete"
-    args: { labelOrServiceId: "my-persistent-service" }
+    args: { name: "my-persistent-service" }
 
 # This step is also conceptual. After the above step, if we were to restart
 # the envctl instance, "my-persistent-service" should appear in this list.
 - id: "list-services-after-hypothetical-restart"
-  description: "List services to confirm the persistent one would be present"
   tool: "core_service_list"
   expected:
     success: true

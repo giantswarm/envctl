@@ -1,19 +1,16 @@
 name: "serviceclass-create"
 category: "behavioral"
 concept: "serviceclass"
-description: "Tests creating a basic ServiceClass definition."
 tags: ["serviceclass", "create", "core-api"]
 timeout: "1m"
 
 steps:
 - id: "create-basic-serviceclass"
-  description: "Create a new ServiceClass and verify it appears in the list"
   tool: "core_serviceclass_create"
   args:
     name: "basic-create-sc"
     type: "basic"
     version: "1.0.0"
-    description: "Basic ServiceClass for testing creation"
     serviceConfig:
       serviceType: "test-service"
       defaultLabel: "test-{{ .name }}"

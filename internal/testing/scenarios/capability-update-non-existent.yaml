@@ -1,22 +1,12 @@
 name: "capability-update-non-existent"
 category: "behavioral"
 concept: "capability"
-description: "Tests updating a capability that doesn't exist."
 tags: ["capability", "update", "error-handling", "core-api"]
 timeout: "1m"
 
 steps:
 - id: "update-non-existent-capability"
-  description: "Attempt to update a capability that doesn't exist"
   tool: "core_capability_update"
-  args:
-    name: "non-existent-capability"
-    type: "test"
-    description: "This capability doesn't exist"
-    operations:
-      test_operation:
-        description: "A test operation"
-        requires: []
   expected:
     success: false
     error_contains: ["not found", "does not exist"] 

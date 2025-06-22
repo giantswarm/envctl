@@ -1,13 +1,11 @@
 name: "mcpserver-get-non-existent"
 category: "behavioral"
 concept: "mcpserver"
-description: "Tests getting an MCPServer that does not exist."
 tags: ["mcpserver", "get", "error-handling", "core-api"]
 timeout: "1m"
 
 steps:
 - id: "get-non-existent"
-  description: "Attempt to get a non-existent server"
   tool: "core_mcpserver_get"
   args:
     name: "server-does-not-exist"

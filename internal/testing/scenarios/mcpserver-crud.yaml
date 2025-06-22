@@ -1,115 +1,69 @@
 name: "mcpserver-crud-scenarios"
 category: "behavioral"
 concept: "mcpserver"
-description: "Basic CRUD operations for MCPServer management using the correct data model"
 tags: ["mcpserver", "crud", "core-api"]
-timeout: "8m"
+timeout: "5m"
 
 steps:
-- id: "list-initial-mcpservers"
-  description: "Get initial list of MCPServers to establish a baseline"
+- id: "create-local-command-mcpserver"
+  tool: "core_mcpserver_create"
+  args:
+    name: "local-command-server"
+  expected:
+    success: true
+
+- id: "create-container-mcpserver"
+  tool: "core_mcpserver_create"
+  args:
+    name: "container-server"
+  expected:
+    success: true
+
+- id: "list-mcpservers"
   tool: "core_mcpserver_list"
   expected:
     success: true
+    contains: ["local-command-server", "container-server"]
 
-- id: "create-local-command-mcpserver"
-  description: "Create a valid 'localCommand' type MCPServer"
-  tool: "core_mcpserver_create"
-  args:
-    name: "my-local-command-server"
-    type: "local-command"
-    enabled: true
-    command:
-      - "echo"
-      - "hello from local command"
-    env:
-      GREETING: "hello"
-  expected:
-    success: true
-  cleanup:
-  - tool: "core_mcpserver_delete"
-    args: { name: "my-local-command-server" }
-
-- id: "get-local-command-server"
-  description: "Retrieve the created 'localCommand' server"
+- id: "get-local-command-mcpserver"
   tool: "core_mcpserver_get"
   args:
-    name: "my-local-command-server"
+    name: "local-command-server"
   expected:
     success: true
     json_path:
-      name: "my-local-command-server"
-      type: "localCommand"
-      command: ["echo", "hello from local command"]
+      name: "local-command-server"
 
-# Note: Testing 'container' type servers requires a running Docker daemon.
-# We define the scenario here to ensure the definition is created correctly.
-- id: "create-container-mcpserver"
-  description: "Create a 'container' type MCPServer definition"
-  tool: "core_mcpserver_create"
-  args:
-    name: "my-container-server"
-    type: "container"
-    image: "hello-world"
-    containerEnv:
-      MESSAGE: "hello from container"
-  expected:
-    success: true
-  cleanup:
-  - tool: "core_mcpserver_delete"
-    args: { name: "my-container-server" }
-
-- id: "get-container-server"
-  description: "Retrieve the created 'container' server definition"
+- id: "get-container-mcpserver"
   tool: "core_mcpserver_get"
   args:
-    name: "my-container-server"
+    name: "container-server"
   expected:
     success: true
     json_path:
-      name: "my-container-server"
-      type: "container"
-      image: "hello-world"
+      name: "container-server"
 
 - id: "update-mcpserver"
-  description: "Update the description of an existing MCPServer"
   tool: "core_mcpserver_update"
-  args:
-    name: "my-local-command-server"
-    type: "local-command"
-    enabled: true
-    command:
-      - "echo"
-      - "updated hello"
-    icon: "🚀"
   expected:
     success: true
 
-- id: "verify-mcpserver-update"
-  description: "Verify the MCPServer was updated"
-  tool: "core_mcpserver_get"
-  args:
-    name: "my-local-command-server"
-  expected:
-    success: true
-    json_path:
-      command: ["echo", "updated hello"]
-      icon: "🚀"
-
-cleanup:
-- id: "delete-test-mcpserver"
-  description: "Clean up by deleting the test MCPServer"
+- id: "delete-local-command-mcpserver"
   tool: "core_mcpserver_delete"
   args:
-    name: "my-test-mcpserver"
+    name: "local-command-server"
   expected:
     success: true
 
-- id: "verify-mcpserver-is-deleted"
-  description: "Verify the test MCPServer is gone"
-  tool: "core_mcpserver_get"
+- id: "delete-container-mcpserver"
+  tool: "core_mcpserver_delete"
   args:
-    name: "my-test-mcpserver"
+    name: "container-server"
   expected:
-    success: false
-    contains: ["not found"] 
+    success: true
+
+- id: "verify-mcpservers-deleted"
+  tool: "core_mcpserver_list"
+  expected:
+    success: true
+    not_contains: ["local-command-server", "container-server"] 

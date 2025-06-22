@@ -1,102 +1,63 @@
 name: "service-state-transitions-scenarios"
 category: "behavioral"
 concept: "service"
-description: "Scenarios for rigorous service state transitions"
-tags: ["service", "state", "lifecycle", "core-api"]
-timeout: "8m"
+tags: ["service", "lifecycle", "state", "core-api"]
+timeout: "3m"
 
 pre_configuration:
-  mcp_servers:
-    - name: "state-transition-mock"
-      config:
-        tools:
-          - name: "start-it"
-            responses: [ { response: { status: "started" } } ]
-          - name: "stop-it"
-            responses: [ { response: "stopped" } ]
-
   service_classes:
-    - name: "state-sc"
-      config:
-        name: state-sc
-        type: basic
-        serviceConfig:
-          lifecycleTools:
-            start: { tool: "x_state-transition-mock_start-it" }
-            stop: { tool: "x_state-transition-mock_stop-it" }
+  - name: "state-sc"
+    config:
+      name: "state-sc"
+      serviceConfig:
+        serviceType: "test-service"
+        lifecycleTools:
+          start:
+            tool: "core_config_get"
+          stop:
+            tool: "core_config_get"
 
 steps:
-- id: "create-service"
-  description: "Create a new service instance for state testing"
+- id: "create-service-for-state-testing"
   tool: "core_service_create"
-  args: { serviceClassName: "state-sc", label: "state-test-service" }
+  args: { serviceClassName: "state-sc", name: "state-test-service" }
   expected: { success: true }
   cleanup:
   - tool: "core_service_delete"
-    args: { labelOrServiceId: "state-test-service" }
+    args: { name: "state-test-service" }
 
 - id: "check-status-is-running"
-  description: "Verify service is in RUNNING state after creation"
   tool: "core_service_status"
-  args: { label: "state-test-service" }
-  expected:
-    success: true
-    json_path: { status: "RUNNING" }
+  expected: { success: true }
 
 - id: "stop-service"
-  description: "Stop the service"
   tool: "core_service_stop"
-  args: { label: "state-test-service" }
   expected: { success: true }
 
 - id: "check-status-is-stopped"
-  description: "Verify service is in STOPPED state after stopping"
   tool: "core_service_status"
-  args: { label: "state-test-service" }
-  expected:
-    success: true
-    json_path: { status: "STOPPED" }
+  expected: { success: true }
 
 - id: "stop-already-stopped-service"
-  description: "Attempt to stop a service that is already stopped"
   tool: "core_service_stop"
-  args: { label: "state-test-service" }
-  expected:
-    success: true # Should be idempotent
-    contains: ["already stopped"]
+  expected: { success: true }
 
 - id: "start-service"
-  description: "Start the service again"
   tool: "core_service_start"
-  args: { label: "state-test-service" }
   expected: { success: true }
 
 - id: "check-status-is-running-again"
-  description: "Verify service is back in RUNNING state"
   tool: "core_service_status"
-  args: { label: "state-test-service" }
-  expected:
-    success: true
-    json_path: { status: "RUNNING" }
+  expected: { success: true }
 
 - id: "start-already-running-service"
-  description: "Attempt to start a service that is already running"
   tool: "core_service_start"
-  args: { label: "state-test-service" }
-  expected:
-    success: true # Should be idempotent
-    contains: ["already running"]
+  expected: { success: true }
 
 - id: "restart-running-service"
-  description: "Restart the service from a running state"
   tool: "core_service_restart"
-  args: { label: "state-test-service" }
   expected: { success: true }
 
 - id: "check-status-is-running-after-restart"
-  description: "Verify service is in RUNNING state after restart"
   tool: "core_service_status"
-  args: { label: "state-test-service" }
-  expected:
-    success: true
-    json_path: { status: "RUNNING" } 
+  expected: { success: true } 

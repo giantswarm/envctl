@@ -1,17 +1,14 @@
 name: "serviceclass-create-missing-start-tool"
 category: "behavioral"
 concept: "serviceclass"
-description: "Tests creating a ServiceClass missing the required start tool."
 tags: ["serviceclass", "create", "validation", "error-handling", "core-api"]
 timeout: "1m"
 
 steps:
 - id: "create-missing-start-tool"
-  description: "Attempt to create a ServiceClass without a start tool"
   tool: "core_serviceclass_create"
   args:
     name: "missing-start-sc"
-    type: "basic"
     serviceConfig:
       lifecycleTools:
         stop:

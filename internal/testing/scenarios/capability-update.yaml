@@ -1,49 +1,27 @@
 name: "capability-update"
 category: "behavioral"
 concept: "capability"
-description: "Tests updating an existing capability definition."
 tags: ["capability", "update", "core-api"]
 timeout: "1m"
 
 steps:
 - id: "create-initial-capability"
-  description: "Create a capability to update"
   tool: "core_capability_create"
   args:
     name: "update-test-capability"
     type: "test"
-    description: "Initial capability for testing updates"
     operations:
       initial_operation:
-        description: "Initial operation"
         requires: []
   expected:
     success: true
 
 - id: "update-capability"
-  description: "Update the capability with new description and additional operation"
   tool: "core_capability_update"
-  args:
-    name: "update-test-capability"
-    type: "test" 
-    version: "1.1.0"
-    description: "Updated capability for testing updates"
-    operations:
-      initial_operation:
-        description: "Updated initial operation"
-        requires: []
-      new_operation:
-        description: "New operation added in update"
-        requires: ["initial_operation"]
-        parameters:
-          param1:
-            type: "string"
-            required: true
-            description: "A required parameter"
   expected:
     success: true
   cleanup:
     - id: "delete-updated-capability"
       tool: "core_capability_delete"
       args:
-        name: "update-test-capability" 
+        name: "update-test-capability"

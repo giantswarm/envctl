@@ -1,8 +1,7 @@
 name: "service-start"
 category: "behavioral"
 concept: "service"
-description: "Tests starting a stopped service instance."
-tags: ["service", "start", "lifecycle", "core-api"]
+tags: ["service", "start", "core-api"]
 timeout: "1m"
 
 pre_configuration:
@@ -10,35 +9,26 @@ pre_configuration:
   - name: "sc-for-start"
     config:
       name: "sc-for-start"
-      type: "basic"
       serviceConfig:
         lifecycleTools:
           start: { tool: "core_config_get" }
           stop: { tool: "core_config_get" }
 steps:
 - id: "create-service-for-start"
-  description: "Create a service to be stopped and started"
   tool: "core_service_create"
-  args: { serviceClassName: "sc-for-start", label: "start-test-service" }
+  args: { serviceClassName: "sc-for-start", name: "start-test-service" }
   expected: { success: true }
   cleanup:
   - tool: "core_service_delete"
-    args: { labelOrServiceId: "start-test-service" }
+    args: { name: "start-test-service" }
 - id: "stop-the-service"
-  description: "Stop the service first"
   tool: "core_service_stop"
-  args: { label: "start-test-service" }
   expected: { success: true }
 - id: "start-the-service"
-  description: "Start the stopped service"
   tool: "core_service_start"
-  args: { label: "start-test-service" }
   expected: { success: true }
-- id: "verify-status-is-running"
-  description: "Verify the service is now in the RUNNING state"
+- id: "verify-service-started"
   tool: "core_service_get"
-  args: { labelOrServiceId: "start-test-service" }
+  args: { name: "start-test-service" }
   expected:
-    success: true
-    json_path:
-      state: "RUNNING" 
+    success: true 

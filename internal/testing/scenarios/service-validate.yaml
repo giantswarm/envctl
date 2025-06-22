@@ -1,0 +1,11 @@
+name: "service-validate"
+category: "behavioral"
+concept: "service"
+tags: ["service", "validate", "core-api"]
+timeout: "1m"
+
+steps:
+- id: "validate-services"
+  tool: "core_service_validate"
+  expected:
+    success: true 

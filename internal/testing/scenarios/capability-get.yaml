@@ -1,7 +1,6 @@
 name: "capability-get"
 category: "behavioral"
 concept: "capability"
-description: "Tests getting a specific capability definition."
 tags: ["capability", "get", "core-api"]
 timeout: "1m"
 
@@ -10,12 +9,10 @@ pre_configuration:
     - name: "get-test-capability"
       config:
         name: "get-test-capability"
-        type: "test"
-        description: "A capability for testing get"
+        # type: "test" # removed - no longer supported
 
 steps:
 - id: "get-specific-capability"
-  description: "Get the pre-configured capability by name"
   tool: "core_capability_get"
   args:
     name: "get-test-capability"
@@ -23,4 +20,3 @@ steps:
     success: true
     json_path:
       name: "get-test-capability"
-      description: "A capability for testing get" 

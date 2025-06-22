@@ -1,36 +1,28 @@
 name: "serviceclass-error-handling-scenarios"
 category: "behavioral"
 concept: "serviceclass"
-description: "Scenarios for error handling in ServiceClass management based on the correct data model"
 tags: ["serviceclass", "error-handling", "core-api"]
 timeout: "5m"
 
 steps:
 - id: "create-sc-invalid-yaml"
-  description: "Attempt to create a ServiceClass with syntactically invalid YAML"
   tool: "core_serviceclass_create"
   args:
-    yaml: "name: invalid-sc: 'this is broken yaml"
   expected:
     success: false
     error_contains: ["invalid YAML"]
 
 - id: "create-sc-missing-name"
-  description: "Attempt to create a ServiceClass with a missing 'name' field"
   tool: "core_serviceclass_create"
   args:
-    type: "basic"
-    description: "This ServiceClass is missing its name"
   expected:
     success: false
     error_contains: ["name is required"]
 
 - id: "create-sc-missing-start-tool"
-  description: "Attempt to create a SC missing the required 'start' lifecycle tool"
   tool: "core_serviceclass_create"
   args:
     name: "sc-missing-start"
-    type: "basic"
     serviceConfig:
       lifecycleTools:
         stop:
@@ -40,11 +32,9 @@ steps:
     error_contains: ["'start' lifecycle tool is required"]
 
 - id: "create-sc-with-non-existent-tool"
-  description: "Create a SC that references a tool that does not exist"
   tool: "core_serviceclass_create"
   args:
     name: "sc-bad-tool-ref"
-    type: "basic"
     serviceConfig:
       lifecycleTools:
         start:
@@ -58,7 +48,6 @@ steps:
     args: { name: "sc-bad-tool-ref" }
 
 - id: "check-availability-of-sc-with-bad-tool"
-  description: "Check availability of a SC with a non-existent tool reference"
   tool: "core_serviceclass_available"
   args:
     name: "sc-bad-tool-ref"
@@ -69,7 +58,6 @@ steps:
       missingTools: ["x_fake-provider_fake-tool"]
 
 - id: "get-non-existent-sc"
-  description: "Attempt to get a ServiceClass that does not exist"
   tool: "core_serviceclass_get"
   args:
     name: "non-existent-sc"
@@ -78,18 +66,12 @@ steps:
     error_contains: ["not found"]
 
 - id: "update-non-existent-sc"
-  description: "Attempt to update a ServiceClass that does not exist"
   tool: "core_serviceclass_update"
-  args:
-    name: "non-existent-sc"
-    type: "basic"
-    description: "Updated description"
   expected:
     success: false
     error_contains: ["not found"]
 
 - id: "delete-non-existent-sc"
-  description: "Attempt to delete a ServiceClass that does not exist"
   tool: "core_serviceclass_delete"
   args:
     name: "non-existent-sc"
@@ -98,11 +80,9 @@ steps:
     error_contains: ["not found"]
 
 - id: "create-serviceclass-with-conflicting-name"
-  description: "Create a service class, then attempt to create another with the same name"
   tool: "core_serviceclass_create"
   args:
     name: "conflicting-name-serviceclass"
-    type: "basic"
     serviceConfig:
       lifecycleTools:
         start:
@@ -114,18 +94,14 @@ steps:
     args: { name: "conflicting-name-serviceclass" }
 
 - id: "create-conflicting-serviceclass-step-2"
-  description: "Attempt to create a service class with a name that already exists"
   tool: "core_serviceclass_create"
   args:
     name: "conflicting-name-serviceclass"
-    type: "basic"
-    description: "This should conflict"
   expected:
     success: false
     error_contains: ["already exists"]
 
 - id: "check-availability-for-non-existent-serviceclass"
-  description: "Check availability for a ServiceClass that does not exist"
   tool: "core_serviceclass_available"
   args:
     name: "non-existent-serviceclass"
@@ -134,11 +110,9 @@ steps:
     error_contains: ["not found"]
 
 - id: "check-availability-with-missing-tools"
-  description: "Check availability for a ServiceClass with missing lifecycle tools"
   tool: "core_serviceclass_create"
   args:
     name: "missing-tools-serviceclass"
-    type: "basic"
     serviceConfig:
       lifecycleTools:
         start:
@@ -150,7 +124,6 @@ steps:
     args: { name: "missing-tools-serviceclass" }
 
 - id: "check-availability-with-missing-tools-step-2"
-  description: "Check availability for a service class with missing tools, expecting it to be unavailable"
   tool: "core_serviceclass_available"
   args:
     name: "missing-tools-serviceclass"

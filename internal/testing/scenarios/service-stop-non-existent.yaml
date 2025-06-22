@@ -1,16 +1,12 @@
 name: "service-stop-non-existent"
 category: "behavioral"
 concept: "service"
-description: "Tests stopping a service that does not exist."
 tags: ["service", "stop", "error-handling", "core-api"]
 timeout: "1m"
 
 steps:
 - id: "stop-non-existent"
-  description: "Attempt to stop a non-existent service"
   tool: "core_service_stop"
-  args:
-    label: "service-does-not-exist"
   expected:
     success: false
     error_contains: ["not found"] 

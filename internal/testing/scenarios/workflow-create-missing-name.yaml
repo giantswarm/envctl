@@ -1,16 +1,13 @@
 name: "workflow-create-missing-name"
 category: "behavioral"
 concept: "workflow"
-description: "Tests creating a Workflow without providing a name."
 tags: ["workflow", "create", "validation", "error-handling", "core-api"]
 timeout: "1m"
 
 steps:
 - id: "create-missing-name"
-  description: "Attempt to create a Workflow without a name"
   tool: "core_workflow_create"
   args:
-    description: "Workflow without name"
     steps:
       - id: "step1"
         tool: "core_capability_list"

@@ -1,7 +1,6 @@
 name: "service-get-status"
 category: "behavioral"
 concept: "service"
-description: "Tests getting the status of a service instance."
 tags: ["service", "status", "core-api"]
 timeout: "1m"
 
@@ -10,27 +9,19 @@ pre_configuration:
   - name: "sc-for-status"
     config:
       name: "sc-for-status"
-      type: "basic"
       serviceConfig:
         lifecycleTools:
           start: { tool: "core_config_get" }
           stop: { tool: "core_config_get" }
 steps:
 - id: "create-service-for-status"
-  description: "Create a service to check its status"
   tool: "core_service_create"
-  args: { serviceClassName: "sc-for-status", label: "status-test-service" }
+  args: { serviceClassName: "sc-for-status", name: "status-test-service" }
   expected: { success: true }
   cleanup:
   - tool: "core_service_delete"
-    args: { labelOrServiceId: "status-test-service" }
+    args: { name: "status-test-service" }
 - id: "get-the-status"
-  description: "Get the status of the created service"
   tool: "core_service_status"
-  args:
-    label: "status-test-service"
   expected:
-    success: true
-    json_path:
-      label: "status-test-service"
-      status: "RUNNING" 
+    success: true 

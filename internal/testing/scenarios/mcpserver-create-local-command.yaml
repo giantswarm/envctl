@@ -1,26 +1,18 @@
 name: "mcpserver-create-local-command"
 category: "behavioral"
 concept: "mcpserver"
-description: "Tests creating an MCP server with local command configuration."
 tags: ["mcpserver", "create", "local-command", "core-api"]
 timeout: "1m"
 
 steps:
 - id: "create-local-command-mcpserver"
-  description: "Create a new MCP server with local command type"
   tool: "core_mcpserver_create"
   args:
-    name: "local-test-server"
-    type: "localCommand"
-    autoStart: true
-    command: ["echo", "hello-world"]
-    env:
-      TEST_VAR: "test-value"
-      DEBUG: "true"
+    name: "local-command-test-server"
   expected:
     success: true
   cleanup:
     - id: "delete-created-mcpserver"
       tool: "core_mcpserver_delete"
       args:
-        name: "local-test-server" 
+        name: "local-command-test-server" 

@@ -1,7 +1,6 @@
 name: "behavior-developer-onboarding-journey"
 category: "behavioral"
 concept: "end-to-end"
-description: "As a new developer joining the team, I want to quickly set up my development environment using existing platform services so that I can start contributing to projects immediately"
 tags: ["user-journey", "developer-experience", "onboarding", "end-to-end"]
 timeout: "15m"
 
@@ -17,7 +16,6 @@ pre_configuration:
       config:
         tools:
           - name: "clone_repository"
-            description: "Clone a git repository"
             input_schema:
               type: "object"
               properties:
@@ -33,7 +31,6 @@ pre_configuration:
       config:
         tools:
           - name: "create_postgres_instance"
-            description: "Create a PostgreSQL database instance"
             input_schema:
               type: "object"
               properties:
@@ -47,7 +44,6 @@ pre_configuration:
                   status: "ready"
                   
           - name: "delete_postgres_instance"
-            description: "Delete a PostgreSQL database instance"
             input_schema:
               type: "object"
               properties:
@@ -63,7 +59,6 @@ pre_configuration:
         name: "development-workspace"
         type: "development"
         version: "1.2.0"
-        description: "Complete development workspace with code repository and database"
         serviceConfig:
           serviceType: "dev-environment"
           defaultLabel: "workspace-{{ .parameters.developer }}-{{ .parameters.project }}"
@@ -71,20 +66,16 @@ pre_configuration:
             developer:
               toolParameter: "dev_name"
               required: true
-              description: "Developer's username"
             project:
               toolParameter: "project_name"
               required: true
-              description: "Project name to work on"
             repository_url:
               toolParameter: "repo_url"
               required: true
-              description: "Git repository URL"
             database_needed:
               toolParameter: "needs_db"
               required: false
               default: true
-              description: "Whether a database instance is needed"
           lifecycleTools:
             start:
               tool: "x_git-provider_clone_repository"
@@ -93,7 +84,6 @@ pre_configuration:
                 branch: "main"
               responseMapping:
                 serviceId: "repo_path"
-                metadata: "status"
             stop:
               tool: "x_database-provider_delete_postgres_instance"
               arguments:
@@ -105,7 +95,6 @@ pre_configuration:
         name: "postgres-database"
         type: "database"
         version: "1.0.0"
-        description: "PostgreSQL database instance for development"
         serviceConfig:
           serviceType: "database"
           defaultLabel: "db-{{ .parameters.project }}-{{ .parameters.environment }}"
@@ -113,16 +102,13 @@ pre_configuration:
             project:
               toolParameter: "project_name"
               required: true
-              description: "Project name"
             developer:
               toolParameter: "username"
               required: true
-              description: "Developer username"
             environment:
               toolParameter: "env"
               required: false
               default: "development"
-              description: "Environment (development, staging, production)"
           lifecycleTools:
             start:
               tool: "x_database-provider_create_postgres_instance"
@@ -141,7 +127,6 @@ pre_configuration:
 steps:
   # Phase 1: Developer Discovery (Given - What exists)
   - id: "developer-discovers-available-services"
-    description: "Given I'm a new developer, when I explore available services, I should see the platform offerings"
     tool: "core_serviceclass_list"
     expected:
       success: true
@@ -150,7 +135,6 @@ steps:
         - "postgres-database"
       
   - id: "developer-explores-workspace-options"
-    description: "And I want to understand what development workspace provides"
     tool: "core_serviceclass_get"
     args:
       name: "development-workspace"
@@ -158,12 +142,10 @@ steps:
       success: true
       json_path:
         name: "development-workspace"
-        description: "Complete development workspace with code repository and database"
         serviceConfig.createParameters.developer.required: true
         serviceConfig.createParameters.project.required: true
         
   - id: "developer-checks-database-options"
-    description: "And I want to see what database options are available"
     tool: "core_serviceclass_get"
     args:
       name: "postgres-database"
@@ -175,55 +157,48 @@ steps:
         
   # Phase 2: Developer Self-Service Provisioning (When - Actions)
   - id: "developer-creates-workspace"
-    description: "When I create my development workspace for the 'ecommerce-api' project"
     tool: "core_service_create"
     args:
       serviceClassName: "development-workspace"
-      label: "my-ecommerce-workspace"
+      name: "my-ecommerce-workspace"
       parameters:
         developer: "alice"
         project: "ecommerce-api"
         repository_url: "https://github.com/company/ecommerce-api.git"
         database_needed: true
-      persist: true
-      autoStart: true
     expected:
       success: true
       contains: ["my-ecommerce-workspace"]
       
   - id: "developer-provisions-database"
-    description: "And I create a dedicated database for my project"
     tool: "core_service_create"
     args:
       serviceClassName: "postgres-database"
-      label: "ecommerce-api-db"
+      name: "ecommerce-api-db"
       parameters:
         project: "ecommerce-api"
         developer: "alice"
         environment: "development"
-      persist: true
     expected:
       success: true
       contains: ["ecommerce-api-db"]
       
   # Phase 3: Developer Verification (Then - Outcomes)
   - id: "developer-verifies-workspace-running"
-    description: "Then my workspace should be running and accessible"
     tool: "core_service_get"
     args:
-      labelOrServiceId: "my-ecommerce-workspace"
+      name: "my-ecommerce-workspace"
     expected:
       success: true
       json_path:
-        label: "my-ecommerce-workspace"
+        name: "my-ecommerce-workspace"
         serviceClass: "development-workspace"
         state: "RUNNING"
       
   - id: "developer-verifies-database-connection"
-    description: "And my database should be running with connection details"
     tool: "core_service_get"
     args:
-      labelOrServiceId: "ecommerce-api-db"
+      name: "ecommerce-api-db"
     expected:
       success: true
       json_path:
@@ -232,7 +207,6 @@ steps:
         # Should have connection string in metadata/service details
         
   - id: "developer-views-all-services"
-    description: "And I should see all my services in one place"
     tool: "core_service_list"
     expected:
       success: true
@@ -242,36 +216,24 @@ steps:
         
   # Phase 4: Developer Workflow Management
   - id: "developer-stops-services-for-break"
-    description: "When I need to take a break, I can stop my services to save resources"
     tool: "core_service_stop"
-    args:
-      label: "ecommerce-api-db"
     expected:
       success: true
       
   - id: "developer-verifies-database-stopped"
-    description: "Then the database should be stopped"
     tool: "core_service_status"
-    args:
-      label: "ecommerce-api-db"
     expected:
       success: true
       json_path:
         state: "STOPPED"
         
   - id: "developer-restarts-services"
-    description: "And when I return, I can restart my services"
     tool: "core_service_start"
-    args:
-      label: "ecommerce-api-db"
     expected:
       success: true
       
   - id: "developer-verifies-restart-successful"
-    description: "Then the database should be running again"
     tool: "core_service_status"
-    args:
-      label: "ecommerce-api-db"
     expected:
       success: true
       json_path:
@@ -279,26 +241,23 @@ steps:
         
   # Phase 5: End of Project Cleanup
   - id: "developer-completes-project"
-    description: "When I complete my project work, I can clean up my resources"
     tool: "core_service_delete"
     args:
-      labelOrServiceId: "my-ecommerce-workspace"
+      name: "my-ecommerce-workspace"
     expected:
       success: true
       
   - id: "developer-removes-database"
-    description: "And I can remove my development database"
     tool: "core_service_delete"
     args:
-      labelOrServiceId: "ecommerce-api-db"
+      name: "ecommerce-api-db"
     expected:
       success: true
       
   - id: "developer-verifies-cleanup"
-    description: "Then my services should no longer exist"
     tool: "core_service_get"
     args:
-      labelOrServiceId: "my-ecommerce-workspace"
+      name: "my-ecommerce-workspace"
     expected:
       success: false
       error_contains: ["not found"]
@@ -306,19 +265,17 @@ steps:
 cleanup:
   # Cleanup any resources that might remain from failed test runs
   - id: "cleanup-workspace"
-    description: "Clean up workspace if it still exists"
     tool: "core_service_delete"
     args:
-      labelOrServiceId: "my-ecommerce-workspace"
+      name: "my-ecommerce-workspace"
     expected:
       success: true
     timeout: "30s"
     
   - id: "cleanup-database"
-    description: "Clean up database if it still exists"
     tool: "core_service_delete"
     args:
-      labelOrServiceId: "ecommerce-api-db"
+      name: "ecommerce-api-db"
     expected:
       success: true
     timeout: "30s" 

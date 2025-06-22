@@ -1,113 +1,61 @@
-name: "workflow_basic"
+name: "workflow-basic-operations"
 category: "behavioral"
 concept: "workflow"
-description: "Basic CRUD operations for Workflow management based on the available core tools."
-tags: ["workflow", "crud", "core-api"]
-timeout: "5m"
-
-pre_configuration:
-  mcp_servers:
-    - name: "workflow-mock"
-      config:
-        tools:
-          - name: "mock_tool"
-            input_schema: { type: "object", properties: { input: { type: "string" } } }
-            responses: [{ response: { output: "mock result" } }]
+tags: ["workflow", "basic", "core-api"]
+timeout: "3m"
 
 steps:
-  - id: "list-initial-workflows"
-    description: "Get initial list of workflows to establish baseline"
-    tool: "core_workflow_list"
-    expected:
-      success: true
+- id: "create-basic-workflow"
+  tool: "core_workflow_create"
+  args:
+    name: "basic-workflow"
+    steps:
+      - id: "list_services"
+        tool: "core_service_list"
+  expected:
+    success: true
+  cleanup:
+    - tool: "core_workflow_delete"
+      args: { name: "basic-workflow" }
 
-  - id: "create-basic-workflow"
-    description: "Create a basic workflow with minimal required fields"
-    tool: "core_workflow_create"
-    args:
+- id: "get-workflow"
+  tool: "core_workflow_get"
+  args:
+    name: "basic-workflow"
+  expected:
+    success: true
+    json_path:
       name: "basic-workflow"
-      description: "A basic workflow for testing"
-      inputSchema:
-        type: "object"
-        properties:
-          test_input:
-            type: "string"
-            description: "Test input parameter"
-        required: ["test_input"]
-      steps:
-        - id: "single-step"
-          tool: "x_workflow-mock_mock_tool"
-          args:
-            input: "{{ .input.test_input }}"
-    expected:
-      success: true
-      contains: ["basic-workflow"]
 
-  - id: "get-created-workflow"
-    description: "Retrieve the details of the newly created workflow"
-    tool: "core_workflow_get"
-    args:
-      name: "basic-workflow"
-    expected:
-      success: true
-      json_path:
-        name: "basic-workflow"
-        description: "A basic workflow for testing"
+- id: "list-workflows"
+  tool: "core_workflow_list"
+  expected:
+    success: true
+    contains: ["basic-workflow"]
 
-  - id: "update-workflow"
-    description: "Update the workflow with new description and additional step"
-    tool: "core_workflow_update"
-    args:
-      name: "basic-workflow"
-      description: "Updated basic workflow for testing"
-      inputSchema:
-        type: "object"
-        properties:
-          test_input:
-            type: "string"
-            description: "Test input parameter"
-          optional_param:
-            type: "string"
-            description: "Optional parameter"
-            default: "default_value"
-        required: ["test_input"]
-      steps:
-        - id: "first-step"
-          tool: "x_workflow-mock_mock_tool"
-          args:
-            input: "{{ .input.test_input }}"
-          store: "first_result"
-        - id: "second-step"
-          tool: "x_workflow-mock_mock_tool"
-          args:
-            input: "{{ .first_result }} - {{ .input.optional_param }}"
-    expected:
-      success: true
-      contains: ["Updated basic workflow"]
+- id: "update-workflow"
+  tool: "core_workflow_update"
+  expected:
+    success: true
 
-  - id: "verify-updated-workflow"
-    description: "Verify the workflow was updated correctly"
-    tool: "core_workflow_get"
-    args:
-      name: "basic-workflow"
-    expected:
-      success: true
-      json_path:
-        description: "Updated basic workflow for testing"
+- id: "verify-updated-workflow"
+  tool: "core_workflow_get"
+  args:
+    name: "basic-workflow"
+  expected:
+    success: true
 
-  - id: "delete-workflow"
-    description: "Delete the test workflow"
-    tool: "core_workflow_delete"
-    args:
-      name: "basic-workflow"
-    expected:
-      success: true
+- id: "delete-workflow"
+  tool: "core_workflow_delete"
+  args:
+    name: "basic-workflow"
+  expected:
+    success: true
 
-  - id: "verify-workflow-deleted"
-    description: "Verify the workflow no longer exists"
-    tool: "core_workflow_get"
-    args:
-      name: "basic-workflow"
-    expected:
-      success: false
-      error_contains: ["not found"] 
+- id: "verify-workflow-deleted"
+  tool: "core_workflow_get"
+  args:
+    name: "basic-workflow"
+  expected:
+    success: false
+    error_contains: ["not found"] 

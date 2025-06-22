@@ -1,7 +1,6 @@
 name: "behavior-service-resilience-and-error-recovery"
 category: "behavioral"
 concept: "service"
-description: "As a developer, I want clear error feedback and recovery options when services fail so that I can troubleshoot and resolve issues quickly"
 tags: ["service", "error-handling", "resilience", "developer-experience", "user-story"]
 timeout: "5m"
 
@@ -32,7 +31,6 @@ pre_configuration:
     config:
       name: "database-service"
       type: "data"
-      description: "PostgreSQL database service"
       serviceConfig:
         createParameters:
           name:
@@ -46,7 +44,6 @@ pre_configuration:
     config:
       name: "cache-service"
       type: "data"
-      description: "Redis cache service"
       serviceConfig:
         createParameters:
           name:
@@ -59,11 +56,10 @@ pre_configuration:
 steps:
 # Phase 1: Developer Attempts Service Creation (When)
 - id: "developer-attempts-database-service-creation"
-  description: "When I try to create a database service for my application"
   tool: "core_service_create"
   args:
     serviceClassName: "database-service"
-    label: "my-app-database"
+    name: "my-app-database"
     parameters:
       name: "my_app_db"
   expected:
@@ -72,16 +68,14 @@ steps:
 
 # Phase 2: Developer Receives Clear Error Feedback (Then)
 - id: "developer-verifies-service-not-created"
-  description: "Then the service should not be created and I should be able to verify this"
   tool: "core_service_get"
   args:
-    labelOrServiceId: "my-app-database"
+    name: "my-app-database"
   expected:
     success: false
     error_contains: ["not found"]
 
 - id: "developer-checks-service-class-status"
-  description: "And I should be able to check if the service class itself is available"
   tool: "core_serviceclass_available"
   args:
     name: "database-service"
@@ -92,11 +86,10 @@ steps:
 
 # Phase 3: Developer Tries Alternative Solution (Recovery)
 - id: "developer-creates-working-service-instead"
-  description: "When I try a different service that should work"
   tool: "core_service_create"
   args:
     serviceClassName: "cache-service"
-    label: "my-app-cache"
+    name: "my-app-cache"
     parameters:
       name: "my_app_cache"
   expected:
@@ -104,20 +97,18 @@ steps:
     contains: ["my-app-cache"]
 
 - id: "developer-verifies-working-service-created"
-  description: "Then the working service should be successfully created"
   tool: "core_service_get"
   args:
-    labelOrServiceId: "my-app-cache"
+    name: "my-app-cache"
   expected:
     success: true
     json_path:
-      label: "my-app-cache"
+      name: "my-app-cache"
       serviceClass: "cache-service"
       state: "RUNNING"
 
 # Phase 4: Developer Understands System Status
 - id: "developer-lists-all-services"
-  description: "And I should see only the working services in my environment"
   tool: "core_service_list"
   expected:
     success: true
@@ -126,19 +117,17 @@ steps:
 
 # Phase 5: Developer Cleans Up Working Resources
 - id: "developer-removes-working-service"
-  description: "When I finish testing, I can clean up the working service"
   tool: "core_service_delete"
   args:
-    labelOrServiceId: "my-app-cache"
+    name: "my-app-cache"
   expected:
     success: true
 
 cleanup:
   - id: "cleanup-cache-service"
-    description: "Ensure cache service is removed"
     tool: "core_service_delete"
     args:
-      labelOrServiceId: "my-app-cache"
+      name: "my-app-cache"
     expected:
       success: true
     timeout: "30s" 

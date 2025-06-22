@@ -1,7 +1,6 @@
 name: "serviceclass-check-unavailable-missing-tool"
 category: "behavioral"
 concept: "serviceclass"
-description: "Tests that a ServiceClass is unavailable if its tools are missing."
 tags: ["serviceclass", "available", "error-handling", "core-api"]
 timeout: "1m"
 
@@ -10,14 +9,12 @@ pre_configuration:
     - name: "unavailable-sc"
       config:
         name: "unavailable-sc"
-        type: "basic"
         serviceConfig:
           lifecycleTools:
             start: { tool: "x_fake-provider_fake-tool" }
             stop: { tool: "core_service_list" }
 steps:
 - id: "check-is-unavailable"
-  description: "Check that a ServiceClass with a missing tool is not available"
   tool: "core_serviceclass_available"
   args:
     name: "unavailable-sc"

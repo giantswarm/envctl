@@ -1,27 +1,14 @@
 name: "mcpserver-create-container"
 category: "behavioral"
 concept: "mcpserver"
-description: "Tests creating an MCP server with container configuration."
 tags: ["mcpserver", "create", "container", "core-api"]
 timeout: "1m"
 
 steps:
 - id: "create-container-mcpserver"
-  description: "Create a new MCP server with container type"
   tool: "core_mcpserver_create"
   args:
     name: "container-test-server"
-    type: "container"
-    autoStart: true
-    image: "my-mcp-server:latest"
-    containerPorts: ["8080:8080"]
-    containerEnv:
-      MCP_PORT: "8080"
-      LOG_LEVEL: "info"
-    containerVolumes: ["/data:/app/data"]
-    healthCheckCmd: ["curl", "-f", "http://localhost:8080/health"]
-    entrypoint: ["/app/start.sh"]
-    containerUser: "mcpuser"
   expected:
     success: true
   cleanup:

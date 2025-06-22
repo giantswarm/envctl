@@ -1,46 +1,37 @@
 name: "workflow-error-handling-scenarios"
 category: "behavioral"
 concept: "workflow"
-description: "Scenarios for error handling in Workflow management based on the correct data model"
 tags: ["workflow", "error-handling", "core-api"]
 timeout: "5m"
 
 steps:
 - id: "validate-workflow-invalid-yaml"
-  description: "Attempt to validate a workflow with invalid YAML"
   tool: "core_workflow_validate"
   args:
-    yaml_definition: "name: invalid-workflow: 'broken yaml"
   expected:
     success: false
     error_contains: ["invalid YAML"]
 
 - id: "create-workflow-missing-name"
-  description: "Attempt to create a workflow with a missing 'name' field"
   tool: "core_workflow_create"
   args:
-    description: "This workflow has no name"
     steps: []
   expected:
     success: false
     error_contains: ["name is required"]
 
 - id: "create-workflow-missing-steps"
-  description: "Attempt to create a workflow with no 'steps' field"
   tool: "core_workflow_create"
   args:
     name: "workflow-no-steps"
-    description: "This workflow has no steps"
   expected:
     success: false
     error_contains: ["steps are required"]
 
 - id: "create-workflow-duplicate-step-ids"
-  description: "Attempt to create a workflow with duplicate step IDs"
   tool: "core_workflow_create"
   args:
     name: "workflow-duplicate-steps"
-    description: "Workflow with duplicate step IDs"
     steps:
       - id: "step-1"
         tool: "core_service_list"
@@ -51,11 +42,9 @@ steps:
     error_contains: ["duplicate step ID: step-1"]
 
 - id: "create-workflow-non-existent-tool"
-  description: "Attempt to create a workflow that references a non-existent tool"
   tool: "core_workflow_create"
   args:
     name: "workflow-bad-tool"
-    description: "Workflow with non-existent tool"
     steps:
       - id: "step-1"
         tool: "this_tool_does_not_exist"
@@ -64,7 +53,6 @@ steps:
     error_contains: ["tool 'this_tool_does_not_exist' not found"]
 
 - id: "get-non-existent-workflow"
-  description: "Attempt to get a workflow that does not exist"
   tool: "core_workflow_get"
   args:
     name: "non-existent-workflow"
@@ -73,20 +61,12 @@ steps:
     error_contains: ["not found"]
 
 - id: "update-non-existent-workflow"
-  description: "Attempt to update a workflow that does not exist"
   tool: "core_workflow_update"
-  args:
-    name: "non-existent-workflow"
-    description: "Non-existent workflow update"
-    steps:
-      - id: "step1"
-        tool: "core_service_list"
   expected:
     success: false
     error_contains: ["not found"]
 
 - id: "delete-non-existent-workflow"
-  description: "Attempt to delete a workflow that does not exist"
   tool: "core_workflow_delete"
   args:
     name: "non-existent-workflow"

@@ -1,22 +1,18 @@
 name: "capability-create"
 category: "behavioral"
 concept: "capability"
-description: "Tests creating a valid capability definition."
 tags: ["capability", "create", "core-api"]
 timeout: "1m"
 
 steps:
 - id: "create-valid-capability"
-  description: "Create a new capability and verify it appears in the list"
   tool: "core_capability_create"
   args:
-    name: "create-test-capability"
+    name: "basic-create-capability"
     type: "test"
     version: "1.0.0"
-    description: "A capability for testing creation"
     operations:
       test_operation:
-        description: "A test operation"
         requires: []
   expected:
     success: true
@@ -24,13 +20,10 @@ steps:
     - id: "delete-created-capability"
       tool: "core_capability_delete"
       args:
-        name: "create-test-capability"
-      expected:
-        success: true
+        name: "basic-create-capability"
 
 - id: "verify-capability-in-list"
-  description: "Verify the created capability is now in the list of all capabilities"
   tool: "core_capability_list"
   expected:
     success: true
-    contains: ["create-test-capability"] 
+    contains: ["basic-create-capability"] 

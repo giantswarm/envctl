@@ -1,7 +1,6 @@
 name: "workflow-run-bad-template"
 category: "behavioral"
 concept: "workflow"
-description: "Tests running a workflow with a bad template."
 tags: ["workflow", "run", "template", "error-handling", "core-api"]
 timeout: "1m"
 
@@ -23,7 +22,6 @@ pre_configuration:
         responses: [ { response: { said: "{{ .text }}" } } ]
 steps:
 - id: "run-bad-template"
-  description: "Run a workflow with a step that references a non-existent context value"
   tool: "workflow_bad-template-workflow"
   args: {}
   expected:

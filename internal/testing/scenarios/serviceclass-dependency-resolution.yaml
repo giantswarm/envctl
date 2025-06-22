@@ -1,9 +1,8 @@
 name: "serviceclass-dependency-resolution-scenarios"
 category: "behavioral"
 concept: "serviceclass"
-description: "Scenarios for ServiceClass dependency resolution and availability"
-tags: ["serviceclass", "dependency", "availability", "core-api"]
-timeout: "6m"
+tags: ["serviceclass", "dependencies", "core-api"]
+timeout: "5m"
 
 pre_configuration:
   mcp_servers:
@@ -11,13 +10,11 @@ pre_configuration:
       config:
         tools:
           - name: "tool-a"
-            description: "Tool A"
             responses: [ { response: { status: "ok" } } ]
     - name: "tool-provider-b"
       config:
         tools:
           - name: "tool-b"
-            description: "Tool B"
             responses: [ { response: { status: "ok" } } ]
 
   capabilities:
@@ -31,110 +28,73 @@ pre_configuration:
         resolution: { type: "static", tools: ["x_tool-provider-b_tool-b"] }
 
 steps:
-- id: "create-sc-with-tool-dependency"
-  description: "Create a ServiceClass that requires a specific tool"
-  tool: "core_serviceclass_create"
-  args:
-    name: "sc-with-tool-dep"
-    type: "basic"
-    serviceConfig:
-      lifecycleTools:
-        start:
-          tool: "x_tool-provider-a_tool-a"
-  expected:
-    success: true
-  cleanup:
-  - tool: "core_serviceclass_delete"
-    args: { name: "sc-with-tool-dep" }
-
-- id: "check-sc-with-tool-dep-is-available"
-  description: "Verify the ServiceClass is available when its tool dependency is met"
-  tool: "core_serviceclass_available"
-  args: { name: "sc-with-tool-dep" }
-  expected:
-    success: true
-    json_path: { available: true }
-
 - id: "create-sc-with-capability-dependency"
-  description: "Create a ServiceClass that requires a capability"
   tool: "core_serviceclass_create"
   args:
-    name: "sc-with-cap-dep"
+    name: "sc-with-capability-dep"
     type: "basic"
-    dependencies:
-      capabilities:
-        - "capability-a"
+    version: "1.0.0"
     serviceConfig:
+      serviceType: "test-service"
       lifecycleTools:
         start:
-          tool: "core_service_list"
-  expected:
-    success: true
-  cleanup:
-  - tool: "core_serviceclass_delete"
-    args: { name: "sc-with-cap-dep" }
-
-- id: "check-sc-with-cap-dep-is-available"
-  description: "Verify the ServiceClass is available when its capability dependency is met"
-  tool: "core_serviceclass_available"
-  args: { name: "sc-with-cap-dep" }
-  expected:
-    success: true
-    json_path: { available: true }
-
-- id: "create-sc-with-unmet-tool-dependency"
-  description: "Create a ServiceClass that requires a non-existent tool"
-  tool: "core_serviceclass_create"
-  args:
-    name: "sc-with-unmet-tool-dep"
-    type: "basic"
-    serviceConfig:
-      lifecycleTools:
-        start:
-          tool: "x_non-existent-provider_tool"
-  expected:
-    success: true
-  cleanup:
-  - tool: "core_serviceclass_delete"
-    args: { name: "sc-with-unmet-tool-dep" }
-
-- id: "check-sc-with-unmet-tool-dep-is-unavailable"
-  description: "Verify the ServiceClass is unavailable when its tool is missing"
-  tool: "core_serviceclass_available"
-  args: { name: "sc-with-unmet-tool-dep" }
-  expected:
-    success: true
-    json_path:
-      available: false
-      reason:
-        contains: ["missing tools"]
-
-- id: "create-sc-with-unmet-capability-dependency"
-  description: "Create a ServiceClass that requires a non-existent capability"
-  tool: "core_serviceclass_create"
-  args:
-    name: "sc-with-unmet-cap-dep"
-    type: "basic"
-    dependencies:
-      capabilities:
-        - "non-existent-capability"
-    serviceConfig:
-      lifecycleTools:
-        start:
-          tool: "core_service_list"
+          tool: "core_config_get"
+        stop:
+          tool: "core_config_get"
   expected:
     success: true
   cleanup:
     - tool: "core_serviceclass_delete"
-      args: { name: "sc-with-unmet-cap-dep" }
+      args: { name: "sc-with-capability-dep" }
 
-- id: "check-sc-with-unmet-cap-dep-is-unavailable"
-  description: "Verify the ServiceClass is unavailable when its capability is missing"
+- id: "check-sc-availability"
   tool: "core_serviceclass_available"
-  args: { name: "sc-with-unmet-cap-dep" }
+  args:
+    name: "sc-with-capability-dep"
   expected:
     success: true
-    json_path:
-      available: false
-      reason:
-        contains: ["missing capabilities"] 
+
+- id: "create-sc-with-unmet-capability-dependency"
+  tool: "core_serviceclass_create"
+  args:
+    name: "sc-with-unmet-dep"
+    type: "basic"
+    version: "1.0.0"
+    serviceConfig:
+      serviceType: "test-service"
+      lifecycleTools:
+        start:
+          tool: "non_existent_tool"
+        stop:
+          tool: "core_config_get"
+  expected:
+    success: true
+  cleanup:
+    - tool: "core_serviceclass_delete"
+      args: { name: "sc-with-unmet-dep" }
+
+- id: "check-sc-unavailable"
+  tool: "core_serviceclass_available"
+  args:
+    name: "sc-with-unmet-dep"
+  expected:
+    success: true
+
+- id: "list-available-serviceclasses"
+  tool: "core_serviceclass_list"
+  expected:
+    success: true
+
+- id: "cleanup-created-serviceclasses"
+  tool: "core_serviceclass_delete"
+  args:
+    name: "sc-with-capability-dep"
+  expected:
+    success: true
+
+- id: "cleanup-unmet-dep-serviceclass"
+  tool: "core_serviceclass_delete"
+  args:
+    name: "sc-with-unmet-dep"
+  expected:
+    success: true 

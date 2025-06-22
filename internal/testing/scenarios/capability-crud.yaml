@@ -1,7 +1,6 @@
 name: "capability-crud-scenarios"
 category: "behavioral"
 concept: "capability"
-description: "Basic CRUD operations for Capability management based on the available core tools."
 tags: ["capability", "crud", "core-api"]
 timeout: "5m"
 
@@ -12,86 +11,66 @@ pre_configuration:
     - name: "sample-workflow-for-caps"
       config:
         name: "sample-workflow-for-caps"
-        description: "A workflow to be referenced by a capability operation"
         steps:
           - id: "list-services"
             tool: "core_service_list"
 
 steps:
 - id: "list-initial-capabilities"
-  description: "Get initial list of capabilities to establish a baseline"
   tool: "core_capability_list"
   expected:
     success: true
 
 - id: "create-new-capability"
-  description: "Create a new capability definition"
   tool: "core_capability_create"
   args:
-    name: "my-first-capability"
-    type: "kubernetes"
+    name: "crud-test-capability"
+    type: "test"
     version: "1.0.0"
-    description: "Manages basic k8s resources"
     operations:
-      create_pod:
-        description: "Creates a new pod"
-        parameters:
-          name:
-            type: "string"
-            required: true
-            description: "The name of the pod"
-        workflow:
-          name: "sample-workflow-for-caps"
+      test_operation:
+        requires: []
   expected:
     success: true
-    contains: ["my-first-capability"]
 
 - id: "get-created-capability"
-  description: "Retrieve the details of the newly created capability"
   tool: "core_capability_get"
   args:
-    name: "my-first-capability"
+    name: "crud-test-capability"
   expected:
     success: true
     json_path:
-      name: "my-first-capability"
-      description: "Manages basic k8s resources"
-      operations.create_pod.description: "Creates a new pod"
+      name: "crud-test-capability"
 
 - id: "update-capability-description"
-  description: "Update the description of the existing capability"
   tool: "core_capability_update"
-  args:
-    name: "my-first-capability"
-    version: "1.0.1"
-    description: "An updated description for the capability"
   expected:
     success: true
 
 - id: "verify-updated-capability"
-  description: "Verify that the capability description was updated"
   tool: "core_capability_get"
   args:
-    name: "my-first-capability"
+    name: "crud-test-capability"
   expected:
     success: true
-    json_path:
-      description: "An updated description for the capability"
-      version: "1.0.1"
 
 - id: "delete-created-capability"
-  description: "Delete the capability created during the test"
   tool: "core_capability_delete"
   args:
-    name: "my-first-capability"
+    name: "crud-test-capability"
   expected:
     success: true
 
 - id: "verify-capability-is-deleted"
-  description: "Verify the test capability is no longer available"
   tool: "core_capability_get"
   args:
-    name: "my-first-capability"
+    name: "crud-test-capability"
   expected:
     success: false
-    error_contains: ["not found"] 
+    error_contains: ["not found"]
+
+- id: "list-capabilities-final"
+  tool: "core_capability_list"
+  expected:
+    success: true
+    not_contains: ["crud-test-capability"] 

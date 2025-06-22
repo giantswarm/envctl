@@ -1,7 +1,6 @@
 name: "mcpserver-get"
 category: "behavioral"
 concept: "mcpserver"
-description: "Tests getting a specific MCPServer."
 tags: ["mcpserver", "get", "core-api"]
 timeout: "1m"
 
@@ -10,11 +9,8 @@ pre_configuration:
   - name: "get-test-server"
     config:
       name: "get-test-server"
-      type: "localCommand"
-      command: ["echo", "get test"]
 steps:
 - id: "get-specific-server"
-  description: "Get a pre-configured server"
   tool: "core_mcpserver_get"
   args:
     name: "get-test-server"
@@ -22,4 +18,3 @@ steps:
     success: true
     json_path:
       name: "get-test-server"
-      type: "localCommand" 

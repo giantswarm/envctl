@@ -1,22 +1,17 @@
 name: "capability-create-no-type"
 category: "behavioral"
 concept: "capability"
-description: "Tests creating a capability without a 'type' field (should fail)."
-tags: ["capability", "create", "validation", "error-handling", "core-api"]
+tags: ["capability", "create", "error-handling", "validation", "core-api"]
 timeout: "1m"
 
 steps:
 - id: "create-no-type-capability"
-  description: "Attempt to create a capability definition without the required 'type' field"
   tool: "core_capability_create"
   args:
     name: "no-type-capability"
-    version: "1.0"
-    description: "A capability without a type"
     operations:
       test_operation:
-        description: "A test operation"
         requires: []
   expected:
     success: false
-    error_contains: ["type parameter is required"] 
+    error_contains: ["type", "required"] 

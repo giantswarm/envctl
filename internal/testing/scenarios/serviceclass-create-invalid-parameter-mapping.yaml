@@ -1,17 +1,14 @@
 name: "serviceclass-create-invalid-parameter-mapping"
 category: "behavioral"
 concept: "serviceclass"
-description: "Tests creating a ServiceClass with invalid parameter mappings."
 tags: ["serviceclass", "create", "validation", "error-handling", "core-api"]
 timeout: "1m"
 
 steps:
 - id: "create-invalid-param-mapping"
-  description: "Attempt to create a ServiceClass with invalid parameter mapping"
   tool: "core_serviceclass_create"
   args:
     name: "invalid-param-sc"
-    type: "basic"
     serviceConfig:
       lifecycleTools:
         start:

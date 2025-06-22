@@ -1,21 +1,17 @@
 name: "capability-create-missing-name"
 category: "behavioral"
 concept: "capability"
-description: "Tests creating a capability with a missing name field."
 tags: ["capability", "create", "error-handling", "validation", "core-api"]
 timeout: "1m"
 
 steps:
 - id: "create-with-missing-name"
-  description: "Attempt to create a capability without the required 'name' field"
   tool: "core_capability_create"
   args:
     type: "test"
-    description: "A capability with no name"
     operations:
       test_operation:
-        description: "A test operation"
         requires: []
   expected:
     success: false
-    error_contains: ["name parameter is required"] 
+    error_contains: ["name", "required"] 

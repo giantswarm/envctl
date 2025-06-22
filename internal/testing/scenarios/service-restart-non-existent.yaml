@@ -1,16 +1,12 @@
 name: "service-restart-non-existent"
 category: "behavioral"
 concept: "service"
-description: "Tests restarting a service that does not exist."
 tags: ["service", "restart", "error-handling", "core-api"]
 timeout: "1m"
 
 steps:
 - id: "restart-non-existent"
-  description: "Attempt to restart a non-existent service"
   tool: "core_service_restart"
-  args:
-    label: "service-does-not-exist"
   expected:
     success: false
     error_contains: ["not found"] 

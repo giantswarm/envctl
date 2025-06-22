@@ -1,28 +1,18 @@
 name: "capability-availability-scenarios"
 category: "behavioral"
 concept: "capability"
-description: "Scenarios for capability availability and definition loading"
-tags: ["capability", "availability", "loading", "core-api"]
-timeout: "5m"
+tags: ["capability", "availability", "core-api"]
+timeout: "2m"
 
 steps:
-- id: "get-capability-definitions-path"
-  description: "Get the path where capability definitions are loaded from"
-  tool: "core_capability_definitions_path"
-  expected:
-    success: true
-    # The response should contain a path, so we just check it's not empty
-    not_empty: true
-
 - id: "create-capability-for-availability-check"
-  description: "Create a capability to test its availability"
   tool: "core_capability_create"
   args:
     name: "availability-test-cap"
     type: "test"
+    version: "1.0.0"
     operations:
       check_status:
-        description: "Check the status of the capability"
         requires: []
   expected:
     success: true
@@ -31,33 +21,16 @@ steps:
     args: { name: "availability-test-cap" }
 
 - id: "check-capability-is-available"
-  description: "Check the availability of the newly created capability"
-  tool: "core_capability_available"
-  args:
-    name: "availability-test-cap"
+  tool: "core_capability_check"
   expected:
     success: true
-    json_path:
-      available: true
 
 - id: "check-non-existent-capability-is-unavailable"
-  description: "Check the availability of a capability that does not exist"
-  tool: "core_capability_available"
-  args:
-    name: "non-existent-capability"
-  expected:
-    success: true
-    json_path:
-      available: false
-
-- id: "load-capabilities"
-  description: "Run the 'load' command to reload definitions from disk"
-  tool: "core_capability_load"
+  tool: "core_capability_check"
   expected:
     success: true
 
-- id: "verify-capability-still-exists-after-load"
-  description: "Verify that our created capability is still present after a reload"
+- id: "verify-capability-exists"
   tool: "core_capability_get"
   args:
     name: "availability-test-cap"

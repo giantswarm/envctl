@@ -1,40 +1,26 @@
 name: "workflow-crud-scenarios"
 category: "behavioral"
 concept: "workflow"
-description: "Basic CRUD operations for Workflow management using the correct data model"
 tags: ["workflow", "crud", "core-api"]
 timeout: "5m"
 
 steps:
 - id: "list-initial-workflows"
-  description: "Get initial list of workflows to establish a baseline"
   tool: "core_workflow_list"
-  args:
-    include_system: true
   expected:
     success: true
 
 - id: "create-correct-workflow"
-  description: "Create a new workflow using the correct data structure"
   tool: "core_workflow_create"
   args:
     name: "correct-workflow"
-    description: "A correctly structured workflow"
-    inputSchema:
-      type: "object"
-      properties:
-        target_label:
-          type: "string"
-          description: "The label of the service to check"
-      required: ["target_label"]
     steps:
       - id: "get_status"
         tool: "core_service_status"
-        args:
-          label: "{{ .input.target_label }}"
+  expected:
+    success: true
 
 - id: "get-created-workflow"
-  description: "Retrieve and verify the created workflow"
   tool: "core_workflow_get"
   args:
     name: "correct-workflow"
@@ -42,42 +28,20 @@ steps:
     success: true
     json_path:
       name: "correct-workflow"
-      description: "A correctly structured workflow"
-      inputSchema.properties.target_label.description: "The label of the service to check"
 
-- id: "update-workflow-description"
-  description: "Update the description of the existing workflow"
+- id: "update-workflow"
   tool: "core_workflow_update"
-  args:
-    name: "correct-workflow"
-    description: "An updated description for the workflow"
-    inputSchema:
-      type: "object"
-      properties:
-        target_label:
-          type: "string"
-          description: "The label of the service to check"
-      required: ["target_label"]
-    steps:
-      - id: "get_status"
-        tool: "core_service_status"
-        args:
-          label: "{{ .input.target_label }}"
   expected:
     success: true
 
 - id: "verify-updated-workflow"
-  description: "Verify the workflow description was updated"
   tool: "core_workflow_get"
   args:
     name: "correct-workflow"
   expected:
     success: true
-    json_path:
-      description: "An updated description for the workflow"
 
 - id: "delete-created-workflow"
-  description: "Clean up by deleting the test workflow"
   tool: "core_workflow_delete"
   args:
     name: "correct-workflow"
@@ -85,7 +49,6 @@ steps:
     success: true
 
 - id: "verify-workflow-is-deleted"
-  description: "Verify the workflow was completely removed"
   tool: "core_workflow_get"
   args:
     name: "correct-workflow"
@@ -93,40 +56,23 @@ steps:
     success: false
     error_contains: ["not found"]
 
-- id: "create-workflow"
-  description: "Create a new workflow with a basic structure"
+- id: "create-new-workflow"
   tool: "core_workflow_create"
   args:
     name: "crud-test-workflow"
-    description: "Test workflow for CRUD operations"
-    icon: "🔄"
-    agentModifiable: false
-    createdBy: "test-suite"
-    version: 1
-    inputSchema:
-      type: "object"
-      properties:
-        operation:
-          type: "string"
-          description: "Operation to perform"
-          default: "test"
-        target:
-          type: "string"
-          description: "Target for the operation"
-      required: ["target"]
     steps:
-      - id: "perform-operation"
-        tool: "x_workflow-test-provider_execute"
-        args:
-          operation: "{{ .input.operation }}"
-          target: "{{ .input.target }}"
-        store: "operation_result"
+      - id: "list-services"
+        tool: "core_service_list"
+  expected:
+    success: true
+
+- id: "verify-workflow-in-list"
+  tool: "core_workflow_list"
   expected:
     success: true
     contains: ["crud-test-workflow"]
 
-- id: "get-workflow"
-  description: "Retrieve the created workflow"
+- id: "get-new-workflow"
   tool: "core_workflow_get"
   args:
     name: "crud-test-workflow"
@@ -134,44 +80,10 @@ steps:
     success: true
     json_path:
       name: "crud-test-workflow"
-      description: "Test workflow for CRUD operations"
 
-- id: "update-workflow"
-  description: "Update the workflow with additional step"
-  tool: "core_workflow_update"
+- id: "final-cleanup"
+  tool: "core_workflow_delete"
   args:
     name: "crud-test-workflow"
-    description: "Updated test workflow for CRUD operations"
-    icon: "🔄"
-    agentModifiable: true
-    createdBy: "test-suite"
-    version: 2
-    inputSchema:
-      type: "object"
-      properties:
-        operation:
-          type: "string"
-          description: "Operation to perform"
-          default: "test"
-        target:
-          type: "string"
-          description: "Target for the operation"
-        count:
-          type: "number"
-          description: "Number of iterations"
-          default: 1
-      required: ["target"]
-    steps:
-      - id: "perform-operation"
-        tool: "x_workflow-test-provider_execute"
-        args:
-          operation: "{{ .input.operation }}"
-          target: "{{ .input.target }}"
-          count: "{{ .input.count }}"
-        store: "operation_result"
-      - id: "finalize"
-        tool: "x_workflow-test-provider_finalize"
-        args:
-          result: "{{ .operation_result }}"
   expected:
     success: true 

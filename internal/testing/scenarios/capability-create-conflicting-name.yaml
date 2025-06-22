@@ -1,7 +1,6 @@
 name: "capability-create-conflicting-name"
 category: "behavioral"
 concept: "capability"
-description: "Tests creating a capability with a name that already exists."
 tags: ["capability", "create", "error-handling", "conflict", "core-api"]
 timeout: "1m"
 
@@ -11,23 +10,18 @@ pre_configuration:
       config:
         name: "existing-capability"
         type: "test"
-        description: "Pre-existing capability for conflict testing"
         operations:
           existing_operation:
-            description: "An existing operation"
             requires: []
 
 steps:
 - id: "create-conflicting-capability"
-  description: "Attempt to create a capability with a name that already exists"
   tool: "core_capability_create"
   args:
     name: "existing-capability"
     type: "test"
-    description: "This should conflict with the existing capability"
     operations:
       test_operation:
-        description: "A test operation"
         requires: []
   expected:
     success: false

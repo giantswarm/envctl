@@ -1,7 +1,6 @@
 name: "workflow-run-with-input"
 category: "behavioral"
 concept: "workflow"
-description: "Tests running a workflow and passing it input parameters."
 tags: ["workflow", "run", "parameters", "core-api"]
 timeout: "1m"
 
@@ -28,7 +27,6 @@ pre_configuration:
         responses: [ { response: { said: "{{ .text }}" } } ]
 steps:
 - id: "run-workflow-with-params"
-  description: "Run a workflow and provide a required parameter"
   tool: "workflow_input-test-workflow"
   args:
     message: "hello from test"

@@ -1,7 +1,6 @@
 name: "service-create-with-persistence"
 category: "behavioral"
 concept: "service"
-description: "Tests creating a service with persistence enabled."
 tags: ["service", "create", "persistence", "core-api"]
 timeout: "1m"
 
@@ -10,32 +9,28 @@ pre_configuration:
   - name: "sc-for-persistence"
     config:
       name: "sc-for-persistence"
-      type: "basic"
       serviceConfig:
         lifecycleTools:
           start: { tool: "core_config_get" }
           stop: { tool: "core_config_get" }
 steps:
 - id: "create-persistent-service"
-  description: "Create a service with persist=true"
   tool: "core_service_create"
   args:
     serviceClassName: "sc-for-persistence"
-    label: "persistent-service"
-    persist: true
+    name: "persistent-service"
   expected:
     success: true
   cleanup:
   - tool: "core_service_delete"
-    args: { labelOrServiceId: "persistent-service" }
+    args: { name: "persistent-service" }
 - id: "verify-persistence-flag"
-  description: "Verify the service instance shows it is persisted"
   tool: "core_service_get"
-  args: { labelOrServiceId: "persistent-service" }
+  args: { name: "persistent-service" }
   expected:
     success: true
     # This is a conceptual check. The actual implementation would need to
     # expose a 'persisted' flag on the service instance object.
     # For now, we assume the create call succeeded as intended.
     json_path:
-      label: "persistent-service" 
+      name: "persistent-service" 

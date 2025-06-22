@@ -1,7 +1,6 @@
 name: "workflow-advanced-scenarios"
 category: "behavioral"
 concept: "workflow"
-description: "Scenarios for advanced workflow features, including spec and storing values."
 tags: ["workflow", "advanced", "core-api"]
 timeout: "5m"
 
@@ -10,7 +9,6 @@ pre_configuration:
     - name: "store-and-use-workflow"
       config:
         name: "store-and-use-workflow"
-        description: "A workflow that stores a value from one step and uses it in another"
         steps:
           - id: "get_service_list"
             tool: "core_service_list"
@@ -36,35 +34,28 @@ pre_configuration:
 
 steps:
 - id: "get-workflow-spec-full"
-  description: "Get the full specification for a workflow"
-  tool: "core_workflow_spec"
+  tool: "core_workflow_get"
   args:
-    format: "full"
   expected:
     success: true
     contains: ["schema", "template", "examples"]
 
 - id: "get-workflow-spec-schema-only"
-  description: "Get just the schema for a workflow"
-  tool: "core_workflow_spec"
+  tool: "core_workflow_get"
   args:
-    format: "schema"
   expected:
     success: true
     contains: ["schema"]
     not_contains: ["template"]
 
 - id: "get-workflow-spec-invalid-format"
-  description: "Attempt to get a workflow spec with an invalid format"
-  tool: "core_workflow_spec"
+  tool: "core_workflow_get"
   args:
-    format: "invalid-format"
   expected:
     success: false
     error_contains: ["invalid format"]
 
 - id: "run-store-and-use-workflow"
-  description: "Run a workflow that stores and uses a value between steps"
   tool: "workflow_store-and-use-workflow"
   args: {}
   expected:
@@ -74,11 +65,9 @@ steps:
     contains: ["Stored services:", "label", "state"]
 
 - id: "create-workflow-with-no-steps"
-  description: "Create a workflow that has an empty steps array"
   tool: "core_workflow_create"
   args:
     name: "empty-steps-workflow"
-    description: "A workflow with no steps to run"
     steps: []
   expected:
     success: true
@@ -87,11 +76,9 @@ steps:
     args: { name: "empty-steps-workflow" }
 
 - id: "run-workflow-that-overwrites-context"
-  description: "Run a workflow where one step's stored output overwrites another's"
   tool: "core_workflow_create"
   args:
     name: "overwrite-context-workflow"
-    description: "A workflow that overwrites context values"
     steps:
       - id: "step1"
         tool: "x_mock-echo_echo"
@@ -113,7 +100,6 @@ steps:
   - tool: "core_workflow_delete"
     args: { name: "overwrite-context-workflow" }
 - id: "run-overwrite-context-workflow"
-  description: "Run the overwrite workflow and check the final output"
   tool: "workflow_overwrite-context-workflow"
   args: {}
   expected:
@@ -122,11 +108,9 @@ steps:
       echoed: "final value is second"
 
 - id: "run-workflow-with-bad-template"
-  description: "Run a workflow that templates a non-existent context value"
   tool: "core_workflow_create"
   args:
     name: "bad-template-workflow"
-    description: "A workflow with invalid template references"
     steps:
       - id: "bad-step"
         tool: "x_mock-echo_echo"
@@ -138,7 +122,6 @@ steps:
   - tool: "core_workflow_delete"
     args: { name: "bad-template-workflow" }
 - id: "run-bad-template-workflow"
-  description: "Run the bad template workflow and expect a failure"
   tool: "workflow_bad-template-workflow"
   args: {}
   expected:

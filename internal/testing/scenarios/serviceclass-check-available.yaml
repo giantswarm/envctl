@@ -1,7 +1,6 @@
 name: "serviceclass-check-available"
 category: "behavioral"
 concept: "serviceclass"
-description: "Tests checking the availability of an existing, valid ServiceClass."
 tags: ["serviceclass", "available", "core-api"]
 timeout: "1m"
 
@@ -10,7 +9,6 @@ pre_configuration:
     - name: "available-sc"
       config:
         name: "available-sc"
-        type: "basic"
         serviceConfig:
           lifecycleTools:
             start: { tool: "core_service_list" }
@@ -18,7 +16,6 @@ pre_configuration:
 
 steps:
 - id: "check-is-available"
-  description: "Check that a pre-configured ServiceClass is available"
   tool: "core_serviceclass_available"
   args:
     name: "available-sc"

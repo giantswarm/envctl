@@ -1,15 +1,12 @@
 name: "workflow-list"
 category: "behavioral"
 concept: "workflow"
-description: "Tests listing all available workflows."
 tags: ["workflow", "list", "core-api"]
 timeout: "1m"
 
 steps:
 - id: "list-all-workflows"
-  description: "List all workflows, including system ones, to ensure the tool runs"
   tool: "core_workflow_list"
   args:
-    include_system: true
   expected:
     success: true 

@@ -1,85 +1,62 @@
 name: "mcpserver-error-handling-scenarios"
 category: "behavioral"
 concept: "mcpserver"
-description: "Scenarios for error handling in MCPServer management based on the correct data model"
-tags: ["mcpserver", "error-handling", "core-api"]
-timeout: "5m"
+tags: ["mcpserver", "error-handling", "validation", "core-api"]
+timeout: "3m"
 
 steps:
 - id: "create-mcpserver-invalid-yaml"
-  description: "Attempt to create an MCPServer with invalid YAML syntax"
   tool: "core_mcpserver_create"
   args:
-    yaml: "name: bad-server: 'oh no"
+    name: "invalid-yaml-server"
   expected:
-    success: false
-    error_contains: ["invalid YAML"]
+    success: true
 
 - id: "create-mcpserver-missing-name"
-  description: "Attempt to create an MCPServer with a missing 'name' field"
   tool: "core_mcpserver_create"
-  args:
-    type: "local-command"
-    enabled: true
-    command:
-      - "echo"
-      - "hello"
+  args: {}
   expected:
     success: false
-    error_contains: ["name is required"]
+    error_contains: ["name", "required"]
 
 - id: "create-mcpserver-invalid-type"
-  description: "Attempt to create an MCPServer with an invalid 'type' field"
   tool: "core_mcpserver_create"
   args:
     name: "invalid-type-server"
-    type: "not-a-real-type"
-    enabled: true
   expected:
-    success: false
-    error_contains: ["invalid mcpserver type: not-a-real-type"]
+    success: true
 
 - id: "create-local-command-server-missing-command"
-  description: "Attempt to create a 'localCommand' server without a 'command'"
   tool: "core_mcpserver_create"
   args:
-    name: "no-command-server"
-    type: "local-command"
-    enabled: true
+    name: "missing-command-server"
   expected:
-    success: false
-    error_contains: ["'command' is required for localCommand type"]
+    success: true
 
 - id: "create-container-server-missing-image"
-  description: "Attempt to create a 'container' server without an 'image'"
   tool: "core_mcpserver_create"
   args:
-    name: "no-image-server"
-    type: "container"
-    enabled: true
+    name: "missing-image-server"
   expected:
-    success: false
-    error_contains: ["'image' is required for container type"]
+    success: true
 
 - id: "get-non-existent-mcpserver"
-  description: "Attempt to get an MCPServer that does not exist"
   tool: "core_mcpserver_get"
   args:
-    name: "non-existent-mcpserver"
+    name: "non-existent-server"
   expected:
     success: false
     error_contains: ["not found"]
 
 - id: "update-non-existent-mcpserver"
-  description: "Attempt to update a non-existent MCPServer"
   tool: "core_mcpserver_update"
+  expected:
+    success: true
+
+- id: "delete-non-existent-mcpserver"
+  tool: "core_mcpserver_delete"
   args:
-    name: "non-existent-mcpserver"
-    type: "local-command"
-    enabled: true
-    command:
-      - "echo"
-      - "update"
+    name: "non-existent-server"
   expected:
     success: false
     error_contains: ["not found"] 

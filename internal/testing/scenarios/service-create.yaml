@@ -1,7 +1,6 @@
 name: "service-create"
 category: "behavioral"
 concept: "service"
-description: "Tests creating a valid service instance from a ServiceClass."
 tags: ["service", "create", "core-api"]
 timeout: "1m"
 
@@ -10,25 +9,22 @@ pre_configuration:
   - name: "sc-for-service-create"
     config:
       name: "sc-for-service-create"
-      type: "basic"
       serviceConfig:
         lifecycleTools:
           start: { tool: "core_config_get" } # Use any valid tool for lifecycle
           stop: { tool: "core_config_get" }
 steps:
 - id: "create-valid-service"
-  description: "Create a new service instance"
   tool: "core_service_create"
   args:
     serviceClassName: "sc-for-service-create"
-    label: "create-test-service"
+    name: "create-test-service"
   expected:
     success: true
   cleanup:
   - tool: "core_service_delete"
-    args: { labelOrServiceId: "create-test-service" }
+    args: { name: "create-test-service" }
 - id: "verify-service-in-list"
-  description: "Verify the new service appears in the list"
   tool: "core_service_list"
   expected:
     success: true

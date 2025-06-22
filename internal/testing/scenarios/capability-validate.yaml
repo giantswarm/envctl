@@ -1,0 +1,11 @@
+name: "capability-validate"
+category: "behavioral"
+concept: "capability"
+tags: ["capability", "validate", "core-api"]
+timeout: "1m"
+
+steps:
+- id: "validate-capabilities"
+  tool: "core_capability_validate"
+  expected:
+    success: true 

@@ -1,7 +1,6 @@
 name: "mcpserver-check-available"
 category: "behavioral"
 concept: "mcpserver"
-description: "Tests checking the availability of an existing server."
 tags: ["mcpserver", "available", "core-api"]
 timeout: "1m"
 
@@ -10,11 +9,8 @@ pre_configuration:
   - name: "available-server"
     config:
       name: "available-server"
-      type: "localCommand"
-      command: ["echo", "I am available"]
 steps:
 - id: "check-available"
-  description: "Check availability of a valid, pre-configured server"
   tool: "core_mcpserver_available"
   args:
     name: "available-server"

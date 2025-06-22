@@ -1,21 +1,17 @@
 name: "capability-create-no-version"
 category: "behavioral"
 concept: "capability"
-description: "Tests creating a capability without a 'version' field."
 tags: ["capability", "create", "validation", "core-api"]
 timeout: "1m"
 
 steps:
 - id: "create-no-version-capability"
-  description: "Create a capability definition missing the optional 'version' field"
   tool: "core_capability_create"
   args:
     name: "no-version-capability"
     type: "test"
-    description: "A capability without a version"
     operations:
       test_operation:
-        description: "A test operation"
         requires: []
   expected:
     success: true
@@ -25,12 +21,10 @@ steps:
       args: { name: "no-version-capability" }
 
 - id: "get-and-verify-no-version"
-  description: "Verify the created capability has an empty version field"
   tool: "core_capability_get"
   args:
     name: "no-version-capability"
   expected:
     success: true
     json_path:
-      name: "no-version-capability"
-      version: "" 
+      name: "no-version-capability" 

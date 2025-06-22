@@ -1,17 +1,14 @@
 name: "workflow-create-missing-steps"
 category: "behavioral"
 concept: "workflow"
-description: "Tests creating a Workflow without providing steps."
 tags: ["workflow", "create", "validation", "error-handling", "core-api"]
 timeout: "1m"
 
 steps:
 - id: "create-missing-steps"
-  description: "Attempt to create a Workflow without steps"
   tool: "core_workflow_create"
   args:
     name: "no-steps-workflow"
-    description: "Workflow without steps"
   expected:
     success: false
     error_contains: ["steps", "required"] 

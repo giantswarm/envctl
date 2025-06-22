@@ -1,16 +1,13 @@
 name: "workflow-spec-get-full"
 category: "behavioral"
 concept: "workflow"
-description: "Tests getting the full spec for workflows."
 tags: ["workflow", "spec", "core-api"]
 timeout: "1m"
 
 steps:
 - id: "get-full-spec"
-  description: "Get the full workflow specification"
-  tool: "core_workflow_spec"
+  tool: "core_workflow_get"
   args:
-    format: "full"
   expected:
     success: true
     contains: ["schema", "template", "examples"] 

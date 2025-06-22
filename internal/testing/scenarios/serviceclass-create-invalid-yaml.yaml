@@ -1,28 +1,23 @@
 name: "serviceclass-create-invalid-parameters"
 category: "behavioral"
 concept: "serviceclass"
-description: "Tests creating a ServiceClass with invalid parameter structures."
 tags: ["serviceclass", "create", "error-handling", "validation", "core-api"]
 timeout: "1m"
 
 steps:
 - id: "create-with-invalid-serviceconfig-structure"
-  description: "Attempt to create a ServiceClass with invalid serviceConfig structure"
   tool: "core_serviceclass_create"
   args:
     name: "invalid-config-sc"
-    type: "basic"
     serviceConfig: "this should be an object not a string"
   expected:
     success: false
     error_contains: ["serviceConfig parameter is required"]
 
 - id: "create-with-missing-lifecycle-tools"
-  description: "Attempt to create a ServiceClass with serviceConfig missing required lifecycleTools"
   tool: "core_serviceclass_create"
   args:
     name: "missing-lifecycle-sc"
-    type: "basic"
     serviceConfig:
       serviceType: "test"
       # missing lifecycleTools
@@ -31,18 +26,15 @@ steps:
     error_contains: ["lifecycleTools is required"]
 
 - id: "create-with-invalid-operations-type"
-  description: "Attempt to create a ServiceClass with operations as wrong type"
   tool: "core_serviceclass_create"
   args:
     name: "invalid-ops-sc"
-    type: "basic"
     serviceConfig:
       lifecycleTools:
         start:
           tool: "test_start"
         stop:
           tool: "test_stop"
-    operations: "should be object not string"
   expected:
     success: false
     error_contains: ["invalid operation"] 

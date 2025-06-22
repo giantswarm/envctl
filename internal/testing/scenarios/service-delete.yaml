@@ -1,7 +1,6 @@
 name: "service-delete"
 category: "behavioral"
 concept: "service"
-description: "Tests deleting a service instance."
 tags: ["service", "delete", "core-api"]
 timeout: "1m"
 
@@ -10,26 +9,22 @@ pre_configuration:
   - name: "sc-for-delete"
     config:
       name: "sc-for-delete"
-      type: "basic"
       serviceConfig:
         lifecycleTools:
           start: { tool: "core_config_get" }
           stop: { tool: "core_config_get" }
 steps:
 - id: "create-service-for-delete"
-  description: "Create a service to be deleted"
   tool: "core_service_create"
-  args: { serviceClassName: "sc-for-delete", label: "delete-test-service" }
+  args: { serviceClassName: "sc-for-delete", name: "delete-test-service" }
   expected: { success: true }
 - id: "delete-the-service"
-  description: "Delete the created service"
   tool: "core_service_delete"
   args:
     name: "delete-test-service"
   expected:
     success: true
 - id: "verify-service-is-gone"
-  description: "Attempt to get the deleted service"
   tool: "core_service_get"
   args:
     name: "delete-test-service"

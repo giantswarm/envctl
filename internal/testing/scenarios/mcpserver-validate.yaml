@@ -1,0 +1,11 @@
+name: "mcpserver-validate"
+category: "behavioral"
+concept: "mcpserver"
+tags: ["mcpserver", "validate", "core-api"]
+timeout: "1m"
+
+steps:
+- id: "validate-mcpservers"
+  tool: "core_mcpserver_validate"
+  expected:
+    success: true 

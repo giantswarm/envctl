@@ -1,7 +1,6 @@
 name: "service-create-with-params"
 category: "behavioral"
 concept: "service"
-description: "Tests creating a service instance with parameters."
 tags: ["service", "create", "parameters", "core-api"]
 timeout: "1m"
 
@@ -17,7 +16,6 @@ pre_configuration:
   - name: "sc-with-params"
     config:
       name: "sc-with-params"
-      type: "basic"
       serviceConfig:
         createParameters:
           message:
@@ -31,15 +29,14 @@ pre_configuration:
           stop: { tool: "core_config_get" }
 steps:
 - id: "create-service-with-params"
-  description: "Create a service and pass it a required parameter"
   tool: "core_service_create"
   args:
     serviceClassName: "sc-with-params"
-    label: "service-with-params"
+    name: "service-with-params"
     parameters:
       message: "hello world"
   expected:
     success: true
   cleanup:
   - tool: "core_service_delete"
-    args: { labelOrServiceId: "service-with-params" } 
+    args: { name: "service-with-params" } 

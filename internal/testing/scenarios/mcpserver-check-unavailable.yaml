@@ -1,13 +1,11 @@
 name: "mcpserver-check-unavailable"
 category: "behavioral"
 concept: "mcpserver"
-description: "Tests checking the availability of a non-existent server."
 tags: ["mcpserver", "available", "error-handling", "core-api"]
 timeout: "1m"
 
 steps:
 - id: "check-unavailable"
-  description: "Check availability of a non-existent server"
   tool: "core_mcpserver_available"
   args:
     name: "server-does-not-exist"

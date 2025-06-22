@@ -1,7 +1,6 @@
 name: "workflow-update"
 category: "behavioral"
 concept: "workflow"
-description: "Tests updating an existing workflow."
 tags: ["workflow", "update", "core-api"]
 timeout: "1m"
 
@@ -10,26 +9,14 @@ pre_configuration:
   - name: "update-test-workflow"
     config:
       name: "update-test-workflow"
-      description: "Initial description"
       steps: [{id: "s1", tool: "core_service_list"}]
 steps:
 - id: "update-the-workflow"
-  description: "Update the description of the pre-configured workflow"
   tool: "core_workflow_update"
-  args:
-    name: "update-test-workflow"
-    description: "Updated description"
-    steps:
-      - id: "s1"
-        tool: "core_service_list"
   expected:
     success: true
 - id: "verify-workflow-was-updated"
-  description: "Get the workflow and verify its description was updated"
   tool: "core_workflow_get"
-  args:
-    name: "update-test-workflow"
   expected:
     success: true
     json_path:
-      description: "Updated description" 

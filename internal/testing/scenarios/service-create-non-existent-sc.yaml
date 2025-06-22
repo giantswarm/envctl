@@ -1,17 +1,15 @@
 name: "service-create-non-existent-sc"
 category: "behavioral"
 concept: "service"
-description: "Tests creating a service with a non-existent ServiceClass."
 tags: ["service", "create", "error-handling", "core-api"]
 timeout: "1m"
 
 steps:
 - id: "create-with-bad-sc"
-  description: "Attempt to create a service from a ServiceClass that doesn't exist"
   tool: "core_service_create"
   args:
     serviceClassName: "sc-does-not-exist"
-    label: "my-failed-service"
+    name: "my-failed-service"
   expected:
     success: false
     error_contains: ["ServiceClass not found"] 

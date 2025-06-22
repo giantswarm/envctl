@@ -1,16 +1,14 @@
 name: "service-delete-non-existent"
 category: "behavioral"
 concept: "service"
-description: "Tests deleting a service that does not exist."
 tags: ["service", "delete", "error-handling", "core-api"]
 timeout: "1m"
 
 steps:
 - id: "delete-non-existent"
-  description: "Attempt to delete a non-existent service"
   tool: "core_service_delete"
   args:
-    labelOrServiceId: "service-does-not-exist"
+    name: "service-does-not-exist"
   expected:
     success: false
     error_contains: ["not found"] 

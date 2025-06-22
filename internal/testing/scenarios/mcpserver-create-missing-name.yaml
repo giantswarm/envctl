@@ -1,20 +1,13 @@
 name: "mcpserver-create-missing-name"
 category: "behavioral"
 concept: "mcpserver"
-description: "Tests creating an MCPServer without providing a name."
-tags: ["mcpserver", "create", "validation", "error-handling", "core-api"]
+tags: ["mcpserver", "create", "error-handling", "validation", "core-api"]
 timeout: "1m"
 
 steps:
 - id: "create-missing-name"
-  description: "Attempt to create an MCPServer without a name"
   tool: "core_mcpserver_create"
-  args:
-    type: "local-command"
-    enabled: true
-    command:
-      - "echo"
-      - "test"
+  args: {}
   expected:
     success: false
     error_contains: ["name", "required"] 

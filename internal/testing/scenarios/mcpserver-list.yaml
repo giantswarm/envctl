@@ -1,13 +1,11 @@
 name: "mcpserver-list"
 category: "behavioral"
 concept: "mcpserver"
-description: "Tests listing all available MCPServers."
 tags: ["mcpserver", "list", "core-api"]
 timeout: "1m"
 
 steps:
 - id: "list-all-mcpservers"
-  description: "List all MCP servers to ensure the tool runs successfully"
   tool: "core_mcpserver_list"
   expected:
     success: true 

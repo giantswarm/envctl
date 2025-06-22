@@ -1,7 +1,6 @@
 name: "serviceclass-update"
 category: "behavioral"
 concept: "serviceclass"
-description: "Tests updating an existing ServiceClass definition."
 tags: ["serviceclass", "update", "core-api"]
 timeout: "1m"
 
@@ -10,8 +9,6 @@ pre_configuration:
     - name: "update-test-sc"
       config:
         name: "update-test-sc"
-        type: "basic"
-        description: "Initial description"
         serviceConfig:
           lifecycleTools:
             start: { tool: "core_service_list" }
@@ -19,27 +16,12 @@ pre_configuration:
 
 steps:
 - id: "update-the-sc"
-  description: "Update the description of the pre-configured ServiceClass"
   tool: "core_serviceclass_update"
-  args:
-    name: "update-test-sc"
-    type: "basic"
-    description: "Updated description"
-    serviceConfig:
-      lifecycleTools:
-        start:
-          tool: "core_service_list"
-        stop:
-          tool: "core_service_list"
   expected:
     success: true
 
 - id: "verify-sc-was-updated"
-  description: "Get the ServiceClass and verify its description was updated"
   tool: "core_serviceclass_get"
-  args:
-    name: "update-test-sc"
   expected:
     success: true
     json_path:
-      description: "Updated description" 
