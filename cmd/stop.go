@@ -34,7 +34,7 @@ var stopCmd = &cobra.Command{
 	Long: `Stop a resource in the envctl environment.
 
 Available resource types:
-  service - Stop a service by its label
+  service - Stop a service by its name
 
 Examples:
   envctl stop service prometheus
@@ -93,7 +93,7 @@ func runStop(cmd *cobra.Command, args []string) error {
 	}
 
 	arguments := map[string]interface{}{
-		"label": resourceName,
+		"name": resourceName,
 	}
 
 	return executor.Execute(ctx, toolName, arguments)

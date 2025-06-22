@@ -46,10 +46,10 @@ func (m *mockToolCaller) CallTool(ctx context.Context, toolName string, argument
 
 	// Default successful response
 	return map[string]interface{}{
-		"success":   true,
-		"name": "test-service-id-123",
-		"status":    "running",
-		"healthy":   true,
+		"success": true,
+		"name":    "test-service-id-123",
+		"status":  "running",
+		"healthy": true,
 	}, nil
 }
 
@@ -321,16 +321,16 @@ func TestGenericServiceInstance_Start_Success(t *testing.T) {
 			"type": "{{ .param2 }}",
 		},
 		map[string]string{
-			"name": "$.name",
-			"status":    "$.status",
+			"name":   "$.name",
+			"status": "$.status",
 		})
-	
+
 	// Create tool caller with successful response
 	toolCaller := newMockToolCaller()
 	toolCaller.SetResponse("test_create_tool", map[string]interface{}{
-		"success":   true,
-		"name": "created-service-123",
-		"status":    "running",
+		"success": true,
+		"name":    "created-service-123",
+		"status":  "running",
 	})
 
 	// Create instance

@@ -115,18 +115,7 @@ func extractNamesFromArray(arr []interface{}, resourceType string) []string {
 
 	for _, item := range arr {
 		if itemMap, ok := item.(map[string]interface{}); ok {
-			// Extract the name field based on resource type
-			var nameField string
-			switch resourceType {
-			case "service":
-				nameField = "label"
-			case "workflow":
-				nameField = "name"
-			default:
-				nameField = "name"
-			}
-
-			if name, exists := itemMap[nameField]; exists {
+			if name, exists := itemMap["name"]; exists {
 				if nameStr, ok := name.(string); ok && nameStr != "" {
 					names = append(names, nameStr)
 				}
@@ -213,14 +202,8 @@ func runGet(cmd *cobra.Command, args []string) error {
 
 	// Prepare arguments based on resource type
 	var arguments map[string]interface{}
-	if resourceType == "service" {
-		arguments = map[string]interface{}{
-			"label": resourceName,
-		}
-	} else {
-		arguments = map[string]interface{}{
-			"name": resourceName,
-		}
+	arguments = map[string]interface{}{
+		"name": resourceName,
 	}
 
 	return executor.Execute(ctx, toolName, arguments)

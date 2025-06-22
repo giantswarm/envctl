@@ -34,7 +34,7 @@ var startCmd = &cobra.Command{
 	Long: `Start a resource in the envctl environment.
 
 Available resource types:
-  service - Start a service by its label
+  service - Start a service by its name
 
 Examples:
   envctl start service prometheus
@@ -93,7 +93,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 	}
 
 	arguments := map[string]interface{}{
-		"label": resourceName,
+		"name": resourceName,
 	}
 
 	return executor.Execute(ctx, toolName, arguments)

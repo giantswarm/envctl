@@ -1175,7 +1175,7 @@ func (m *envCtlInstanceManager) checkServiceClassAvailability(client MCPTestClie
 func (m *envCtlInstanceManager) checkServiceAvailability(client MCPTestClient, ctx context.Context, serviceName string) (bool, error) {
 	// Use core_service_get to check if service exists
 	args := map[string]interface{}{
-		"labelOrServiceId": serviceName,
+		"name": serviceName,
 	}
 
 	result, err := client.CallTool(ctx, "core_service_get", args)
