@@ -2,9 +2,6 @@ package app
 
 import (
 	"context"
-	"envctl/internal/tui/controller"
-	"envctl/internal/tui/design"
-	"envctl/internal/tui/model"
 	"envctl/pkg/logging"
 	"os"
 	"os/signal"
@@ -40,38 +37,16 @@ func runCLIMode(ctx context.Context, config *Config, services *Services) error {
 func runTUIMode(ctx context.Context, config *Config, services *Services) error {
 	logging.Info("CLI", "Starting TUI mode...")
 
-	// Initialize design system for TUI (dark mode by default)
-	design.Initialize(true)
-
 	// Switch logging to channel-based system for TUI integration
-	logLevel := logging.LevelInfo
-	if config.Debug {
-		logLevel = logging.LevelDebug
-	}
-	logChan := logging.InitForTUI(logLevel)
-	defer logging.CloseTUIChannel()
-
-	// Create and configure the TUI program
-	p, err := controller.NewProgram(model.TUIConfig{
-		DebugMode:        config.Debug,
-		ColorMode:        "auto",
-		MCPServerConfig:  nil, /* TODO: Update TUI to use MCPServerManager API */
-		AggregatorConfig: config.EnvctlConfig.Aggregator,
-		Orchestrator:     services.Orchestrator,
-		OrchestratorAPI:  services.OrchestratorAPI,
-		AggregatorAPI:    services.AggregatorAPI,
-	}, logChan)
-	if err != nil {
-		logging.Error("TUI-Lifecycle", err, "Error creating TUI program")
-		return err
-	}
-
-	// Run the TUI until user exits
-	if _, err := p.Run(); err != nil {
-		logging.Error("TUI-Lifecycle", err, "Error running TUI program")
-		return err
-	}
-	logging.Info("TUI-Lifecycle", "TUI exited.")
+	/*
+		logLevel := logging.LevelInfo
+		if config.Debug {
+			logLevel = logging.LevelDebug
+		}
+		logChan := logging.InitForTUI(logLevel)
+		defer logging.CloseTUIChannel()
+	*/
+	logging.Info("TUI-Lifecycle", "TUI has been removed.")
 
 	return nil
 }

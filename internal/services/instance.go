@@ -28,8 +28,7 @@ type GenericServiceInstance struct {
 	toolCaller       ToolCaller
 
 	// Identity
-	id    string
-	label string
+	name string
 
 	// Service interface state - this is the source of truth
 	state        ServiceState
@@ -56,8 +55,7 @@ type GenericServiceInstance struct {
 // NewGenericServiceInstance creates a new generic service instance
 // configured with a service class name and ToolCaller
 func NewGenericServiceInstance(
-	id string,
-	label string,
+	name string,
 	serviceClassName string,
 	toolCaller ToolCaller,
 	parameters map[string]interface{},
@@ -90,8 +88,7 @@ func NewGenericServiceInstance(
 	return &GenericServiceInstance{
 		serviceClassName:     serviceClassName,
 		toolCaller:           toolCaller,
-		id:                   id,
-		label:                label,
+		name:                 name,
 		state:                StateUnknown,
 		health:               HealthUnknown,
 		dependencies:         localDependencies,
@@ -181,7 +178,7 @@ func (gsi *GenericServiceInstance) Restart(ctx context.Context) error {
 	}
 	gsi.mu.Unlock()
 
-	logging.Info("GenericServiceInstance", "Restarting service %s", gsi.label)
+	logging.Info("GenericServiceInstance", "Restarting service %s", gsi.name)
 
 	// Get restart tool info through API
 	serviceClassMgr := api.GetServiceClassManager()
@@ -199,7 +196,7 @@ func (gsi *GenericServiceInstance) Restart(ctx context.Context) error {
 	}
 
 	// Otherwise, fallback to Stop() then Start()
-	logging.Info("GenericServiceInstance", "No custom restart tool for %s, using Stop/Start", gsi.label)
+	logging.Info("GenericServiceInstance", "No custom restart tool for %s, using Stop/Start", gsi.name)
 	if err := gsi.Stop(ctx); err != nil {
 		return fmt.Errorf("failed to stop service during restart: %w", err)
 	}
@@ -213,6 +210,13 @@ func (gsi *GenericServiceInstance) Restart(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// GetName implements the Service interface
+func (gsi *GenericServiceInstance) GetName() string {
+	gsi.mu.RLock()
+	defer gsi.mu.RUnlock()
+	return gsi.name
 }
 
 // GetState implements the Service interface
@@ -234,13 +238,6 @@ func (gsi *GenericServiceInstance) GetLastError() error {
 	gsi.mu.RLock()
 	defer gsi.mu.RUnlock()
 	return gsi.lastError
-}
-
-// GetLabel implements the Service interface
-func (gsi *GenericServiceInstance) GetLabel() string {
-	gsi.mu.RLock()
-	defer gsi.mu.RUnlock()
-	return gsi.label
 }
 
 // GetType implements the Service interface
@@ -337,7 +334,7 @@ func (gsi *GenericServiceInstance) CheckHealth(ctx context.Context) (HealthStatu
 	}
 
 	// Call the health check tool
-	logging.Debug("GenericServiceInstance", "Calling health check tool %s for service %s", toolName, gsi.label)
+	logging.Debug("GenericServiceInstance", "Calling health check tool %s for service %s", toolName, gsi.name)
 	response, err := gsi.toolCaller.CallTool(ctx, toolName, toolArgsMap)
 	if err != nil {
 		gsi.updateHealthTracking(false, failureThreshold, successThreshold)
@@ -453,8 +450,7 @@ func (gsi *GenericServiceInstance) buildTemplateContext() map[string]interface{}
 	return template.MergeContexts(
 		gsi.creationParameters,
 		map[string]interface{}{
-			"label":            gsi.label,
-			"serviceId":        gsi.id,
+			"name":             gsi.name,
 			"serviceClassName": gsi.serviceClassName,
 		},
 	)
@@ -475,11 +471,11 @@ func (gsi *GenericServiceInstance) updateStateInternal(newState ServiceState, ne
 	// Trigger callback if state or health changed
 	if gsi.stateCallback != nil && (oldState != newState || oldHealth != newHealth) {
 		// Call callback without holding lock to prevent deadlocks
-		go gsi.stateCallback(gsi.label, oldState, newState, newHealth, err)
+		go gsi.stateCallback(gsi.name, oldState, newState, newHealth, err)
 	}
 
 	logging.Debug("GenericServiceInstance", "Service %s state changed: %s -> %s (health: %s -> %s)",
-		gsi.label, oldState, newState, oldHealth, newHealth)
+		gsi.name, oldState, newState, oldHealth, newHealth)
 }
 
 // updateHealthTracking updates the health check tracking counters
@@ -588,7 +584,7 @@ func (gsi *GenericServiceInstance) executeLifecycleTool(
 	}
 
 	// Call the lifecycle tool
-	logging.Debug("GenericServiceInstance", "Calling %s tool %s for service %s", toolType, toolName, gsi.label)
+	logging.Debug("GenericServiceInstance", "Calling %s tool %s for service %s", toolType, toolName, gsi.name)
 	response, err := gsi.toolCaller.CallTool(ctx, toolName, toolArgsMap)
 	if err != nil {
 		gsi.updateStateInternal(StateFailed, HealthUnhealthy, err)
@@ -615,6 +611,6 @@ func (gsi *GenericServiceInstance) executeLifecycleTool(
 	// Mark as running and healthy
 	gsi.updateStateInternal(StateRunning, HealthHealthy, nil)
 
-	logging.Info("GenericServiceInstance", "Successfully %sed service instance: %s", toolType, gsi.label)
+	logging.Info("GenericServiceInstance", "Successfully %sed service instance: %s", toolType, gsi.name)
 	return nil
 }

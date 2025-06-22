@@ -128,7 +128,7 @@
 //	// Create ServiceClass instance
 //	req := CreateServiceClassRequest{
 //	    ServiceClassName: "kubernetes_port_forward",
-//	    Label: "my-app-forward",
+//	    name: "my-app-forward",
 //	    Parameters: map[string]interface{}{
 //	        "namespace": "default",
 //	        "service_name": "my-app",
@@ -147,20 +147,20 @@
 //	go func() {
 //	    for event := range events {
 //	        fmt.Printf("Instance %s: %s -> %s\n",
-//	            event.Label, event.OldState, event.NewState)
+//	            event.name, event.OldState, event.NewState)
 //	    }
 //	}()
 //
 //	// Get instance status
-//	status, err := orch.GetServiceClassInstance(instance.ServiceID)
+//	status, err := orch.GetServiceClassInstance(instance.Name)
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
 //	fmt.Printf("Instance state: %s, health: %s\n", status.State, status.Health)
 //
-// # Service Labels
+// # Service names
 //
-// Services are identified by labels following these conventions:
+// Services are identified by names following these conventions:
 //
 // ## Static Services
 //   - K8s connections: "k8s-mc-{cluster}" or "k8s-wc-{cluster}"
@@ -168,9 +168,9 @@
 //   - MCP servers: "mcp-{name}" (from configuration)
 //
 // ## ServiceClass Instances
-//   - User-defined labels specified during instance creation
+//   - User-defined names specified during instance creation
 //   - Must be unique within the service registry
-//   - Can use ServiceClass default label templates with parameter substitution
+//   - Can use ServiceClass default name templates with parameter substitution
 //
 // # Error Handling
 //

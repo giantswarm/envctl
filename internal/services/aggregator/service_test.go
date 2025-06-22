@@ -16,6 +16,6 @@ func TestNewAggregatorService(t *testing.T) {
 	service := NewAggregatorService(config, nil, nil)
 
 	assert.NotNil(t, service)
-	assert.Equal(t, "mcp-aggregator", service.GetLabel())
+	assert.Equal(t, "mcp-aggregator", service.GetName())
 	assert.Equal(t, 0, len(service.GetDependencies()), "Should have no dependencies by default")
 }

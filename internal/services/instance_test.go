@@ -47,7 +47,7 @@ func (m *mockToolCaller) CallTool(ctx context.Context, toolName string, argument
 	// Default successful response
 	return map[string]interface{}{
 		"success":   true,
-		"serviceId": "test-service-id-123",
+		"name": "test-service-id-123",
 		"status":    "running",
 		"healthy":   true,
 	}, nil
@@ -273,16 +273,14 @@ func TestNewGenericServiceInstance(t *testing.T) {
 	}
 
 	instance := NewGenericServiceInstance(
-		"test-id",
-		"test-label",
+		"test-name",
 		"test-service",
 		toolCaller,
 		parameters,
 	)
 
 	require.NotNil(t, instance)
-	assert.Equal(t, "test-id", instance.id)
-	assert.Equal(t, "test-label", instance.label)
+	assert.Equal(t, "test-name", instance.name)
 	assert.Equal(t, "test-service", instance.serviceClassName)
 	assert.Equal(t, StateUnknown, instance.state)
 	assert.Equal(t, HealthUnknown, instance.health)
@@ -300,8 +298,7 @@ func TestNewGenericServiceInstance_ServiceClassNotFound(t *testing.T) {
 	parameters := map[string]interface{}{}
 
 	instance := NewGenericServiceInstance(
-		"test-id",
-		"test-label",
+		"test-name",
 		"non-existent-service",
 		toolCaller,
 		parameters,
@@ -324,22 +321,21 @@ func TestGenericServiceInstance_Start_Success(t *testing.T) {
 			"type": "{{ .param2 }}",
 		},
 		map[string]string{
-			"serviceId": "$.serviceId",
+			"name": "$.name",
 			"status":    "$.status",
 		})
-
+	
 	// Create tool caller with successful response
 	toolCaller := newMockToolCaller()
 	toolCaller.SetResponse("test_create_tool", map[string]interface{}{
 		"success":   true,
-		"serviceId": "created-service-123",
+		"name": "created-service-123",
 		"status":    "running",
 	})
 
 	// Create instance
 	instance := NewGenericServiceInstance(
-		"test-id",
-		"test-label",
+		"test-name",
 		"test-service",
 		toolCaller,
 		map[string]interface{}{
@@ -384,8 +380,7 @@ func TestGenericServiceInstance_Start_ToolCallError(t *testing.T) {
 
 	// Create instance
 	instance := NewGenericServiceInstance(
-		"test-id",
-		"test-label",
+		"test-name",
 		"test-service",
 		toolCaller,
 		map[string]interface{}{},
@@ -425,8 +420,7 @@ func TestGenericServiceInstance_Start_ToolIndicatesFailure(t *testing.T) {
 
 	// Create instance
 	instance := NewGenericServiceInstance(
-		"test-id",
-		"test-label",
+		"test-name",
 		"test-service",
 		toolCaller,
 		map[string]interface{}{},
@@ -454,7 +448,7 @@ func TestGenericServiceInstance_Stop_Success(t *testing.T) {
 	})
 	mockMgr.SetStopTool("test-service", "test_delete_tool",
 		map[string]interface{}{
-			"serviceId": "{{ .serviceId }}",
+			"name": "{{ .name }}",
 		},
 		map[string]string{
 			"status": "$.status",
@@ -469,8 +463,7 @@ func TestGenericServiceInstance_Stop_Success(t *testing.T) {
 
 	// Create instance
 	instance := NewGenericServiceInstance(
-		"test-id",
-		"test-label",
+		"test-name",
 		"test-service",
 		toolCaller,
 		map[string]interface{}{},
@@ -492,7 +485,7 @@ func TestGenericServiceInstance_Stop_Success(t *testing.T) {
 	calls := toolCaller.GetCalls()
 	require.Len(t, calls, 1)
 	assert.Equal(t, "test_delete_tool", calls[0].toolName)
-	assert.Equal(t, "test-id", calls[0].arguments["serviceId"])
+	assert.Equal(t, "test-name", calls[0].arguments["name"])
 }
 
 func TestGenericServiceInstance_Restart(t *testing.T) {
@@ -524,8 +517,7 @@ func TestGenericServiceInstance_Restart(t *testing.T) {
 
 	// Create instance
 	instance := NewGenericServiceInstance(
-		"test-id",
-		"test-label",
+		"test-name",
 		"test-service",
 		toolCaller,
 		map[string]interface{}{},
@@ -561,7 +553,7 @@ func TestGenericServiceInstance_CheckHealth_Success(t *testing.T) {
 	})
 	mockMgr.SetHealthCheckTool("test-service", "test_health_tool",
 		map[string]interface{}{
-			"serviceId": "{{ .serviceId }}",
+			"name": "{{ .name }}",
 		},
 		map[string]string{
 			"health": "$.healthy",
@@ -579,8 +571,7 @@ func TestGenericServiceInstance_CheckHealth_Success(t *testing.T) {
 
 	// Create instance
 	instance := NewGenericServiceInstance(
-		"test-id",
-		"test-label",
+		"test-name",
 		"test-service",
 		toolCaller,
 		map[string]interface{}{},
@@ -599,7 +590,7 @@ func TestGenericServiceInstance_CheckHealth_Success(t *testing.T) {
 	calls := toolCaller.GetCalls()
 	require.Len(t, calls, 1)
 	assert.Equal(t, "test_health_tool", calls[0].toolName)
-	assert.Equal(t, "test-id", calls[0].arguments["serviceId"])
+	assert.Equal(t, "test-name", calls[0].arguments["name"])
 }
 
 func TestGenericServiceInstance_CheckHealth_Disabled(t *testing.T) {
@@ -617,8 +608,7 @@ func TestGenericServiceInstance_CheckHealth_Disabled(t *testing.T) {
 
 	// Create instance with initial health
 	instance := NewGenericServiceInstance(
-		"test-id",
-		"test-label",
+		"test-name",
 		"test-service",
 		toolCaller,
 		map[string]interface{}{},
@@ -654,8 +644,7 @@ func TestGenericServiceInstance_Getters(t *testing.T) {
 
 	// Create instance
 	instance := NewGenericServiceInstance(
-		"test-id",
-		"test-label",
+		"test-name",
 		"test-service",
 		toolCaller,
 		map[string]interface{}{
@@ -665,7 +654,7 @@ func TestGenericServiceInstance_Getters(t *testing.T) {
 	require.NotNil(t, instance)
 
 	// Test initial state
-	assert.Equal(t, "test-label", instance.GetLabel())
+	assert.Equal(t, "test-name", instance.GetName())
 	assert.Equal(t, ServiceType("kubernetes-service"), instance.GetType())
 	assert.Equal(t, StateUnknown, instance.GetState())
 	assert.Equal(t, HealthUnknown, instance.GetHealth())
@@ -699,8 +688,7 @@ func TestGenericServiceInstance_StateChangeCallback(t *testing.T) {
 
 	// Create instance
 	instance := NewGenericServiceInstance(
-		"test-id",
-		"test-label",
+		"test-name",
 		"test-service",
 		toolCaller,
 		map[string]interface{}{},
@@ -709,9 +697,9 @@ func TestGenericServiceInstance_StateChangeCallback(t *testing.T) {
 
 	// Set up callback to track state changes
 	var callbackCalls []StateChangeEvent
-	callback := func(label string, oldState, newState ServiceState, health HealthStatus, err error) {
+	callback := func(name string, oldState, newState ServiceState, health HealthStatus, err error) {
 		callbackCalls = append(callbackCalls, StateChangeEvent{
-			Label:    label,
+			Name:     name,
 			OldState: oldState,
 			NewState: newState,
 			Health:   health,
@@ -730,7 +718,7 @@ func TestGenericServiceInstance_StateChangeCallback(t *testing.T) {
 
 	// Verify callback was called
 	require.Len(t, callbackCalls, 1)
-	assert.Equal(t, "test-label", callbackCalls[0].Label)
+	assert.Equal(t, "test-name", callbackCalls[0].Name)
 	assert.Equal(t, StateUnknown, callbackCalls[0].OldState)
 	assert.Equal(t, StateRunning, callbackCalls[0].NewState)
 	assert.Equal(t, HealthHealthy, callbackCalls[0].Health)
@@ -739,7 +727,7 @@ func TestGenericServiceInstance_StateChangeCallback(t *testing.T) {
 
 // StateChangeEvent for testing callback
 type StateChangeEvent struct {
-	Label    string
+	Name     string
 	OldState ServiceState
 	NewState ServiceState
 	Health   HealthStatus

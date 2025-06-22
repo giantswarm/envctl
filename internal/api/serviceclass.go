@@ -32,7 +32,7 @@ type ServiceClass struct {
 type ServiceConfig struct {
 	// Service metadata
 	ServiceType  string   `yaml:"serviceType" json:"serviceType"`
-	DefaultLabel string   `yaml:"defaultLabel" json:"defaultLabel"`
+	DefaultName  string   `yaml:"defaultName" json:"defaultName"`
 	Dependencies []string `yaml:"dependencies" json:"dependencies"`
 
 	// Lifecycle tool mappings - these tools will be called by the orchestrator

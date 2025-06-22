@@ -204,9 +204,9 @@ func (am *AggregatorManager) registerHealthyMCPServers(ctx context.Context) erro
 		}
 
 		// Register the healthy server
-		if err := am.registerSingleServer(ctx, service.GetLabel()); err != nil {
+		if err := am.registerSingleServer(ctx, service.GetName()); err != nil {
 			logging.Warn("Aggregator-Manager", "Failed to register healthy MCP server %s: %v",
-				service.GetLabel(), err)
+				service.GetName(), err)
 			// Continue with other servers
 		} else {
 			registeredCount++

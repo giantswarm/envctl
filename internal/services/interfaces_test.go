@@ -115,14 +115,14 @@ func TestServiceTypeConstants(t *testing.T) {
 func TestStateChangeCallback(t *testing.T) {
 	// Test that we can create and call a StateChangeCallback
 	var called bool
-	var receivedLabel string
+	var receivedName string
 	var receivedOldState, receivedNewState ServiceState
 	var receivedHealth HealthStatus
 	var receivedErr error
 
-	callback := func(label string, oldState, newState ServiceState, health HealthStatus, err error) {
+	callback := func(name string, oldState, newState ServiceState, health HealthStatus, err error) {
 		called = true
-		receivedLabel = label
+		receivedName = name
 		receivedOldState = oldState
 		receivedNewState = newState
 		receivedHealth = health
@@ -130,20 +130,20 @@ func TestStateChangeCallback(t *testing.T) {
 	}
 
 	// Call the callback
-	testLabel := "test-service"
+	testName := "test-service"
 	testOldState := StateStarting
 	testNewState := StateRunning
 	testHealth := HealthHealthy
 
-	callback(testLabel, testOldState, testNewState, testHealth, nil)
+	callback(testName, testOldState, testNewState, testHealth, nil)
 
 	// Verify the callback was called with correct parameters
 	if !called {
 		t.Error("Expected callback to be called")
 	}
 
-	if receivedLabel != testLabel {
-		t.Errorf("Expected label %s, got %s", testLabel, receivedLabel)
+	if receivedName != testName {
+		t.Errorf("Expected name %s, got %s", testName, receivedName)
 	}
 
 	if receivedOldState != testOldState {

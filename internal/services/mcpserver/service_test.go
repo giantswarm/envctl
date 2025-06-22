@@ -23,7 +23,7 @@ func TestServiceInfo(t *testing.T) {
 	svc, err := NewService(def, manager)
 	require.NoError(t, err)
 
-	assert.Equal(t, "test-server", svc.GetLabel())
+	assert.Equal(t, "test-server", svc.GetName())
 	assert.Equal(t, services.TypeMCPServer, svc.GetType())
 	assert.Equal(t, services.StateUnknown, svc.GetState())
 	assert.Equal(t, services.HealthUnknown, svc.GetHealth())

@@ -2,7 +2,7 @@ package services
 
 // StatusUpdate represents a generic status update from any service type
 type StatusUpdate struct {
-	Label   string // Service label
+	Name    string // Service name
 	Status  string // Status string (service-specific)
 	Detail  string // Optional detail message
 	IsError bool   // Whether this is an error condition

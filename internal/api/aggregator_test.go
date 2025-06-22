@@ -19,7 +19,7 @@ func TestGetAggregatorInfo(t *testing.T) {
 			setupRegistry: func(registry *mockServiceRegistryHandler) {
 				// Setup aggregator service
 				aggService := &mockServiceInfo{
-					label:   "aggregator",
+					name:    "aggregator",
 					svcType: TypeAggregator,
 					state:   StateRunning,
 					health:  HealthHealthy,
@@ -65,7 +65,7 @@ func TestGetAggregatorInfo(t *testing.T) {
 			setupRegistry: func(registry *mockServiceRegistryHandler) {
 				// Create a service with no data
 				aggService := &mockServiceInfo{
-					label:   "aggregator",
+					name:    "aggregator",
 					svcType: TypeAggregator,
 					state:   StateRunning,
 					health:  HealthHealthy,
@@ -131,7 +131,7 @@ func TestGetAllTools(t *testing.T) {
 			name: "aggregator not running",
 			setupRegistry: func(registry *mockServiceRegistryHandler) {
 				aggService := &mockServiceInfo{
-					label:   "aggregator",
+					name:    "aggregator",
 					svcType: TypeAggregator,
 					state:   StateStopped,
 					health:  HealthUnknown,
@@ -144,7 +144,7 @@ func TestGetAllTools(t *testing.T) {
 			name: "aggregator without port",
 			setupRegistry: func(registry *mockServiceRegistryHandler) {
 				aggService := &mockServiceInfo{
-					label:   "aggregator",
+					name:    "aggregator",
 					svcType: TypeAggregator,
 					state:   StateRunning,
 					health:  HealthHealthy,

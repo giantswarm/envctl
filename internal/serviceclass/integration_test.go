@@ -187,7 +187,7 @@ description: "Test Kubernetes connection service class"
 
 serviceConfig:
   serviceType: "DynamicK8sConnection"
-  defaultLabel: "k8s-{{ .cluster_name }}"
+  defaultName: "k8s-{{ .cluster_name }}"
   dependencies: []
   
   lifecycleTools:
@@ -197,13 +197,13 @@ serviceConfig:
         clusterName: "{{ .cluster_name }}"
         context: "{{ .context | default .cluster_name }}"
       responseMapping:
-        serviceId: "$.connectionId"
+        name: "$.name"
         status: "$.status"
         health: "$.connected"
     stop:
       tool: "api_kubernetes_disconnect"
       arguments:
-        connectionId: "{{ .service_id }}"
+        name: "{{ .name }}"
       responseMapping:
         status: "$.status"
   
@@ -290,7 +290,7 @@ description: "Test port forward service class"
 
 serviceConfig:
   serviceType: "DynamicPortForward"
-  defaultLabel: "pf-{{ .service_name }}"
+  defaultName: "pf-{{ .service_name }}"
   
   lifecycleTools:
     start:
@@ -373,7 +373,7 @@ description: "Simple test service class"
 
 serviceConfig:
   serviceType: "TestService"
-  defaultLabel: "test-{{ .name }}"
+  defaultName: "test-{{ .name }}"
   
   lifecycleTools:
     start:
@@ -418,7 +418,6 @@ metadata:
 	serviceClass, err := adapter.GetServiceClass("test_simple")
 	require.NoError(t, err)
 	assert.Equal(t, "test_simple", serviceClass.Name)
-	// Note: Type field structure has changed in consolidated API
 
 	// Test availability check
 	assert.True(t, adapter.IsServiceClassAvailable("test_simple"))

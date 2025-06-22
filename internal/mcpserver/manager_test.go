@@ -112,10 +112,10 @@ func TestMCPServerManager_GetDefinition(t *testing.T) {
 
 	// Add a definition directly to test getting it
 	testDef := &api.MCPServer{
-		Name:    "test-server",
-		Type:    api.MCPServerTypeLocalCommand,
-		Command: []string{"echo", "hello"},
-		Enabled: true,
+		Name:      "test-server",
+		Type:      api.MCPServerTypeLocalCommand,
+		Command:   []string{"echo", "hello"},
+		AutoStart: true,
 	}
 	manager.definitions["test-server"] = testDef
 
@@ -136,16 +136,16 @@ func TestMCPServerManager_ListDefinitions(t *testing.T) {
 
 	// Add some definitions
 	testDef1 := &api.MCPServer{
-		Name:    "server1",
-		Type:    api.MCPServerTypeLocalCommand,
-		Command: []string{"echo", "hello"},
-		Enabled: true,
+		Name:      "server1",
+		Type:      api.MCPServerTypeLocalCommand,
+		Command:   []string{"echo", "hello"},
+		AutoStart: true,
 	}
 	testDef2 := &api.MCPServer{
-		Name:    "server2",
-		Type:    api.MCPServerTypeContainer,
-		Image:   "nginx:latest",
-		Enabled: false,
+		Name:      "server2",
+		Type:      api.MCPServerTypeContainer,
+		Image:     "nginx:latest",
+		AutoStart: false,
 	}
 
 	manager.definitions["server1"] = testDef1
@@ -171,16 +171,16 @@ func TestMCPServerManager_ListAvailableDefinitions(t *testing.T) {
 
 	// Add some definitions
 	testDef1 := &api.MCPServer{
-		Name:    "server1",
-		Type:    api.MCPServerTypeLocalCommand,
-		Command: []string{"echo", "hello"},
-		Enabled: true,
+		Name:      "server1",
+		Type:      api.MCPServerTypeLocalCommand,
+		Command:   []string{"echo", "hello"},
+		AutoStart: true,
 	}
 	testDef2 := &api.MCPServer{
-		Name:    "server2",
-		Type:    api.MCPServerTypeContainer,
-		Image:   "nginx:latest",
-		Enabled: false,
+		Name:      "server2",
+		Type:      api.MCPServerTypeContainer,
+		Image:     "nginx:latest",
+		AutoStart: false,
 	}
 
 	manager.definitions["server1"] = testDef1
@@ -213,10 +213,10 @@ func TestMCPServerManager_IsAvailable(t *testing.T) {
 
 	// Add a definition
 	testDef := &api.MCPServer{
-		Name:    "test-server",
-		Type:    api.MCPServerTypeLocalCommand,
-		Command: []string{"echo", "hello"},
-		Enabled: true,
+		Name:      "test-server",
+		Type:      api.MCPServerTypeLocalCommand,
+		Command:   []string{"echo", "hello"},
+		AutoStart: true,
 	}
 	manager.definitions["test-server"] = testDef
 
@@ -256,16 +256,16 @@ func TestMCPServerManager_GetAllDefinitions(t *testing.T) {
 
 	// Add some definitions
 	testDef1 := &api.MCPServer{
-		Name:    "server1",
-		Type:    api.MCPServerTypeLocalCommand,
-		Command: []string{"echo", "hello"},
-		Enabled: true,
+		Name:      "server1",
+		Type:      api.MCPServerTypeLocalCommand,
+		Command:   []string{"echo", "hello"},
+		AutoStart: true,
 	}
 	testDef2 := &api.MCPServer{
-		Name:    "server2",
-		Type:    api.MCPServerTypeContainer,
-		Image:   "nginx:latest",
-		Enabled: false,
+		Name:      "server2",
+		Type:      api.MCPServerTypeContainer,
+		Image:     "nginx:latest",
+		AutoStart: false,
 	}
 
 	manager.definitions["server1"] = testDef1

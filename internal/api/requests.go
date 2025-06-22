@@ -60,7 +60,7 @@ type ServiceClassValidateRequest struct {
 type MCPServerCreateRequest struct {
 	Name                string            `json:"name" validate:"required"`
 	Type                string            `json:"type" validate:"required"`
-	Enabled             bool              `json:"enabled,omitempty"`
+	AutoStart           bool              `json:"autoStart,omitempty"`
 	HealthCheckInterval string            `json:"healthCheckInterval,omitempty"`
 	ToolPrefix          string            `json:"toolPrefix,omitempty"`
 	Command             []string          `json:"command,omitempty"`
@@ -77,7 +77,7 @@ type MCPServerCreateRequest struct {
 type MCPServerUpdateRequest struct {
 	Name                string            `json:"name" validate:"required"`
 	Type                string            `json:"type" validate:"required"`
-	Enabled             bool              `json:"enabled,omitempty"`
+	AutoStart           bool              `json:"autoStart,omitempty"`
 	HealthCheckInterval string            `json:"healthCheckInterval,omitempty"`
 	ToolPrefix          string            `json:"toolPrefix,omitempty"`
 	Command             []string          `json:"command,omitempty"`

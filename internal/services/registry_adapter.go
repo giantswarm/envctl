@@ -14,9 +14,9 @@ func NewRegistryAdapter(r ServiceRegistry) *RegistryAdapter {
 	return &RegistryAdapter{registry: r}
 }
 
-// Get returns a service by label
-func (r *RegistryAdapter) Get(label string) (api.ServiceInfo, bool) {
-	svc, exists := r.registry.Get(label)
+// Get returns a service by name
+func (r *RegistryAdapter) Get(name string) (api.ServiceInfo, bool) {
+	svc, exists := r.registry.Get(name)
 	if !exists {
 		return nil, false
 	}
@@ -53,8 +53,8 @@ type serviceInfoAdapter struct {
 	service Service
 }
 
-func (s *serviceInfoAdapter) GetLabel() string {
-	return s.service.GetLabel()
+func (s *serviceInfoAdapter) GetName() string {
+	return s.service.GetName()
 }
 
 func (s *serviceInfoAdapter) GetType() api.ServiceType {

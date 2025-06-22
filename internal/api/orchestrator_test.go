@@ -11,7 +11,7 @@ import (
 
 // mockOrchestratorService implements Service for testing
 type mockOrchestratorService struct {
-	label       string
+	name        string
 	serviceType ServiceType
 	state       ServiceState
 	health      HealthStatus
@@ -19,7 +19,7 @@ type mockOrchestratorService struct {
 	deps        []string
 }
 
-func (m *mockOrchestratorService) GetLabel() string                  { return m.label }
+func (m *mockOrchestratorService) GetName() string                   { return m.name }
 func (m *mockOrchestratorService) GetType() ServiceType              { return m.serviceType }
 func (m *mockOrchestratorService) GetState() ServiceState            { return m.state }
 func (m *mockOrchestratorService) GetHealth() HealthStatus           { return m.health }
@@ -34,7 +34,7 @@ func (m *mockOrchestratorService) SetStateChangeCallback(fn func(old, new Servic
 
 // orchestratorMockService implements Service for testing
 type orchestratorMockService struct {
-	label               string
+	name                string
 	serviceType         ServiceType
 	state               ServiceState
 	health              HealthStatus
@@ -44,17 +44,17 @@ type orchestratorMockService struct {
 	restartErr          error
 	lastErr             error
 	mu                  sync.Mutex
-	stateChangeCallback func(label string, oldState, newState ServiceState, health HealthStatus, err error)
+	stateChangeCallback func(name string, oldState, newState ServiceState, health HealthStatus, err error)
 }
 
-func (m *orchestratorMockService) GetLabel() string          { return m.label }
+func (m *orchestratorMockService) GetName() string           { return m.name }
 func (m *orchestratorMockService) GetType() ServiceType      { return m.serviceType }
 func (m *orchestratorMockService) GetState() ServiceState    { return m.state }
 func (m *orchestratorMockService) GetHealth() HealthStatus   { return m.health }
 func (m *orchestratorMockService) GetError() error           { return m.lastErr }
 func (m *orchestratorMockService) GetDependencies() []string { return m.dependencies }
 func (m *orchestratorMockService) GetLastError() error       { return m.lastErr }
-func (m *orchestratorMockService) SetStateChangeCallback(cb func(label string, oldState, newState ServiceState, health HealthStatus, err error)) {
+func (m *orchestratorMockService) SetStateChangeCallback(cb func(name string, oldState, newState ServiceState, health HealthStatus, err error)) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.stateChangeCallback = cb
@@ -70,7 +70,7 @@ func (m *orchestratorMockService) Start(ctx context.Context) error {
 		m.lastErr = m.startErr
 		m.state = StateFailed
 		if m.stateChangeCallback != nil {
-			m.stateChangeCallback(m.label, oldState, m.state, m.health, m.startErr)
+			m.stateChangeCallback(m.name, oldState, m.state, m.health, m.startErr)
 		}
 		return m.startErr
 	}
@@ -78,14 +78,14 @@ func (m *orchestratorMockService) Start(ctx context.Context) error {
 	// Simulate state transition
 	m.state = StateStarting
 	if m.stateChangeCallback != nil {
-		m.stateChangeCallback(m.label, oldState, m.state, m.health, nil)
+		m.stateChangeCallback(m.name, oldState, m.state, m.health, nil)
 	}
 
 	// Simulate successful start
 	m.state = StateRunning
 	m.health = HealthHealthy
 	if m.stateChangeCallback != nil {
-		m.stateChangeCallback(m.label, StateStarting, m.state, m.health, nil)
+		m.stateChangeCallback(m.name, StateStarting, m.state, m.health, nil)
 	}
 
 	return nil
@@ -106,7 +106,7 @@ func (m *orchestratorMockService) Stop(ctx context.Context) error {
 	m.health = HealthUnknown
 
 	if m.stateChangeCallback != nil {
-		m.stateChangeCallback(m.label, oldState, m.state, m.health, nil)
+		m.stateChangeCallback(m.name, oldState, m.state, m.health, nil)
 	}
 
 	return nil
@@ -127,7 +127,7 @@ func (m *orchestratorMockService) Restart(ctx context.Context) error {
 	m.state = StateRunning
 
 	if m.stateChangeCallback != nil {
-		m.stateChangeCallback(m.label, oldState, m.state, m.health, nil)
+		m.stateChangeCallback(m.name, oldState, m.state, m.health, nil)
 	}
 
 	return nil
@@ -135,7 +135,7 @@ func (m *orchestratorMockService) Restart(ctx context.Context) error {
 
 // mockServiceInfo implements ServiceInfo for testing
 type mockServiceInfo struct {
-	label   string
+	name    string
 	svcType ServiceType
 	state   ServiceState
 	health  HealthStatus
@@ -143,7 +143,7 @@ type mockServiceInfo struct {
 	data    map[string]interface{}
 }
 
-func (m *mockServiceInfo) GetLabel() string                       { return m.label }
+func (m *mockServiceInfo) GetName() string                        { return m.name }
 func (m *mockServiceInfo) GetType() ServiceType                   { return m.svcType }
 func (m *mockServiceInfo) GetState() ServiceState                 { return m.state }
 func (m *mockServiceInfo) GetHealth() HealthStatus                { return m.health }
@@ -161,8 +161,8 @@ func newMockServiceRegistryHandler() *mockServiceRegistryHandler {
 	}
 }
 
-func (m *mockServiceRegistryHandler) Get(label string) (ServiceInfo, bool) {
-	svc, ok := m.services[label]
+func (m *mockServiceRegistryHandler) Get(name string) (ServiceInfo, bool) {
+	svc, ok := m.services[name]
 	return svc, ok
 }
 
@@ -185,7 +185,7 @@ func (m *mockServiceRegistryHandler) GetByType(serviceType ServiceType) []Servic
 }
 
 func (m *mockServiceRegistryHandler) addService(svc ServiceInfo) {
-	m.services[svc.GetLabel()] = svc
+	m.services[svc.GetName()] = svc
 }
 
 // mockOrchestratorHandler implements OrchestratorHandler for testing
@@ -221,13 +221,13 @@ func (m *mockOrchestratorHandler) ExecuteTool(ctx context.Context, toolName stri
 	}, nil
 }
 
-func (m *mockOrchestratorHandler) StartService(label string) error {
+func (m *mockOrchestratorHandler) StartService(name string) error {
 	if m.startErr != nil {
 		return m.startErr
 	}
 	// Simulate state change event
 	m.eventChan <- ServiceStateChangedEvent{
-		Label:       label,
+		Name:        name,
 		ServiceType: "test",
 		OldState:    string(StateStopped),
 		NewState:    string(StateRunning),
@@ -237,11 +237,11 @@ func (m *mockOrchestratorHandler) StartService(label string) error {
 	return nil
 }
 
-func (m *mockOrchestratorHandler) StopService(label string) error {
+func (m *mockOrchestratorHandler) StopService(name string) error {
 	return m.stopErr
 }
 
-func (m *mockOrchestratorHandler) RestartService(label string) error {
+func (m *mockOrchestratorHandler) RestartService(name string) error {
 	return m.restartErr
 }
 
@@ -249,13 +249,13 @@ func (m *mockOrchestratorHandler) SubscribeToStateChanges() <-chan ServiceStateC
 	return m.eventChan
 }
 
-func (m *mockOrchestratorHandler) GetServiceStatus(label string) (*ServiceStatus, error) {
+func (m *mockOrchestratorHandler) GetServiceStatus(name string) (*ServiceStatus, error) {
 	for _, s := range m.services {
-		if s.Label == label {
+		if s.Name == name {
 			return &s, nil
 		}
 	}
-	return nil, fmt.Errorf("service not found: %s", label)
+	return nil, fmt.Errorf("service not found: %s", name)
 }
 
 func (m *mockOrchestratorHandler) GetAllServices() []ServiceStatus {
@@ -266,7 +266,7 @@ func (m *mockOrchestratorHandler) GetAllServices() []ServiceStatus {
 func (m *mockOrchestratorHandler) CreateServiceClassInstance(ctx context.Context, req CreateServiceInstanceRequest) (*ServiceInstance, error) {
 	return &ServiceInstance{
 		ID:               "test-service-id",
-		Label:            req.Label,
+		Name:             req.Name,
 		ServiceClassName: req.ServiceClassName,
 		ServiceClassType: "test",
 		State:            StateStopped,
@@ -283,7 +283,7 @@ func (m *mockOrchestratorHandler) DeleteServiceClassInstance(ctx context.Context
 func (m *mockOrchestratorHandler) GetServiceClassInstance(serviceID string) (*ServiceInstance, error) {
 	return &ServiceInstance{
 		ID:               serviceID,
-		Label:            "test-label",
+		Name:             "test-name",
 		ServiceClassName: "test-class",
 		ServiceClassType: "test",
 		State:            StateRunning,
@@ -293,10 +293,10 @@ func (m *mockOrchestratorHandler) GetServiceClassInstance(serviceID string) (*Se
 	}, nil
 }
 
-func (m *mockOrchestratorHandler) GetServiceClassInstanceByLabel(label string) (*ServiceInstance, error) {
+func (m *mockOrchestratorHandler) GetServiceClassInstanceByName(name string) (*ServiceInstance, error) {
 	return &ServiceInstance{
 		ID:               "test-service-id",
-		Label:            label,
+		Name:             name,
 		ServiceClassName: "test-class",
 		ServiceClassType: "test",
 		State:            StateRunning,
@@ -310,7 +310,7 @@ func (m *mockOrchestratorHandler) ListServiceClassInstances() []ServiceInstance 
 	return []ServiceInstance{
 		{
 			ID:               "test-service-id-1",
-			Label:            "test-label-1",
+			Name:             "test-name-1",
 			ServiceClassName: "test-class",
 			ServiceClassType: "test",
 			State:            StateRunning,
@@ -327,10 +327,10 @@ func (m *mockOrchestratorHandler) SubscribeToServiceInstanceEvents() <-chan Serv
 }
 
 // Add missing ServiceManagerHandler methods
-func (m *mockOrchestratorHandler) GetService(labelOrServiceID string) (*ServiceInstance, error) {
+func (m *mockOrchestratorHandler) GetService(name string) (*ServiceInstance, error) {
 	return &ServiceInstance{
 		ID:               "test-service-id",
-		Label:            labelOrServiceID,
+		Name:             name,
 		ServiceClassName: "test-class",
 		ServiceClassType: "test",
 		State:            StateRunning,
@@ -343,7 +343,7 @@ func (m *mockOrchestratorHandler) GetService(labelOrServiceID string) (*ServiceI
 func (m *mockOrchestratorHandler) CreateService(ctx context.Context, req CreateServiceInstanceRequest) (*ServiceInstance, error) {
 	return &ServiceInstance{
 		ID:               "test-service-id",
-		Label:            req.Label,
+		Name:             req.Name,
 		ServiceClassName: req.ServiceClassName,
 		ServiceClassType: "test",
 		State:            StateRunning,
@@ -353,7 +353,7 @@ func (m *mockOrchestratorHandler) CreateService(ctx context.Context, req CreateS
 	}, nil
 }
 
-func (m *mockOrchestratorHandler) DeleteService(ctx context.Context, labelOrServiceID string) error {
+func (m *mockOrchestratorHandler) DeleteService(ctx context.Context, name string) error {
 	return nil
 }
 
@@ -380,19 +380,16 @@ func TestNewOrchestratorAPI(t *testing.T) {
 func TestOrchestratorAPI_StartService(t *testing.T) {
 	tests := []struct {
 		name        string
-		label       string
 		startError  error
 		expectError bool
 	}{
 		{
 			name:        "successful start",
-			label:       "test-service",
 			startError:  nil,
 			expectError: false,
 		},
 		{
 			name:        "service start error",
-			label:       "test-service",
 			startError:  errors.New("start failed"),
 			expectError: true,
 		},
@@ -410,7 +407,7 @@ func TestOrchestratorAPI_StartService(t *testing.T) {
 
 			api := NewOrchestratorAPI()
 
-			err := api.StartService(tt.label)
+			err := api.StartService(tt.name)
 
 			if (err != nil) != tt.expectError {
 				t.Errorf("StartService() error = %v, expectError %v", err, tt.expectError)
@@ -422,19 +419,16 @@ func TestOrchestratorAPI_StartService(t *testing.T) {
 func TestOrchestratorAPI_StopService(t *testing.T) {
 	tests := []struct {
 		name        string
-		label       string
 		stopError   error
 		expectError bool
 	}{
 		{
 			name:        "successful stop",
-			label:       "test-service",
 			stopError:   nil,
 			expectError: false,
 		},
 		{
 			name:        "service stop error",
-			label:       "test-service",
 			stopError:   errors.New("stop failed"),
 			expectError: true,
 		},
@@ -452,7 +446,7 @@ func TestOrchestratorAPI_StopService(t *testing.T) {
 
 			api := NewOrchestratorAPI()
 
-			err := api.StopService(tt.label)
+			err := api.StopService(tt.name)
 
 			if (err != nil) != tt.expectError {
 				t.Errorf("StopService() error = %v, expectError %v", err, tt.expectError)
@@ -464,19 +458,16 @@ func TestOrchestratorAPI_StopService(t *testing.T) {
 func TestOrchestratorAPI_RestartService(t *testing.T) {
 	tests := []struct {
 		name        string
-		label       string
 		restartErr  error
 		expectError bool
 	}{
 		{
 			name:        "successful restart",
-			label:       "test-service",
 			restartErr:  nil,
 			expectError: false,
 		},
 		{
 			name:        "service restart error",
-			label:       "test-service",
 			restartErr:  errors.New("restart failed"),
 			expectError: true,
 		},
@@ -494,7 +485,7 @@ func TestOrchestratorAPI_RestartService(t *testing.T) {
 
 			api := NewOrchestratorAPI()
 
-			err := api.RestartService(tt.label)
+			err := api.RestartService(tt.name)
 
 			if (err != nil) != tt.expectError {
 				t.Errorf("RestartService() error = %v, expectError %v", err, tt.expectError)
@@ -513,7 +504,7 @@ func TestOrchestratorAPI_GetServiceStatus(t *testing.T) {
 
 	// Add a test service
 	svc := &mockServiceInfo{
-		label:   "test-service",
+		name:    "test-service",
 		svcType: TypePortForward,
 		state:   StateRunning,
 		health:  HealthHealthy,
@@ -532,8 +523,8 @@ func TestOrchestratorAPI_GetServiceStatus(t *testing.T) {
 	}
 
 	// Check status fields
-	if status.Label != "test-service" {
-		t.Errorf("Expected label %s, got %s", "test-service", status.Label)
+	if status.Name != "test-service" {
+		t.Errorf("Expected name %s, got %s", "test-service", status.Name)
 	}
 	if status.ServiceType != "PortForward" {
 		t.Errorf("Expected type %s, got %s", "PortForward", status.ServiceType)
@@ -578,9 +569,9 @@ func TestOrchestratorAPI_SubscribeToStateChanges(t *testing.T) {
 	// Wait for event
 	select {
 	case event := <-ch:
-		t.Logf("Received event: Label=%s, OldState=%s, NewState=%s", event.Label, event.OldState, event.NewState)
-		if event.Label != "test-service" {
-			t.Errorf("Expected label 'test-service', got %s", event.Label)
+		t.Logf("Received event: Name=%s, OldState=%s, NewState=%s", event.Name, event.OldState, event.NewState)
+		if event.Name != "test-service" {
+			t.Errorf("Expected name 'test-service', got %s", event.Name)
 		}
 		if event.NewState != string(StateRunning) {
 			t.Errorf("Expected new state to be Running, got %s", event.NewState)
@@ -593,7 +584,7 @@ func TestOrchestratorAPI_SubscribeToStateChanges(t *testing.T) {
 func TestServiceStateChangedEvent_Structure(t *testing.T) {
 	// Test that the event structure has all expected fields
 	event := ServiceStateChangedEvent{
-		Label:       "test",
+		Name:        "test",
 		ServiceType: "PortForward",
 		OldState:    "stopped",
 		NewState:    "running",
@@ -602,8 +593,8 @@ func TestServiceStateChangedEvent_Structure(t *testing.T) {
 		Timestamp:   time.Now(),
 	}
 
-	if event.Label != "test" {
-		t.Errorf("Expected Label 'test', got %s", event.Label)
+	if event.Name != "test" {
+		t.Errorf("Expected Name 'test', got %s", event.Name)
 	}
 
 	if event.ServiceType != "PortForward" {
@@ -642,19 +633,19 @@ func TestOrchestratorAPI_GetAllServices(t *testing.T) {
 	// Add test services
 	services := []ServiceInfo{
 		&mockServiceInfo{
-			label:   "service1",
+			name:    "service1",
 			svcType: TypePortForward,
 			state:   StateRunning,
 			health:  HealthHealthy,
 		},
 		&mockServiceInfo{
-			label:   "service2",
+			name:    "service2",
 			svcType: TypeMCPServer,
 			state:   StateStopped,
 			health:  HealthUnknown,
 		},
 		&mockServiceInfo{
-			label:   "service3",
+			name:    "service3",
 			svcType: TypeKubeConnection,
 			state:   StateError,
 			health:  HealthUnhealthy,
@@ -677,19 +668,19 @@ func TestOrchestratorAPI_GetAllServices(t *testing.T) {
 	}
 
 	// Check that all services are included
-	foundLabels := make(map[string]bool)
+	foundNames := make(map[string]bool)
 	for _, status := range statuses {
-		foundLabels[status.Label] = true
+		foundNames[status.Name] = true
 
 		// Check error is properly converted
-		if status.Label == "service3" && status.Error == "" {
+		if status.Name == "service3" && status.Error == "" {
 			t.Error("Expected service3 to have error string")
 		}
 	}
 
 	for _, svc := range services {
-		if !foundLabels[svc.GetLabel()] {
-			t.Errorf("Service %s not found in results", svc.GetLabel())
+		if !foundNames[svc.GetName()] {
+			t.Errorf("Service %s not found in results", svc.GetName())
 		}
 	}
 }

@@ -119,27 +119,27 @@ func (eh *EventHandler) processEvent(event api.ServiceStateChangedEvent) {
 	}
 
 	logging.Debug("Aggregator-EventHandler", "Processing MCP service event: %s (state=%s, health=%s)",
-		event.Label, event.NewState, event.Health)
+		event.Name, event.NewState, event.Health)
 
 	// Only register servers that are BOTH Running AND Healthy
 	isHealthyAndRunning := event.NewState == "Running" && event.Health == "Healthy"
 
 	if isHealthyAndRunning {
 		// Register the healthy running server
-		logging.Info("Aggregator-EventHandler", "Registering healthy MCP server: %s", event.Label)
+		logging.Info("Aggregator-EventHandler", "Registering healthy MCP server: %s", event.Name)
 
-		if err := eh.registerFunc(context.Background(), event.Label); err != nil {
-			logging.Error("Aggregator-EventHandler", err, "Failed to register MCP server %s", event.Label)
+		if err := eh.registerFunc(context.Background(), event.Name); err != nil {
+			logging.Error("Aggregator-EventHandler", err, "Failed to register MCP server %s", event.Name)
 		}
 	} else {
 		// Deregister for any other state/health combination
 		// This includes: Stopped, Failed, Starting, Stopping, or Running+Unhealthy
 		logging.Info("Aggregator-EventHandler", "Deregistering MCP server %s (state=%s, health=%s)",
-			event.Label, event.NewState, event.Health)
+			event.Name, event.NewState, event.Health)
 
-		if err := eh.deregisterFunc(event.Label); err != nil {
+		if err := eh.deregisterFunc(event.Name); err != nil {
 			// Log as debug since deregistering a non-existent server is not critical
-			logging.Debug("Aggregator-EventHandler", "Failed to deregister MCP server %s: %v", event.Label, err)
+			logging.Debug("Aggregator-EventHandler", "Failed to deregister MCP server %s: %v", event.Name, err)
 		}
 	}
 }

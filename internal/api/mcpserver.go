@@ -10,7 +10,7 @@ type MCPServer struct {
 	// Configuration fields (from YAML)
 	Name                string        `yaml:"name" json:"name"`
 	Type                MCPServerType `yaml:"type" json:"type"`
-	Enabled             bool          `yaml:"enabledByDefault" json:"enabled"`
+	AutoStart           bool          `yaml:"autoStart" json:"autoStart"`
 	HealthCheckInterval time.Duration `yaml:"healthCheckInterval,omitempty" json:"healthCheckInterval,omitempty"`
 	ToolPrefix          string        `yaml:"toolPrefix,omitempty" json:"toolPrefix,omitempty"`
 
@@ -28,7 +28,6 @@ type MCPServer struct {
 	ContainerUser    string            `yaml:"containerUser,omitempty" json:"containerUser,omitempty"`
 
 	// Runtime state fields (for API responses)
-	Label       string       `json:"label,omitempty" yaml:"-"`
 	State       ServiceState `json:"state,omitempty" yaml:"-"`
 	Health      HealthStatus `json:"health,omitempty" yaml:"-"`
 	Available   bool         `json:"available,omitempty" yaml:"-"`

@@ -27,16 +27,16 @@ func (a *Adapter) Register() {
 }
 
 // Service lifecycle management
-func (a *Adapter) StartService(label string) error {
-	return a.orchestrator.StartService(label)
+func (a *Adapter) StartService(name string) error {
+	return a.orchestrator.StartService(name)
 }
 
-func (a *Adapter) StopService(label string) error {
-	return a.orchestrator.StopService(label)
+func (a *Adapter) StopService(name string) error {
+	return a.orchestrator.StopService(name)
 }
 
-func (a *Adapter) RestartService(label string) error {
-	return a.orchestrator.RestartService(label)
+func (a *Adapter) RestartService(name string) error {
+	return a.orchestrator.RestartService(name)
 }
 
 func (a *Adapter) SubscribeToStateChanges() <-chan api.ServiceStateChangedEvent {
@@ -47,7 +47,7 @@ func (a *Adapter) SubscribeToStateChanges() <-chan api.ServiceStateChangedEvent 
 	go func() {
 		for event := range internalChan {
 			apiChan <- api.ServiceStateChangedEvent{
-				Label:       event.Label,
+				Name:        event.Name,
 				ServiceType: event.ServiceType,
 				OldState:    event.OldState,
 				NewState:    event.NewState,
@@ -63,14 +63,14 @@ func (a *Adapter) SubscribeToStateChanges() <-chan api.ServiceStateChangedEvent 
 }
 
 // Service status
-func (a *Adapter) GetServiceStatus(label string) (*api.ServiceStatus, error) {
-	service, exists := a.orchestrator.registry.Get(label)
+func (a *Adapter) GetServiceStatus(name string) (*api.ServiceStatus, error) {
+	service, exists := a.orchestrator.registry.Get(name)
 	if !exists {
-		return nil, fmt.Errorf("service %s not found", label)
+		return nil, fmt.Errorf("service %s not found", name)
 	}
 
 	status := &api.ServiceStatus{
-		Label:       service.GetLabel(),
+		Name:        service.GetName(),
 		ServiceType: string(service.GetType()),
 		State:       api.ServiceState(service.GetState()),
 		Health:      api.HealthStatus(service.GetHealth()),
@@ -97,7 +97,7 @@ func (a *Adapter) GetAllServices() []api.ServiceStatus {
 
 	for _, service := range allServices {
 		status := api.ServiceStatus{
-			Label:       service.GetLabel(),
+			Name:        service.GetName(),
 			ServiceType: string(service.GetType()),
 			State:       api.ServiceState(service.GetState()),
 			Health:      api.HealthStatus(service.GetHealth()),
@@ -129,22 +129,13 @@ func (a *Adapter) CreateServiceClassInstance(ctx context.Context, req api.Create
 }
 
 // DeleteServiceClassInstance deletes a ServiceClass-based service instance
-func (a *Adapter) DeleteServiceClassInstance(ctx context.Context, serviceID string) error {
-	return a.orchestrator.DeleteServiceClassInstance(ctx, serviceID)
+func (a *Adapter) DeleteServiceClassInstance(ctx context.Context, name string) error {
+	return a.orchestrator.DeleteServiceClassInstance(ctx, name)
 }
 
 // GetServiceClassInstance returns service instance info by ID
-func (a *Adapter) GetServiceClassInstance(serviceID string) (*api.ServiceInstance, error) {
-	internalInfo, err := a.orchestrator.GetServiceClassInstance(serviceID)
-	if err != nil {
-		return nil, err
-	}
-	return a.convertToAPIServiceInstance(internalInfo), nil
-}
-
-// GetServiceClassInstanceByLabel returns service instance info by label
-func (a *Adapter) GetServiceClassInstanceByLabel(label string) (*api.ServiceInstance, error) {
-	internalInfo, err := a.orchestrator.GetServiceClassInstanceByLabel(label)
+func (a *Adapter) GetServiceClassInstance(name string) (*api.ServiceInstance, error) {
+	internalInfo, err := a.orchestrator.GetServiceClassInstance(name)
 	if err != nil {
 		return nil, err
 	}
@@ -171,8 +162,7 @@ func (a *Adapter) SubscribeToServiceInstanceEvents() <-chan api.ServiceInstanceE
 	go func() {
 		for internalEvent := range internalChan {
 			apiChan <- api.ServiceInstanceEvent{
-				ServiceID:   internalEvent.ServiceID,
-				Label:       internalEvent.Label,
+				Name:        internalEvent.Name,
 				ServiceType: internalEvent.ServiceType,
 				OldState:    internalEvent.OldState,
 				NewState:    internalEvent.NewState,
@@ -194,8 +184,7 @@ func (a *Adapter) SubscribeToServiceInstanceEvents() <-chan api.ServiceInstanceE
 // convertToAPIServiceInstance converts internal ServiceInstanceInfo to API ServiceInstance
 func (a *Adapter) convertToAPIServiceInstance(internalInfo *ServiceInstanceInfo) *api.ServiceInstance {
 	return &api.ServiceInstance{
-		ID:               internalInfo.ServiceID,
-		Label:            internalInfo.Label,
+		Name:             internalInfo.Name,
 		ServiceClassName: internalInfo.ServiceClassName,
 		ServiceClassType: internalInfo.ServiceClassType,
 		State:            api.ServiceState(internalInfo.State),
@@ -221,10 +210,10 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 			Description: "Start a specific service (works for both static and ServiceClass-based services)",
 			Parameters: []api.ParameterMetadata{
 				{
-					Name:        "label",
+					Name:        "name",
 					Type:        "string",
 					Required:    true,
-					Description: "Service label to start",
+					Description: "Service name to start",
 				},
 			},
 		},
@@ -233,10 +222,10 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 			Description: "Stop a specific service (works for both static and ServiceClass-based services)",
 			Parameters: []api.ParameterMetadata{
 				{
-					Name:        "label",
+					Name:        "name",
 					Type:        "string",
 					Required:    true,
-					Description: "Service label to stop",
+					Description: "Service name to stop",
 				},
 			},
 		},
@@ -245,10 +234,10 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 			Description: "Restart a specific service (works for both static and ServiceClass-based services)",
 			Parameters: []api.ParameterMetadata{
 				{
-					Name:        "label",
+					Name:        "name",
 					Type:        "string",
 					Required:    true,
-					Description: "Service label to restart",
+					Description: "Service name to restart",
 				},
 			},
 		},
@@ -257,10 +246,10 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 			Description: "Get status of a specific service (works for both static and ServiceClass-based services)",
 			Parameters: []api.ParameterMetadata{
 				{
-					Name:        "label",
+					Name:        "name",
 					Type:        "string",
 					Required:    true,
-					Description: "Service label to get status for",
+					Description: "Service name to get status for",
 				},
 			},
 		},
@@ -275,10 +264,10 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 					Description: "Name of the ServiceClass to instantiate",
 				},
 				{
-					Name:        "label",
+					Name:        "name",
 					Type:        "string",
 					Required:    true,
-					Description: "Unique label for the service instance",
+					Description: "Unique name for the service instance",
 				},
 				{
 					Name:        "parameters",
@@ -305,10 +294,10 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 			Description: "Delete a ServiceClass-based service instance (static services cannot be deleted)",
 			Parameters: []api.ParameterMetadata{
 				{
-					Name:        "labelOrServiceId",
+					Name:        "name",
 					Type:        "string",
 					Required:    true,
-					Description: "Label or ID of the ServiceClass instance to delete",
+					Description: "Name of the ServiceClass instance to delete",
 				},
 			},
 		},
@@ -317,10 +306,10 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 			Description: "Get detailed information about a ServiceClass-based service instance",
 			Parameters: []api.ParameterMetadata{
 				{
-					Name:        "labelOrServiceId",
+					Name:        "name",
 					Type:        "string",
 					Required:    true,
-					Description: "Label or ID of the ServiceClass instance to get",
+					Description: "Name of the ServiceClass instance to get",
 				},
 			},
 		},
@@ -382,15 +371,15 @@ func (a *Adapter) handleServiceList() (*api.CallToolResult, error) {
 }
 
 func (a *Adapter) handleServiceStart(args map[string]interface{}) (*api.CallToolResult, error) {
-	label, ok := args["label"].(string)
+	name, ok := args["name"].(string)
 	if !ok {
 		return &api.CallToolResult{
-			Content: []interface{}{"label is required"},
+			Content: []interface{}{"name is required"},
 			IsError: true,
 		}, nil
 	}
 
-	if err := a.StartService(label); err != nil {
+	if err := a.StartService(name); err != nil {
 		return &api.CallToolResult{
 			Content: []interface{}{fmt.Sprintf("Failed to start service: %v", err)},
 			IsError: true,
@@ -398,21 +387,21 @@ func (a *Adapter) handleServiceStart(args map[string]interface{}) (*api.CallTool
 	}
 
 	return &api.CallToolResult{
-		Content: []interface{}{fmt.Sprintf("Successfully started service '%s'", label)},
+		Content: []interface{}{fmt.Sprintf("Successfully started service '%s'", name)},
 		IsError: false,
 	}, nil
 }
 
 func (a *Adapter) handleServiceStop(args map[string]interface{}) (*api.CallToolResult, error) {
-	label, ok := args["label"].(string)
+	name, ok := args["name"].(string)
 	if !ok {
 		return &api.CallToolResult{
-			Content: []interface{}{"label is required"},
+			Content: []interface{}{"name is required"},
 			IsError: true,
 		}, nil
 	}
 
-	if err := a.StopService(label); err != nil {
+	if err := a.StopService(name); err != nil {
 		return &api.CallToolResult{
 			Content: []interface{}{fmt.Sprintf("Failed to stop service: %v", err)},
 			IsError: true,
@@ -420,21 +409,21 @@ func (a *Adapter) handleServiceStop(args map[string]interface{}) (*api.CallToolR
 	}
 
 	return &api.CallToolResult{
-		Content: []interface{}{fmt.Sprintf("Successfully stopped service '%s'", label)},
+		Content: []interface{}{fmt.Sprintf("Successfully stopped service '%s'", name)},
 		IsError: false,
 	}, nil
 }
 
 func (a *Adapter) handleServiceRestart(args map[string]interface{}) (*api.CallToolResult, error) {
-	label, ok := args["label"].(string)
+	name, ok := args["name"].(string)
 	if !ok {
 		return &api.CallToolResult{
-			Content: []interface{}{"label is required"},
+			Content: []interface{}{"name is required"},
 			IsError: true,
 		}, nil
 	}
 
-	if err := a.RestartService(label); err != nil {
+	if err := a.RestartService(name); err != nil {
 		return &api.CallToolResult{
 			Content: []interface{}{fmt.Sprintf("Failed to restart service: %v", err)},
 			IsError: true,
@@ -442,21 +431,21 @@ func (a *Adapter) handleServiceRestart(args map[string]interface{}) (*api.CallTo
 	}
 
 	return &api.CallToolResult{
-		Content: []interface{}{fmt.Sprintf("Successfully restarted service '%s'", label)},
+		Content: []interface{}{fmt.Sprintf("Successfully restarted service '%s'", name)},
 		IsError: false,
 	}, nil
 }
 
 func (a *Adapter) handleServiceStatus(args map[string]interface{}) (*api.CallToolResult, error) {
-	label, ok := args["label"].(string)
+	name, ok := args["name"].(string)
 	if !ok {
 		return &api.CallToolResult{
-			Content: []interface{}{"label is required"},
+			Content: []interface{}{"name is required"},
 			IsError: true,
 		}, nil
 	}
 
-	status, err := a.GetServiceStatus(label)
+	status, err := a.GetServiceStatus(name)
 	if err != nil {
 		return &api.CallToolResult{
 			Content: []interface{}{fmt.Sprintf("Failed to get service status: %v", err)},
@@ -481,10 +470,10 @@ func (a *Adapter) handleServiceClassInstanceCreate(ctx context.Context, args map
 		}, nil
 	}
 
-	label, ok := args["label"].(string)
+	name, ok := args["name"].(string)
 	if !ok {
 		return &api.CallToolResult{
-			Content: []interface{}{"label is required"},
+			Content: []interface{}{"name is required"},
 			IsError: true,
 		}, nil
 	}
@@ -500,7 +489,7 @@ func (a *Adapter) handleServiceClassInstanceCreate(ctx context.Context, args map
 
 	req := api.CreateServiceInstanceRequest{
 		ServiceClassName: serviceClassName,
-		Label:            label,
+		Name:             name,
 		Parameters:       parameters,
 		Persist:          persist,
 		AutoStart:        autoStart,
@@ -521,15 +510,15 @@ func (a *Adapter) handleServiceClassInstanceCreate(ctx context.Context, args map
 }
 
 func (a *Adapter) handleServiceClassInstanceDelete(ctx context.Context, args map[string]interface{}) (*api.CallToolResult, error) {
-	labelOrServiceId, ok := args["labelOrServiceId"].(string)
+	name, ok := args["name"].(string)
 	if !ok {
 		return &api.CallToolResult{
-			Content: []interface{}{"labelOrServiceId is required"},
+			Content: []interface{}{"name is required"},
 			IsError: true,
 		}, nil
 	}
 
-	if err := a.DeleteService(ctx, labelOrServiceId); err != nil {
+	if err := a.DeleteService(ctx, name); err != nil {
 		return &api.CallToolResult{
 			Content: []interface{}{fmt.Sprintf("Failed to delete ServiceClass instance: %v", err)},
 			IsError: true,
@@ -537,21 +526,21 @@ func (a *Adapter) handleServiceClassInstanceDelete(ctx context.Context, args map
 	}
 
 	return &api.CallToolResult{
-		Content: []interface{}{fmt.Sprintf("Successfully deleted ServiceClass instance '%s'", labelOrServiceId)},
+		Content: []interface{}{fmt.Sprintf("Successfully deleted ServiceClass instance '%s'", name)},
 		IsError: false,
 	}, nil
 }
 
 func (a *Adapter) handleServiceClassInstanceGet(args map[string]interface{}) (*api.CallToolResult, error) {
-	labelOrServiceId, ok := args["labelOrServiceId"].(string)
+	name, ok := args["name"].(string)
 	if !ok {
 		return &api.CallToolResult{
-			Content: []interface{}{"labelOrServiceId is required"},
+			Content: []interface{}{"name is required"},
 			IsError: true,
 		}, nil
 	}
 
-	instance, err := a.GetService(labelOrServiceId)
+	instance, err := a.GetService(name)
 	if err != nil {
 		return &api.CallToolResult{
 			Content: []interface{}{fmt.Sprintf("Failed to get ServiceClass instance: %v", err)},
@@ -572,7 +561,7 @@ func (a *Adapter) CreateService(ctx context.Context, req api.CreateServiceInstan
 	// Convert API request to internal request
 	internalReq := CreateServiceRequest{
 		ServiceClassName: req.ServiceClassName,
-		Label:            req.Label,
+		Name:             req.Name,
 		Parameters:       req.Parameters,
 		CreateTimeout:    req.CreateTimeout,
 		DeleteTimeout:    req.DeleteTimeout,
@@ -588,39 +577,23 @@ func (a *Adapter) CreateService(ctx context.Context, req api.CreateServiceInstan
 	return a.convertToAPIServiceInstance(internalInfo), nil
 }
 
-// DeleteService deletes a service (works for ServiceClass instances by label or serviceID)
-func (a *Adapter) DeleteService(ctx context.Context, labelOrServiceID string) error {
-	// Try to find by label first (check if it's a ServiceClass instance)
-	if instance, err := a.orchestrator.GetServiceClassInstanceByLabel(labelOrServiceID); err == nil {
-		// Found by label, delete using serviceID
-		return a.orchestrator.DeleteServiceClassInstance(ctx, instance.ServiceID)
-	}
-
-	// Try to find by serviceID directly
-	if _, err := a.orchestrator.GetServiceClassInstance(labelOrServiceID); err == nil {
-		// Found by serviceID, delete directly
-		return a.orchestrator.DeleteServiceClassInstance(ctx, labelOrServiceID)
+// DeleteService deletes a service (works for ServiceClass instances by name)
+func (a *Adapter) DeleteService(ctx context.Context, name string) error {
+	if instance, err := a.orchestrator.GetServiceClassInstance(name); err == nil {
+		return a.orchestrator.DeleteServiceClassInstance(ctx, instance.Name)
 	}
 
 	// Not found as ServiceClass instance, cannot delete static services
-	return fmt.Errorf("service '%s' not found or cannot be deleted (static services cannot be deleted)", labelOrServiceID)
+	return fmt.Errorf("service '%s' not found or cannot be deleted (static services cannot be deleted)", name)
 }
 
-// GetService returns detailed service information by label or serviceID
-func (a *Adapter) GetService(labelOrServiceID string) (*api.ServiceInstance, error) {
-	// Try to find by label first
-	if internalInfo, err := a.orchestrator.GetServiceClassInstanceByLabel(labelOrServiceID); err == nil {
+// GetService returns detailed service information by name
+func (a *Adapter) GetService(name string) (*api.ServiceInstance, error) {
+	if internalInfo, err := a.orchestrator.GetServiceClassInstance(name); err == nil {
 		return a.convertToAPIServiceInstance(internalInfo), nil
 	}
 
-	// Try to find by serviceID
-	if internalInfo, err := a.orchestrator.GetServiceClassInstance(labelOrServiceID); err == nil {
-		return a.convertToAPIServiceInstance(internalInfo), nil
-	}
-
-	// If it's a static service (in registry but not in ServiceClass instances), we need a different approach
-	// For now, return error since GetService method expects ServiceInstanceInfo
-	return nil, fmt.Errorf("service '%s' not found or is not a ServiceClass instance", labelOrServiceID)
+	return nil, fmt.Errorf("service '%s' not found or is not a ServiceClass instance", name)
 }
 
 // handleServiceValidate handles the 'service_validate' tool.

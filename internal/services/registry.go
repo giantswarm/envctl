@@ -25,41 +25,41 @@ func (r *registry) Register(service Service) error {
 		return fmt.Errorf("cannot register nil service")
 	}
 
-	label := service.GetLabel()
-	if label == "" {
-		return fmt.Errorf("service has empty label")
+	name := service.GetName()
+	if name == "" {
+		return fmt.Errorf("service has empty name")
 	}
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if _, exists := r.services[label]; exists {
-		return fmt.Errorf("service %s already registered", label)
+	if _, exists := r.services[name]; exists {
+		return fmt.Errorf("service %s already registered", name)
 	}
 
-	r.services[label] = service
+	r.services[name] = service
 	return nil
 }
 
 // Unregister removes a service from the registry
-func (r *registry) Unregister(label string) error {
+func (r *registry) Unregister(name string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if _, exists := r.services[label]; !exists {
-		return api.NewServiceNotFoundError(label)
+	if _, exists := r.services[name]; !exists {
+		return api.NewServiceNotFoundError(name)
 	}
 
-	delete(r.services, label)
+	delete(r.services, name)
 	return nil
 }
 
-// Get returns a service by label
-func (r *registry) Get(label string) (Service, bool) {
+// Get returns a service by name
+func (r *registry) Get(name string) (Service, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	service, exists := r.services[label]
+	service, exists := r.services[name]
 	return service, exists
 }
 

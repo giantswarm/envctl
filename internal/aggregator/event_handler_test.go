@@ -21,10 +21,10 @@ func newMockOrchestratorAPI() *mockOrchestratorAPI {
 }
 
 // Implement required methods for api.OrchestratorAPI
-func (m *mockOrchestratorAPI) StartService(label string) error   { return nil }
-func (m *mockOrchestratorAPI) StopService(label string) error    { return nil }
-func (m *mockOrchestratorAPI) RestartService(label string) error { return nil }
-func (m *mockOrchestratorAPI) GetServiceStatus(label string) (*api.ServiceStatus, error) {
+func (m *mockOrchestratorAPI) StartService(name string) error   { return nil }
+func (m *mockOrchestratorAPI) StopService(name string) error    { return nil }
+func (m *mockOrchestratorAPI) RestartService(name string) error { return nil }
+func (m *mockOrchestratorAPI) GetServiceStatus(name string) (*api.ServiceStatus, error) {
 	return nil, nil
 }
 func (m *mockOrchestratorAPI) GetAllServices() []api.ServiceStatus { return nil }
@@ -192,7 +192,7 @@ func TestEventHandler_FiltersMCPEvents(t *testing.T) {
 
 	// Send non-MCP event (should NOT trigger any callbacks)
 	provider.sendEvent(api.ServiceStateChangedEvent{
-		Label:       "k8s-mc-test",
+		Name:        "k8s-mc-test",
 		ServiceType: "KubeConnection",
 		OldState:    "Stopped",
 		NewState:    "Running",
@@ -201,7 +201,7 @@ func TestEventHandler_FiltersMCPEvents(t *testing.T) {
 
 	// Send MCP event with healthy state (should trigger register)
 	provider.sendEvent(api.ServiceStateChangedEvent{
-		Label:       "kubernetes",
+		Name:        "kubernetes",
 		ServiceType: "MCPServer",
 		OldState:    "Stopped",
 		NewState:    "Running",
@@ -210,17 +210,8 @@ func TestEventHandler_FiltersMCPEvents(t *testing.T) {
 
 	// Send aggregator event (should NOT trigger any callbacks)
 	provider.sendEvent(api.ServiceStateChangedEvent{
-		Label:       "mcp-aggregator",
+		Name:        "mcp-aggregator",
 		ServiceType: "Aggregator",
-		OldState:    "Stopped",
-		NewState:    "Running",
-		Health:      "Healthy",
-	})
-
-	// Send port forward event (should NOT trigger any callbacks)
-	provider.sendEvent(api.ServiceStateChangedEvent{
-		Label:       "pf:mc-prometheus",
-		ServiceType: "PortForward",
 		OldState:    "Stopped",
 		NewState:    "Running",
 		Health:      "Healthy",
@@ -344,7 +335,7 @@ func TestEventHandler_HealthBasedRegistration(t *testing.T) {
 
 			// Send event
 			provider.sendEvent(api.ServiceStateChangedEvent{
-				Label:       "kubernetes",
+				Name:        "kubernetes",
 				ServiceType: "MCPServer",
 				OldState:    tc.oldState,
 				NewState:    tc.newState,
@@ -395,7 +386,7 @@ func TestEventHandler_HandlesErrors(t *testing.T) {
 
 	// Send event that should trigger register (but will fail)
 	provider.sendEvent(api.ServiceStateChangedEvent{
-		Label:       "kubernetes",
+		Name:        "kubernetes",
 		ServiceType: "MCPServer",
 		OldState:    "Stopped",
 		NewState:    "Running",
@@ -404,7 +395,7 @@ func TestEventHandler_HandlesErrors(t *testing.T) {
 
 	// Send event that should trigger deregister (but will fail)
 	provider.sendEvent(api.ServiceStateChangedEvent{
-		Label:       "envctl",
+		Name:        "envctl",
 		ServiceType: "MCPServer",
 		OldState:    "Running",
 		NewState:    "Stopped",

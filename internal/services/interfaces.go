@@ -49,7 +49,7 @@ type Service interface {
 	GetLastError() error
 
 	// Service metadata
-	GetLabel() string
+	GetName() string
 	GetType() ServiceType
 	GetDependencies() []string
 
@@ -59,7 +59,7 @@ type Service interface {
 }
 
 // StateChangeCallback is called when a service's state changes
-type StateChangeCallback func(label string, oldState, newState ServiceState, health HealthStatus, err error)
+type StateChangeCallback func(name string, oldState, newState ServiceState, health HealthStatus, err error)
 
 // StateUpdater is an optional interface for services that allow external state updates
 // This is used by the orchestrator to set services to StateWaiting when dependencies fail
@@ -89,10 +89,10 @@ type ServiceRegistry interface {
 	Register(service Service) error
 
 	// Unregister removes a service from the registry
-	Unregister(label string) error
+	Unregister(name string) error
 
-	// Get returns a service by label
-	Get(label string) (Service, bool)
+	// Get returns a service by name
+	Get(name string) (Service, bool)
 
 	// GetAll returns all registered services
 	GetAll() []Service
@@ -103,14 +103,14 @@ type ServiceRegistry interface {
 
 // ServiceManager orchestrates service lifecycle
 type ServiceManager interface {
-	// Start starts a service by label
-	StartService(ctx context.Context, label string) error
+	// Start starts a service by name
+	StartService(ctx context.Context, name string) error
 
-	// Stop stops a service by label
-	StopService(ctx context.Context, label string) error
+	// Stop stops a service by name
+	StopService(ctx context.Context, name string) error
 
-	// Restart restarts a service by label
-	RestartService(ctx context.Context, label string) error
+	// Restart restarts a service by name
+	RestartService(ctx context.Context, name string) error
 
 	// StartAll starts all registered services respecting dependencies
 	StartAll(ctx context.Context) error
@@ -119,5 +119,5 @@ type ServiceManager interface {
 	StopAll(ctx context.Context) error
 
 	// GetServiceState returns the current state of a service
-	GetServiceState(label string) (ServiceState, HealthStatus, error)
+	GetServiceState(name string) (ServiceState, HealthStatus, error)
 }

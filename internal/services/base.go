@@ -8,7 +8,7 @@ import (
 // that other services can embed to avoid reimplementing common functionality
 type BaseService struct {
 	mu            sync.RWMutex
-	label         string
+	name          string
 	serviceType   ServiceType
 	dependencies  []string
 	state         ServiceState
@@ -18,9 +18,9 @@ type BaseService struct {
 }
 
 // NewBaseService creates a new base service
-func NewBaseService(label string, serviceType ServiceType, dependencies []string) *BaseService {
+func NewBaseService(name string, serviceType ServiceType, dependencies []string) *BaseService {
 	return &BaseService{
-		label:        label,
+		name:         name,
 		serviceType:  serviceType,
 		dependencies: dependencies,
 		state:        StateUnknown,
@@ -28,9 +28,9 @@ func NewBaseService(label string, serviceType ServiceType, dependencies []string
 	}
 }
 
-// GetLabel returns the service label
-func (b *BaseService) GetLabel() string {
-	return b.label
+// GetName returns the service name
+func (b *BaseService) GetName() string {
+	return b.name
 }
 
 // GetType returns the service type
@@ -83,7 +83,7 @@ func (b *BaseService) UpdateState(newState ServiceState, health HealthStatus, er
 
 	// Call the callback outside of the lock to avoid deadlocks
 	if callback != nil && oldState != newState {
-		callback(b.label, oldState, newState, health, err)
+		callback(b.name, oldState, newState, health, err)
 	}
 }
 
@@ -99,7 +99,7 @@ func (b *BaseService) UpdateHealth(health HealthStatus) {
 
 	// Notify if health changed
 	if callback != nil && oldHealth != health {
-		callback(b.label, state, state, health, err)
+		callback(b.name, state, state, health, err)
 	}
 }
 
@@ -114,6 +114,6 @@ func (b *BaseService) UpdateError(err error) {
 
 	// Notify about error
 	if callback != nil && err != nil {
-		callback(b.label, state, state, health, err)
+		callback(b.name, state, state, health, err)
 	}
 }

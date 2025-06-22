@@ -8,9 +8,8 @@ import (
 // This consolidates ServiceInstance, ServiceInstanceDefinition, and ServiceClassInstanceInfo into one type
 type ServiceInstance struct {
 	// Instance identification
-	ID    string `json:"id" yaml:"id"`
-	Label string `json:"label" yaml:"label"`
-	Name  string `json:"name,omitempty" yaml:"name,omitempty"` // For persistence (same as label)
+	ID   string `json:"id" yaml:"id"`
+	Name string `json:"name,omitempty" yaml:"name"`
 
 	// ServiceClass reference
 	ServiceClassName string `json:"serviceClassName" yaml:"serviceClassName"`
@@ -41,8 +40,8 @@ type CreateServiceInstanceRequest struct {
 	// ServiceClass to use
 	ServiceClassName string `json:"serviceClassName"`
 
-	// Label for the service instance (must be unique)
-	Label string `json:"label"`
+	// Name for the service instance (must be unique)
+	Name string `json:"name"`
 
 	// Parameters for service creation
 	Parameters map[string]interface{} `json:"parameters"`
@@ -60,8 +59,7 @@ type CreateServiceInstanceRequest struct {
 
 // ServiceInstanceEvent represents a ServiceClass-based service instance state change event
 type ServiceInstanceEvent struct {
-	ServiceID   string                 `json:"serviceId"`
-	Label       string                 `json:"label"`
+	Name        string                 `json:"name"`
 	ServiceType string                 `json:"serviceType"`
 	OldState    string                 `json:"oldState"`
 	NewState    string                 `json:"newState"`

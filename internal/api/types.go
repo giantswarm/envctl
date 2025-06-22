@@ -69,7 +69,7 @@ type ClusterDefinition struct {
 
 // Event types
 type ServiceStateChangedEvent struct {
-	Label       string    `json:"label"`
+	Name        string    `json:"name"`
 	ServiceType string    `json:"service_type"`
 	OldState    string    `json:"old_state"`
 	NewState    string    `json:"new_state"`
@@ -80,7 +80,7 @@ type ServiceStateChangedEvent struct {
 
 // API response types
 type ServiceStatus struct {
-	Label       string                 `json:"label"`
+	Name        string                 `json:"name"`
 	ServiceType string                 `json:"service_type"`
 	State       ServiceState           `json:"state"`
 	Health      HealthStatus           `json:"health"`
@@ -93,56 +93,17 @@ type ServiceListResponse struct {
 }
 
 type MCPServiceInfo struct {
-	Label        string `json:"label"`
-	ModelID      string `json:"model_id"`
-	Provider     string `json:"provider"`
-	URL          string `json:"url"`
-	State        string `json:"state"`
-	Health       string `json:"health"`
-	Error        string `json:"error,omitempty"`
-	ClusterLabel string `json:"cluster_label,omitempty"`
+	Name     string `json:"name"`
+	ModelID  string `json:"model_id"`
+	Provider string `json:"provider"`
+	URL      string `json:"url"`
+	State    string `json:"state"`
+	Health   string `json:"health"`
+	Error    string `json:"error,omitempty"`
 }
 
 type MCPServiceListResponse struct {
 	Services []MCPServiceInfo `json:"services"`
-}
-
-type PortForwardInfo struct {
-	Label        string `json:"label"`
-	ClusterLabel string `json:"cluster_label"`
-	Namespace    string `json:"namespace"`
-	ServiceName  string `json:"service_name"`
-	LocalPort    int    `json:"local_port"`
-	RemotePort   int    `json:"remote_port"`
-	State        string `json:"state"`
-	Health       string `json:"health"`
-	Error        string `json:"error,omitempty"`
-}
-
-type PortForwardListResponse struct {
-	PortForwards []PortForwardInfo `json:"port_forwards"`
-}
-
-type K8sServiceInfo struct {
-	Label        string                 `json:"label"`
-	ClusterLabel string                 `json:"cluster_label"`
-	State        string                 `json:"state"`
-	Health       string                 `json:"health"`
-	Error        string                 `json:"error,omitempty"`
-	Metadata     map[string]interface{} `json:"metadata,omitempty"`
-}
-
-type K8sServiceListResponse struct {
-	Services []K8sServiceInfo `json:"services"`
-}
-
-type ClusterSwitchRequest struct {
-	ClusterName string `json:"cluster_name"`
-}
-
-type ClusterListResponse struct {
-	Clusters []ClusterDefinition `json:"clusters"`
-	Active   string              `json:"active,omitempty"`
 }
 
 type AggregatorData struct {

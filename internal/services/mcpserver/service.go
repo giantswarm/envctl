@@ -61,7 +61,7 @@ func (s *Service) createRunner() (Runner, error) {
 // Start starts the MCP server service
 func (s *Service) Start(ctx context.Context) error {
 	if s.IsRunning() {
-		return fmt.Errorf("service %s is already running", s.GetLabel())
+		return fmt.Errorf("service %s is already running", s.GetName())
 	}
 
 	s.UpdateState(services.StateStarting, services.HealthUnknown, nil)
@@ -92,7 +92,7 @@ func (s *Service) Start(ctx context.Context) error {
 // Stop stops the MCP server service
 func (s *Service) Stop(ctx context.Context) error {
 	if !s.IsRunning() {
-		s.LogDebug("Service %s is not running, nothing to stop", s.GetLabel())
+		s.LogDebug("Service %s is not running, nothing to stop", s.GetName())
 		return nil
 	}
 
@@ -196,11 +196,11 @@ func (s *Service) UpdateConfiguration(newConfig interface{}) error {
 // GetServiceData implements ServiceDataProvider
 func (s *Service) GetServiceData() map[string]interface{} {
 	data := map[string]interface{}{
-		"name":    s.definition.Name,
-		"type":    s.definition.Type,
-		"enabled": s.definition.Enabled,
-		"state":   s.GetState(),
-		"health":  s.GetHealth(),
+		"name":      s.definition.Name,
+		"type":      s.definition.Type,
+		"autoStart": s.definition.AutoStart,
+		"state":     s.GetState(),
+		"health":    s.GetHealth(),
 	}
 
 	if s.definition.Type == api.MCPServerTypeLocalCommand {
@@ -238,7 +238,7 @@ func (s *Service) GetHealthCheckInterval() time.Duration {
 
 // GetLogContext returns the logging context for this service
 func (s *Service) GetLogContext() string {
-	return fmt.Sprintf("MCPServerService-%s", s.GetLabel())
+	return fmt.Sprintf("MCPServerService-%s", s.GetName())
 }
 
 // LogInfo logs an info message with service context

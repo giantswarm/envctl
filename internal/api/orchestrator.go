@@ -7,21 +7,21 @@ import (
 
 // ServiceOrchestrator is the interface that the orchestrator must implement
 type ServiceOrchestrator interface {
-	StartService(label string) error
-	StopService(label string) error
-	RestartService(label string) error
+	StartService(name string) error
+	StopService(name string) error
+	RestartService(name string) error
 	SubscribeToStateChanges() <-chan ServiceStateChangedEvent
 }
 
 // OrchestratorAPI defines the interface for orchestrating services
 type OrchestratorAPI interface {
 	// Service lifecycle management
-	StartService(label string) error
-	StopService(label string) error
-	RestartService(label string) error
+	StartService(name string) error
+	StopService(name string) error
+	RestartService(name string) error
 
 	// Service status
-	GetServiceStatus(label string) (*ServiceStatus, error)
+	GetServiceStatus(name string) (*ServiceStatus, error)
 	GetAllServices() []ServiceStatus
 
 	// State change events
@@ -39,30 +39,30 @@ func NewOrchestratorAPI() OrchestratorAPI {
 }
 
 // StartService starts a specific service
-func (a *orchestratorAPI) StartService(label string) error {
+func (a *orchestratorAPI) StartService(name string) error {
 	handler := GetServiceManager()
 	if handler == nil {
 		return fmt.Errorf("service manager not registered")
 	}
-	return handler.StartService(label)
+	return handler.StartService(name)
 }
 
 // StopService stops a specific service
-func (a *orchestratorAPI) StopService(label string) error {
+func (a *orchestratorAPI) StopService(name string) error {
 	handler := GetServiceManager()
 	if handler == nil {
 		return fmt.Errorf("service manager not registered")
 	}
-	return handler.StopService(label)
+	return handler.StopService(name)
 }
 
 // RestartService restarts a specific service
-func (a *orchestratorAPI) RestartService(label string) error {
+func (a *orchestratorAPI) RestartService(name string) error {
 	handler := GetServiceManager()
 	if handler == nil {
 		return fmt.Errorf("service manager not registered")
 	}
-	return handler.RestartService(label)
+	return handler.RestartService(name)
 }
 
 // SubscribeToStateChanges returns a channel for receiving service state change events
@@ -78,19 +78,19 @@ func (a *orchestratorAPI) SubscribeToStateChanges() <-chan ServiceStateChangedEv
 }
 
 // GetServiceStatus returns the status of a specific service
-func (a *orchestratorAPI) GetServiceStatus(label string) (*ServiceStatus, error) {
+func (a *orchestratorAPI) GetServiceStatus(name string) (*ServiceStatus, error) {
 	registry := GetServiceRegistry()
 	if registry == nil {
 		return nil, fmt.Errorf("service registry not registered")
 	}
 
-	service, exists := registry.Get(label)
+	service, exists := registry.Get(name)
 	if !exists {
-		return nil, fmt.Errorf("service %s not found", label)
+		return nil, fmt.Errorf("service %s not found", name)
 	}
 
 	status := &ServiceStatus{
-		Label:       service.GetLabel(),
+		Name:        service.GetName(),
 		ServiceType: string(service.GetType()),
 		State:       service.GetState(),
 		Health:      service.GetHealth(),
@@ -121,7 +121,7 @@ func (a *orchestratorAPI) ListServices(ctx context.Context) ([]*ServiceStatus, e
 
 	for _, service := range allServices {
 		status := &ServiceStatus{
-			Label:       service.GetLabel(),
+			Name:        service.GetName(),
 			ServiceType: string(service.GetType()),
 			State:       service.GetState(),
 			Health:      service.GetHealth(),
@@ -155,7 +155,7 @@ func (a *orchestratorAPI) GetAllServices() []ServiceStatus {
 
 	for _, service := range allServices {
 		status := ServiceStatus{
-			Label:       service.GetLabel(),
+			Name:        service.GetName(),
 			ServiceType: string(service.GetType()),
 			State:       service.GetState(),
 			Health:      service.GetHealth(),

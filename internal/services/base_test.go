@@ -9,18 +9,18 @@ import (
 )
 
 func TestNewBaseService(t *testing.T) {
-	label := "test-service"
+	name := "test-service"
 	serviceType := TypeMCPServer
 	dependencies := []string{"dep1", "dep2"}
 
-	base := NewBaseService(label, serviceType, dependencies)
+	base := NewBaseService(name, serviceType, dependencies)
 
 	if base == nil {
 		t.Fatal("Expected NewBaseService to return non-nil base service")
 	}
 
-	if base.GetLabel() != label {
-		t.Errorf("Expected label %s, got %s", label, base.GetLabel())
+	if base.GetName() != name {
+		t.Errorf("Expected name %s, got %s", name, base.GetName())
 	}
 
 	if base.GetType() != serviceType {
@@ -51,15 +51,15 @@ func TestNewBaseService(t *testing.T) {
 }
 
 func TestBaseServiceGetters(t *testing.T) {
-	label := "getter-test"
+	name := "getter-test"
 	serviceType := TypeMCPServer
 	dependencies := []string{"service1", "service2", "service3"}
 
-	base := NewBaseService(label, serviceType, dependencies)
+	base := NewBaseService(name, serviceType, dependencies)
 
-	// Test GetLabel
-	if got := base.GetLabel(); got != label {
-		t.Errorf("GetLabel() = %s, want %s", got, label)
+	// Test GetName
+	if got := base.GetName(); got != name {
+		t.Errorf("GetName() = %s, want %s", got, name)
 	}
 
 	// Test GetType
@@ -170,14 +170,14 @@ func TestBaseServiceStateChangeCallback(t *testing.T) {
 	base := NewBaseService("callback-test", TypeMCPServer, nil)
 
 	var callbackCalled bool
-	var receivedLabel string
+	var receivedName string
 	var receivedOldState, receivedNewState ServiceState
 	var receivedHealth HealthStatus
 	var receivedErr error
 
-	callback := func(label string, oldState, newState ServiceState, health HealthStatus, err error) {
+	callback := func(name string, oldState, newState ServiceState, health HealthStatus, err error) {
 		callbackCalled = true
-		receivedLabel = label
+		receivedName = name
 		receivedOldState = oldState
 		receivedNewState = newState
 		receivedHealth = health
@@ -193,8 +193,8 @@ func TestBaseServiceStateChangeCallback(t *testing.T) {
 		t.Error("Expected callback to be called on state change")
 	}
 
-	if receivedLabel != "callback-test" {
-		t.Errorf("Callback received label %s, want %s", receivedLabel, "callback-test")
+	if receivedName != "callback-test" {
+		t.Errorf("Callback received name %s, want %s", receivedName, "callback-test")
 	}
 
 	if receivedOldState != StateUnknown {
@@ -270,7 +270,7 @@ func TestBaseServiceConcurrentAccess(t *testing.T) {
 	// Set up callback to count state changes
 	var stateChanges int
 	var mu sync.Mutex
-	base.SetStateChangeCallback(func(label string, oldState, newState ServiceState, health HealthStatus, err error) {
+	base.SetStateChangeCallback(func(name string, oldState, newState ServiceState, health HealthStatus, err error) {
 		mu.Lock()
 		stateChanges++
 		mu.Unlock()
@@ -333,7 +333,7 @@ func TestBaseServiceCallbackPanic(t *testing.T) {
 	base := NewBaseService("panic-test", TypeMCPServer, nil)
 
 	// Set a callback that panics
-	base.SetStateChangeCallback(func(label string, oldState, newState ServiceState, health HealthStatus, err error) {
+	base.SetStateChangeCallback(func(name string, oldState, newState ServiceState, health HealthStatus, err error) {
 		panic("callback panic")
 	})
 
@@ -391,8 +391,8 @@ func TestBaseServiceEmbedding(t *testing.T) {
 	var _ Service = embedded
 
 	// Test that embedded methods work
-	if label := embedded.GetLabel(); label != "embedded-test" {
-		t.Errorf("GetLabel() = %s, want %s", label, "embedded-test")
+	if name := embedded.GetName(); name != "embedded-test" {
+		t.Errorf("GetName() = %s, want %s", name, "embedded-test")
 	}
 
 	// Test custom Start implementation

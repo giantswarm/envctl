@@ -18,7 +18,7 @@ import (
 
 // ServiceInfo provides information about a service
 type ServiceInfo interface {
-	GetLabel() string
+	GetName() string
 	GetType() ServiceType
 	GetState() ServiceState
 	GetHealth() HealthStatus
@@ -28,7 +28,7 @@ type ServiceInfo interface {
 
 // ServiceRegistryHandler provides access to registered services
 type ServiceRegistryHandler interface {
-	Get(label string) (ServiceInfo, bool)
+	Get(name string) (ServiceInfo, bool)
 	GetAll() []ServiceInfo
 	GetByType(serviceType ServiceType) []ServiceInfo
 }
@@ -36,18 +36,18 @@ type ServiceRegistryHandler interface {
 // ServiceManagerHandler provides unified management for both static and ServiceClass-based services
 type ServiceManagerHandler interface {
 	// Unified service lifecycle management (works for both static and ServiceClass-based services)
-	StartService(label string) error
-	StopService(label string) error
-	RestartService(label string) error
+	StartService(name string) error
+	StopService(name string) error
+	RestartService(name string) error
 
 	// Service information and status
-	GetServiceStatus(label string) (*ServiceStatus, error)
+	GetServiceStatus(name string) (*ServiceStatus, error)
 	GetAllServices() []ServiceStatus
-	GetService(labelOrServiceID string) (*ServiceInstance, error) // Get detailed service info by label or serviceID
+	GetService(name string) (*ServiceInstance, error) // Get detailed service info
 
 	// ServiceClass instance creation and deletion (only for ServiceClass-based services)
 	CreateService(ctx context.Context, req CreateServiceInstanceRequest) (*ServiceInstance, error)
-	DeleteService(ctx context.Context, labelOrServiceID string) error // Delete by label or serviceID
+	DeleteService(ctx context.Context, name string) error
 
 	// Event subscriptions
 	SubscribeToStateChanges() <-chan ServiceStateChangedEvent
@@ -156,10 +156,9 @@ type ServiceClassManagerHandler interface {
 type MCPServerInfo struct {
 	Name        string            `json:"name"`
 	Type        string            `json:"type"`
-	Label       string            `json:"label"`
 	State       string            `json:"state"`
 	Health      string            `json:"health"`
-	Enabled     bool              `json:"enabled"`
+	AutoStart   bool              `json:"autoStart"`
 	Available   bool              `json:"available"`
 	Description string            `json:"description,omitempty"`
 	Command     []string          `json:"command,omitempty"`

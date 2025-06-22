@@ -40,10 +40,9 @@ func (a *Adapter) ListMCPServers() []api.MCPServerInfo {
 		result[i] = api.MCPServerInfo{
 			Name:        def.Name,
 			Type:        string(def.Type),
-			Label:       def.Name, // Use name as label for compatibility
 			State:       string(def.State),
 			Health:      string(def.Health),
-			Enabled:     def.Enabled,
+			AutoStart:   def.AutoStart,
 			Available:   a.manager.IsAvailable(def.Name),
 			Description: def.Description,
 			Command:     def.Command,
@@ -70,10 +69,9 @@ func (a *Adapter) GetMCPServer(name string) (*api.MCPServerInfo, error) {
 	return &api.MCPServerInfo{
 		Name:        def.Name,
 		Type:        string(def.Type),
-		Label:       def.Name, // Use name as label for compatibility
 		State:       string(def.State),
 		Health:      string(def.Health),
-		Enabled:     def.Enabled,
+		AutoStart:   def.AutoStart,
 		Available:   a.manager.IsAvailable(def.Name),
 		Description: def.Description,
 		Command:     def.Command,
@@ -151,7 +149,7 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 			Parameters: []api.ParameterMetadata{
 				{Name: "name", Type: "string", Required: true, Description: "MCP server name"},
 				{Name: "type", Type: "string", Required: true, Description: "MCP server type (localCommand or container)"},
-				{Name: "enabled", Type: "boolean", Required: false, Description: "Whether server is enabled by default"},
+				{Name: "autoStart", Type: "boolean", Required: false, Description: "Whether server should auto-start"},
 				{Name: "healthCheckInterval", Type: "string", Required: false, Description: "Health check interval duration"},
 				{Name: "toolPrefix", Type: "string", Required: false, Description: "Custom tool prefix"},
 				{Name: "command", Type: "array", Required: false, Description: "Command and arguments (for localCommand type)"},
@@ -171,7 +169,7 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 			Parameters: []api.ParameterMetadata{
 				{Name: "name", Type: "string", Required: true, Description: "Name of the MCP server to update"},
 				{Name: "type", Type: "string", Required: true, Description: "MCP server type (localCommand or container)"},
-				{Name: "enabled", Type: "boolean", Required: false, Description: "Whether server is enabled by default"},
+				{Name: "autoStart", Type: "boolean", Required: false, Description: "Whether server should auto-start"},
 				{Name: "healthCheckInterval", Type: "string", Required: false, Description: "Health check interval duration"},
 				{Name: "toolPrefix", Type: "string", Required: false, Description: "Custom tool prefix"},
 				{Name: "command", Type: "array", Required: false, Description: "Command and arguments (for localCommand type)"},
@@ -289,7 +287,7 @@ func (a *Adapter) handleMCPServerValidate(args map[string]interface{}) (*api.Cal
 	def := api.MCPServer{
 		Name:                req.Name,
 		Type:                api.MCPServerType(req.Type),
-		Enabled:             req.AutoStart, // Map autoStart to Enabled for validation
+		AutoStart:           req.AutoStart,
 		Image:               req.Image,
 		Command:             req.Command,
 		Env:                 req.Env,
@@ -423,8 +421,8 @@ func convertToMCPServer(args map[string]interface{}) (api.MCPServer, error) {
 	def.Type = api.MCPServerType(serverType)
 
 	// Optional fields
-	if enabled, ok := args["enabled"].(bool); ok {
-		def.Enabled = enabled
+	if autoStart, ok := args["autoStart"].(bool); ok {
+		def.AutoStart = autoStart
 	}
 	// Note: icon and category parameters are no longer supported in Phase 3
 	if toolPrefix, ok := args["toolPrefix"].(string); ok {
@@ -538,7 +536,7 @@ func convertRequestToMCPServer(req api.MCPServerUpdateRequest) (api.MCPServer, e
 	def := api.MCPServer{
 		Name:             req.Name,
 		Type:             api.MCPServerType(req.Type),
-		Enabled:          req.Enabled,
+		AutoStart:        req.AutoStart,
 		ToolPrefix:       req.ToolPrefix,
 		Image:            req.Image,
 		Command:          req.Command,
@@ -568,7 +566,7 @@ func convertCreateRequestToMCPServer(req api.MCPServerCreateRequest) (api.MCPSer
 	def := api.MCPServer{
 		Name:             req.Name,
 		Type:             api.MCPServerType(req.Type),
-		Enabled:          req.Enabled,
+		AutoStart:        req.AutoStart,
 		ToolPrefix:       req.ToolPrefix,
 		Image:            req.Image,
 		Command:          req.Command,

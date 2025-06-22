@@ -32,8 +32,8 @@ type CreateServiceRequest struct {
 	// ServiceClass to use
 	ServiceClassName string `json:"serviceClassName"`
 
-	// Label for the service instance (must be unique)
-	Label string `json:"label"`
+	// Name for the service instance (must be unique)
+	Name string `json:"name"`
 
 	// Parameters for service creation
 	Parameters map[string]interface{} `json:"parameters"`
@@ -51,8 +51,7 @@ type CreateServiceRequest struct {
 
 // ServiceInstanceInfo provides information about a ServiceClass-based service instance
 type ServiceInstanceInfo struct {
-	ServiceID          string                 `json:"serviceId"`
-	Label              string                 `json:"label"`
+	Name               string                 `json:"name"`
 	ServiceClassName   string                 `json:"serviceClassName"`
 	ServiceClassType   string                 `json:"serviceClassType"`
 	State              string                 `json:"state"`
@@ -66,8 +65,7 @@ type ServiceInstanceInfo struct {
 
 // ServiceInstanceEvent represents a service instance state change event
 type ServiceInstanceEvent struct {
-	ServiceID   string                 `json:"serviceId"`
-	Label       string                 `json:"label"`
+	Name        string                 `json:"name"`
 	ServiceType string                 `json:"serviceType"`
 	OldState    string                 `json:"oldState"`
 	NewState    string                 `json:"newState"`
@@ -88,10 +86,9 @@ type Orchestrator struct {
 	yolo       bool
 
 	// ServiceClass-based dynamic service management
-	toolCaller       ToolCaller
-	dynamicInstances map[string]*services.GenericServiceInstance // service ID -> instance
-	dynamicByLabel   map[string]*services.GenericServiceInstance // service label -> instance
-	instanceEvents   []chan<- ServiceInstanceEvent
+	toolCaller     ToolCaller
+	instances      map[string]*services.GenericServiceInstance // name -> instance
+	instanceEvents []chan<- ServiceInstanceEvent
 
 	// Service instance persistence
 	persistence *services.ServiceInstancePersistence
@@ -133,8 +130,7 @@ func New(cfg Config) *Orchestrator {
 		yolo:                   cfg.Yolo,
 		toolCaller:             cfg.ToolCaller,
 		persistence:            persistence,
-		dynamicInstances:       make(map[string]*services.GenericServiceInstance),
-		dynamicByLabel:         make(map[string]*services.GenericServiceInstance),
+		instances:              make(map[string]*services.GenericServiceInstance),
 		instanceEvents:         make([]chan<- ServiceInstanceEvent, 0),
 		stopReasons:            make(map[string]StopReason),
 		stateChangeSubscribers: make([]chan<- ServiceStateChangedEvent, 0),
@@ -155,9 +151,9 @@ func (o *Orchestrator) Start(ctx context.Context) error {
 	for _, service := range staticServices {
 		go func(svc services.Service) {
 			if err := svc.Start(o.ctx); err != nil {
-				logging.Error("Orchestrator", err, "Failed to start static service: %s", svc.GetLabel())
+				logging.Error("Orchestrator", err, "Failed to start static service: %s", svc.GetName())
 			} else {
-				logging.Info("Orchestrator", "Started static service: %s", svc.GetLabel())
+				logging.Info("Orchestrator", "Started static service: %s", svc.GetName())
 			}
 		}(service)
 	}
@@ -175,7 +171,7 @@ func (o *Orchestrator) Start(ctx context.Context) error {
 	}
 
 	logging.Info("Orchestrator", "Started orchestrator with unified service management (static: %d, dynamic: %d)",
-		len(staticServices), len(o.dynamicInstances))
+		len(staticServices), len(o.instances))
 	return nil
 }
 
@@ -206,8 +202,8 @@ func (o *Orchestrator) processServiceClassRequirements(ctx context.Context) erro
 
 	// Process each MCP Server to identify required ServiceClasses
 	for _, mcpServerInfo := range mcpServers {
-		// Only process enabled servers
-		if !mcpServerInfo.Enabled {
+		// Only process auto-start servers
+		if !mcpServerInfo.AutoStart {
 			continue
 		}
 
@@ -228,14 +224,14 @@ func (o *Orchestrator) processMCPServerServiceClasses(ctx context.Context, mcpSe
 
 	for _, serviceClassName := range serviceClassNames {
 		// Check if we already have an instance for this service class + server combination
-		label := fmt.Sprintf("%s-%s", mcpServerInfo.Name, serviceClassName)
+		name := fmt.Sprintf("%s-%s", mcpServerInfo.Name, serviceClassName)
 
 		o.mu.RLock()
-		_, exists := o.dynamicByLabel[label]
+		_, exists := o.instances[name]
 		o.mu.RUnlock()
 
 		if exists {
-			logging.Debug("Orchestrator", "ServiceClass instance already exists: %s", label)
+			logging.Debug("Orchestrator", "ServiceClass instance already exists: %s", name)
 			continue
 		}
 
@@ -248,7 +244,7 @@ func (o *Orchestrator) processMCPServerServiceClasses(ctx context.Context, mcpSe
 		// Create service instance
 		req := CreateServiceRequest{
 			ServiceClassName: serviceClassName,
-			Label:            label,
+			Name:             name,
 			Parameters:       o.buildServiceParameters(mcpServerInfo, serviceClassName),
 		}
 
@@ -315,7 +311,7 @@ func (o *Orchestrator) loadPersistedServiceInstances(ctx context.Context) error 
 		// Create the service instance
 		req := CreateServiceRequest{
 			ServiceClassName: def.ServiceClassName,
-			Label:            def.Label,
+			Name:             def.Name,
 			Parameters:       def.Parameters,
 			Persist:          false, // Already persisted, don't save again
 			AutoStart:        def.AutoStart,
@@ -327,12 +323,12 @@ func (o *Orchestrator) loadPersistedServiceInstances(ctx context.Context) error 
 			continue
 		}
 
-		logging.Info("Orchestrator", "Successfully restored persisted service instance: %s", instance.Label)
+		logging.Info("Orchestrator", "Successfully restored persisted service instance: %s", instance.Name)
 
 		// Start the instance if AutoStart is enabled
 		if def.AutoStart {
 			// The instance is already started by CreateServiceClassInstance, so we just log it
-			logging.Info("Orchestrator", "Auto-started persisted service instance: %s", instance.Label)
+			logging.Info("Orchestrator", "Auto-started persisted service instance: %s", instance.Name)
 		}
 	}
 
@@ -367,26 +363,25 @@ func (o *Orchestrator) CreateServiceClassInstance(ctx context.Context, req Creat
 		return nil, fmt.Errorf("ServiceClass %s is not available (missing required tools)", req.ServiceClassName)
 	}
 
-	// Check if label is already in use
+	// Check if name is already in use
 	o.mu.Lock()
-	if _, exists := o.dynamicByLabel[req.Label]; exists {
+	if _, exists := o.instances[req.Name]; exists {
 		o.mu.Unlock()
-		return nil, fmt.Errorf("service with label %s already exists", req.Label)
+		return nil, fmt.Errorf("service with name %s already exists", req.Name)
 	}
 
 	// Also check static services
-	if _, exists := o.registry.Get(req.Label); exists {
+	if _, exists := o.registry.Get(req.Name); exists {
 		o.mu.Unlock()
-		return nil, fmt.Errorf("static service with label %s already exists", req.Label)
+		return nil, fmt.Errorf("static service with name %s already exists", req.Name)
 	}
 
 	// Generate unique service ID
-	serviceID := uuid.New().String()
+	name := uuid.New().String()
 
 	// Create GenericServiceInstance
 	instance := services.NewGenericServiceInstance(
-		serviceID,
-		req.Label,
+		req.Name,
 		req.ServiceClassName,
 		o.toolCaller,
 		req.Parameters,
@@ -398,23 +393,21 @@ func (o *Orchestrator) CreateServiceClassInstance(ctx context.Context, req Creat
 	}
 
 	// Set up state change callback
-	instance.SetStateChangeCallback(o.createDynamicServiceStateChangeCallback(serviceID))
+	instance.SetStateChangeCallback(o.createDynamicServiceStateChangeCallback(name))
 
 	// Store the instance
-	o.dynamicInstances[serviceID] = instance
-	o.dynamicByLabel[req.Label] = instance
+	o.instances[name] = instance
 	o.mu.Unlock()
 
-	logging.Info("Orchestrator", "Creating ServiceClass-based service instance: %s (ServiceClass: %s)", req.Label, req.ServiceClassName)
+	logging.Info("Orchestrator", "Creating ServiceClass-based service instance: %s (ServiceClass: %s)", req.Name, req.ServiceClassName)
 
 	// Start the service instance
 	if err := instance.Start(ctx); err != nil {
-		logging.Error("Orchestrator", err, "Failed to start ServiceClass instance %s", instance.GetLabel())
+		logging.Error("Orchestrator", err, "Failed to start ServiceClass instance %s", instance.GetName())
 
 		// Remove from tracking on failure
 		o.mu.Lock()
-		delete(o.dynamicInstances, serviceID)
-		delete(o.dynamicByLabel, req.Label)
+		delete(o.instances, name)
 		o.mu.Unlock()
 
 		return nil, fmt.Errorf("failed to start ServiceClass instance: %w", err)
@@ -424,8 +417,7 @@ func (o *Orchestrator) CreateServiceClassInstance(ctx context.Context, req Creat
 	if err := o.registry.Register(instance); err != nil {
 		// Remove from tracking on registration failure
 		o.mu.Lock()
-		delete(o.dynamicInstances, serviceID)
-		delete(o.dynamicByLabel, req.Label)
+		delete(o.instances, name)
 		o.mu.Unlock()
 
 		return nil, fmt.Errorf("failed to register ServiceClass instance in registry: %w", err)
@@ -434,7 +426,7 @@ func (o *Orchestrator) CreateServiceClassInstance(ctx context.Context, req Creat
 	// Persist the instance definition if requested
 	if req.Persist && o.persistence != nil {
 		definition := services.CreateDefinitionFromInstance(
-			req.Label,
+			req.Name,
 			req.ServiceClassName,
 			"serviceclass", // Default since Type field removed from API in Phase 3
 			req.Parameters,
@@ -442,16 +434,15 @@ func (o *Orchestrator) CreateServiceClassInstance(ctx context.Context, req Creat
 		)
 
 		if err := o.persistence.SaveDefinition(definition); err != nil {
-			logging.Error("Orchestrator", err, "Failed to persist service instance definition: %s", req.Label)
+			logging.Error("Orchestrator", err, "Failed to persist service instance definition: %s", req.Name)
 			// Don't fail the creation, just log the error
 		} else {
-			logging.Info("Orchestrator", "Persisted service instance definition: %s", req.Label)
+			logging.Info("Orchestrator", "Persisted service instance definition: %s", req.Name)
 		}
 	}
 
 	return &ServiceInstanceInfo{
-		ServiceID:          serviceID,
-		Label:              req.Label,
+		Name:               req.Name,
 		ServiceClassName:   req.ServiceClassName,
 		ServiceClassType:   "serviceclass", // Default since Type field removed from API in Phase 3
 		State:              string(instance.GetState()),
@@ -463,78 +454,55 @@ func (o *Orchestrator) CreateServiceClassInstance(ctx context.Context, req Creat
 }
 
 // DeleteServiceClassInstance deletes a ServiceClass-based service instance
-func (o *Orchestrator) DeleteServiceClassInstance(ctx context.Context, serviceID string) error {
+func (o *Orchestrator) DeleteServiceClassInstance(ctx context.Context, name string) error {
 	o.mu.Lock()
-	instance, exists := o.dynamicInstances[serviceID]
+	instance, exists := o.instances[name]
 	if !exists {
 		o.mu.Unlock()
-		return fmt.Errorf("ServiceClass instance %s not found", serviceID)
+		return fmt.Errorf("ServiceClass instance %s not found", name)
 	}
 	o.mu.Unlock()
 
-	logging.Info("Orchestrator", "Deleting ServiceClass-based service instance: %s", instance.GetLabel())
+	logging.Info("Orchestrator", "Deleting ServiceClass-based service instance: %s", instance.GetName())
 
 	// Stop the service instance
 	if err := instance.Stop(ctx); err != nil {
-		logging.Error("Orchestrator", err, "Failed to stop ServiceClass instance %s during deletion", instance.GetLabel())
+		logging.Error("Orchestrator", err, "Failed to stop ServiceClass instance %s during deletion", instance.GetName())
 		// Continue with deletion even if stop fails
 	}
 
 	// Remove from registry and tracking
-	o.registry.Unregister(instance.GetLabel())
+	o.registry.Unregister(instance.GetName())
 
 	// Check if this instance was persisted and remove from persistence
 	if o.persistence != nil {
 		// Try to remove from persistence - if it wasn't persisted, this will fail silently
-		if err := o.persistence.DeleteDefinition(instance.GetLabel()); err != nil {
-			logging.Debug("Orchestrator", "Service instance %s was not persisted (or failed to remove): %v", instance.GetLabel(), err)
+		if err := o.persistence.DeleteDefinition(instance.GetName()); err != nil {
+			logging.Debug("Orchestrator", "Service instance %s was not persisted (or failed to remove): %v", instance.GetName(), err)
 		} else {
-			logging.Info("Orchestrator", "Removed persisted definition for service instance: %s", instance.GetLabel())
+			logging.Info("Orchestrator", "Removed persisted definition for service instance: %s", instance.GetName())
 		}
 	}
 
 	o.mu.Lock()
-	delete(o.dynamicInstances, serviceID)
-	delete(o.dynamicByLabel, instance.GetLabel())
+	delete(o.instances, name)
 	o.mu.Unlock()
 
-	logging.Info("Orchestrator", "Successfully deleted ServiceClass-based service instance: %s", instance.GetLabel())
+	logging.Info("Orchestrator", "Successfully deleted ServiceClass-based service instance: %s", instance.GetName())
 	return nil
 }
 
 // GetServiceClassInstance returns information about a ServiceClass-based service instance
-func (o *Orchestrator) GetServiceClassInstance(serviceID string) (*ServiceInstanceInfo, error) {
+func (o *Orchestrator) GetServiceClassInstance(name string) (*ServiceInstanceInfo, error) {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
 
-	instance, exists := o.dynamicInstances[serviceID]
+	instance, exists := o.instances[name]
 	if !exists {
-		return nil, fmt.Errorf("ServiceClass instance %s not found", serviceID)
+		return nil, fmt.Errorf("ServiceClass instance %s not found", name)
 	}
 
-	return o.serviceInstanceToInfo(serviceID, instance), nil
-}
-
-// GetServiceClassInstanceByLabel returns information about a ServiceClass-based service instance by label
-func (o *Orchestrator) GetServiceClassInstanceByLabel(label string) (*ServiceInstanceInfo, error) {
-	o.mu.RLock()
-	defer o.mu.RUnlock()
-
-	instance, exists := o.dynamicByLabel[label]
-	if !exists {
-		return nil, fmt.Errorf("ServiceClass instance with label %s not found", label)
-	}
-
-	// Find the service ID
-	var serviceID string
-	for id, inst := range o.dynamicInstances {
-		if inst == instance {
-			serviceID = id
-			break
-		}
-	}
-
-	return o.serviceInstanceToInfo(serviceID, instance), nil
+	return o.serviceInstanceToInfo(name, instance), nil
 }
 
 // ListServiceClassInstances returns information about all ServiceClass-based service instances
@@ -542,9 +510,9 @@ func (o *Orchestrator) ListServiceClassInstances() []ServiceInstanceInfo {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
 
-	result := make([]ServiceInstanceInfo, 0, len(o.dynamicInstances))
-	for serviceID, instance := range o.dynamicInstances {
-		result = append(result, *o.serviceInstanceToInfo(serviceID, instance))
+	result := make([]ServiceInstanceInfo, 0, len(o.instances))
+	for name, instance := range o.instances {
+		result = append(result, *o.serviceInstanceToInfo(name, instance))
 	}
 
 	return result
@@ -565,8 +533,8 @@ func (o *Orchestrator) validateCreateRequest(req CreateServiceRequest) error {
 	if req.ServiceClassName == "" {
 		return fmt.Errorf("ServiceClass name is required")
 	}
-	if req.Label == "" {
-		return fmt.Errorf("service label is required")
+	if req.Name == "" {
+		return fmt.Errorf("service name is required")
 	}
 	if req.Parameters == nil {
 		req.Parameters = make(map[string]interface{})
@@ -575,10 +543,9 @@ func (o *Orchestrator) validateCreateRequest(req CreateServiceRequest) error {
 }
 
 // serviceInstanceToInfo converts a GenericServiceInstance to ServiceInstanceInfo
-func (o *Orchestrator) serviceInstanceToInfo(serviceID string, instance *services.GenericServiceInstance) *ServiceInstanceInfo {
+func (o *Orchestrator) serviceInstanceToInfo(name string, instance *services.GenericServiceInstance) *ServiceInstanceInfo {
 	return &ServiceInstanceInfo{
-		ServiceID:          serviceID,
-		Label:              instance.GetLabel(),
+		Name:               name,
 		ServiceClassName:   instance.GetServiceClassName(),
 		ServiceClassType:   string(instance.GetType()),
 		State:              string(instance.GetState()),
@@ -591,18 +558,18 @@ func (o *Orchestrator) serviceInstanceToInfo(serviceID string, instance *service
 }
 
 // createDynamicServiceStateChangeCallback creates a state change callback for ServiceClass-based services
-func (o *Orchestrator) createDynamicServiceStateChangeCallback(serviceID string) services.StateChangeCallback {
-	return func(label string, oldState, newState services.ServiceState, health services.HealthStatus, err error) {
+func (o *Orchestrator) createDynamicServiceStateChangeCallback(name string) services.StateChangeCallback {
+	return func(name string, oldState, newState services.ServiceState, health services.HealthStatus, err error) {
 		// Publish to both static service subscribers and dynamic service subscribers
-		o.publishStateChangeEvent(label, oldState, newState, health, err)
-		o.publishServiceInstanceEvent(serviceID, label, oldState, newState, health, err)
+		o.publishStateChangeEvent(name, oldState, newState, health, err)
+		o.publishServiceInstanceEvent(name, oldState, newState, health, err)
 	}
 }
 
 // publishServiceInstanceEvent publishes a ServiceClass-based service instance event
-func (o *Orchestrator) publishServiceInstanceEvent(serviceID, label string, oldState, newState services.ServiceState, health services.HealthStatus, err error) {
+func (o *Orchestrator) publishServiceInstanceEvent(name string, oldState, newState services.ServiceState, health services.HealthStatus, err error) {
 	o.mu.RLock()
-	instance, exists := o.dynamicInstances[serviceID]
+	instance, exists := o.instances[name]
 	if !exists {
 		o.mu.RUnlock()
 		return
@@ -610,8 +577,7 @@ func (o *Orchestrator) publishServiceInstanceEvent(serviceID, label string, oldS
 
 	// Create the event
 	event := ServiceInstanceEvent{
-		ServiceID:   serviceID,
-		Label:       label,
+		Name:        name,
 		ServiceType: string(instance.GetType()),
 		OldState:    string(oldState),
 		NewState:    string(newState),
@@ -636,7 +602,7 @@ func (o *Orchestrator) publishServiceInstanceEvent(serviceID, label string, oldS
 		case subscriber <- event:
 		default:
 			// Don't block if subscriber can't receive immediately
-			logging.Debug("Orchestrator", "ServiceInstance event subscriber blocked, skipping event for service %s", label)
+			logging.Debug("Orchestrator", "ServiceInstance event subscriber blocked, skipping event for service %s", name)
 		}
 	}
 }
@@ -645,30 +611,30 @@ func (o *Orchestrator) publishServiceInstanceEvent(serviceID, label string, oldS
 func (o *Orchestrator) setupStateChangeNotifications(services []services.Service) {
 	for _, service := range services {
 		service.SetStateChangeCallback(o.createStateChangeCallback())
-		logging.Debug("Orchestrator", "Set up state change notifications for service: %s", service.GetLabel())
+		logging.Debug("Orchestrator", "Set up state change notifications for service: %s", service.GetName())
 	}
 }
 
 // createStateChangeCallback creates a state change callback that publishes events
 func (o *Orchestrator) createStateChangeCallback() services.StateChangeCallback {
-	return func(label string, oldState, newState services.ServiceState, health services.HealthStatus, err error) {
-		o.publishStateChangeEvent(label, oldState, newState, health, err)
+	return func(name string, oldState, newState services.ServiceState, health services.HealthStatus, err error) {
+		o.publishStateChangeEvent(name, oldState, newState, health, err)
 	}
 }
 
 // publishStateChangeEvent publishes a state change event to all subscribers
-func (o *Orchestrator) publishStateChangeEvent(label string, oldState, newState services.ServiceState, health services.HealthStatus, err error) {
+func (o *Orchestrator) publishStateChangeEvent(name string, oldState, newState services.ServiceState, health services.HealthStatus, err error) {
 	// Get service to determine its type (try both static and dynamic)
-	service, exists := o.registry.Get(label)
+	service, exists := o.registry.Get(name)
 	if !exists {
 		return
 	}
 
-	logging.Debug("Orchestrator", "Service %s state changed: %s -> %s (health: %s)", label, oldState, newState, health)
+	logging.Debug("Orchestrator", "Service %s state changed: %s -> %s (health: %s)", name, oldState, newState, health)
 
 	// Create the event
 	event := ServiceStateChangedEvent{
-		Label:       label,
+		Name:        name,
 		ServiceType: string(service.GetType()),
 		OldState:    string(oldState),
 		NewState:    string(newState),
@@ -688,7 +654,7 @@ func (o *Orchestrator) publishStateChangeEvent(label string, oldState, newState 
 		case subscriber <- event:
 		default:
 			// Don't block if subscriber can't receive immediately
-			logging.Debug("Orchestrator", "Subscriber blocked, skipping event for service %s", label)
+			logging.Debug("Orchestrator", "Subscriber blocked, skipping event for service %s", name)
 		}
 	}
 }
@@ -701,20 +667,20 @@ func (o *Orchestrator) Stop() error {
 
 	// Stop all ServiceClass-based services
 	o.mu.RLock()
-	var dynamicInstances []*services.GenericServiceInstance
-	for _, instance := range o.dynamicInstances {
-		dynamicInstances = append(dynamicInstances, instance)
+	var instances []*services.GenericServiceInstance
+	for _, instance := range o.instances {
+		instances = append(instances, instance)
 	}
 	o.mu.RUnlock()
 
 	// Stop dynamic services concurrently
 	var wg sync.WaitGroup
-	for _, instance := range dynamicInstances {
+	for _, instance := range instances {
 		wg.Add(1)
 		go func(inst *services.GenericServiceInstance) {
 			defer wg.Done()
 			if err := inst.Stop(o.ctx); err != nil {
-				logging.Error("Orchestrator", err, "Failed to stop ServiceClass instance %s during shutdown", inst.GetLabel())
+				logging.Error("Orchestrator", err, "Failed to stop ServiceClass instance %s during shutdown", inst.GetServiceClassName())
 			}
 		}(instance)
 	}
@@ -725,48 +691,48 @@ func (o *Orchestrator) Stop() error {
 	return nil
 }
 
-// StartService starts a specific service by label (works for both static and ServiceClass-based services).
-func (o *Orchestrator) StartService(label string) error {
-	service, exists := o.registry.Get(label)
+// StartService starts a specific service by name
+func (o *Orchestrator) StartService(name string) error {
+	service, exists := o.registry.Get(name)
 	if !exists {
-		return fmt.Errorf("service %s not found", label)
+		return fmt.Errorf("service %s not found", name)
 	}
 
 	if err := service.Start(o.ctx); err != nil {
-		return fmt.Errorf("failed to start service %s: %w", label, err)
+		return fmt.Errorf("failed to start service %s: %w", name, err)
 	}
 
-	logging.Info("Orchestrator", "Started service: %s", label)
+	logging.Info("Orchestrator", "Started service: %s", name)
 	return nil
 }
 
-// StopService stops a specific service by label (works for both static and ServiceClass-based services).
-func (o *Orchestrator) StopService(label string) error {
-	service, exists := o.registry.Get(label)
+// StopService stops a specific service by name
+func (o *Orchestrator) StopService(name string) error {
+	service, exists := o.registry.Get(name)
 	if !exists {
-		return fmt.Errorf("service %s not found", label)
+		return fmt.Errorf("service %s not found", name)
 	}
 
 	if err := service.Stop(o.ctx); err != nil {
-		return fmt.Errorf("failed to stop service %s: %w", label, err)
+		return fmt.Errorf("failed to stop service %s: %w", name, err)
 	}
 
-	logging.Info("Orchestrator", "Stopped service: %s", label)
+	logging.Info("Orchestrator", "Stopped service: %s", name)
 	return nil
 }
 
-// RestartService restarts a specific service by label (works for both static and ServiceClass-based services).
-func (o *Orchestrator) RestartService(label string) error {
-	service, exists := o.registry.Get(label)
+// RestartService restarts a specific service by name
+func (o *Orchestrator) RestartService(name string) error {
+	service, exists := o.registry.Get(name)
 	if !exists {
-		return fmt.Errorf("service %s not found", label)
+		return fmt.Errorf("service %s not found", name)
 	}
 
 	if err := service.Restart(o.ctx); err != nil {
-		return fmt.Errorf("failed to restart service %s: %w", label, err)
+		return fmt.Errorf("failed to restart service %s: %w", name, err)
 	}
 
-	logging.Info("Orchestrator", "Restarted service: %s", label)
+	logging.Info("Orchestrator", "Restarted service: %s", name)
 	return nil
 }
 
@@ -786,7 +752,7 @@ func (o *Orchestrator) SubscribeToStateChanges() <-chan ServiceStateChangedEvent
 
 // ServiceStateChangedEvent represents a service state change event.
 type ServiceStateChangedEvent struct {
-	Label       string
+	Name        string
 	ServiceType string
 	OldState    string
 	NewState    string
@@ -796,14 +762,14 @@ type ServiceStateChangedEvent struct {
 }
 
 // GetServiceStatus returns the status of a specific service.
-func (o *Orchestrator) GetServiceStatus(label string) (*ServiceStatus, error) {
-	service, exists := o.registry.Get(label)
+func (o *Orchestrator) GetServiceStatus(name string) (*ServiceStatus, error) {
+	service, exists := o.registry.Get(name)
 	if !exists {
-		return nil, fmt.Errorf("service %s not found", label)
+		return nil, fmt.Errorf("service %s not found", name)
 	}
 
 	return &ServiceStatus{
-		Label:  label,
+		Name:   name,
 		Type:   string(service.GetType()),
 		State:  string(service.GetState()),
 		Health: string(service.GetHealth()),
@@ -818,7 +784,7 @@ func (o *Orchestrator) GetAllServices() []ServiceStatus {
 
 	for i, service := range services {
 		statuses[i] = ServiceStatus{
-			Label:  service.GetLabel(),
+			Name:   service.GetName(),
 			Type:   string(service.GetType()),
 			State:  string(service.GetState()),
 			Health: string(service.GetHealth()),
@@ -831,7 +797,7 @@ func (o *Orchestrator) GetAllServices() []ServiceStatus {
 
 // ServiceStatus represents the status of a service.
 type ServiceStatus struct {
-	Label  string
+	Name   string
 	Type   string
 	State  string
 	Health string

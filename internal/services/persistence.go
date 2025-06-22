@@ -14,8 +14,7 @@ import (
 // This is a minimal structure focused only on what needs to be persisted
 type ServiceInstanceDefinition struct {
 	// Instance identification
-	Name  string `yaml:"name" json:"name"`   // Unique instance name (same as label)
-	Label string `yaml:"label" json:"label"` // Service label
+	Name string `yaml:"name" json:"name"` // Unique instance name
 
 	// Service class reference
 	ServiceClassName string `yaml:"serviceClassName" json:"serviceClassName"` // Which service class to instantiate
@@ -137,11 +136,6 @@ func (sip *ServiceInstancePersistence) validateDefinition(def *ServiceInstanceDe
 		return fmt.Errorf("serviceClassName is required for service instance %s", def.Name)
 	}
 
-	// Set default values
-	if def.Label == "" {
-		def.Label = def.Name
-	}
-
 	if def.Parameters == nil {
 		def.Parameters = make(map[string]interface{})
 	}
@@ -155,10 +149,9 @@ func (sip *ServiceInstancePersistence) validateDefinition(def *ServiceInstanceDe
 
 // CreateDefinitionFromInstance creates a ServiceInstanceDefinition from orchestrator data
 // This is a helper function for the orchestrator to easily create persistent definitions
-func CreateDefinitionFromInstance(label, serviceClassName, serviceClassType string, parameters map[string]interface{}, autoStart bool) ServiceInstanceDefinition {
+func CreateDefinitionFromInstance(name, serviceClassName, serviceClassType string, parameters map[string]interface{}, autoStart bool) ServiceInstanceDefinition {
 	return ServiceInstanceDefinition{
-		Name:             label,
-		Label:            label,
+		Name:             name,
 		ServiceClassName: serviceClassName,
 		ServiceClassType: serviceClassType,
 		Parameters:       parameters,

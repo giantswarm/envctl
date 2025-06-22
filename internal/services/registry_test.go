@@ -7,7 +7,7 @@ import (
 
 // testService implements the Service interface for testing
 type testService struct {
-	label        string
+	name         string
 	serviceType  ServiceType
 	state        ServiceState
 	health       HealthStatus
@@ -40,8 +40,8 @@ func (s *testService) GetLastError() error {
 	return s.lastError
 }
 
-func (s *testService) GetLabel() string {
-	return s.label
+func (s *testService) GetName() string {
+	return s.name
 }
 
 func (s *testService) GetType() ServiceType {
@@ -68,7 +68,7 @@ func TestRegister(t *testing.T) {
 
 	// Test registering a valid service
 	service := &testService{
-		label:       "test-service",
+		name:        "test-service",
 		serviceType: TypeMCPServer,
 		state:       StateRunning,
 		health:      HealthHealthy,
@@ -89,24 +89,24 @@ func TestRegister(t *testing.T) {
 		t.Errorf("Expected specific error message, got: %s", err.Error())
 	}
 
-	// Test registering service with empty label
-	emptyLabelService := &testService{
-		label:       "",
+	// Test registering service with empty name
+	emptyNameService := &testService{
+		name:        "",
 		serviceType: TypeMCPServer,
 	}
 
-	err = registry.Register(emptyLabelService)
+	err = registry.Register(emptyNameService)
 	if err == nil {
-		t.Error("Expected error when registering service with empty label")
+		t.Error("Expected error when registering service with empty name")
 	}
 
-	if err.Error() != "service has empty label" {
+	if err.Error() != "service has empty name" {
 		t.Errorf("Expected specific error message, got: %s", err.Error())
 	}
 
 	// Test registering duplicate service
 	duplicateService := &testService{
-		label:       "test-service",
+		name:        "test-service",
 		serviceType: TypeMCPServer,
 	}
 
@@ -131,7 +131,7 @@ func TestGet(t *testing.T) {
 
 	// Register a service
 	service := &testService{
-		label:       "get-test",
+		name:        "get-test",
 		serviceType: TypeMCPServer,
 		state:       StateRunning,
 		health:      HealthHealthy,
@@ -149,8 +149,8 @@ func TestGet(t *testing.T) {
 		t.Error("Expected to get the same service instance")
 	}
 
-	if retrieved.GetLabel() != "get-test" {
-		t.Errorf("Expected label 'get-test', got %s", retrieved.GetLabel())
+	if retrieved.GetName() != "get-test" {
+		t.Errorf("Expected name 'get-test', got %s", retrieved.GetName())
 	}
 }
 
@@ -169,7 +169,7 @@ func TestUnregister(t *testing.T) {
 
 	// Register a service
 	service := &testService{
-		label:       "unregister-test",
+		name:        "unregister-test",
 		serviceType: TypeMCPServer,
 	}
 
@@ -205,17 +205,17 @@ func TestGetAll(t *testing.T) {
 
 	// Register multiple services
 	service1 := &testService{
-		label:       "service-1",
+		name:        "service-1",
 		serviceType: TypeMCPServer,
 	}
 
 	service2 := &testService{
-		label:       "service-2",
+		name:        "service-2",
 		serviceType: TypeMCPServer,
 	}
 
 	service3 := &testService{
-		label:       "service-3",
+		name:        "service-3",
 		serviceType: TypeMCPServer,
 	}
 
@@ -230,15 +230,15 @@ func TestGetAll(t *testing.T) {
 	}
 
 	// Verify all services are present
-	labels := make(map[string]bool)
+	names := make(map[string]bool)
 	for _, service := range services {
-		labels[service.GetLabel()] = true
+		names[service.GetName()] = true
 	}
 
-	expectedLabels := []string{"service-1", "service-2", "service-3"}
-	for _, label := range expectedLabels {
-		if !labels[label] {
-			t.Errorf("Expected service %s to be in GetAll result", label)
+	expectedNames := []string{"service-1", "service-2", "service-3"}
+	for _, name := range expectedNames {
+		if !names[name] {
+			t.Errorf("Expected service %s to be in GetAll result", name)
 		}
 	}
 }
@@ -248,7 +248,7 @@ func TestGetByType(t *testing.T) {
 
 	// Register services of different types
 	mcpService := &testService{
-		label:       "mcp-1",
+		name:        "mcp-1",
 		serviceType: TypeMCPServer,
 	}
 
@@ -260,8 +260,8 @@ func TestGetByType(t *testing.T) {
 		t.Errorf("Expected 1 MCP service, got %d", len(mcpServices))
 	}
 
-	if mcpServices[0].GetLabel() != "mcp-1" {
-		t.Errorf("Expected MCP service 'mcp-1', got %s", mcpServices[0].GetLabel())
+	if mcpServices[0].GetName() != "mcp-1" {
+		t.Errorf("Expected MCP service 'mcp-1', got %s", mcpServices[0].GetName())
 	}
 
 	// Test getting non-existent type (this should return empty slice)
@@ -281,7 +281,7 @@ func TestRegistryConcurrency(t *testing.T) {
 	go func() {
 		for i := 0; i < 10; i++ {
 			service := &testService{
-				label:       "concurrent-" + string(rune('0'+i)),
+				name:        "concurrent-" + string(rune('0'+i)),
 				serviceType: TypeMCPServer,
 			}
 			registry.Register(service)
