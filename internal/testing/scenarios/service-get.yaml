@@ -23,12 +23,12 @@ steps:
   expected: { success: true }
   cleanup:
   - tool: "core_service_delete"
-    args: { labelOrServiceId: "get-test-service" }
+    args: { name: "get-test-service" }
 - id: "get-the-service"
   description: "Get the created service by its label"
   tool: "core_service_get"
   args:
-    labelOrServiceId: "get-test-service"
+    name: "get-test-service"
   expected:
     success: true
     json_path:

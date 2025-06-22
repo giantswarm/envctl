@@ -12,9 +12,7 @@ steps:
   args:
     name: "container-test-server"
     type: "container"
-    enabled: true
-    icon: "🐳"
-    category: "infrastructure"
+    autoStart: true
     image: "my-mcp-server:latest"
     containerPorts: ["8080:8080"]
     containerEnv:

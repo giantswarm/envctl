@@ -77,19 +77,14 @@ func (t *TestMCPServer) handleRunScenarios(ctx context.Context, request mcp.Call
 		config.Verbose = verbose
 	}
 
-	// Determine scenario path
-	scenarioPath := config.ConfigPath
-	if scenarioPath == "" {
-		scenarioPath = testing.GetDefaultScenarioPath()
-	}
-
-	// Load test scenarios
-	scenarios, err := t.testLoader.LoadScenarios(scenarioPath)
+	// Load and filter test scenarios using unified approach
+	scenarios, err := testing.LoadAndFilterScenarios(config.ConfigPath, config, nil)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to load test scenarios: %v", err)), nil
 	}
 
 	if len(scenarios) == 0 {
+		scenarioPath := testing.GetScenarioPath(config.ConfigPath)
 		return mcp.NewToolResultText(fmt.Sprintf("No test scenarios found in %s", scenarioPath)), nil
 	}
 
@@ -121,58 +116,46 @@ func (t *TestMCPServer) handleListScenarios(ctx context.Context, request mcp.Cal
 		configPath = path
 	}
 
-	if configPath == "" {
-		configPath = testing.GetDefaultScenarioPath()
+	// Create test configuration for filtering
+	testConfig := testing.TestConfiguration{
+		Verbose: true, // MCP server mode defaults to verbose
+		Debug:   t.debug,
 	}
 
-	// Load scenarios
-	scenarios, err := t.testLoader.LoadScenarios(configPath)
+	// Apply category filter
+	if category, ok := args["category"].(string); ok && category != "" {
+		switch category {
+		case "behavioral":
+			testConfig.Category = testing.CategoryBehavioral
+		case "integration":
+			testConfig.Category = testing.CategoryIntegration
+		default:
+			return mcp.NewToolResultError(fmt.Sprintf("Invalid category '%s'", category)), nil
+		}
+	}
+
+	// Apply concept filter
+	if concept, ok := args["concept"].(string); ok && concept != "" {
+		switch concept {
+		case "serviceclass":
+			testConfig.Concept = testing.ConceptServiceClass
+		case "workflow":
+			testConfig.Concept = testing.ConceptWorkflow
+		case "mcpserver":
+			testConfig.Concept = testing.ConceptMCPServer
+		case "capability":
+			testConfig.Concept = testing.ConceptCapability
+		case "service":
+			testConfig.Concept = testing.ConceptService
+		default:
+			return mcp.NewToolResultError(fmt.Sprintf("Invalid concept '%s'", concept)), nil
+		}
+	}
+
+	// Load and filter scenarios using unified approach
+	filteredScenarios, err := testing.LoadAndFilterScenarios(configPath, testConfig, nil)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to load scenarios: %v", err)), nil
-	}
-
-	// Apply filters if provided
-	var filteredScenarios []testing.TestScenario
-	for _, scenario := range scenarios {
-		// Apply category filter
-		if category, ok := args["category"].(string); ok && category != "" {
-			var targetCategory testing.TestCategory
-			switch category {
-			case "behavioral":
-				targetCategory = testing.CategoryBehavioral
-			case "integration":
-				targetCategory = testing.CategoryIntegration
-			default:
-				return mcp.NewToolResultError(fmt.Sprintf("Invalid category '%s'", category)), nil
-			}
-			if scenario.Category != targetCategory {
-				continue
-			}
-		}
-
-		// Apply concept filter
-		if concept, ok := args["concept"].(string); ok && concept != "" {
-			var targetConcept testing.TestConcept
-			switch concept {
-			case "serviceclass":
-				targetConcept = testing.ConceptServiceClass
-			case "workflow":
-				targetConcept = testing.ConceptWorkflow
-			case "mcpserver":
-				targetConcept = testing.ConceptMCPServer
-			case "capability":
-				targetConcept = testing.ConceptCapability
-			case "service":
-				targetConcept = testing.ConceptService
-			default:
-				return mcp.NewToolResultError(fmt.Sprintf("Invalid concept '%s'", concept)), nil
-			}
-			if scenario.Concept != targetConcept {
-				continue
-			}
-		}
-
-		filteredScenarios = append(filteredScenarios, scenario)
 	}
 
 	// Format scenarios for output
@@ -221,8 +204,10 @@ func (t *TestMCPServer) handleValidateScenario(ctx context.Context, request mcp.
 		return mcp.NewToolResultError("scenario_path parameter is required"), nil
 	}
 
-	// Try to load scenarios from the path
-	scenarios, err := t.testLoader.LoadScenarios(scenarioPath)
+	// Try to load scenarios from the path with unified approach
+	actualPath := testing.GetScenarioPath(scenarioPath)
+	loader := testing.CreateScenarioLoaderForContext(true, nil)
+	scenarios, err := loader.LoadScenarios(actualPath)
 	if err != nil {
 		// Return detailed validation error
 		return mcp.NewToolResultError(fmt.Sprintf("Validation failed: %v", err)), nil

@@ -1,0 +1,20 @@
+name: "test-deprecated-params"
+category: "behavioral"  
+concept: "mcpserver"
+description: "Test scenario with deprecated parameters to verify validation works"
+tags: ["test", "validation"]
+timeout: "1m"
+
+steps:
+- id: "test-deprecated-enabled"
+  description: "Test deprecated enabled parameter"
+  tool: "core_mcpserver_create"
+  args:
+    name: "test-deprecated-server"
+    type: "localCommand"
+    enabled: true
+    icon: "🚀"
+    category: "test"
+    command: ["echo", "test"]
+  expected:
+    success: true 

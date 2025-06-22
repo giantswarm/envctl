@@ -6,15 +6,13 @@ tags: ["mcpserver", "register", "core-api"]
 timeout: "1m"
 
 steps:
-- id: "register-mcpserver"
-  description: "Register an MCP server and verify it's available"
-  tool: "core_mcpserver_register"
+- id: "create-mcpserver"
+  description: "Create an MCP server and verify it's available"
+  tool: "core_mcpserver_create"
   args:
     name: "register-test-server"
     type: "localCommand"
-    enabled: true
-    icon: "🔧"
-    category: "testing"
+    autoStart: true
     command: ["echo", "register-test"]
     env:
       TEST_MODE: "register"
@@ -22,7 +20,7 @@ steps:
   expected:
     success: true
   cleanup:
-    - id: "unregister-mcpserver"
-      tool: "core_mcpserver_unregister"
+    - id: "delete-mcpserver"
+      tool: "core_mcpserver_delete"
       args:
         name: "register-test-server" 

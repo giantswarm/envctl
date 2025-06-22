@@ -424,7 +424,6 @@ func convertToMCPServer(args map[string]interface{}) (api.MCPServer, error) {
 	if autoStart, ok := args["autoStart"].(bool); ok {
 		def.AutoStart = autoStart
 	}
-	// Note: icon and category parameters are no longer supported in Phase 3
 	if toolPrefix, ok := args["toolPrefix"].(string); ok {
 		def.ToolPrefix = toolPrefix
 	}

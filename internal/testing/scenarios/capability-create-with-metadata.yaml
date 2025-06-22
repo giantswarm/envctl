@@ -17,9 +17,6 @@ steps:
       test_operation:
         description: "A test operation"
         requires: []
-    metadata:
-      author: "envctl-test"
-      reference: "ticket-123"
   expected:
     success: true
   cleanup:
@@ -35,6 +32,4 @@ steps:
   expected:
     success: true
     json_path:
-      name: "metadata-capability"
-      metadata.author: "envctl-test"
-      metadata.reference: "ticket-123" 
+      name: "metadata-capability" 

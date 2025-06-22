@@ -25,14 +25,14 @@ steps:
   description: "Delete the created service"
   tool: "core_service_delete"
   args:
-    labelOrServiceId: "delete-test-service"
+    name: "delete-test-service"
   expected:
     success: true
 - id: "verify-service-is-gone"
   description: "Attempt to get the deleted service"
   tool: "core_service_get"
   args:
-    labelOrServiceId: "delete-test-service"
+    name: "delete-test-service"
   expected:
     success: false
  

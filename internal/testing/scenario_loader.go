@@ -307,3 +307,60 @@ func (l *scenarioLoader) GetScenariosByTag(scenarios []TestScenario, tag string)
 func GetDefaultScenarioPath() string {
 	return "internal/testing/scenarios"
 }
+
+// LoadAndFilterScenarios provides a unified way to load and filter scenarios
+func LoadAndFilterScenarios(configPath string, config TestConfiguration, logger TestLogger) ([]TestScenario, error) {
+	// Determine the actual path to use
+	actualPath := GetScenarioPath(configPath)
+	
+	// Create loader with appropriate logger
+	var loader TestScenarioLoader
+	if logger != nil {
+		loader = NewTestScenarioLoaderWithLogger(config.Debug, logger)
+	} else {
+		loader = NewTestScenarioLoader(config.Debug)
+	}
+	
+	// Load scenarios
+	scenarios, err := loader.LoadScenarios(actualPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load scenarios from %s: %w", actualPath, err)
+	}
+
+	// Filter scenarios based on configuration
+	filteredScenarios := loader.FilterScenarios(scenarios, config)
+
+	return filteredScenarios, nil
+}
+
+// GetScenarioPath determines the actual scenario path to use, handling empty/default cases
+func GetScenarioPath(configPath string) string {
+	if configPath == "" {
+		return GetDefaultScenarioPath()
+	}
+	return configPath
+}
+
+// CreateScenarioLoaderForContext creates a scenario loader appropriate for the given context
+func CreateScenarioLoaderForContext(debug bool, logger TestLogger) TestScenarioLoader {
+	if logger != nil {
+		return NewTestScenarioLoaderWithLogger(debug, logger)
+	}
+	return NewTestScenarioLoader(debug)
+}
+
+// LoadScenariosForCompletion provides a simple way to load scenarios for shell completion
+// This uses minimal logging to avoid interfering with completion output
+func LoadScenariosForCompletion(configPath string) ([]TestScenario, error) {
+	actualPath := GetScenarioPath(configPath)
+	
+	// Use minimal logging for completion
+	loader := NewTestScenarioLoader(false)
+	scenarios, err := loader.LoadScenarios(actualPath)
+	if err != nil {
+		// Return empty slice instead of error for completion
+		return []TestScenario{}, nil
+	}
+	
+	return scenarios, nil
+}

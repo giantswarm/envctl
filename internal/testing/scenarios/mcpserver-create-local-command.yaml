@@ -12,9 +12,7 @@ steps:
   args:
     name: "local-test-server"
     type: "localCommand"
-    enabled: true
-    icon: "⚡"
-    category: "development"
+    autoStart: true
     command: ["echo", "hello-world"]
     env:
       TEST_VAR: "test-value"

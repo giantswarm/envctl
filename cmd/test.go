@@ -46,15 +46,8 @@ func completeConceptFlag(cmd *cobra.Command, args []string, toComplete string) (
 
 // completeScenarioFlag provides shell completion for the scenario flag by loading available scenarios
 func completeScenarioFlag(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	// Get the config path, use default if not specified
-	configPath := testConfigPath
-	if configPath == "" {
-		configPath = testing.GetDefaultScenarioPath()
-	}
-
-	// Create a loader to get available scenarios
-	loader := testing.NewTestScenarioLoader(false) // Don't enable debug for completion
-	scenarios, err := loader.LoadScenarios(configPath)
+	// Load scenarios using unified approach for completion
+	scenarios, err := testing.LoadScenariosForCompletion(testConfigPath)
 	if err != nil {
 		// Return empty completion on error
 		return []string{}, cobra.ShellCompDirectiveDefault
@@ -300,12 +293,6 @@ func runTest(cmd *cobra.Command, args []string) error {
 	// Set scenario filter
 	testConfig.Scenario = testScenario
 
-	// Determine config path for scenarios
-	scenarioPath := testConfigPath
-	if scenarioPath == "" {
-		scenarioPath = testing.GetDefaultScenarioPath()
-	}
-
 	// Create test framework with proper verbose and debug flags
 	framework, err := testing.NewTestFrameworkWithVerbose(testVerbose, testDebug, testBasePort, testReportPath)
 	if err != nil {
@@ -313,7 +300,8 @@ func runTest(cmd *cobra.Command, args []string) error {
 	}
 	defer framework.Cleanup()
 
-	// Load test scenarios
+	// Load test scenarios using unified path determination
+	scenarioPath := testing.GetScenarioPath(testConfigPath)
 	scenarios, err := framework.Loader.LoadScenarios(scenarioPath)
 	if err != nil {
 		return fmt.Errorf("failed to load test scenarios: %w", err)
