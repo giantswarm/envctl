@@ -101,7 +101,7 @@ func TestHealthStatusConstants(t *testing.T) {
 func TestServiceTypeConstants(t *testing.T) {
 	// Test that constants are defined and have expected values
 	serviceTypes := map[ServiceType]string{
-		TypeMCPServer:      "MCPServer",
+		TypeMCPServer: "MCPServer",
 	}
 
 	for serviceType, expectedStr := range serviceTypes {

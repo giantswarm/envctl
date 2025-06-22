@@ -63,12 +63,3 @@ type LifecycleTools struct {
 	// Tool to call to get service status/info (optional)
 	Status *ToolCall `yaml:"status,omitempty" json:"status,omitempty"`
 }
-
-// Type aliases for backward compatibility during transition
-// These will be removed once all packages are updated to use the consolidated types
-
-// ServiceClassInfo is an alias for ServiceClass for backward compatibility
-type ServiceClassInfo = ServiceClass
-
-// ServiceClassDefinition is an alias for ServiceClass for backward compatibility
-type ServiceClassDefinition = ServiceClass

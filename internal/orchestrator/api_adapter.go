@@ -123,27 +123,9 @@ func (a *Adapter) GetAllServices() []api.ServiceStatus {
 
 // ServiceClass-based dynamic service instance management
 
-// CreateServiceClassInstance creates a new ServiceClass-based service instance
-func (a *Adapter) CreateServiceClassInstance(ctx context.Context, req api.CreateServiceClassRequest) (*api.ServiceClassInstanceInfo, error) {
-	// Convert API request to internal request
-	internalReq := CreateServiceRequest{
-		ServiceClassName: req.ServiceClassName,
-		Label:            req.Label,
-		Parameters:       req.Parameters,
-		Persist:          req.Persist,
-		AutoStart:        req.AutoStart,
-		CreateTimeout:    req.CreateTimeout,
-		DeleteTimeout:    req.DeleteTimeout,
-	}
-
-	// Create the instance using the orchestrator
-	internalInfo, err := a.orchestrator.CreateServiceClassInstance(ctx, internalReq)
-	if err != nil {
-		return nil, err
-	}
-
-	// Convert internal response to API response
-	return a.convertToAPIServiceClassInstanceInfo(internalInfo), nil
+// CreateServiceClassInstance is an alias that delegates to CreateService for backward compatibility
+func (a *Adapter) CreateServiceClassInstance(ctx context.Context, req api.CreateServiceInstanceRequest) (*api.ServiceInstance, error) {
+	return a.CreateService(ctx, req)
 }
 
 // DeleteServiceClassInstance deletes a ServiceClass-based service instance
@@ -151,55 +133,54 @@ func (a *Adapter) DeleteServiceClassInstance(ctx context.Context, serviceID stri
 	return a.orchestrator.DeleteServiceClassInstance(ctx, serviceID)
 }
 
-// GetServiceClassInstance returns information about a ServiceClass-based service instance
-func (a *Adapter) GetServiceClassInstance(serviceID string) (*api.ServiceClassInstanceInfo, error) {
+// GetServiceClassInstance returns service instance info by ID
+func (a *Adapter) GetServiceClassInstance(serviceID string) (*api.ServiceInstance, error) {
 	internalInfo, err := a.orchestrator.GetServiceClassInstance(serviceID)
 	if err != nil {
 		return nil, err
 	}
-	return a.convertToAPIServiceClassInstanceInfo(internalInfo), nil
+	return a.convertToAPIServiceInstance(internalInfo), nil
 }
 
-// GetServiceClassInstanceByLabel returns information about a ServiceClass-based service instance by label
-func (a *Adapter) GetServiceClassInstanceByLabel(label string) (*api.ServiceClassInstanceInfo, error) {
+// GetServiceClassInstanceByLabel returns service instance info by label
+func (a *Adapter) GetServiceClassInstanceByLabel(label string) (*api.ServiceInstance, error) {
 	internalInfo, err := a.orchestrator.GetServiceClassInstanceByLabel(label)
 	if err != nil {
 		return nil, err
 	}
-	return a.convertToAPIServiceClassInstanceInfo(internalInfo), nil
+	return a.convertToAPIServiceInstance(internalInfo), nil
 }
 
-// ListServiceClassInstances returns information about all ServiceClass-based service instances
-func (a *Adapter) ListServiceClassInstances() []api.ServiceClassInstanceInfo {
+// ListServiceClassInstances returns all service class instances
+func (a *Adapter) ListServiceClassInstances() []api.ServiceInstance {
 	internalInfos := a.orchestrator.ListServiceClassInstances()
-	apiInfos := make([]api.ServiceClassInstanceInfo, len(internalInfos))
+	apiInfos := make([]api.ServiceInstance, len(internalInfos))
 
 	for i, internalInfo := range internalInfos {
-		apiInfos[i] = *a.convertToAPIServiceClassInstanceInfo(&internalInfo)
+		apiInfos[i] = *a.convertToAPIServiceInstance(&internalInfo)
 	}
 
 	return apiInfos
 }
 
-// SubscribeToServiceInstanceEvents returns a channel for receiving ServiceClass-based service instance events
-func (a *Adapter) SubscribeToServiceInstanceEvents() <-chan api.ServiceClassInstanceEvent {
-	// Convert internal events to API events
+// SubscribeToServiceInstanceEvents returns a channel for service instance events
+func (a *Adapter) SubscribeToServiceInstanceEvents() <-chan api.ServiceInstanceEvent {
 	internalChan := a.orchestrator.SubscribeToServiceInstanceEvents()
-	apiChan := make(chan api.ServiceClassInstanceEvent, 100)
+	apiChan := make(chan api.ServiceInstanceEvent, 100)
 
 	go func() {
-		for event := range internalChan {
-			apiChan <- api.ServiceClassInstanceEvent{
-				ServiceID:   event.ServiceID,
-				Label:       event.Label,
-				ServiceType: event.ServiceType,
-				OldState:    event.OldState,
-				NewState:    event.NewState,
-				OldHealth:   event.OldHealth,
-				NewHealth:   event.NewHealth,
-				Error:       event.Error,
-				Timestamp:   event.Timestamp,
-				Metadata:    event.Metadata,
+		for internalEvent := range internalChan {
+			apiChan <- api.ServiceInstanceEvent{
+				ServiceID:   internalEvent.ServiceID,
+				Label:       internalEvent.Label,
+				ServiceType: internalEvent.ServiceType,
+				OldState:    internalEvent.OldState,
+				NewState:    internalEvent.NewState,
+				OldHealth:   internalEvent.OldHealth,
+				NewHealth:   internalEvent.NewHealth,
+				Error:       internalEvent.Error,
+				Timestamp:   internalEvent.Timestamp,
+				Metadata:    internalEvent.Metadata,
 			}
 		}
 		close(apiChan)
@@ -210,9 +191,9 @@ func (a *Adapter) SubscribeToServiceInstanceEvents() <-chan api.ServiceClassInst
 
 // Conversion helpers
 
-// convertToAPIServiceClassInstanceInfo converts internal ServiceInstanceInfo to API ServiceClassInstanceInfo
-func (a *Adapter) convertToAPIServiceClassInstanceInfo(internalInfo *ServiceInstanceInfo) *api.ServiceClassInstanceInfo {
-	return &api.ServiceClassInstanceInfo{
+// convertToAPIServiceInstance converts internal ServiceInstanceInfo to API ServiceInstance
+func (a *Adapter) convertToAPIServiceInstance(internalInfo *ServiceInstanceInfo) *api.ServiceInstance {
+	return &api.ServiceInstance{
 		ID:               internalInfo.ServiceID,
 		Label:            internalInfo.Label,
 		ServiceClassName: internalInfo.ServiceClassName,
@@ -517,7 +498,7 @@ func (a *Adapter) handleServiceClassInstanceCreate(ctx context.Context, args map
 	persist, _ := args["persist"].(bool)
 	autoStart, _ := args["autoStart"].(bool)
 
-	req := api.CreateServiceClassRequest{
+	req := api.CreateServiceInstanceRequest{
 		ServiceClassName: serviceClassName,
 		Label:            label,
 		Parameters:       parameters,
@@ -587,7 +568,7 @@ func (a *Adapter) handleServiceClassInstanceGet(args map[string]interface{}) (*a
 // ServiceClass instance creation and deletion (unified methods)
 
 // CreateService creates a new ServiceClass-based service instance (unified method)
-func (a *Adapter) CreateService(ctx context.Context, req api.CreateServiceClassRequest) (*api.ServiceClassInstanceInfo, error) {
+func (a *Adapter) CreateService(ctx context.Context, req api.CreateServiceInstanceRequest) (*api.ServiceInstance, error) {
 	// Convert API request to internal request
 	internalReq := CreateServiceRequest{
 		ServiceClassName: req.ServiceClassName,
@@ -604,7 +585,7 @@ func (a *Adapter) CreateService(ctx context.Context, req api.CreateServiceClassR
 	}
 
 	// Convert internal response to API response
-	return a.convertToAPIServiceClassInstanceInfo(internalInfo), nil
+	return a.convertToAPIServiceInstance(internalInfo), nil
 }
 
 // DeleteService deletes a service (works for ServiceClass instances by label or serviceID)
@@ -626,19 +607,19 @@ func (a *Adapter) DeleteService(ctx context.Context, labelOrServiceID string) er
 }
 
 // GetService returns detailed service information by label or serviceID
-func (a *Adapter) GetService(labelOrServiceID string) (*api.ServiceClassInstanceInfo, error) {
+func (a *Adapter) GetService(labelOrServiceID string) (*api.ServiceInstance, error) {
 	// Try to find by label first
 	if internalInfo, err := a.orchestrator.GetServiceClassInstanceByLabel(labelOrServiceID); err == nil {
-		return a.convertToAPIServiceClassInstanceInfo(internalInfo), nil
+		return a.convertToAPIServiceInstance(internalInfo), nil
 	}
 
 	// Try to find by serviceID
 	if internalInfo, err := a.orchestrator.GetServiceClassInstance(labelOrServiceID); err == nil {
-		return a.convertToAPIServiceClassInstanceInfo(internalInfo), nil
+		return a.convertToAPIServiceInstance(internalInfo), nil
 	}
 
 	// If it's a static service (in registry but not in ServiceClass instances), we need a different approach
-	// For now, return error since GetService method expects ServiceClassInstanceInfo
+	// For now, return error since GetService method expects ServiceInstanceInfo
 	return nil, fmt.Errorf("service '%s' not found or is not a ServiceClass instance", labelOrServiceID)
 }
 

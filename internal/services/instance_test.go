@@ -71,7 +71,7 @@ func (m *mockToolCaller) Reset() {
 
 // mockServiceClassManager implements ServiceClassManagerHandler for testing
 type mockServiceClassManager struct {
-	serviceClasses     map[string]*api.ServiceClassDefinition
+	serviceClasses     map[string]*api.ServiceClass
 	createTools        map[string]createToolInfo
 	deleteTools        map[string]deleteToolInfo
 	healthCheckTools   map[string]healthCheckToolInfo
@@ -107,7 +107,7 @@ type healthCheckConfig struct {
 
 func newMockServiceClassManager() *mockServiceClassManager {
 	return &mockServiceClassManager{
-		serviceClasses:     make(map[string]*api.ServiceClassDefinition),
+		serviceClasses:     make(map[string]*api.ServiceClass),
 		createTools:        make(map[string]createToolInfo),
 		deleteTools:        make(map[string]deleteToolInfo),
 		healthCheckTools:   make(map[string]healthCheckToolInfo),
@@ -117,25 +117,29 @@ func newMockServiceClassManager() *mockServiceClassManager {
 	}
 }
 
-func (m *mockServiceClassManager) GetServiceClass(name string) (*api.ServiceClassDefinition, error) {
+func (m *mockServiceClassManager) GetServiceClass(name string) (*api.ServiceClass, error) {
 	if def, exists := m.serviceClasses[name]; exists {
 		return def, nil
 	}
 	return nil, fmt.Errorf("service class %s not found", name)
 }
 
-func (m *mockServiceClassManager) GetCreateTool(name string) (toolName string, arguments map[string]interface{}, responseMapping map[string]string, err error) {
+func (m *mockServiceClassManager) GetStartTool(name string) (toolName string, arguments map[string]interface{}, responseMapping map[string]string, err error) {
 	if info, exists := m.createTools[name]; exists {
 		return info.toolName, info.arguments, info.responseMapping, nil
 	}
-	return "", nil, nil, fmt.Errorf("create tool for service class %s not found", name)
+	return "", nil, nil, fmt.Errorf("start tool for service class %s not found", name)
 }
 
-func (m *mockServiceClassManager) GetDeleteTool(name string) (toolName string, arguments map[string]interface{}, responseMapping map[string]string, err error) {
+func (m *mockServiceClassManager) GetStopTool(name string) (toolName string, arguments map[string]interface{}, responseMapping map[string]string, err error) {
 	if info, exists := m.deleteTools[name]; exists {
 		return info.toolName, info.arguments, info.responseMapping, nil
 	}
-	return "", nil, nil, fmt.Errorf("delete tool for service class %s not found", name)
+	return "", nil, nil, fmt.Errorf("stop tool for service class %s not found", name)
+}
+
+func (m *mockServiceClassManager) GetRestartTool(name string) (toolName string, arguments map[string]interface{}, responseMapping map[string]string, err error) {
+	return "", nil, nil, nil // Optional tool
 }
 
 func (m *mockServiceClassManager) GetHealthCheckTool(name string) (toolName string, arguments map[string]interface{}, responseMapping map[string]string, err error) {
@@ -146,85 +150,68 @@ func (m *mockServiceClassManager) GetHealthCheckTool(name string) (toolName stri
 }
 
 func (m *mockServiceClassManager) GetHealthCheckConfig(name string) (enabled bool, interval time.Duration, failureThreshold, successThreshold int, err error) {
-	config, exists := m.healthCheckConfigs[name]
-	if !exists {
-		return false, 0, 0, 0, fmt.Errorf("health check config not found for service class: %s", name)
+	if config, exists := m.healthCheckConfigs[name]; exists {
+		return config.enabled, config.interval, config.failureThreshold, config.successThreshold, nil
 	}
-	return config.enabled, config.interval, config.failureThreshold, config.successThreshold, nil
-}
-
-func (m *mockServiceClassManager) GetRestartTool(name string) (toolName string, arguments map[string]interface{}, responseMapping map[string]string, err error) {
-	// For testing, return a default restart tool or error if not available
-	return "", nil, nil, fmt.Errorf("restart tool not configured for service class: %s", name)
-}
-
-func (m *mockServiceClassManager) GetStartTool(name string) (toolName string, arguments map[string]interface{}, responseMapping map[string]string, err error) {
-	// Delegate to GetCreateTool for backward compatibility
-	return m.GetCreateTool(name)
-}
-
-func (m *mockServiceClassManager) GetStopTool(name string) (toolName string, arguments map[string]interface{}, responseMapping map[string]string, err error) {
-	// Delegate to GetDeleteTool for backward compatibility
-	return m.GetDeleteTool(name)
+	return false, 0, 0, 0, fmt.Errorf("health check config for service class %s not found", name)
 }
 
 func (m *mockServiceClassManager) GetServiceDependencies(name string) ([]string, error) {
 	if deps, exists := m.dependencies[name]; exists {
 		return deps, nil
 	}
-	return []string{}, nil
+	return nil, nil
 }
 
 func (m *mockServiceClassManager) IsServiceClassAvailable(name string) bool {
-	return m.availability[name]
+	if available, exists := m.availability[name]; exists {
+		return available
+	}
+	return false
 }
 
-// Additional methods required by the interface (stubs for testing)
-func (m *mockServiceClassManager) ListServiceClasses() []api.ServiceClassInfo { return nil }
-func (m *mockServiceClassManager) LoadServiceDefinitions() error              { return nil }
-func (m *mockServiceClassManager) RefreshAvailability()                       {}
-func (m *mockServiceClassManager) RegisterDefinition(*api.ServiceClassDefinition) error {
+func (m *mockServiceClassManager) ListServiceClasses() []api.ServiceClass { return nil }
+func (m *mockServiceClassManager) GetTools() []api.ToolMetadata           { return nil }
+func (m *mockServiceClassManager) ExecuteTool(ctx context.Context, toolName string, args map[string]interface{}) (*api.CallToolResult, error) {
+	return nil, nil
+}
+func (m *mockServiceClassManager) RegisterDefinition(*api.ServiceClass) error {
 	return nil
 }
-func (m *mockServiceClassManager) UnregisterDefinition(string) error { return nil }
-func (m *mockServiceClassManager) GetDefinitionsPath() string        { return "" }
 
-// ToolProvider interface methods
-func (m *mockServiceClassManager) GetTools() []api.ToolMetadata { return nil }
-func (m *mockServiceClassManager) ExecuteTool(ctx context.Context, toolName string, args map[string]interface{}) (*api.CallToolResult, error) {
-	return &api.CallToolResult{Content: []interface{}{"mock result"}, IsError: false}, nil
+// Helper methods for setting up test data
+func (m *mockServiceClassManager) SetAvailable(name string, available bool) {
+	m.availability[name] = available
 }
 
-// Helper methods for test setup
-func (m *mockServiceClassManager) SetServiceClass(name string, def *api.ServiceClassDefinition) {
-	m.serviceClasses[name] = def
-	m.availability[name] = true
-}
-
-func (m *mockServiceClassManager) SetCreateTool(name, toolName string, args map[string]interface{}, responseMapping map[string]string) {
+// SetStartTool configures the start tool for a service class
+func (m *mockServiceClassManager) SetStartTool(name, toolName string, args map[string]interface{}, respMapping map[string]string) {
 	m.createTools[name] = createToolInfo{
 		toolName:        toolName,
 		arguments:       args,
-		responseMapping: responseMapping,
+		responseMapping: respMapping,
 	}
 }
 
-func (m *mockServiceClassManager) SetDeleteTool(name, toolName string, args map[string]interface{}, responseMapping map[string]string) {
+// SetStopTool configures the stop tool for a service class
+func (m *mockServiceClassManager) SetStopTool(name, toolName string, args map[string]interface{}, respMapping map[string]string) {
 	m.deleteTools[name] = deleteToolInfo{
 		toolName:        toolName,
 		arguments:       args,
-		responseMapping: responseMapping,
+		responseMapping: respMapping,
 	}
 }
 
-func (m *mockServiceClassManager) SetHealthCheckTool(name, toolName string, args map[string]interface{}, responseMapping map[string]string) {
+// SetHealthCheckTool configures the health check tool for a service class
+func (m *mockServiceClassManager) SetHealthCheckTool(name, toolName string, args map[string]interface{}, respMapping map[string]string) {
 	m.healthCheckTools[name] = healthCheckToolInfo{
 		toolName:        toolName,
 		arguments:       args,
-		responseMapping: responseMapping,
+		responseMapping: respMapping,
 	}
 }
 
+// SetHealthCheckConfig configures health check behavior for a service class
 func (m *mockServiceClassManager) SetHealthCheckConfig(name string, enabled bool, interval time.Duration, failureThreshold, successThreshold int) {
 	m.healthCheckConfigs[name] = healthCheckConfig{
 		enabled:          enabled,
@@ -234,6 +221,11 @@ func (m *mockServiceClassManager) SetHealthCheckConfig(name string, enabled bool
 	}
 }
 
+func (m *mockServiceClassManager) SetServiceClass(name string, def *api.ServiceClass) {
+	m.serviceClasses[name] = def
+}
+
+// SetDependencies configures dependencies for a service class
 func (m *mockServiceClassManager) SetDependencies(name string, deps []string) {
 	m.dependencies[name] = deps
 }
@@ -264,7 +256,7 @@ func TestNewGenericServiceInstance(t *testing.T) {
 	defer cleanup()
 
 	// Setup test service class
-	mockMgr.SetServiceClass("test-service", &api.ServiceClassDefinition{
+	mockMgr.SetServiceClass("test-service", &api.ServiceClass{
 		Name:        "test-service",
 		Version:     "1.0.0",
 		Description: "Test service class",
@@ -323,10 +315,10 @@ func TestGenericServiceInstance_Start_Success(t *testing.T) {
 	defer cleanup()
 
 	// Setup test service class
-	mockMgr.SetServiceClass("test-service", &api.ServiceClassDefinition{
+	mockMgr.SetServiceClass("test-service", &api.ServiceClass{
 		Name: "test-service",
 	})
-	mockMgr.SetCreateTool("test-service", "test_create_tool",
+	mockMgr.SetStartTool("test-service", "test_create_tool",
 		map[string]interface{}{
 			"name": "{{ .param1 }}",
 			"type": "{{ .param2 }}",
@@ -378,11 +370,11 @@ func TestGenericServiceInstance_Start_ToolCallError(t *testing.T) {
 	defer cleanup()
 
 	// Setup test service class
-	mockMgr.SetServiceClass("test-service", &api.ServiceClassDefinition{
+	mockMgr.SetServiceClass("test-service", &api.ServiceClass{
 		Name: "test-service",
 	})
-	// Use SetCreateTool since GetStartTool delegates to GetCreateTool in the mock
-	mockMgr.SetCreateTool("test-service", "test_create_tool",
+	// Use SetStartTool since GetStartTool delegates to GetCreateTool in the mock
+	mockMgr.SetStartTool("test-service", "test_create_tool",
 		map[string]interface{}{},
 		map[string]string{})
 
@@ -416,11 +408,11 @@ func TestGenericServiceInstance_Start_ToolIndicatesFailure(t *testing.T) {
 	defer cleanup()
 
 	// Setup test service class
-	mockMgr.SetServiceClass("test-service", &api.ServiceClassDefinition{
+	mockMgr.SetServiceClass("test-service", &api.ServiceClass{
 		Name: "test-service",
 	})
-	// Use SetCreateTool since GetStartTool delegates to GetCreateTool in the mock
-	mockMgr.SetCreateTool("test-service", "test_create_tool",
+	// Use SetStartTool since GetStartTool delegates to GetCreateTool in the mock
+	mockMgr.SetStartTool("test-service", "test_create_tool",
 		map[string]interface{}{},
 		map[string]string{})
 
@@ -457,10 +449,10 @@ func TestGenericServiceInstance_Stop_Success(t *testing.T) {
 	defer cleanup()
 
 	// Setup test service class
-	mockMgr.SetServiceClass("test-service", &api.ServiceClassDefinition{
+	mockMgr.SetServiceClass("test-service", &api.ServiceClass{
 		Name: "test-service",
 	})
-	mockMgr.SetDeleteTool("test-service", "test_delete_tool",
+	mockMgr.SetStopTool("test-service", "test_delete_tool",
 		map[string]interface{}{
 			"serviceId": "{{ .serviceId }}",
 		},
@@ -508,14 +500,14 @@ func TestGenericServiceInstance_Restart(t *testing.T) {
 	defer cleanup()
 
 	// Setup test service class
-	mockMgr.SetServiceClass("test-service", &api.ServiceClassDefinition{
+	mockMgr.SetServiceClass("test-service", &api.ServiceClass{
 		Name: "test-service",
 	})
 	// Setup both create and delete tools since restart uses stop/start fallback
-	mockMgr.SetCreateTool("test-service", "test_create_tool",
+	mockMgr.SetStartTool("test-service", "test_create_tool",
 		map[string]interface{}{},
 		map[string]string{})
-	mockMgr.SetDeleteTool("test-service", "test_delete_tool",
+	mockMgr.SetStopTool("test-service", "test_delete_tool",
 		map[string]interface{}{},
 		map[string]string{})
 
@@ -564,7 +556,7 @@ func TestGenericServiceInstance_CheckHealth_Success(t *testing.T) {
 	defer cleanup()
 
 	// Setup test service class with health checking
-	mockMgr.SetServiceClass("test-service", &api.ServiceClassDefinition{
+	mockMgr.SetServiceClass("test-service", &api.ServiceClass{
 		Name: "test-service",
 	})
 	mockMgr.SetHealthCheckTool("test-service", "test_health_tool",
@@ -615,7 +607,7 @@ func TestGenericServiceInstance_CheckHealth_Disabled(t *testing.T) {
 	defer cleanup()
 
 	// Setup test service class with health checking disabled
-	mockMgr.SetServiceClass("test-service", &api.ServiceClassDefinition{
+	mockMgr.SetServiceClass("test-service", &api.ServiceClass{
 		Name: "test-service",
 	})
 	mockMgr.SetHealthCheckConfig("test-service", false, 10*time.Second, 3, 1)
@@ -651,7 +643,7 @@ func TestGenericServiceInstance_Getters(t *testing.T) {
 	defer cleanup()
 
 	// Setup test service class
-	mockMgr.SetServiceClass("test-service", &api.ServiceClassDefinition{
+	mockMgr.SetServiceClass("test-service", &api.ServiceClass{
 		Name:        "test-service",
 		ServiceType: "kubernetes-service",
 	})
@@ -698,7 +690,7 @@ func TestGenericServiceInstance_StateChangeCallback(t *testing.T) {
 	defer cleanup()
 
 	// Setup test service class
-	mockMgr.SetServiceClass("test-service", &api.ServiceClassDefinition{
+	mockMgr.SetServiceClass("test-service", &api.ServiceClass{
 		Name: "test-service",
 	})
 

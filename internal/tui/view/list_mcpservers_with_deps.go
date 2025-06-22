@@ -15,71 +15,25 @@ import (
 // MCPServerWithDepsListItem represents an MCP server with its dependencies in the list
 type MCPServerWithDepsListItem struct {
 	MCPServerListItem
-	PortForwards []PortForwardListItem
-	IsExpanded   bool
 }
 
 // Title returns the display title for the MCP server with expansion indicator
 func (i MCPServerWithDepsListItem) Title() string {
-	expansionIcon := "▶"
-	if i.IsExpanded && len(i.PortForwards) > 0 {
-		expansionIcon = "▼"
-	}
-	return fmt.Sprintf("%s %s %s MCP", expansionIcon, i.GetIcon(), i.GetName())
+	return fmt.Sprintf("%s MCP", i.GetName())
 }
 
 // Description returns the display description including dependency count
 func (i MCPServerWithDepsListItem) Description() string {
-	desc := i.MCPServerListItem.BaseListItem.Description
-	if len(i.PortForwards) > 0 {
-		if i.IsExpanded {
-			// When expanded, show status
-			desc = fmt.Sprintf("%s • Tools: %d", desc, countTools(i.GetName()))
-		} else {
-			// When collapsed, show dependency count
-			activeCount := 0
-			for _, pf := range i.PortForwards {
-				if pf.GetStatus() == StatusRunning {
-					activeCount++
-				}
-			}
-			desc = fmt.Sprintf("%s • %d/%d deps", desc, activeCount, len(i.PortForwards))
-		}
-	}
-	return desc
-}
-
-// Helper to count tools (placeholder - should get from actual data)
-func countTools(mcpName string) int {
-	// This should be retrieved from the actual MCP server info
-	// For now, return a placeholder
-	switch mcpName {
-	case "kubernetes":
-		return 15
-	case "prometheus":
-		return 23
-	case "grafana":
-		return 19
-	default:
-		return 0
-	}
+	return i.MCPServerListItem.BaseListItem.Description
 }
 
 // BuildMCPServersWithDependenciesList creates a hierarchical list of MCP servers with their port forward dependencies
 func BuildMCPServersWithDependenciesList(m *model.Model, width, height int, focused bool) *ServiceListModel {
 	items := []list.Item{}
 
-	// Map port forwards to their dependent MCP servers
-	pfByMCP := make(map[string][]PortForwardListItem)
-
-	// Port forward dependencies have been removed as part of the generic orchestrator refactoring
-
 	// Now build the hierarchical list
 	for _, config := range m.MCPServerConfig {
-		mcpItem := MCPServerWithDepsListItem{
-			PortForwards: pfByMCP[config.Name],
-			IsExpanded:   false, // Start collapsed
-		}
+		mcpItem := MCPServerWithDepsListItem{}
 
 		if mcp, exists := m.MCPServers[config.Name]; exists {
 			mcpItem.MCPServerListItem = ConvertMCPServerToListItem(mcp)
@@ -99,13 +53,6 @@ func BuildMCPServersWithDependenciesList(m *model.Model, width, height int, focu
 		}
 
 		items = append(items, mcpItem)
-
-		// If expanded, add port forward items as well
-		if mcpItem.IsExpanded {
-			for _, pf := range mcpItem.PortForwards {
-				items = append(items, pf)
-			}
-		}
 	}
 
 	// Create the list with a custom delegate
@@ -149,9 +96,6 @@ func (d MCPWithDepsItemDelegate) Render(w io.Writer, m list.Model, index int, li
 	case MCPServerWithDepsListItem:
 		// Render MCP server
 		d.renderMCPServer(w, m, index, item)
-	case PortForwardListItem:
-		// Render port forward as a sub-item
-		d.renderPortForward(w, m, index, item)
 	default:
 		// Fallback to common delegate
 		CommonItemDelegate{}.Render(w, m, index, listItem)
@@ -182,48 +126,6 @@ func (d MCPWithDepsItemDelegate) renderMCPServer(w io.Writer, m list.Model, inde
 		str = design.ListItemSelectedStyle.Render("▶ " + str)
 	} else {
 		str = "  " + str
-	}
-
-	fmt.Fprint(w, str)
-}
-
-func (d MCPWithDepsItemDelegate) renderPortForward(w io.Writer, m list.Model, index int, item PortForwardListItem) {
-	var content strings.Builder
-
-	// Indent for sub-item
-	content.WriteString("    └─ ")
-
-	// Icon and name
-	if item.GetIcon() != "" {
-		content.WriteString(item.GetIcon())
-		content.WriteString(" ")
-	}
-	content.WriteString(fmt.Sprintf("%s (%d:%d)", item.GetName(), item.LocalPort, item.RemotePort))
-
-	// Status
-	content.WriteString(" ")
-	statusIcon := GetStatusIcon(item.GetStatus())
-	statusStyle := GetStatusColor(item.GetStatus())
-	content.WriteString(statusStyle.Render(statusIcon))
-
-	// Target info
-	content.WriteString(" ")
-	content.WriteString(design.TextSecondaryStyle.Render(
-		fmt.Sprintf("Target: %s/%s", item.TargetType, item.TargetName)))
-
-	// Health status
-	if item.GetStatus() == StatusRunning {
-		content.WriteString(" ")
-		healthIcon := GetHealthIcon(item.GetHealth())
-		healthStyle := GetHealthColor(item.GetHealth())
-		content.WriteString(healthStyle.Render("Status: " + healthIcon + string(item.GetHealth())))
-	}
-
-	// Render with selection indicator
-	str := content.String()
-	if index == m.Index() {
-		// Remove the indent for selected items
-		str = design.ListItemSelectedStyle.Render("▶   " + strings.TrimPrefix(str, "    "))
 	}
 
 	fmt.Fprint(w, str)

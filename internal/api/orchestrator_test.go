@@ -263,8 +263,8 @@ func (m *mockOrchestratorHandler) GetAllServices() []ServiceStatus {
 }
 
 // ServiceClass-based dynamic service instance management methods (for test compatibility)
-func (m *mockOrchestratorHandler) CreateServiceClassInstance(ctx context.Context, req CreateServiceClassRequest) (*ServiceClassInstanceInfo, error) {
-	return &ServiceClassInstanceInfo{
+func (m *mockOrchestratorHandler) CreateServiceClassInstance(ctx context.Context, req CreateServiceInstanceRequest) (*ServiceInstance, error) {
+	return &ServiceInstance{
 		ID:               "test-service-id",
 		Label:            req.Label,
 		ServiceClassName: req.ServiceClassName,
@@ -280,8 +280,8 @@ func (m *mockOrchestratorHandler) DeleteServiceClassInstance(ctx context.Context
 	return nil
 }
 
-func (m *mockOrchestratorHandler) GetServiceClassInstance(serviceID string) (*ServiceClassInstanceInfo, error) {
-	return &ServiceClassInstanceInfo{
+func (m *mockOrchestratorHandler) GetServiceClassInstance(serviceID string) (*ServiceInstance, error) {
+	return &ServiceInstance{
 		ID:               serviceID,
 		Label:            "test-label",
 		ServiceClassName: "test-class",
@@ -293,8 +293,8 @@ func (m *mockOrchestratorHandler) GetServiceClassInstance(serviceID string) (*Se
 	}, nil
 }
 
-func (m *mockOrchestratorHandler) GetServiceClassInstanceByLabel(label string) (*ServiceClassInstanceInfo, error) {
-	return &ServiceClassInstanceInfo{
+func (m *mockOrchestratorHandler) GetServiceClassInstanceByLabel(label string) (*ServiceInstance, error) {
+	return &ServiceInstance{
 		ID:               "test-service-id",
 		Label:            label,
 		ServiceClassName: "test-class",
@@ -306,8 +306,8 @@ func (m *mockOrchestratorHandler) GetServiceClassInstanceByLabel(label string) (
 	}, nil
 }
 
-func (m *mockOrchestratorHandler) ListServiceClassInstances() []ServiceClassInstanceInfo {
-	return []ServiceClassInstanceInfo{
+func (m *mockOrchestratorHandler) ListServiceClassInstances() []ServiceInstance {
+	return []ServiceInstance{
 		{
 			ID:               "test-service-id-1",
 			Label:            "test-label-1",
@@ -321,14 +321,14 @@ func (m *mockOrchestratorHandler) ListServiceClassInstances() []ServiceClassInst
 	}
 }
 
-func (m *mockOrchestratorHandler) SubscribeToServiceInstanceEvents() <-chan ServiceClassInstanceEvent {
-	eventChan := make(chan ServiceClassInstanceEvent, 100)
+func (m *mockOrchestratorHandler) SubscribeToServiceInstanceEvents() <-chan ServiceInstanceEvent {
+	eventChan := make(chan ServiceInstanceEvent, 100)
 	return eventChan
 }
 
 // Add missing ServiceManagerHandler methods
-func (m *mockOrchestratorHandler) GetService(labelOrServiceID string) (*ServiceClassInstanceInfo, error) {
-	return &ServiceClassInstanceInfo{
+func (m *mockOrchestratorHandler) GetService(labelOrServiceID string) (*ServiceInstance, error) {
+	return &ServiceInstance{
 		ID:               "test-service-id",
 		Label:            labelOrServiceID,
 		ServiceClassName: "test-class",
@@ -340,8 +340,8 @@ func (m *mockOrchestratorHandler) GetService(labelOrServiceID string) (*ServiceC
 	}, nil
 }
 
-func (m *mockOrchestratorHandler) CreateService(ctx context.Context, req CreateServiceClassRequest) (*ServiceClassInstanceInfo, error) {
-	return &ServiceClassInstanceInfo{
+func (m *mockOrchestratorHandler) CreateService(ctx context.Context, req CreateServiceInstanceRequest) (*ServiceInstance, error) {
+	return &ServiceInstance{
 		ID:               "test-service-id",
 		Label:            req.Label,
 		ServiceClassName: req.ServiceClassName,

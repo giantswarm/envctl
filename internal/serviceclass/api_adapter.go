@@ -2,6 +2,7 @@ package serviceclass
 
 import (
 	"context"
+	"encoding/json"
 	"envctl/internal/api"
 	"envctl/pkg/logging"
 	"fmt"
@@ -29,37 +30,17 @@ func (a *Adapter) Register() {
 }
 
 // ListServiceClasses returns information about all registered service classes
-func (a *Adapter) ListServiceClasses() []api.ServiceClassInfo {
+func (a *Adapter) ListServiceClasses() []api.ServiceClass {
 	if a.manager == nil {
-		return []api.ServiceClassInfo{}
+		return []api.ServiceClass{}
 	}
 
-	// Get service class info from the manager
-	managerInfo := a.manager.ListServiceClasses()
-
-	// Convert to API types
-	result := make([]api.ServiceClassInfo, len(managerInfo))
-	for i, info := range managerInfo {
-		result[i] = api.ServiceClassInfo{
-			Name:                     info.Name,
-			Version:                  info.Version,
-			Description:              info.Description,
-			ServiceType:              info.ServiceType,
-			Available:                info.Available,
-			CreateToolAvailable:      info.CreateToolAvailable,
-			DeleteToolAvailable:      info.DeleteToolAvailable,
-			HealthCheckToolAvailable: info.HealthCheckToolAvailable,
-			StatusToolAvailable:      info.StatusToolAvailable,
-			RequiredTools:            info.RequiredTools,
-			MissingTools:             info.MissingTools,
-		}
-	}
-
-	return result
+	// Get service class info from the manager - no conversion needed!
+	return a.manager.ListServiceClasses()
 }
 
 // GetServiceClass returns a specific service class definition by name
-func (a *Adapter) GetServiceClass(name string) (*api.ServiceClassDefinition, error) {
+func (a *Adapter) GetServiceClass(name string) (*api.ServiceClass, error) {
 	if a.manager == nil {
 		return nil, fmt.Errorf("service class manager not available")
 	}
@@ -69,14 +50,7 @@ func (a *Adapter) GetServiceClass(name string) (*api.ServiceClassDefinition, err
 		return nil, api.NewServiceClassNotFoundError(name)
 	}
 
-	// Convert to API type (lightweight version)
-	apiDef := &api.ServiceClassDefinition{
-		Name:        def.Name,
-		Version:     def.Version,
-		Description: def.Description,
-	}
-
-	return apiDef, nil
+	return def, nil
 }
 
 // GetStartTool returns start tool information for a service class
@@ -391,7 +365,7 @@ func (a *Adapter) handleServiceClassAvailable(args map[string]interface{}) (*api
 
 // handleServiceClassValidate validates a serviceclass definition
 func (a *Adapter) handleServiceClassValidate(args map[string]interface{}) (*api.CallToolResult, error) {
-	// Parse parameters (without type and metadata)
+	// Parse parameters
 	name, ok := args["name"].(string)
 	if !ok || name == "" {
 		return &api.CallToolResult{
@@ -411,8 +385,8 @@ func (a *Adapter) handleServiceClassValidate(args map[string]interface{}) (*api.
 	version, _ := args["version"].(string)
 	description, _ := args["description"].(string)
 
-	// Convert serviceConfig from map[string]interface{} to ServiceConfig
-	serviceConfig, err := convertServiceConfig(serviceConfigParam)
+	// Convert serviceConfig using JSON marshaling/unmarshaling
+	serviceConfig, err := convertServiceConfigViJSON(serviceConfigParam)
 	if err != nil {
 		return &api.CallToolResult{
 			Content: []interface{}{fmt.Sprintf("invalid serviceConfig: %v", err)},
@@ -420,7 +394,7 @@ func (a *Adapter) handleServiceClassValidate(args map[string]interface{}) (*api.
 		}, nil
 	}
 
-	// Build ServiceClassDefinition from structured parameters (without type and metadata)
+	// Build ServiceClass definition
 	def := api.ServiceClass{
 		Name:          name,
 		Version:       version,
@@ -464,13 +438,13 @@ func (a *Adapter) handleServiceClassCreate(args map[string]interface{}) (*api.Ca
 		return simpleError("serviceConfig parameter is required")
 	}
 
-	// Convert serviceConfig from map[string]interface{} to ServiceConfig
-	serviceConfig, err := convertServiceConfig(serviceConfigParam)
+	// Convert serviceConfig using JSON marshaling/unmarshaling
+	serviceConfig, err := convertServiceConfigViJSON(serviceConfigParam)
 	if err != nil {
 		return simpleError(fmt.Sprintf("invalid serviceConfig: %v", err))
 	}
 
-	// Build ServiceClassDefinition from structured parameters (type/metadata will be set internally)
+	// Build ServiceClass definition
 	def := api.ServiceClass{
 		Name:          name,
 		Version:       version,
@@ -486,142 +460,6 @@ func (a *Adapter) handleServiceClassCreate(args map[string]interface{}) (*api.Ca
 	return simpleOK(fmt.Sprintf("created service class %s", name))
 }
 
-// convertServiceConfig converts a map[string]interface{} to ServiceConfig
-func convertServiceConfig(configMap map[string]interface{}) (api.ServiceConfig, error) {
-	var config api.ServiceConfig
-
-	// Convert lifecycleTools (required)
-	lifecycleToolsMap, ok := configMap["lifecycleTools"].(map[string]interface{})
-	if !ok {
-		return config, fmt.Errorf("lifecycleTools is required")
-	}
-
-	lifecycleTools, err := convertLifecycleTools(lifecycleToolsMap)
-	if err != nil {
-		return config, fmt.Errorf("invalid lifecycleTools: %v", err)
-	}
-	config.LifecycleTools = lifecycleTools
-
-	// Convert optional fields
-	if serviceType, ok := configMap["serviceType"].(string); ok {
-		config.ServiceType = serviceType
-	}
-	if defaultLabel, ok := configMap["defaultLabel"].(string); ok {
-		config.DefaultLabel = defaultLabel
-	}
-	if deps, ok := configMap["dependencies"].([]interface{}); ok {
-		config.Dependencies = make([]string, len(deps))
-		for i, dep := range deps {
-			if depStr, ok := dep.(string); ok {
-				config.Dependencies[i] = depStr
-			} else {
-				return config, fmt.Errorf("dependency at index %d must be a string", i)
-			}
-		}
-	}
-
-	return config, nil
-}
-
-// convertLifecycleTools converts a map[string]interface{} to LifecycleTools
-func convertLifecycleTools(toolsMap map[string]interface{}) (api.LifecycleTools, error) {
-	var tools api.LifecycleTools
-
-	// Convert start tool (required)
-	if startMap, ok := toolsMap["start"].(map[string]interface{}); ok {
-		start, err := convertToolCall(startMap)
-		if err != nil {
-			return tools, fmt.Errorf("invalid start tool: %v", err)
-		}
-		tools.Start = start
-	} else {
-		return tools, fmt.Errorf("start tool is required")
-	}
-
-	// Convert stop tool (required)
-	if stopMap, ok := toolsMap["stop"].(map[string]interface{}); ok {
-		stop, err := convertToolCall(stopMap)
-		if err != nil {
-			return tools, fmt.Errorf("invalid stop tool: %v", err)
-		}
-		tools.Stop = stop
-	} else {
-		return tools, fmt.Errorf("stop tool is required")
-	}
-
-	// Convert optional tools
-	if restartMap, ok := toolsMap["restart"].(map[string]interface{}); ok {
-		restart, err := convertToolCall(restartMap)
-		if err != nil {
-			return tools, fmt.Errorf("invalid restart tool: %v", err)
-		}
-		tools.Restart = &restart
-	}
-
-	if healthCheckMap, ok := toolsMap["healthCheck"].(map[string]interface{}); ok {
-		healthCheck, err := convertToolCall(healthCheckMap)
-		if err != nil {
-			return tools, fmt.Errorf("invalid healthCheck tool: %v", err)
-		}
-		tools.HealthCheck = &healthCheck
-	}
-
-	if statusMap, ok := toolsMap["status"].(map[string]interface{}); ok {
-		status, err := convertToolCall(statusMap)
-		if err != nil {
-			return tools, fmt.Errorf("invalid status tool: %v", err)
-		}
-		tools.Status = &status
-	}
-
-	return tools, nil
-}
-
-// convertToolCall converts a map[string]interface{} to ToolCall
-func convertToolCall(toolMap map[string]interface{}) (api.ToolCall, error) {
-	var tool api.ToolCall
-
-	// Tool name is required
-	if toolName, ok := toolMap["tool"].(string); ok {
-		tool.Tool = toolName
-	} else {
-		return tool, fmt.Errorf("tool name is required")
-	}
-
-	// Arguments are optional
-	if args, ok := toolMap["arguments"].(map[string]interface{}); ok {
-		tool.Arguments = args
-	}
-
-	// ResponseMapping is optional
-	if respMap, ok := toolMap["responseMapping"].(map[string]interface{}); ok {
-		var responseMapping api.ResponseMapping
-		if serviceID, ok := respMap["serviceId"].(string); ok {
-			responseMapping.ServiceID = serviceID
-		}
-		if status, ok := respMap["status"].(string); ok {
-			responseMapping.Status = status
-		}
-		if health, ok := respMap["health"].(string); ok {
-			responseMapping.Health = health
-		}
-		if errorField, ok := respMap["error"].(string); ok {
-			responseMapping.Error = errorField
-		}
-		if metadata, ok := respMap["metadata"].(map[string]interface{}); ok {
-			responseMapping.Metadata = make(map[string]string)
-			for key, value := range metadata {
-				if strValue, ok := value.(string); ok {
-					responseMapping.Metadata[key] = strValue
-				}
-			}
-		}
-		tool.ResponseMapping = responseMapping
-	}
-
-	return tool, nil
-}
-
 func (a *Adapter) handleServiceClassUpdate(args map[string]interface{}) (*api.CallToolResult, error) {
 	name, ok := args["name"].(string)
 	if !ok || name == "" {
@@ -631,20 +469,14 @@ func (a *Adapter) handleServiceClassUpdate(args map[string]interface{}) (*api.Ca
 	description, _ := args["description"].(string)
 	serviceConfigParam, _ := args["serviceConfig"].(map[string]interface{})
 
-	// Get existing serviceclass to preserve current type/metadata/operations
+	// Get existing serviceclass to preserve current operations
 	existingDef, exists := a.manager.GetServiceClassDefinition(name)
 	if !exists {
 		return api.HandleErrorWithPrefix(api.NewServiceClassNotFoundError(name), "Failed to update ServiceClass"), nil
 	}
 
 	// Start with existing definition and update provided fields
-	def := api.ServiceClass{
-		Name:          name,
-		Version:       existingDef.Version,     // Will be updated if provided
-		Description:   existingDef.Description, // Will be updated if provided
-		ServiceConfig: existingDef.ServiceConfig,
-		Operations:    existingDef.Operations, // Preserve existing operations
-	}
+	def := *existingDef // Copy the existing definition
 
 	// Update fields if provided
 	if version != "" {
@@ -654,7 +486,7 @@ func (a *Adapter) handleServiceClassUpdate(args map[string]interface{}) (*api.Ca
 		def.Description = description
 	}
 	if serviceConfigParam != nil {
-		serviceConfig, err := convertServiceConfig(serviceConfigParam)
+		serviceConfig, err := convertServiceConfigViJSON(serviceConfigParam)
 		if err != nil {
 			return simpleError(fmt.Sprintf("invalid serviceConfig: %v", err))
 		}
@@ -679,4 +511,21 @@ func (a *Adapter) handleServiceClassDelete(args map[string]interface{}) (*api.Ca
 	}
 
 	return simpleOK(fmt.Sprintf("deleted service class %s", name))
+}
+
+// convertServiceConfigViJSON converts a map[string]interface{} to ServiceConfig using JSON marshaling
+func convertServiceConfigViJSON(configMap map[string]interface{}) (api.ServiceConfig, error) {
+	// Convert to JSON then unmarshal to struct for automatic type conversion
+	jsonData, err := json.Marshal(configMap)
+	if err != nil {
+		return api.ServiceConfig{}, fmt.Errorf("failed to marshal config map: %w", err)
+	}
+
+	var config api.ServiceConfig
+	err = json.Unmarshal(jsonData, &config)
+	if err != nil {
+		return api.ServiceConfig{}, fmt.Errorf("failed to unmarshal to ServiceConfig: %w", err)
+	}
+
+	return config, nil
 }

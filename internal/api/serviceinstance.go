@@ -71,15 +71,3 @@ type ServiceInstanceEvent struct {
 	Timestamp   time.Time              `json:"timestamp"`
 	Metadata    map[string]interface{} `json:"metadata,omitempty"`
 }
-
-// Type aliases for backward compatibility during transition
-// These will be removed once all packages are updated to use the consolidated types
-
-// ServiceClassInstanceInfo is an alias for ServiceInstance for backward compatibility
-type ServiceClassInstanceInfo = ServiceInstance
-
-// ServiceClassInstanceEvent is an alias for ServiceInstanceEvent for backward compatibility
-type ServiceClassInstanceEvent = ServiceInstanceEvent
-
-// CreateServiceClassRequest is an alias for CreateServiceInstanceRequest for backward compatibility
-type CreateServiceClassRequest = CreateServiceInstanceRequest
