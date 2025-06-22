@@ -282,56 +282,19 @@ func TestMCPServerManager_GetAllDefinitions(t *testing.T) {
 	assert.Len(t, manager.definitions, 2) // Original should still have both
 }
 
-func TestMCPServerManager_Register(t *testing.T) {
-	storage := config.NewStorage()
-	manager, err := NewMCPServerManager(storage)
-	require.NoError(t, err)
-
-	// Test registering a local command server
-	def1 := api.MCPServer{
-		Name:    "test-server-1",
-		Type:    api.MCPServerTypeLocalCommand,
-		Command: []string{"echo", "hello"},
-	}
-
-	err = manager.RegisterDefinition(def1)
-	assert.NoError(t, err)
-
-	// Test registering a container server
-	def2 := api.MCPServer{
-		Name:  "test-server-2",
-		Type:  api.MCPServerTypeContainer,
-		Image: "nginx:latest",
-	}
-
-	err = manager.RegisterDefinition(def2)
-	assert.NoError(t, err)
-
-	// Test registering with duplicate name
-	def3 := api.MCPServer{
-		Name:    "test-server-1", // Same name as def1
-		Type:    api.MCPServerTypeLocalCommand,
-		Command: []string{"some", "command"}, // Add required command
-	}
-
-	err = manager.RegisterDefinition(def3)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "already exists")
-}
-
 func TestMCPServerManager_Get(t *testing.T) {
 	storage := config.NewStorage()
 	manager, err := NewMCPServerManager(storage)
 	require.NoError(t, err)
 
-	// Register a server
+	// Create a server
 	def := api.MCPServer{
 		Name:    "test-server",
 		Type:    api.MCPServerTypeLocalCommand,
 		Command: []string{"echo", "hello"},
 	}
 
-	err = manager.RegisterDefinition(def)
+	err = manager.CreateMCPServer(def)
 	assert.NoError(t, err)
 
 	// Test getting existing server
@@ -354,7 +317,6 @@ func TestMCPServerManager_List(t *testing.T) {
 	servers := manager.ListDefinitions()
 	assert.Len(t, servers, 0)
 
-	// Register some servers
 	def1 := api.MCPServer{
 		Name:    "server-1",
 		Type:    api.MCPServerTypeLocalCommand,
@@ -367,8 +329,8 @@ func TestMCPServerManager_List(t *testing.T) {
 		Image: "image2",
 	}
 
-	manager.RegisterDefinition(def1)
-	manager.RegisterDefinition(def2)
+	manager.CreateMCPServer(def1)
+	manager.CreateMCPServer(def2)
 
 	// Test list with servers
 	servers = manager.ListDefinitions()
@@ -382,33 +344,4 @@ func TestMCPServerManager_List(t *testing.T) {
 
 	assert.True(t, names["server-1"])
 	assert.True(t, names["server-2"])
-}
-
-func TestMCPServerManager_Unregister(t *testing.T) {
-	storage := config.NewStorage()
-	manager, err := NewMCPServerManager(storage)
-	require.NoError(t, err)
-
-	// Register a server
-	def := api.MCPServer{
-		Name:    "test-server",
-		Type:    api.MCPServerTypeLocalCommand,
-		Command: []string{"echo", "hello"},
-	}
-
-	err = manager.RegisterDefinition(def)
-	assert.NoError(t, err)
-
-	// Test unregistering existing server
-	err = manager.UnregisterDefinition("test-server")
-	assert.NoError(t, err)
-
-	// Verify server is removed
-	_, exists := manager.GetDefinition("test-server")
-	assert.False(t, exists)
-
-	// Test unregistering non-existent server
-	err = manager.UnregisterDefinition("non-existent")
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "does not exist")
 }

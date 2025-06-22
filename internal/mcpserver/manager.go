@@ -63,7 +63,7 @@ func (msm *MCPServerManager) LoadDefinitions() error {
 		return msm.validateDefinition(&def)
 	}
 
-	definitions, errorCollection, err := config.LoadAndParseYAMLWithConfig[api.MCPServer](msm.configPath, "mcpservers", validator)
+	definitions, errorCollection, err := config.LoadAndParseYAMLWithConfig(msm.configPath, "mcpservers", validator)
 	if err != nil {
 		logging.Warn("MCPServerManager", "Error loading MCP servers: %v", err)
 		return err
@@ -216,24 +216,6 @@ func (msm *MCPServerManager) GetAllDefinitions() map[string]*api.MCPServer {
 	return result
 }
 
-// RegisterDefinition registers a new MCP server definition
-func (msm *MCPServerManager) RegisterDefinition(def api.MCPServer) error {
-	msm.mu.Lock()
-	defer msm.mu.Unlock()
-
-	// Check for duplicate
-	if _, exists := msm.definitions[def.Name]; exists {
-		return fmt.Errorf("MCP server '%s' already exists", def.Name)
-	}
-
-	if err := msm.validateDefinition(&def); err != nil {
-		return fmt.Errorf("invalid MCP server definition: %w", err)
-	}
-
-	msm.definitions[def.Name] = &def
-	return nil
-}
-
 // UpdateDefinition updates an existing MCP server definition
 func (msm *MCPServerManager) UpdateDefinition(name string, def api.MCPServer) error {
 	msm.mu.Lock()
@@ -249,19 +231,6 @@ func (msm *MCPServerManager) UpdateDefinition(name string, def api.MCPServer) er
 	}
 
 	*existingDef = def
-	return nil
-}
-
-// UnregisterDefinition removes an MCP server definition
-func (msm *MCPServerManager) UnregisterDefinition(name string) error {
-	msm.mu.Lock()
-	defer msm.mu.Unlock()
-
-	if _, exists := msm.definitions[name]; !exists {
-		return fmt.Errorf("MCP server definition %s does not exist", name)
-	}
-
-	delete(msm.definitions, name)
 	return nil
 }
 

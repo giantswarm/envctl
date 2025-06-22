@@ -69,7 +69,7 @@ func TestRegister(t *testing.T) {
 	// Test registering a valid service
 	service := &testService{
 		label:       "test-service",
-		serviceType: TypeKubeConnection,
+		serviceType: TypeMCPServer,
 		state:       StateRunning,
 		health:      HealthHealthy,
 	}
@@ -92,7 +92,7 @@ func TestRegister(t *testing.T) {
 	// Test registering service with empty label
 	emptyLabelService := &testService{
 		label:       "",
-		serviceType: TypePortForward,
+		serviceType: TypeMCPServer,
 	}
 
 	err = registry.Register(emptyLabelService)
@@ -132,7 +132,7 @@ func TestGet(t *testing.T) {
 	// Register a service
 	service := &testService{
 		label:       "get-test",
-		serviceType: TypeKubeConnection,
+		serviceType: TypeMCPServer,
 		state:       StateRunning,
 		health:      HealthHealthy,
 	}
@@ -170,7 +170,7 @@ func TestUnregister(t *testing.T) {
 	// Register a service
 	service := &testService{
 		label:       "unregister-test",
-		serviceType: TypePortForward,
+		serviceType: TypeMCPServer,
 	}
 
 	registry.Register(service)
@@ -206,12 +206,12 @@ func TestGetAll(t *testing.T) {
 	// Register multiple services
 	service1 := &testService{
 		label:       "service-1",
-		serviceType: TypeKubeConnection,
+		serviceType: TypeMCPServer,
 	}
 
 	service2 := &testService{
 		label:       "service-2",
-		serviceType: TypePortForward,
+		serviceType: TypeMCPServer,
 	}
 
 	service3 := &testService{
@@ -247,58 +247,12 @@ func TestGetByType(t *testing.T) {
 	registry := NewRegistry()
 
 	// Register services of different types
-	k8sService1 := &testService{
-		label:       "k8s-1",
-		serviceType: TypeKubeConnection,
-	}
-
-	k8sService2 := &testService{
-		label:       "k8s-2",
-		serviceType: TypeKubeConnection,
-	}
-
-	pfService := &testService{
-		label:       "pf-1",
-		serviceType: TypePortForward,
-	}
-
 	mcpService := &testService{
 		label:       "mcp-1",
 		serviceType: TypeMCPServer,
 	}
 
-	registry.Register(k8sService1)
-	registry.Register(k8sService2)
-	registry.Register(pfService)
 	registry.Register(mcpService)
-
-	// Test getting K8s services
-	k8sServices := registry.GetByType(TypeKubeConnection)
-	if len(k8sServices) != 2 {
-		t.Errorf("Expected 2 K8s services, got %d", len(k8sServices))
-	}
-
-	k8sLabels := make(map[string]bool)
-	for _, service := range k8sServices {
-		k8sLabels[service.GetLabel()] = true
-		if service.GetType() != TypeKubeConnection {
-			t.Errorf("Expected K8s service type, got %s", service.GetType())
-		}
-	}
-
-	if !k8sLabels["k8s-1"] || !k8sLabels["k8s-2"] {
-		t.Error("Expected both K8s services in result")
-	}
-
-	// Test getting port forward services
-	pfServices := registry.GetByType(TypePortForward)
-	if len(pfServices) != 1 {
-		t.Errorf("Expected 1 port forward service, got %d", len(pfServices))
-	}
-
-	if pfServices[0].GetLabel() != "pf-1" {
-		t.Errorf("Expected port forward service 'pf-1', got %s", pfServices[0].GetLabel())
-	}
 
 	// Test getting MCP services
 	mcpServices := registry.GetByType(TypeMCPServer)
@@ -328,7 +282,7 @@ func TestRegistryConcurrency(t *testing.T) {
 		for i := 0; i < 10; i++ {
 			service := &testService{
 				label:       "concurrent-" + string(rune('0'+i)),
-				serviceType: TypeKubeConnection,
+				serviceType: TypeMCPServer,
 			}
 			registry.Register(service)
 		}
@@ -339,7 +293,7 @@ func TestRegistryConcurrency(t *testing.T) {
 	go func() {
 		for i := 0; i < 10; i++ {
 			registry.GetAll()
-			registry.GetByType(TypeKubeConnection)
+			registry.GetByType(TypeMCPServer)
 		}
 		done <- true
 	}()

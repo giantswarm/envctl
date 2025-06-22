@@ -17,16 +17,14 @@ import (
 type ServiceClassManager struct {
 	mu              sync.RWMutex
 	loader          *config.ConfigurationLoader
-	definitions     map[string]*ServiceClassDefinition // service class name -> definition
+	definitions     map[string]*api.ServiceClass // service class name -> definition
 	toolChecker     config.ToolAvailabilityChecker
 	exposedServices map[string]bool // Track which service classes are available
 	storage         *config.Storage
 	configPath      string // Optional custom config path
 
 	// Callbacks for lifecycle events
-	onRegister   []func(def *ServiceClassDefinition)
-	onUnregister []func(serviceClassName string)
-	onUpdate     []func(def *ServiceClassDefinition)
+	onUpdate []func(def *api.ServiceClass)
 }
 
 // NewServiceClassManager creates a new service class manager
@@ -52,14 +50,12 @@ func NewServiceClassManager(toolChecker config.ToolAvailabilityChecker, storage 
 
 	manager := &ServiceClassManager{
 		loader:          loader,
-		definitions:     make(map[string]*ServiceClassDefinition),
+		definitions:     make(map[string]*api.ServiceClass),
 		toolChecker:     toolChecker,
 		exposedServices: make(map[string]bool),
 		storage:         storage,
 		configPath:      configPath,
-		onRegister:      []func(def *ServiceClassDefinition){},
-		onUnregister:    []func(serviceClassName string){},
-		onUpdate:        []func(def *ServiceClassDefinition){},
+		onUpdate:        []func(def *api.ServiceClass){},
 	}
 
 	// Subscribe to tool update events for auto-refresh
@@ -80,11 +76,11 @@ func (m *ServiceClassManager) SetConfigPath(configPath string) {
 // All service classes are just YAML files, regardless of how they were created.
 func (m *ServiceClassManager) LoadServiceDefinitions() error {
 	// Load all service class YAML files using the config path-aware helper
-	validator := func(def ServiceClassDefinition) error {
+	validator := func(def api.ServiceClass) error {
 		return m.validateServiceClassDefinition(&def)
 	}
 
-	definitions, errorCollection, err := config.LoadAndParseYAMLWithConfig[ServiceClassDefinition](m.configPath, "serviceclasses", validator)
+	definitions, errorCollection, err := config.LoadAndParseYAMLWithConfig[api.ServiceClass](m.configPath, "serviceclasses", validator)
 	if err != nil {
 		logging.Warn("ServiceClassManager", "Error loading service classes: %v", err)
 		return err
@@ -100,7 +96,7 @@ func (m *ServiceClassManager) LoadServiceDefinitions() error {
 	defer m.mu.Unlock()
 
 	// Clear the old definitions
-	m.definitions = make(map[string]*ServiceClassDefinition)
+	m.definitions = make(map[string]*api.ServiceClass)
 
 	// Add all valid definitions to in-memory store
 	for i := range definitions {
@@ -116,7 +112,7 @@ func (m *ServiceClassManager) LoadServiceDefinitions() error {
 }
 
 // CreateServiceClass creates and persists a new service class
-func (m *ServiceClassManager) CreateServiceClass(sc ServiceClassDefinition) error {
+func (m *ServiceClassManager) CreateServiceClass(sc api.ServiceClass) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -147,7 +143,7 @@ func (m *ServiceClassManager) CreateServiceClass(sc ServiceClassDefinition) erro
 }
 
 // UpdateServiceClass updates and persists an existing service class
-func (m *ServiceClassManager) UpdateServiceClass(name string, sc ServiceClassDefinition) error {
+func (m *ServiceClassManager) UpdateServiceClass(name string, sc api.ServiceClass) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -203,77 +199,8 @@ func (m *ServiceClassManager) DeleteServiceClass(name string) error {
 	return nil
 }
 
-// RegisterDefinition registers a service class definition
-// This is primarily for in-memory registration during runtime (e.g., from TUI)
-func (m *ServiceClassManager) RegisterDefinition(def *ServiceClassDefinition) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	// Validate the definition
-	if err := m.validateServiceClassDefinition(def); err != nil {
-		return fmt.Errorf("validation failed: %w", err)
-	}
-
-	// Check if already registered
-	if _, exists := m.definitions[def.Name]; exists {
-		return fmt.Errorf("service class %s already registered", def.Name)
-	}
-
-	// Register the definition
-	m.definitions[def.Name] = def
-
-	// Update availability
-	requiredTools := m.getRequiredTools(def)
-	m.exposedServices[def.Name] = m.areAllToolsAvailable(requiredTools)
-
-	logging.Info("ServiceClassManager", "Registered service class: %s", def.Name)
-
-	// Notify registration callbacks
-	for _, callback := range m.onRegister {
-		callback(def)
-	}
-
-	return nil
-}
-
-// UnregisterDefinition unregisters a service class definition
-func (scm *ServiceClassManager) UnregisterDefinition(name string) error {
-	scm.mu.Lock()
-	defer scm.mu.Unlock()
-
-	if _, exists := scm.definitions[name]; !exists {
-		return api.NewServiceClassNotFoundError(name)
-	}
-
-	delete(scm.definitions, name)
-	delete(scm.exposedServices, name)
-
-	logging.Info("ServiceClassManager", "Unregistered service class: %s", name)
-
-	// Notify unregistration callbacks
-	for _, callback := range scm.onUnregister {
-		callback(name)
-	}
-
-	return nil
-}
-
-// OnRegister adds a callback for service class registration
-func (scm *ServiceClassManager) OnRegister(callback func(def *ServiceClassDefinition)) {
-	scm.mu.Lock()
-	defer scm.mu.Unlock()
-	scm.onRegister = append(scm.onRegister, callback)
-}
-
-// OnUnregister adds a callback for service class removal
-func (scm *ServiceClassManager) OnUnregister(callback func(serviceClassName string)) {
-	scm.mu.Lock()
-	defer scm.mu.Unlock()
-	scm.onUnregister = append(scm.onUnregister, callback)
-}
-
 // OnUpdate adds a callback for service class updates
-func (scm *ServiceClassManager) OnUpdate(callback func(def *ServiceClassDefinition)) {
+func (scm *ServiceClassManager) OnUpdate(callback func(def *api.ServiceClass)) {
 	scm.mu.Lock()
 	defer scm.mu.Unlock()
 	scm.onUpdate = append(scm.onUpdate, callback)
@@ -294,12 +221,12 @@ func (scm *ServiceClassManager) GetDefinitionsPath() string {
 }
 
 // GetAllDefinitions returns all service class definitions (for internal use)
-func (scm *ServiceClassManager) GetAllDefinitions() map[string]*ServiceClassDefinition {
+func (scm *ServiceClassManager) GetAllDefinitions() map[string]*api.ServiceClass {
 	scm.mu.RLock()
 	defer scm.mu.RUnlock()
 
 	// Return a copy to prevent external modifications
-	result := make(map[string]*ServiceClassDefinition)
+	result := make(map[string]*api.ServiceClass)
 	for name, def := range scm.definitions {
 		result[name] = def
 	}
@@ -307,7 +234,7 @@ func (scm *ServiceClassManager) GetAllDefinitions() map[string]*ServiceClassDefi
 }
 
 // validateServiceClassDefinition performs comprehensive validation on a service class definition
-func (scm *ServiceClassManager) validateServiceClassDefinition(def *ServiceClassDefinition) error {
+func (scm *ServiceClassManager) validateServiceClassDefinition(def *api.ServiceClass) error {
 	var errors config.ValidationErrors
 
 	// Validate entity name using common helper
@@ -383,7 +310,7 @@ func (scm *ServiceClassManager) validateServiceClassDefinition(def *ServiceClass
 }
 
 // ValidateDefinition validates a serviceclass definition without persisting it
-func (scm *ServiceClassManager) ValidateDefinition(def *ServiceClassDefinition) error {
+func (scm *ServiceClassManager) ValidateDefinition(def *api.ServiceClass) error {
 	return scm.validateServiceClassDefinition(def)
 }
 
@@ -405,7 +332,7 @@ func (scm *ServiceClassManager) updateServiceAvailability() {
 }
 
 // getRequiredTools extracts all required tools from a service class definition
-func (scm *ServiceClassManager) getRequiredTools(def *ServiceClassDefinition) []string {
+func (scm *ServiceClassManager) getRequiredTools(def *api.ServiceClass) []string {
 	tools := make(map[string]bool)
 
 	// Add lifecycle tools
@@ -456,7 +383,7 @@ func (scm *ServiceClassManager) areAllToolsAvailable(requiredTools []string) boo
 }
 
 // GetServiceClassDefinition returns a service class definition by name
-func (scm *ServiceClassManager) GetServiceClassDefinition(name string) (*ServiceClassDefinition, bool) {
+func (scm *ServiceClassManager) GetServiceClassDefinition(name string) (*api.ServiceClass, bool) {
 	scm.mu.RLock()
 	defer scm.mu.RUnlock()
 
@@ -464,22 +391,24 @@ func (scm *ServiceClassManager) GetServiceClassDefinition(name string) (*Service
 	return def, exists
 }
 
-// ListServiceClasses returns information about all registered service classes
-func (scm *ServiceClassManager) ListServiceClasses() []ServiceClassInfo {
+// ListServiceClasses returns information about all service classes
+func (scm *ServiceClassManager) ListServiceClasses() []api.ServiceClass {
 	scm.mu.RLock()
 	defer scm.mu.RUnlock()
 
-	result := make([]ServiceClassInfo, 0, len(scm.definitions))
+	result := make([]api.ServiceClass, 0, len(scm.definitions))
 
 	for _, def := range scm.definitions {
 		requiredTools := scm.getRequiredTools(def)
 		missingTools := scm.getMissingTools(requiredTools)
 		available := len(missingTools) == 0
 
-		info := ServiceClassInfo{
+		info := api.ServiceClass{
 			Name:                     def.Name,
 			Version:                  def.Version,
 			Description:              def.Description,
+			ServiceConfig:            def.ServiceConfig,
+			Operations:               def.Operations,
 			ServiceType:              def.ServiceConfig.ServiceType,
 			Available:                available,
 			CreateToolAvailable:      scm.toolChecker != nil && scm.toolChecker.IsToolAvailable(def.ServiceConfig.LifecycleTools.Start.Tool),
@@ -497,9 +426,9 @@ func (scm *ServiceClassManager) ListServiceClasses() []ServiceClassInfo {
 }
 
 // ListAvailableServiceClasses returns only service classes that have all required tools available
-func (scm *ServiceClassManager) ListAvailableServiceClasses() []ServiceClassInfo {
+func (scm *ServiceClassManager) ListAvailableServiceClasses() []api.ServiceClass {
 	all := scm.ListServiceClasses()
-	result := make([]ServiceClassInfo, 0, len(all))
+	result := make([]api.ServiceClass, 0, len(all))
 
 	for _, info := range all {
 		if info.Available {

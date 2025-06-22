@@ -9,14 +9,14 @@ func TestServiceState_String(t *testing.T) {
 		state    ServiceState
 		expected string
 	}{
-		{StateUnknown, "Unknown"},
-		{StateWaiting, "Waiting"},
-		{StateStarting, "Starting"},
-		{StateRunning, "Running"},
-		{StateStopping, "Stopping"},
-		{StateStopped, "Stopped"},
-		{StateFailed, "Failed"},
-		{StateRetrying, "Retrying"},
+		{StateUnknown, "unknown"},
+		{StateWaiting, "waiting"},
+		{StateStarting, "starting"},
+		{StateRunning, "running"},
+		{StateStopping, "stopping"},
+		{StateStopped, "stopped"},
+		{StateFailed, "failed"},
+		{StateRetrying, "retrying"},
 	}
 
 	for _, test := range tests {
@@ -32,10 +32,10 @@ func TestHealthStatus_String(t *testing.T) {
 		health   HealthStatus
 		expected string
 	}{
-		{HealthUnknown, "Unknown"},
-		{HealthHealthy, "Healthy"},
-		{HealthUnhealthy, "Unhealthy"},
-		{HealthChecking, "Checking"},
+		{HealthUnknown, "unknown"},
+		{HealthHealthy, "healthy"},
+		{HealthUnhealthy, "unhealthy"},
+		{HealthChecking, "checking"},
 	}
 
 	for _, test := range tests {
@@ -51,8 +51,6 @@ func TestServiceType_String(t *testing.T) {
 		serviceType ServiceType
 		expected    string
 	}{
-		{TypeKubeConnection, "KubeConnection"},
-		{TypePortForward, "PortForward"},
 		{TypeMCPServer, "MCPServer"},
 	}
 
@@ -67,14 +65,14 @@ func TestServiceType_String(t *testing.T) {
 func TestServiceStateConstants(t *testing.T) {
 	// Test that constants are defined and have expected values
 	states := map[ServiceState]string{
-		StateUnknown:  "Unknown",
-		StateWaiting:  "Waiting",
-		StateStarting: "Starting",
-		StateRunning:  "Running",
-		StateStopping: "Stopping",
-		StateStopped:  "Stopped",
-		StateFailed:   "Failed",
-		StateRetrying: "Retrying",
+		StateUnknown:  "unknown",
+		StateWaiting:  "waiting",
+		StateStarting: "starting",
+		StateRunning:  "running",
+		StateStopping: "stopping",
+		StateStopped:  "stopped",
+		StateFailed:   "failed",
+		StateRetrying: "retrying",
 	}
 
 	for state, expectedStr := range states {
@@ -87,10 +85,10 @@ func TestServiceStateConstants(t *testing.T) {
 func TestHealthStatusConstants(t *testing.T) {
 	// Test that constants are defined and have expected values
 	healthStatuses := map[HealthStatus]string{
-		HealthUnknown:   "Unknown",
-		HealthHealthy:   "Healthy",
-		HealthUnhealthy: "Unhealthy",
-		HealthChecking:  "Checking",
+		HealthUnknown:   "unknown",
+		HealthHealthy:   "healthy",
+		HealthUnhealthy: "unhealthy",
+		HealthChecking:  "checking",
 	}
 
 	for health, expectedStr := range healthStatuses {
@@ -103,8 +101,6 @@ func TestHealthStatusConstants(t *testing.T) {
 func TestServiceTypeConstants(t *testing.T) {
 	// Test that constants are defined and have expected values
 	serviceTypes := map[ServiceType]string{
-		TypeKubeConnection: "KubeConnection",
-		TypePortForward:    "PortForward",
 		TypeMCPServer:      "MCPServer",
 	}
 

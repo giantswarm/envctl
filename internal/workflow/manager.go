@@ -79,7 +79,7 @@ func (wm *WorkflowManager) LoadDefinitions() error {
 		return wm.validateWorkflowDefinition(&def)
 	}
 
-	definitions, errorCollection, err := config.LoadAndParseYAMLWithConfig[api.Workflow](wm.configPath, "workflows", validator)
+	definitions, errorCollection, err := config.LoadAndParseYAMLWithConfig(wm.configPath, "workflows", validator)
 	if err != nil {
 		logging.Warn("WorkflowManager", "Error loading workflows: %v", err)
 		return err

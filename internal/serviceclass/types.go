@@ -7,47 +7,6 @@ import (
 	"envctl/internal/api"
 )
 
-// Type aliases to local serviceclass types for internal usage
-// These map the API package types to the expected local types
-type ServiceState = api.ServiceState
-type HealthStatus = api.HealthStatus
-
-// Local constants that map to API package constants for backward compatibility
-const (
-	ServiceStateUnknown  = api.StateUnknown
-	ServiceStateWaiting  = api.StateWaiting
-	ServiceStateStarting = api.StateStarting
-	ServiceStateRunning  = api.StateRunning
-	ServiceStateStopping = api.StateStopping
-	ServiceStateStopped  = api.StateStopped
-	ServiceStateFailed   = api.StateFailed
-	ServiceStateRetrying = api.StateRetrying
-)
-
-const (
-	HealthStatusHealthy   = api.HealthHealthy
-	HealthStatusUnhealthy = api.HealthUnhealthy
-	HealthStatusUnknown   = api.HealthUnknown
-)
-
-// Type aliases for the main types - now using API package as source of truth
-type ServiceClassDefinition = api.ServiceClass
-type ServiceInstance = api.ServiceInstance
-type ServiceClassInfo = api.ServiceClassInfo
-type OperationDefinition = api.OperationDefinition
-type Parameter = api.Parameter
-type WorkflowDefinition = api.WorkflowReference
-type WorkflowStep = api.WorkflowStep
-
-// ServiceConfig and related types are available in the API package
-type ServiceConfig = api.ServiceConfig
-type LifecycleTools = api.LifecycleTools
-type ToolCall = api.ToolCall
-type ResponseMapping = api.ResponseMapping
-type ParameterMapping = api.ParameterMapping
-type HealthCheckConfig = api.HealthCheckConfig
-type TimeoutConfig = api.TimeoutConfig
-
 // ServiceInstanceState provides state management for service instances
 // This is the only part that remains local to the serviceclass package
 type ServiceInstanceState struct {

@@ -3,39 +3,37 @@ package services
 import (
 	"context"
 	"time"
+
+	"envctl/internal/api"
 )
 
-// ServiceState represents the current state of a service
-type ServiceState string
+// Use API package types instead of duplicating them
+type ServiceState = api.ServiceState
+type HealthStatus = api.HealthStatus
 
 const (
-	StateUnknown  ServiceState = "Unknown"
-	StateWaiting  ServiceState = "Waiting"
-	StateStarting ServiceState = "Starting"
-	StateRunning  ServiceState = "Running"
-	StateStopping ServiceState = "Stopping"
-	StateStopped  ServiceState = "Stopped"
-	StateFailed   ServiceState = "Failed"
-	StateRetrying ServiceState = "Retrying"
+	StateUnknown  = api.StateUnknown
+	StateWaiting  = api.StateWaiting
+	StateStarting = api.StateStarting
+	StateRunning  = api.StateRunning
+	StateStopping = api.StateStopping
+	StateStopped  = api.StateStopped
+	StateFailed   = api.StateFailed
+	StateRetrying = api.StateRetrying
 )
 
-// HealthStatus represents the health status of a service
-type HealthStatus string
-
 const (
-	HealthUnknown   HealthStatus = "Unknown"
-	HealthHealthy   HealthStatus = "Healthy"
-	HealthUnhealthy HealthStatus = "Unhealthy"
-	HealthChecking  HealthStatus = "Checking"
+	HealthUnknown   = api.HealthUnknown
+	HealthHealthy   = api.HealthHealthy
+	HealthUnhealthy = api.HealthUnhealthy
+	HealthChecking  = api.HealthChecking
 )
 
 // ServiceType represents the type of service
 type ServiceType string
 
 const (
-	TypeKubeConnection ServiceType = "KubeConnection"
-	TypePortForward    ServiceType = "PortForward"
-	TypeMCPServer      ServiceType = "MCPServer"
+	TypeMCPServer ServiceType = "MCPServer"
 )
 
 // Service is the core interface that all services must implement

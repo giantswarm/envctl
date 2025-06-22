@@ -421,12 +421,12 @@ func (a *Adapter) handleServiceClassValidate(args map[string]interface{}) (*api.
 	}
 
 	// Build ServiceClassDefinition from structured parameters (without type and metadata)
-	def := ServiceClassDefinition{
+	def := api.ServiceClass{
 		Name:          name,
 		Version:       version,
 		Description:   description,
 		ServiceConfig: serviceConfig,
-		Operations:    make(map[string]OperationDefinition), // Empty for validation
+		Operations:    make(map[string]api.OperationDefinition), // Empty for validation
 	}
 
 	// Validate without persisting
@@ -471,12 +471,12 @@ func (a *Adapter) handleServiceClassCreate(args map[string]interface{}) (*api.Ca
 	}
 
 	// Build ServiceClassDefinition from structured parameters (type/metadata will be set internally)
-	def := ServiceClassDefinition{
+	def := api.ServiceClass{
 		Name:          name,
 		Version:       version,
 		Description:   description,
 		ServiceConfig: serviceConfig,
-		Operations:    make(map[string]OperationDefinition), // Not provided via API anymore
+		Operations:    make(map[string]api.OperationDefinition), // Not provided via API anymore
 	}
 
 	if err := a.manager.CreateServiceClass(def); err != nil {
@@ -487,8 +487,8 @@ func (a *Adapter) handleServiceClassCreate(args map[string]interface{}) (*api.Ca
 }
 
 // convertServiceConfig converts a map[string]interface{} to ServiceConfig
-func convertServiceConfig(configMap map[string]interface{}) (ServiceConfig, error) {
-	var config ServiceConfig
+func convertServiceConfig(configMap map[string]interface{}) (api.ServiceConfig, error) {
+	var config api.ServiceConfig
 
 	// Convert lifecycleTools (required)
 	lifecycleToolsMap, ok := configMap["lifecycleTools"].(map[string]interface{})
@@ -524,8 +524,8 @@ func convertServiceConfig(configMap map[string]interface{}) (ServiceConfig, erro
 }
 
 // convertLifecycleTools converts a map[string]interface{} to LifecycleTools
-func convertLifecycleTools(toolsMap map[string]interface{}) (LifecycleTools, error) {
-	var tools LifecycleTools
+func convertLifecycleTools(toolsMap map[string]interface{}) (api.LifecycleTools, error) {
+	var tools api.LifecycleTools
 
 	// Convert start tool (required)
 	if startMap, ok := toolsMap["start"].(map[string]interface{}); ok {
@@ -578,8 +578,8 @@ func convertLifecycleTools(toolsMap map[string]interface{}) (LifecycleTools, err
 }
 
 // convertToolCall converts a map[string]interface{} to ToolCall
-func convertToolCall(toolMap map[string]interface{}) (ToolCall, error) {
-	var tool ToolCall
+func convertToolCall(toolMap map[string]interface{}) (api.ToolCall, error) {
+	var tool api.ToolCall
 
 	// Tool name is required
 	if toolName, ok := toolMap["tool"].(string); ok {
@@ -595,7 +595,7 @@ func convertToolCall(toolMap map[string]interface{}) (ToolCall, error) {
 
 	// ResponseMapping is optional
 	if respMap, ok := toolMap["responseMapping"].(map[string]interface{}); ok {
-		var responseMapping ResponseMapping
+		var responseMapping api.ResponseMapping
 		if serviceID, ok := respMap["serviceId"].(string); ok {
 			responseMapping.ServiceID = serviceID
 		}
@@ -622,54 +622,6 @@ func convertToolCall(toolMap map[string]interface{}) (ToolCall, error) {
 	return tool, nil
 }
 
-// convertOperationDefinition converts a map[string]interface{} to OperationDefinition
-func convertOperationDefinition(opMap map[string]interface{}) (OperationDefinition, error) {
-	var operation OperationDefinition
-
-	if desc, ok := opMap["description"].(string); ok {
-		operation.Description = desc
-	}
-
-	if requires, ok := opMap["requires"].([]interface{}); ok {
-		operation.Requires = make([]string, len(requires))
-		for i, req := range requires {
-			if reqStr, ok := req.(string); ok {
-				operation.Requires[i] = reqStr
-			} else {
-				return operation, fmt.Errorf("requires at index %d must be a string", i)
-			}
-		}
-	}
-
-	if params, ok := opMap["parameters"].(map[string]interface{}); ok {
-		operation.Parameters = make(map[string]Parameter)
-		for paramName, paramData := range params {
-			paramMap, ok := paramData.(map[string]interface{})
-			if !ok {
-				return operation, fmt.Errorf("parameter '%s' must be an object", paramName)
-			}
-
-			var param Parameter
-			if paramType, ok := paramMap["type"].(string); ok {
-				param.Type = paramType
-			}
-			if required, ok := paramMap["required"].(bool); ok {
-				param.Required = required
-			}
-			if description, ok := paramMap["description"].(string); ok {
-				param.Description = description
-			}
-			if defaultValue, ok := paramMap["default"]; ok {
-				param.Default = defaultValue
-			}
-
-			operation.Parameters[paramName] = param
-		}
-	}
-
-	return operation, nil
-}
-
 func (a *Adapter) handleServiceClassUpdate(args map[string]interface{}) (*api.CallToolResult, error) {
 	name, ok := args["name"].(string)
 	if !ok || name == "" {
@@ -686,7 +638,7 @@ func (a *Adapter) handleServiceClassUpdate(args map[string]interface{}) (*api.Ca
 	}
 
 	// Start with existing definition and update provided fields
-	def := ServiceClassDefinition{
+	def := api.ServiceClass{
 		Name:          name,
 		Version:       existingDef.Version,     // Will be updated if provided
 		Description:   existingDef.Description, // Will be updated if provided

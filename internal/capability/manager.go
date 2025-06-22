@@ -17,7 +17,6 @@ type CapabilityManager struct {
 	loader       *config.ConfigurationLoader
 	definitions  map[string]*api.Capability // capability name -> definition
 	toolChecker  config.ToolAvailabilityChecker
-	registry     *Registry
 	exposedTools map[string]bool // Track which capability tools we've exposed
 	storage      *config.Storage
 	configPath   string // Optional custom config path
@@ -71,7 +70,7 @@ func (cm *CapabilityManager) LoadDefinitions() error {
 	cm.exposedTools = make(map[string]bool)
 
 	// Load all capability YAML files using the config path-aware helper
-	definitions, errorCollection, err := config.LoadAndParseYAMLWithConfig[api.Capability](cm.configPath, "capabilities", func(def api.Capability) error {
+	definitions, errorCollection, err := config.LoadAndParseYAMLWithConfig(cm.configPath, "capabilities", func(def api.Capability) error {
 		return cm.validateDefinition(&def)
 	})
 	if err != nil {
@@ -403,30 +402,12 @@ func (cm *CapabilityManager) DeleteCapability(name string) error {
 	return nil
 }
 
-// RegisterDefinition adds a capability definition to the in-memory registry
-func (cm *CapabilityManager) RegisterDefinition(def *api.Capability) {
-	cm.mu.Lock()
-	defer cm.mu.Unlock()
-
-	cm.definitions[def.Name] = def
-	cm.updateAvailableCapabilities()
-}
-
-// UpdateDefinition updates a capability definition in the in-memory registry
+// UpdateDefinition updates a capability definition
 func (cm *CapabilityManager) UpdateDefinition(def *api.Capability) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
 	cm.definitions[def.Name] = def
-	cm.updateAvailableCapabilities()
-}
-
-// UnregisterDefinition removes a capability definition from the in-memory registry
-func (cm *CapabilityManager) UnregisterDefinition(name string) {
-	cm.mu.Lock()
-	defer cm.mu.Unlock()
-
-	delete(cm.definitions, name)
 	cm.updateAvailableCapabilities()
 }
 

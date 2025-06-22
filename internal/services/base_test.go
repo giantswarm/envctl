@@ -10,7 +10,7 @@ import (
 
 func TestNewBaseService(t *testing.T) {
 	label := "test-service"
-	serviceType := TypeKubeConnection
+	serviceType := TypeMCPServer
 	dependencies := []string{"dep1", "dep2"}
 
 	base := NewBaseService(label, serviceType, dependencies)
@@ -52,7 +52,7 @@ func TestNewBaseService(t *testing.T) {
 
 func TestBaseServiceGetters(t *testing.T) {
 	label := "getter-test"
-	serviceType := TypePortForward
+	serviceType := TypeMCPServer
 	dependencies := []string{"service1", "service2", "service3"}
 
 	base := NewBaseService(label, serviceType, dependencies)
@@ -124,7 +124,7 @@ func TestBaseServiceStateManagement(t *testing.T) {
 }
 
 func TestBaseServiceUpdateHealth(t *testing.T) {
-	base := NewBaseService("health-test", TypeKubeConnection, nil)
+	base := NewBaseService("health-test", TypeMCPServer, nil)
 
 	// Set initial state
 	base.UpdateState(StateRunning, HealthHealthy, nil)
@@ -143,7 +143,7 @@ func TestBaseServiceUpdateHealth(t *testing.T) {
 }
 
 func TestBaseServiceUpdateError(t *testing.T) {
-	base := NewBaseService("error-test", TypePortForward, nil)
+	base := NewBaseService("error-test", TypeMCPServer, nil)
 
 	// Set initial state
 	base.UpdateState(StateRunning, HealthHealthy, nil)
@@ -250,7 +250,7 @@ func TestBaseServiceStateChangeCallback(t *testing.T) {
 }
 
 func TestBaseServiceNilCallback(t *testing.T) {
-	base := NewBaseService("nil-callback-test", TypeKubeConnection, nil)
+	base := NewBaseService("nil-callback-test", TypeMCPServer, nil)
 
 	// Don't set a callback, ensure no panic on state changes
 	base.UpdateState(StateRunning, HealthHealthy, nil)
@@ -261,7 +261,7 @@ func TestBaseServiceNilCallback(t *testing.T) {
 }
 
 func TestBaseServiceConcurrentAccess(t *testing.T) {
-	base := NewBaseService("concurrent-test", TypePortForward, nil)
+	base := NewBaseService("concurrent-test", TypeMCPServer, nil)
 
 	var wg sync.WaitGroup
 	numGoroutines := 10
@@ -383,7 +383,7 @@ func (e *embeddedService) Restart(ctx context.Context) error {
 
 func TestBaseServiceEmbedding(t *testing.T) {
 	embedded := &embeddedService{
-		BaseService: NewBaseService("embedded-test", TypeKubeConnection, []string{"dep1"}),
+		BaseService: NewBaseService("embedded-test", TypeMCPServer, []string{"dep1"}),
 		customField: "custom value",
 	}
 

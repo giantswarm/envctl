@@ -262,7 +262,7 @@ metadata:
 	definitions := manager.ListServiceClasses()
 
 	// Find our test ServiceClass among the definitions (may include system ServiceClasses)
-	var testServiceClass *ServiceClassInfo
+	var testServiceClass *api.ServiceClass
 	for i := range definitions {
 		if definitions[i].Name == "test_k8s_connection" {
 			testServiceClass = &definitions[i]
@@ -345,7 +345,7 @@ metadata:
 	definitions := manager.ListServiceClasses()
 
 	// Find our test ServiceClass among the definitions (may include system ServiceClasses)
-	var testServiceClass *ServiceClassInfo
+	var testServiceClass *api.ServiceClass
 	for i := range definitions {
 		if definitions[i].Name == "test_portforward" {
 			testServiceClass = &definitions[i]
@@ -427,7 +427,7 @@ metadata:
 	classes := adapter.ListServiceClasses()
 
 	// Find our test ServiceClass among the classes (may include system ServiceClasses)
-	var testServiceClass *api.ServiceClassInfo
+	var testServiceClass *api.ServiceClass
 	for i := range classes {
 		if classes[i].Name == "test_simple" {
 			testServiceClass = &classes[i]
