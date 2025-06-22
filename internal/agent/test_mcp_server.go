@@ -123,12 +123,21 @@ func (t *TestMCPServer) registerTools() {
 	)
 	t.mcpServer.AddTool(listScenariosTool, t.handleListScenarios)
 
-	// test_validate_scenario tool
+	// test_validate_scenario tool - enhanced with API schema validation
 	validateScenarioTool := mcp.NewTool("test_validate_scenario",
-		mcp.WithDescription("Validate YAML scenario files for syntax and completeness"),
+		mcp.WithDescription("Validate YAML scenario files for syntax and completeness, with optional API schema validation"),
 		mcp.WithString("scenario_path",
 			mcp.Required(),
 			mcp.Description("Path to scenario file or directory"),
+		),
+		mcp.WithString("schema_path",
+			mcp.Description("Path to API schema file for API validation (optional)"),
+		),
+		mcp.WithString("category",
+			mcp.Description("Filter by category (behavioral, integration) when using schema validation"),
+		),
+		mcp.WithString("concept",
+			mcp.Description("Filter by concept (serviceclass, workflow, mcpserver, capability, service) when using schema validation"),
 		),
 	)
 	t.mcpServer.AddTool(validateScenarioTool, t.handleValidateScenario)

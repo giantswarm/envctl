@@ -9,6 +9,8 @@ This guide provides comprehensive documentation for testing envctl using its Mod
 - **IDE Integration**: Direct testing from development environments with MCP-enabled tools  
 - **Standardized Interface**: Consistent tool-based approach across different testing contexts
 - **Automated Validation**: Comprehensive scenario execution with built-in result verification
+- **API Schema Validation**: Generate and validate against live envctl serve API schemas
+- **Unified Functionality**: CLI and MCP server provide identical testing and validation capabilities
 - **Isolated Test Execution**: Each test scenario runs against a fresh, isolated envctl instance
 - **Complete Log Capture**: Instance logs are automatically captured and included in all MCP responses
 
@@ -121,7 +123,7 @@ steps:
 
 The envctl testing framework exposes four primary MCP tools through the aggregator:
 
-### 1. `x_envctl-test_test_run_scenarios`
+### 1. `mcp_envctl-test_test_run_scenarios`
 **Purpose**: Execute test scenarios with comprehensive configuration options and automatic instance management
 
 **Parameters**:
@@ -170,7 +172,7 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
 }
 ```
 
-### 2. `x_envctl-test_test_list_scenarios`
+### 2. `mcp_envctl-test_test_list_scenarios`
 **Purpose**: Discover available test scenarios with filtering capabilities
 
 **Parameters**:
@@ -199,15 +201,19 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
 }
 ```
 
-### 3. `x_envctl-test_test_validate_scenario`
-**Purpose**: Validate YAML scenario files for syntax and completeness
+### 3. `mcp_envctl-test_test_validate_scenario`
+**Purpose**: Validate YAML scenario files for syntax and completeness, with optional API schema validation
 
 **Parameters**:
 - `scenario_path` (string, required): Path to scenario file or directory
+- `schema_path` (string, optional): Path to API schema file for API validation
+- `category` (string, optional): Filter by category when using schema validation ("behavioral", "integration")  
+- `concept` (string, optional): Filter by concept when using schema validation ("serviceclass", "workflow", "mcpserver", "capability", "service")
 
-**Response Format**:
+**Response Format (YAML validation)**:
 ```json
 {
+  "validation_type": "yaml_structure",
   "valid": true,
   "scenario_count": 3,
   "scenarios": [
@@ -226,7 +232,46 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
 }
 ```
 
-### 4. `x_envctl-test_test_get_results`
+**Response Format (API schema validation)**:
+```json
+{
+  "validation_type": "api_schema",
+  "schema_path": "schema.json",
+  "total_scenarios": 131,
+  "valid_scenarios": 36,
+  "total_errors": 330,
+  "scenario_results": [
+    {
+      "scenario_name": "serviceclass-basic-operations",
+      "valid": false,
+      "errors": [
+        {
+          "type": "unexpected_argument",
+          "message": "Step create-test-serviceclass: Argument 'description' not expected for tool 'core_serviceclass_create'",
+          "field": "description",
+          "suggestion": "Remove argument or check if parameter name changed"
+        }
+      ],
+      "step_results": [
+        {
+          "step_id": "create-test-serviceclass",
+          "tool": "core_serviceclass_create",
+          "valid": false,
+          "errors": [...]
+        }
+      ]
+    }
+  ],
+  "validation_summary": {
+    "valid_steps": 159,
+    "invalid_steps": 207,
+    "unexpected_argument": 303,
+    "unknown_tool": 27
+  }
+}
+```
+
+### 4. `mcp_envctl-test_test_get_results`
 **Purpose**: Retrieve detailed results from the last test execution
 
 **Parameters**:
@@ -261,7 +306,7 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
 #### Run All Tests
 ```json
 {
-  "tool": "x_envctl-test_test_run_scenarios",
+  "tool": "mcp_envctl-test_test_run_scenarios",
   "parameters": {
     "verbose": true
   }
@@ -271,7 +316,7 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
 #### Run Category-Specific Tests
 ```json
 {
-  "tool": "x_envctl-test_test_run_scenarios", 
+  "tool": "mcp_envctl-test_test_run_scenarios", 
   "parameters": {
     "category": "behavioral",
     "verbose": true
@@ -282,7 +327,7 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
 #### Run Concept-Specific Tests
 ```json
 {
-  "tool": "x_envctl-test_test_run_scenarios",
+  "tool": "mcp_envctl-test_test_run_scenarios",
   "parameters": {
     "concept": "serviceclass",
     "parallel": 2
@@ -293,7 +338,7 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
 #### Run Single Scenario
 ```json
 {
-  "tool": "x_envctl-test_test_run_scenarios",
+  "tool": "mcp_envctl-test_test_run_scenarios",
   "parameters": {
     "scenario": "serviceclass-basic-operations",
     "verbose": true
@@ -306,7 +351,7 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
 #### Parallel Execution with Fail-Fast
 ```json
 {
-  "tool": "x_envctl-test_test_run_scenarios",
+  "tool": "mcp_envctl-test_test_run_scenarios",
   "parameters": {
     "category": "integration",
     "parallel": 4,
@@ -319,7 +364,7 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
 #### Custom Scenario Path
 ```json
 {
-  "tool": "x_envctl-test_test_run_scenarios",
+  "tool": "mcp_envctl-test_test_run_scenarios",
   "parameters": {
     "config_path": "/home/teemow/projects/giantswarm/envctl/internal/testing/scenarios",
     "concept": "workflow"
@@ -332,19 +377,42 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
 #### List Available Scenarios
 ```json
 {
-  "tool": "x_envctl-test_test_list_scenarios",
+  "tool": "test_list_scenarios",
   "parameters": {
     "concept": "serviceclass"
   }
 }
 ```
 
-#### Validate Scenario Files
+#### Validate Scenario Files (YAML Structure)
 ```json
 {
-  "tool": "x_envctl-test_test_validate_scenario",
+  "tool": "test_validate_scenario",
   "parameters": {
     "scenario_path": "/home/teemow/projects/giantswarm/envctl/internal/testing/scenarios/"
+  }
+}
+```
+
+#### Validate Scenarios Against API Schema
+```json
+{
+  "tool": "test_validate_api_schema",
+  "parameters": {
+    "schema_path": "schema.json",
+    "category": "behavioral"
+  }
+}
+```
+
+#### Validate Scenarios Against API Schema
+```json
+{
+  "tool": "mcp_envctl-test_test_validate_scenario",
+  "parameters": {
+    "scenario_path": "/home/teemow/projects/giantswarm/envctl/internal/testing/scenarios/",
+    "schema_path": "schema.json",
+    "concept": "serviceclass"
   }
 }
 ```
@@ -352,7 +420,7 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
 #### Get Latest Results
 ```json
 {
-  "tool": "x_envctl-test_test_get_results",
+  "tool": "mcp_envctl-test_test_get_results",
   "parameters": {
     "random_string": "get_results"
   }
@@ -366,7 +434,7 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
 #### Pre-Commit Testing Validation
 ```json
 {
-  "tool": "x_envctl-test_test_run_scenarios",
+  "tool": "mcp_envctl-test_test_run_scenarios",
   "parameters": {
     "category": "behavioral",
     "parallel": 2,
@@ -375,10 +443,22 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
 }
 ```
 
+#### API Schema Validation Workflow
+```json
+{
+  "tool": "mcp_envctl-test_test_validate_scenario",
+  "parameters": {
+    "scenario_path": "/home/teemow/projects/giantswarm/envctl/internal/testing/scenarios/",
+    "schema_path": "schema.json",
+    "category": "behavioral"
+  }
+}
+```
+
 #### Local Development Testing Pattern
 ```json
 {
-  "tool": "x_envctl-test_test_run_scenarios",
+  "tool": "mcp_envctl-test_test_run_scenarios",
   "parameters": {
     "concept": "workflow",
     "verbose": true
@@ -389,7 +469,7 @@ The envctl testing framework exposes four primary MCP tools through the aggregat
 #### Quick Feedback Loop
 ```json
 {
-  "tool": "x_envctl-test_test_run_scenarios",
+  "tool": "mcp_envctl-test_test_run_scenarios",
   "parameters": {
     "scenario": "serviceclass-basic-operations",
     "verbose": true
@@ -422,17 +502,28 @@ steps:
 #### 2. Validate Scenario Syntax
 ```json
 {
-  "tool": "x_envctl-test_test_validate_scenario",
+  "tool": "mcp_envctl-test_test_validate_scenario",
   "parameters": {
     "scenario_path": "/home/teemow/projects/giantswarm/envctl/internal/testing/scenarios/my-new-test.yaml"
   }
 }
 ```
 
-#### 3. Test New Scenario
+#### 3. Validate Against API Schema
 ```json
 {
-  "tool": "x_envctl-test_test_run_scenarios",
+  "tool": "mcp_envctl-test_test_validate_scenario",
+  "parameters": {
+    "scenario_path": "/home/teemow/projects/giantswarm/envctl/internal/testing/scenarios/my-new-test.yaml",
+    "schema_path": "schema.json"
+  }
+}
+```
+
+#### 4. Test New Scenario
+```json
+{
+  "tool": "mcp_envctl-test_test_run_scenarios",
   "parameters": {
     "scenario": "my-new-feature-test",
     "verbose": true
@@ -440,10 +531,10 @@ steps:
 }
 ```
 
-#### 4. Iterate Based on Results
+#### 5. Iterate Based on Results
 ```json
 {
-  "tool": "x_envctl-test_test_get_results",
+  "tool": "mcp_envctl-test_test_get_results",
   "parameters": {
     "random_string": "check_results"
   }
@@ -455,7 +546,7 @@ steps:
 #### 1. Identify Failing Tests
 ```json
 {
-  "tool": "x_envctl-test_test_run_scenarios",
+  "tool": "mcp_envctl-test_test_run_scenarios",
   "parameters": {
     "concept": "serviceclass",
     "fail_fast": true,
@@ -464,7 +555,19 @@ steps:
 }
 ```
 
-#### 2. Analyze Instance Logs
+#### 2. Validate Against API Schema
+```json
+{
+  "tool": "mcp_envctl-test_test_validate_scenario",
+  "parameters": {
+    "scenario_path": "/home/teemow/projects/giantswarm/envctl/internal/testing/scenarios/",
+    "schema_path": "schema.json",
+    "concept": "serviceclass"
+  }
+}
+```
+
+#### 3. Analyze Instance Logs
 Check the `instance_logs` in the test results for detailed debugging information:
 ```json
 {
@@ -480,20 +583,20 @@ Check the `instance_logs` in the test results for detailed debugging information
 }
 ```
 
-#### 3. Get Detailed Test Results
+#### 4. Get Detailed Test Results
 ```json
 {
-  "tool": "x_envctl-test_test_get_results",
+  "tool": "mcp_envctl-test_test_get_results",
   "parameters": {
     "random_string": "debug_analysis"
   }
 }
 ```
 
-#### 4. Test Single Failing Scenario
+#### 5. Test Single Failing Scenario
 ```json
 {
-  "tool": "x_envctl-test_test_run_scenarios",
+  "tool": "mcp_envctl-test_test_run_scenarios",
   "parameters": {
     "scenario": "specific-failing-scenario",
     "verbose": true
@@ -509,7 +612,7 @@ Check the `instance_logs` in the test results for detailed debugging information
 ```json
 // Start with behavioral tests
 {
-  "tool": "x_envctl-test_test_run_scenarios",
+  "tool": "mcp_envctl-test_test_run_scenarios",
   "parameters": {
     "category": "behavioral",
     "fail_fast": true
@@ -518,7 +621,7 @@ Check the `instance_logs` in the test results for detailed debugging information
 
 // Then run integration tests
 {
-  "tool": "x_envctl-test_test_run_scenarios", 
+  "tool": "mcp_envctl-test_test_run_scenarios", 
   "parameters": {
     "category": "integration",
     "parallel": 2
@@ -530,7 +633,7 @@ Check the `instance_logs` in the test results for detailed debugging information
 ```json
 // Test the concept you're actively developing
 {
-  "tool": "x_envctl-test_test_run_scenarios",
+  "tool": "mcp_envctl-test_test_run_scenarios",
   "parameters": {
     "concept": "workflow",
     "verbose": true
@@ -541,7 +644,7 @@ Check the `instance_logs` in the test results for detailed debugging information
 #### 3. **Fast Feedback with Fail-Fast**
 ```json
 {
-  "tool": "x_envctl-test_test_run_scenarios",
+  "tool": "mcp_envctl-test_test_run_scenarios",
   "parameters": {
     "fail_fast": true,
     "parallel": 4,
@@ -576,7 +679,7 @@ Check the `instance_logs` in the test results for detailed debugging information
 #### 1. **Graceful Failure Handling**
 ```json
 {
-  "tool": "x_envctl-test_test_run_scenarios",
+  "tool": "mcp_envctl-test_test_run_scenarios",
   "parameters": {
     "fail_fast": false,  // Continue execution
     "verbose": true      // Get detailed error info
@@ -588,7 +691,7 @@ Check the `instance_logs` in the test results for detailed debugging information
 ```json
 // Always check results after execution
 {
-  "tool": "x_envctl-test_test_get_results",
+  "tool": "mcp_envctl-test_test_get_results",
   "parameters": {
     "random_string": "post_execution_check"
   }
@@ -599,7 +702,7 @@ Check the `instance_logs` in the test results for detailed debugging information
 ```json
 // Validate scenarios before running
 {
-  "tool": "x_envctl-test_test_validate_scenario",
+  "tool": "mcp_envctl-test_test_validate_scenario",
   "parameters": {
     "scenario_path": "/home/teemow/projects/giantswarm/envctl/internal/testing/scenarios/"
   }
@@ -615,7 +718,7 @@ Check the `instance_logs` in the test results for detailed debugging information
 ```json
 {
   "error": "failed to start envctl process: executable file not found",
-  "tool": "x_envctl-test_test_run_scenarios"
+  "tool": "mcp_envctl-test_test_run_scenarios"
 }
 ```
 
@@ -641,7 +744,7 @@ chmod +x ./envctl
 ```json
 {
   "error": "failed to find available port: no available ports found starting from 18000",
-  "tool": "x_envctl-test_test_run_scenarios"
+  "tool": "mcp_envctl-test_test_run_scenarios"
 }
 ```
 
@@ -659,7 +762,7 @@ The framework will automatically retry with different ports, but if the entire r
 
 ```json
 {
-  "tool": "x_envctl-test_test_run_scenarios",
+  "tool": "mcp_envctl-test_test_run_scenarios",
   "parameters": {
     "parallel": 1,
     "verbose": true
@@ -672,7 +775,7 @@ The framework will automatically retry with different ports, but if the entire r
 ```json
 {
   "error": "timeout waiting for envctl instance to be ready",
-  "tool": "x_envctl-test_test_run_scenarios"
+  "tool": "mcp_envctl-test_test_run_scenarios"
 }
 ```
 
@@ -698,7 +801,7 @@ Common startup issues:
 **Symptoms**:
 ```json
 {
-  "tool": "x_envctl-test_test_validate_scenario",
+  "tool": "mcp_envctl-test_test_validate_scenario",
   "result": {
     "valid": false,
     "errors": ["step 'invalid-step' references unknown tool 'invalid_tool'"]
@@ -709,7 +812,7 @@ Common startup issues:
 **Solutions**:
 ```json
 {
-  "tool": "x_envctl-test_test_validate_scenario",
+  "tool": "mcp_envctl-test_test_validate_scenario",
   "parameters": {
     "scenario_path": "/home/teemow/projects/giantswarm/envctl/internal/testing/scenarios/"
   }
@@ -729,7 +832,7 @@ free -h      # Memory usage
 Reduce parallel execution:
 ```json
 {
-  "tool": "x_envctl-test_test_run_scenarios",
+  "tool": "mcp_envctl-test_test_run_scenarios",
   "parameters": {
     "parallel": 1,
     "concept": "serviceclass"
@@ -760,7 +863,7 @@ Reduce parallel execution:
 #### Cursor with Built-in MCP
 ```typescript
 // Use MCP testing tools directly in Cursor
-const testResult = await mcp.callTool("x_envctl-test_test_run_scenarios", {
+const testResult = await mcp.callTool("mcp_envctl-test_test_run_scenarios", {
   concept: "serviceclass",
   verbose: true
 });

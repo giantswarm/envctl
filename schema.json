@@ -1,0 +1,367 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Generated schema for envctl core API tools for test scenario validation",
+  "generated_at": "2025-06-22T16:40:29+02:00",
+  "properties": {
+    "tools": {
+      "description": "Core API tools available in envctl serve",
+      "properties": {
+        "core_capability_check": {
+          "description": "Parameters for core_capability_check tool",
+          "properties": {},
+          "type": "object"
+        },
+        "core_capability_create": {
+          "description": "Parameters for core_capability_create tool",
+          "properties": {
+            "name": {
+              "description": "Name of the resource to create",
+              "type": "string"
+            },
+            "operations": {
+              "description": "Capability operations",
+              "type": "array"
+            },
+            "type": {
+              "description": "Capability type",
+              "type": "string"
+            },
+            "version": {
+              "description": "Capability version",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "core_capability_delete": {
+          "description": "Parameters for core_capability_delete tool",
+          "properties": {
+            "name": {
+              "description": "Name of the resource to retrieve/delete",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "core_capability_get": {
+          "description": "Parameters for core_capability_get tool",
+          "properties": {
+            "name": {
+              "description": "Name of the resource to retrieve/delete",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "core_capability_list": {
+          "description": "List operation - typically no parameters required",
+          "properties": {},
+          "type": "object"
+        },
+        "core_capability_update": {
+          "description": "Parameters for core_capability_update tool",
+          "properties": {},
+          "type": "object"
+        },
+        "core_capability_validate": {
+          "description": "Parameters for core_capability_validate tool",
+          "properties": {},
+          "type": "object"
+        },
+        "core_config_get": {
+          "description": "Parameters for core_config_get tool",
+          "properties": {
+            "name": {
+              "description": "Name of the resource to retrieve/delete",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "core_config_get_aggregator": {
+          "description": "Parameters for core_config_get_aggregator tool",
+          "properties": {
+            "name": {
+              "description": "Name of the resource to retrieve/delete",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "core_config_get_global_settings": {
+          "description": "Parameters for core_config_get_global_settings tool",
+          "properties": {
+            "name": {
+              "description": "Name of the resource to retrieve/delete",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "core_config_reload": {
+          "description": "Parameters for core_config_reload tool",
+          "properties": {},
+          "type": "object"
+        },
+        "core_config_save": {
+          "description": "Parameters for core_config_save tool",
+          "properties": {},
+          "type": "object"
+        },
+        "core_config_update_aggregator": {
+          "description": "Parameters for core_config_update_aggregator tool",
+          "properties": {},
+          "type": "object"
+        },
+        "core_config_update_global_settings": {
+          "description": "Parameters for core_config_update_global_settings tool",
+          "properties": {},
+          "type": "object"
+        },
+        "core_mcpserver_available": {
+          "description": "Parameters for core_mcpserver_available tool",
+          "properties": {
+            "name": {
+              "description": "Name of the resource to check availability for",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "core_mcpserver_create": {
+          "description": "Parameters for core_mcpserver_create tool",
+          "properties": {
+            "name": {
+              "description": "Name of the resource to create",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "core_mcpserver_delete": {
+          "description": "Parameters for core_mcpserver_delete tool",
+          "properties": {
+            "name": {
+              "description": "Name of the resource to retrieve/delete",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "core_mcpserver_get": {
+          "description": "Parameters for core_mcpserver_get tool",
+          "properties": {
+            "name": {
+              "description": "Name of the resource to retrieve/delete",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "core_mcpserver_list": {
+          "description": "List operation - typically no parameters required",
+          "properties": {},
+          "type": "object"
+        },
+        "core_mcpserver_update": {
+          "description": "Parameters for core_mcpserver_update tool",
+          "properties": {},
+          "type": "object"
+        },
+        "core_mcpserver_validate": {
+          "description": "Parameters for core_mcpserver_validate tool",
+          "properties": {},
+          "type": "object"
+        },
+        "core_service_create": {
+          "description": "Parameters for core_service_create tool",
+          "properties": {
+            "name": {
+              "description": "Name of the resource to create",
+              "type": "string"
+            },
+            "parameters": {
+              "description": "Parameters for service creation",
+              "type": "object"
+            },
+            "serviceClassName": {
+              "description": "Name of the ServiceClass to instantiate",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "core_service_delete": {
+          "description": "Parameters for core_service_delete tool",
+          "properties": {
+            "name": {
+              "description": "Name of the resource to retrieve/delete",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "core_service_get": {
+          "description": "Parameters for core_service_get tool",
+          "properties": {
+            "name": {
+              "description": "Name of the resource to retrieve/delete",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "core_service_list": {
+          "description": "List operation - typically no parameters required",
+          "properties": {},
+          "type": "object"
+        },
+        "core_service_restart": {
+          "description": "Parameters for core_service_restart tool",
+          "properties": {},
+          "type": "object"
+        },
+        "core_service_start": {
+          "description": "Parameters for core_service_start tool",
+          "properties": {},
+          "type": "object"
+        },
+        "core_service_status": {
+          "description": "Parameters for core_service_status tool",
+          "properties": {},
+          "type": "object"
+        },
+        "core_service_stop": {
+          "description": "Parameters for core_service_stop tool",
+          "properties": {},
+          "type": "object"
+        },
+        "core_service_validate": {
+          "description": "Parameters for core_service_validate tool",
+          "properties": {},
+          "type": "object"
+        },
+        "core_serviceclass_available": {
+          "description": "Parameters for core_serviceclass_available tool",
+          "properties": {
+            "name": {
+              "description": "Name of the resource to check availability for",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "core_serviceclass_create": {
+          "description": "Parameters for core_serviceclass_create tool",
+          "properties": {
+            "name": {
+              "description": "Name of the resource to create",
+              "type": "string"
+            },
+            "serviceConfig": {
+              "description": "ServiceClass configuration",
+              "type": "object"
+            },
+            "type": {
+              "description": "ServiceClass type",
+              "type": "string"
+            },
+            "version": {
+              "description": "ServiceClass version",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "core_serviceclass_delete": {
+          "description": "Parameters for core_serviceclass_delete tool",
+          "properties": {
+            "name": {
+              "description": "Name of the resource to retrieve/delete",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "core_serviceclass_get": {
+          "description": "Parameters for core_serviceclass_get tool",
+          "properties": {
+            "name": {
+              "description": "Name of the resource to retrieve/delete",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "core_serviceclass_list": {
+          "description": "List operation - typically no parameters required",
+          "properties": {},
+          "type": "object"
+        },
+        "core_serviceclass_update": {
+          "description": "Parameters for core_serviceclass_update tool",
+          "properties": {},
+          "type": "object"
+        },
+        "core_serviceclass_validate": {
+          "description": "Parameters for core_serviceclass_validate tool",
+          "properties": {},
+          "type": "object"
+        },
+        "core_workflow_create": {
+          "description": "Parameters for core_workflow_create tool",
+          "properties": {
+            "name": {
+              "description": "Name of the resource to create",
+              "type": "string"
+            },
+            "steps": {
+              "description": "Workflow steps",
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "core_workflow_delete": {
+          "description": "Parameters for core_workflow_delete tool",
+          "properties": {
+            "name": {
+              "description": "Name of the resource to retrieve/delete",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "core_workflow_get": {
+          "description": "Parameters for core_workflow_get tool",
+          "properties": {
+            "name": {
+              "description": "Name of the resource to retrieve/delete",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "core_workflow_list": {
+          "description": "List operation - typically no parameters required",
+          "properties": {},
+          "type": "object"
+        },
+        "core_workflow_update": {
+          "description": "Parameters for core_workflow_update tool",
+          "properties": {},
+          "type": "object"
+        },
+        "core_workflow_validate": {
+          "description": "Parameters for core_workflow_validate tool",
+          "properties": {},
+          "type": "object"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "title": "envctl Core API Schema",
+  "type": "object",
+  "version": "1.0.0"
+}

@@ -312,7 +312,7 @@ func GetDefaultScenarioPath() string {
 func LoadAndFilterScenarios(configPath string, config TestConfiguration, logger TestLogger) ([]TestScenario, error) {
 	// Determine the actual path to use
 	actualPath := GetScenarioPath(configPath)
-	
+
 	// Create loader with appropriate logger
 	var loader TestScenarioLoader
 	if logger != nil {
@@ -320,7 +320,7 @@ func LoadAndFilterScenarios(configPath string, config TestConfiguration, logger 
 	} else {
 		loader = NewTestScenarioLoader(config.Debug)
 	}
-	
+
 	// Load scenarios
 	scenarios, err := loader.LoadScenarios(actualPath)
 	if err != nil {
@@ -353,7 +353,7 @@ func CreateScenarioLoaderForContext(debug bool, logger TestLogger) TestScenarioL
 // This uses minimal logging to avoid interfering with completion output
 func LoadScenariosForCompletion(configPath string) ([]TestScenario, error) {
 	actualPath := GetScenarioPath(configPath)
-	
+
 	// Use minimal logging for completion
 	loader := NewTestScenarioLoader(false)
 	scenarios, err := loader.LoadScenarios(actualPath)
@@ -361,6 +361,6 @@ func LoadScenariosForCompletion(configPath string) ([]TestScenario, error) {
 		// Return empty slice instead of error for completion
 		return []TestScenario{}, nil
 	}
-	
+
 	return scenarios, nil
 }

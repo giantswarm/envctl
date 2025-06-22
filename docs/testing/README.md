@@ -26,6 +26,13 @@
 - **CLI Mode**: Traditional command-line execution with `envctl test`
 - **MCP Server Mode**: New `envctl test --mcp-server` for IDE integration and AI-powered testing
 
+### API Schema Generation and Validation
+- **Schema Generation**: Generate JSON schemas from live envctl serve instances (`--generate-schema`)
+- **Scenario Validation**: Validate test scenarios against API schemas (`--validate-scenarios`) 
+- **Unified Validation**: Both CLI and MCP server provide identical validation functionality
+- **Tool Prefix Validation**: Smart validation rules for `core_*`, `x_*`, `workflow_*`, and `api_*` tools
+- **CI/CD Integration**: Automated schema validation to catch API compatibility issues
+
 ### Improved Debugging
 - **Instance Log Capture**: All stdout/stderr from test instances is captured and available
 - **Enhanced Error Reporting**: Detailed error information with context from instance logs
@@ -130,7 +137,21 @@ Unlike previous versions, you **do not need** to start an external envctl aggreg
 - **Automatic Cleanup**: Instances and configuration are cleaned up after each test
 - **Enhanced Debugging**: Instance logs are captured and available for analysis
 
-### 2. Run Your First Test
+### 2. Generate API Schema and Validate Scenarios
+
+**🔧 Keep test scenarios synchronized with the API:**
+
+```bash
+# Generate API schema from current envctl serve
+./envctl test --generate-schema --verbose
+
+# Validate all scenarios against the schema
+./envctl test --validate-scenarios --verbose
+
+# Both CLI and MCP server provide identical validation results
+```
+
+### 3. Run Your First Test
 
 ```bash
 # Run a simple test to verify everything works
@@ -155,6 +176,10 @@ Unlike previous versions, you **do not need** to start an external envctl aggreg
 ./envctl test --concept=workflow              # Test all Workflow functionality
 ./envctl test --concept=mcpserver             # Test all MCP Server functionality
 
+# Schema generation and validation
+./envctl test --generate-schema               # Generate API schema
+./envctl test --validate-scenarios            # Validate against schema
+
 # Run tests in parallel for faster execution (each gets its own instance)
 ./envctl test --parallel=4 --base-port=18000
 
@@ -165,7 +190,22 @@ Unlike previous versions, you **do not need** to start an external envctl aggreg
 ./envctl test --fail-fast
 ```
 
-### 4. Enhanced Debugging with Instance Logs
+### 5. Schema Generation and Validation
+
+```bash
+# Generate API schema from live envctl serve instance
+./envctl test --generate-schema --schema-output=current-schema.json --verbose
+
+# Validate scenarios to catch API compatibility issues
+./envctl test --validate-scenarios --schema-input=current-schema.json --verbose
+
+# Example validation output:
+# 🔍 API Schema Validation Results
+# Total scenarios: 131, Valid: 36, Invalid: 95, Errors: 330
+# Error Types: unexpected_argument: 303, unknown_tool: 27
+```
+
+### 6. Enhanced Debugging with Instance Logs
 
 ```bash
 # Instance logs are captured automatically and shown in debug mode
@@ -202,11 +242,13 @@ Tests can also be executed via MCP server mode for IDE integration and AI-powere
 ./envctl test --mcp-server
 
 # The MCP server exposes these tools:
-# - x_envctl-test_test_run_scenarios
-# - x_envctl-test_test_list_scenarios  
-# - x_envctl-test_test_validate_scenario
-# - x_envctl-test_test_get_results
+# - mcp_envctl-test_test_run_scenarios      # Execute test scenarios
+# - mcp_envctl-test_test_list_scenarios     # List available scenarios  
+# - mcp_envctl-test_test_validate_scenario  # Validate YAML structure AND API schema
+# - mcp_envctl-test_test_get_results       # Get detailed test results
 ```
+
+**🎯 Unified Functionality**: Both CLI and MCP server provide identical test execution and validation capabilities.
 
 For detailed MCP usage, see [testing-via-mcp.md](testing-via-mcp.md).
 
@@ -498,6 +540,15 @@ The test framework supports configurable parallel execution:
 
 - **Development**: Use 2-4 workers to balance speed and resource usage
 - **CI/CD**: Use 4-8 workers for faster execution
+
+## Related Documentation
+
+For comprehensive information about specific testing topics, see:
+
+- **[API Schema Validation](api-schema-validation.md)** - Complete guide to schema generation and validation
+- **[Testing via MCP](testing-via-mcp.md)** - MCP server integration for AI-powered testing  
+- **[Test Scenarios](scenarios.md)** - Writing and structuring test scenarios
+- **[Scenario Examples](examples/)** - Ready-to-use scenario templates
 - **Debugging**: Use 1 worker to avoid concurrent execution issues
 - **Resource Limits**: Monitor memory usage with large test suites
 

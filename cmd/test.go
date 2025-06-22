@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"envctl/internal/agent"
 	"envctl/internal/cli"
 	"envctl/internal/testing"
@@ -9,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -32,6 +34,12 @@ var (
 	testMockMCPServer bool
 	testConfigName    string
 	testMockConfig    string
+	// New flag for schema generation
+	testGenerateSchema bool
+	testSchemaOutput   string
+	// New flag for scenario validation
+	testValidateScenarios bool
+	testSchemaInput       string
 )
 
 // completeCategoryFlag provides shell completion for the category flag
@@ -82,6 +90,8 @@ Test execution modes:
 3. Concept-based: Run tests for specific concepts (--concept)
 4. Scenario-based: Run individual test scenarios (--scenario)
 5. MCP Server mode (--mcp-server): Runs an MCP server that exposes test functionality via stdio
+6. Schema Generation (--generate-schema): Generate API schema from envctl serve instance
+7. Scenario Validation (--validate-scenarios): Validate test scenarios against API schema
 
 Test Categories:
 - behavioral: BDD-style scenarios validating expected behavior
@@ -94,6 +104,11 @@ Core Concepts:
 - capability: Capability definitions and API operations
 - service: Service lifecycle and dependency management
 
+Schema Generation and Validation:
+The test command can generate JSON schemas from live envctl serve instances and validate
+existing test scenarios against these schemas. This ensures test scenarios stay in sync
+with the actual API as it evolves.
+
 Example usage:
   envctl test                              # Run all tests
   envctl test --category=behavioral        # Run behavioral tests only
@@ -104,6 +119,12 @@ Example usage:
   envctl test --parallel=4                # Run with 4 parallel workers
   envctl test --base-port=19000           # Use port 19000+ for test instances
   envctl test --mcp-server                # Run as MCP server (stdio transport)
+  envctl test --generate-schema           # Generate API schema from envctl serve
+  envctl test --validate-scenarios        # Validate scenarios against schema
+
+Schema Generation Examples:
+  envctl test --generate-schema --verbose --schema-output=api-v2.json
+  envctl test --validate-scenarios --schema-input=api-v2.json --verbose
 
 In MCP Server mode:
 - The test command acts as an MCP server using stdio transport
@@ -152,6 +173,14 @@ func init() {
 	testCmd.Flags().StringVar(&testConfigName, "config-name", "", "Name of the mock MCP server configuration")
 	testCmd.Flags().StringVar(&testMockConfig, "mock-config", "", "Path to mock MCP server configuration file")
 
+	// Schema generation flags
+	testCmd.Flags().BoolVar(&testGenerateSchema, "generate-schema", false, "Generate API schema from envctl serve instance")
+	testCmd.Flags().StringVar(&testSchemaOutput, "schema-output", "schema.json", "Output file for generated schema")
+
+	// Schema validation flags
+	testCmd.Flags().BoolVar(&testValidateScenarios, "validate-scenarios", false, "Validate test scenarios against API schema")
+	testCmd.Flags().StringVar(&testSchemaInput, "schema-input", "schema.json", "Input schema file for validation")
+
 	// Shell completion for test flags
 	_ = testCmd.RegisterFlagCompletionFunc("category", completeCategoryFlag)
 	_ = testCmd.RegisterFlagCompletionFunc("concept", completeConceptFlag)
@@ -163,6 +192,7 @@ func init() {
 	testCmd.MarkFlagsMutuallyExclusive("mcp-server", "scenario")
 	testCmd.MarkFlagsMutuallyExclusive("mcp-server", "fail-fast")
 	testCmd.MarkFlagsMutuallyExclusive("mcp-server", "parallel")
+	testCmd.MarkFlagsMutuallyExclusive("mcp-server", "generate-schema")
 
 	// Mark flags as mutually exclusive with mock MCP server mode
 	testCmd.MarkFlagsMutuallyExclusive("mock-mcp-server", "category")
@@ -170,15 +200,32 @@ func init() {
 	testCmd.MarkFlagsMutuallyExclusive("mock-mcp-server", "scenario")
 	testCmd.MarkFlagsMutuallyExclusive("mock-mcp-server", "fail-fast")
 	testCmd.MarkFlagsMutuallyExclusive("mock-mcp-server", "mcp-server")
+	testCmd.MarkFlagsMutuallyExclusive("mock-mcp-server", "generate-schema")
+
+	// Mark flags as mutually exclusive with schema generation mode
+	testCmd.MarkFlagsMutuallyExclusive("generate-schema", "category")
+	testCmd.MarkFlagsMutuallyExclusive("generate-schema", "concept")
+	testCmd.MarkFlagsMutuallyExclusive("generate-schema", "scenario")
+	testCmd.MarkFlagsMutuallyExclusive("generate-schema", "fail-fast")
+	testCmd.MarkFlagsMutuallyExclusive("generate-schema", "parallel")
+
+	// Mark flags as mutually exclusive with scenario validation mode
+	testCmd.MarkFlagsMutuallyExclusive("validate-scenarios", "category")
+	testCmd.MarkFlagsMutuallyExclusive("validate-scenarios", "concept")
+	testCmd.MarkFlagsMutuallyExclusive("validate-scenarios", "scenario")
+	testCmd.MarkFlagsMutuallyExclusive("validate-scenarios", "fail-fast")
+	testCmd.MarkFlagsMutuallyExclusive("validate-scenarios", "parallel")
+	testCmd.MarkFlagsMutuallyExclusive("validate-scenarios", "generate-schema")
 
 	// Validate parallel flag
 	testCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
-		if !testMCPServer && !testMockMCPServer && (testParallel < 1 || testParallel > 10) {
+		if !testMCPServer && !testMockMCPServer && !testGenerateSchema && !testValidateScenarios && (testParallel < 1 || testParallel > 10) {
 			return fmt.Errorf("parallel workers must be between 1 and 10, got %d", testParallel)
 		}
 		if testMockMCPServer && testMockConfig == "" {
 			return fmt.Errorf("--mock-config is required when using --mock-mcp-server")
 		}
+		// No additional validation needed for --validate-scenarios since schema-input has a default value
 		return nil
 	}
 }
@@ -193,11 +240,21 @@ func runTest(cmd *cobra.Command, args []string) error {
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-sigChan
-		if !testMCPServer && !testMockMCPServer {
+		if !testMCPServer && !testMockMCPServer && !testGenerateSchema && !testValidateScenarios {
 			fmt.Println("\nReceived interrupt signal, stopping tests gracefully...")
 		}
 		cancel()
 	}()
+
+	// Run in schema generation mode if requested
+	if testGenerateSchema {
+		return runSchemaGeneration(ctx, cmd, args)
+	}
+
+	// Run in scenario validation mode if requested
+	if testValidateScenarios {
+		return runScenarioValidation(ctx, cmd, args)
+	}
 
 	// Run in MCP Server mode if requested
 	if testMCPServer {
@@ -332,10 +389,378 @@ func runTest(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+func runSchemaGeneration(ctx context.Context, cmd *cobra.Command, args []string) error {
+	if testVerbose || testDebug {
+		fmt.Printf("🔧 Starting API schema generation for envctl serve...\n")
+	}
+
+	// Create timeout context for schema generation
+	timeoutCtx, timeoutCancel := context.WithTimeout(ctx, testTimeout)
+	defer timeoutCancel()
+
+	// Create an envctl instance manager
+	manager, err := testing.NewEnvCtlInstanceManagerWithLogger(testDebug, testBasePort, testing.NewStdoutLogger(testVerbose, testDebug))
+	if err != nil {
+		return fmt.Errorf("failed to create envctl instance manager: %w", err)
+	}
+
+	if testVerbose || testDebug {
+		fmt.Printf("🚀 Creating envctl serve instance for schema generation...\n")
+	}
+
+	// Create the envctl serve instance
+	instance, err := manager.CreateInstance(timeoutCtx, "schema-generation", nil)
+	if err != nil {
+		return fmt.Errorf("failed to create envctl instance: %w", err)
+	}
+	defer manager.DestroyInstance(timeoutCtx, instance)
+
+	// Wait for the instance to be ready
+	if err := manager.WaitForReady(timeoutCtx, instance); err != nil {
+		return fmt.Errorf("envctl instance not ready: %w", err)
+	}
+
+	if testVerbose || testDebug {
+		fmt.Printf("✅ envctl serve instance ready at %s\n", instance.Endpoint)
+	}
+
+	// Create MCP client to connect to the instance
+	mcpClient := testing.NewMCPTestClientWithLogger(testDebug, testing.NewStdoutLogger(testVerbose, testDebug))
+	defer mcpClient.Close()
+
+	// Connect to the instance
+	if err := mcpClient.Connect(timeoutCtx, instance.Endpoint); err != nil {
+		return fmt.Errorf("failed to connect to envctl instance: %w", err)
+	}
+
+	if testVerbose || testDebug {
+		fmt.Printf("🔗 Connected to envctl serve instance\n")
+	}
+
+	// Generate the schema
+	schema, err := generateAPISchema(timeoutCtx, mcpClient, testVerbose, testDebug)
+	if err != nil {
+		return fmt.Errorf("failed to generate API schema: %w", err)
+	}
+
+	// Write schema to file
+	if err := writeSchemaToFile(schema, testSchemaOutput); err != nil {
+		return fmt.Errorf("failed to write schema to file: %w", err)
+	}
+
+	if testVerbose || testDebug {
+		fmt.Printf("✅ API schema generated successfully and saved to: %s\n", testSchemaOutput)
+	} else {
+		fmt.Printf("Schema generated: %s\n", testSchemaOutput)
+	}
+
+	return nil
+}
+
+// generateAPISchema generates a JSON schema for the core API tools
+func generateAPISchema(ctx context.Context, client testing.MCPTestClient, verbose, debug bool) (map[string]interface{}, error) {
+	if verbose || debug {
+		fmt.Printf("🔍 Discovering available tools...\n")
+	}
+
+	// Get all available tools
+	allTools, err := client.ListTools(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list tools: %w", err)
+	}
+
+	// Filter for core_* tools
+	coreTools := []string{}
+	for _, tool := range allTools {
+		if strings.HasPrefix(tool, "core_") {
+			coreTools = append(coreTools, tool)
+		}
+	}
+
+	if verbose || debug {
+		fmt.Printf("📋 Found %d core tools: %v\n", len(coreTools), coreTools)
+	}
+
+	// Generate schema for each core tool
+	toolSchemas := make(map[string]interface{})
+
+	for _, tool := range coreTools {
+		if verbose || debug {
+			fmt.Printf("🔧 Analyzing tool: %s\n", tool)
+		}
+
+		schema, err := analyzeToolSchema(ctx, client, tool, verbose, debug)
+		if err != nil {
+			if verbose || debug {
+				fmt.Printf("⚠️  Failed to analyze %s: %v\n", tool, err)
+			}
+			// Continue with other tools rather than failing completely
+			continue
+		}
+
+		toolSchemas[tool] = schema
+	}
+
+	// Create the overall schema structure
+	apiSchema := map[string]interface{}{
+		"$schema":     "http://json-schema.org/draft-07/schema#",
+		"title":       "envctl Core API Schema",
+		"description": "Generated schema for envctl core API tools for test scenario validation",
+		"type":        "object",
+		"properties": map[string]interface{}{
+			"tools": map[string]interface{}{
+				"type":        "object",
+				"description": "Core API tools available in envctl serve",
+				"properties":  toolSchemas,
+			},
+		},
+		"generated_at": time.Now().Format(time.RFC3339),
+		"version":      "1.0.0",
+	}
+
+	if verbose || debug {
+		fmt.Printf("✅ Generated schema for %d tools\n", len(toolSchemas))
+	}
+
+	return apiSchema, nil
+}
+
+// analyzeToolSchema attempts to determine the parameter schema for a tool
+func analyzeToolSchema(ctx context.Context, client testing.MCPTestClient, toolName string, verbose, debug bool) (map[string]interface{}, error) {
+	// Try calling the tool with empty parameters to see what error we get
+	// This is a heuristic approach to discover the expected parameters
+
+	schema := map[string]interface{}{
+		"type":        "object",
+		"description": fmt.Sprintf("Parameters for %s tool", toolName),
+		"properties":  make(map[string]interface{}),
+	}
+
+	// Try with empty parameters
+	_, err := client.CallTool(ctx, toolName, map[string]interface{}{})
+	if err != nil {
+		// Analyze the error message to infer required parameters
+		errorMsg := err.Error()
+
+		if verbose || debug {
+			fmt.Printf("  📝 Error analysis for %s: %s\n", toolName, errorMsg)
+		}
+
+		// Extract parameter hints from error messages
+		params := extractParametersFromError(errorMsg, toolName)
+
+		for paramName, paramInfo := range params {
+			if properties, ok := schema["properties"].(map[string]interface{}); ok {
+				properties[paramName] = paramInfo
+			}
+		}
+	}
+
+	// Add common patterns based on tool name
+	addCommonPatterns(schema, toolName)
+
+	return schema, nil
+}
+
+// extractParametersFromError tries to extract parameter information from error messages
+func extractParametersFromError(errorMsg, toolName string) map[string]interface{} {
+	params := make(map[string]interface{})
+
+	// Common error patterns and their parameter extractions
+	patterns := []struct {
+		pattern string
+		param   string
+		info    map[string]interface{}
+	}{
+		{
+			pattern: "missing required parameter",
+			param:   "name",
+			info: map[string]interface{}{
+				"type":        "string",
+				"description": "Resource name",
+				"required":    true,
+			},
+		},
+		{
+			pattern: "name is required",
+			param:   "name",
+			info: map[string]interface{}{
+				"type":        "string",
+				"description": "Resource name",
+				"required":    true,
+			},
+		},
+	}
+
+	for _, p := range patterns {
+		if strings.Contains(strings.ToLower(errorMsg), p.pattern) {
+			params[p.param] = p.info
+		}
+	}
+
+	return params
+}
+
+// addCommonPatterns adds common parameter patterns based on tool name
+func addCommonPatterns(schema map[string]interface{}, toolName string) {
+	properties, ok := schema["properties"].(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	// Common patterns for different tool types
+	if strings.Contains(toolName, "_create") {
+		properties["name"] = map[string]interface{}{
+			"type":        "string",
+			"description": "Name of the resource to create",
+		}
+	}
+
+	if strings.Contains(toolName, "_get") || strings.Contains(toolName, "_delete") {
+		properties["name"] = map[string]interface{}{
+			"type":        "string",
+			"description": "Name of the resource to retrieve/delete",
+		}
+	}
+
+	if strings.Contains(toolName, "_list") {
+		// List operations typically don't require parameters
+		schema["description"] = "List operation - typically no parameters required"
+	}
+
+	if strings.Contains(toolName, "_available") {
+		properties["name"] = map[string]interface{}{
+			"type":        "string",
+			"description": "Name of the resource to check availability for",
+		}
+	}
+
+	// Tool-specific patterns
+	if strings.Contains(toolName, "service_") {
+		if strings.Contains(toolName, "_create") {
+			properties["serviceClassName"] = map[string]interface{}{
+				"type":        "string",
+				"description": "Name of the ServiceClass to instantiate",
+			}
+			properties["parameters"] = map[string]interface{}{
+				"type":        "object",
+				"description": "Parameters for service creation",
+			}
+		}
+	}
+
+	if strings.Contains(toolName, "serviceclass_create") {
+		properties["type"] = map[string]interface{}{
+			"type":        "string",
+			"description": "ServiceClass type",
+		}
+		properties["version"] = map[string]interface{}{
+			"type":        "string",
+			"description": "ServiceClass version",
+		}
+		properties["serviceConfig"] = map[string]interface{}{
+			"type":        "object",
+			"description": "ServiceClass configuration",
+		}
+	}
+
+	if strings.Contains(toolName, "workflow_create") {
+		properties["steps"] = map[string]interface{}{
+			"type":        "array",
+			"description": "Workflow steps",
+		}
+	}
+
+	if strings.Contains(toolName, "capability_create") {
+		properties["operations"] = map[string]interface{}{
+			"type":        "array",
+			"description": "Capability operations",
+		}
+		properties["type"] = map[string]interface{}{
+			"type":        "string",
+			"description": "Capability type",
+		}
+		properties["version"] = map[string]interface{}{
+			"type":        "string",
+			"description": "Capability version",
+		}
+	}
+}
+
+// writeSchemaToFile writes the generated schema to a JSON file
+func writeSchemaToFile(schema map[string]interface{}, filename string) error {
+	// Convert schema to pretty-printed JSON
+	jsonData, err := json.MarshalIndent(schema, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal schema to JSON: %w", err)
+	}
+
+	// Write to file
+	if err := os.WriteFile(filename, jsonData, 0644); err != nil {
+		return fmt.Errorf("failed to write schema file: %w", err)
+	}
+
+	return nil
+}
+
 // getValueOrDefault returns the value if not empty, otherwise returns the default
 func getValueOrDefault(value, defaultValue string) string {
 	if value == "" {
 		return defaultValue
 	}
 	return value
+}
+
+// runScenarioValidation validates test scenarios against the API schema
+func runScenarioValidation(ctx context.Context, cmd *cobra.Command, args []string) error {
+	if testVerbose || testDebug {
+		fmt.Printf("🔍 Starting test scenario validation against API schema...\n")
+	}
+
+	// Load the schema first to validate it exists
+	schema, err := testing.LoadSchemaFromFile(testSchemaInput)
+	if err != nil {
+		return fmt.Errorf("failed to load schema from %s: %w", testSchemaInput, err)
+	}
+
+	if testVerbose || testDebug {
+		fmt.Printf("✅ Loaded schema from: %s\n", testSchemaInput)
+	}
+
+	// Use the existing unified loading approach for scenarios
+	testConfig := testing.TestConfiguration{
+		ConfigPath: testConfigPath,
+		Verbose:    testVerbose,
+		Debug:      testDebug,
+	}
+
+	scenarios, err := testing.LoadAndFilterScenarios(testConfigPath, testConfig, testing.NewStdoutLogger(testVerbose, testDebug))
+	if err != nil {
+		return fmt.Errorf("failed to load test scenarios: %w", err)
+	}
+
+	if len(scenarios) == 0 {
+		fmt.Printf("⚠️  No test scenarios found in %s\n", testing.GetScenarioPath(testConfigPath))
+		return nil
+	}
+
+	if testVerbose || testDebug {
+		fmt.Printf("📋 Found %d test scenarios to validate\n", len(scenarios))
+	}
+
+	// Perform detailed validation using shared logic
+	results := testing.ValidateScenariosAgainstSchema(scenarios, schema, testVerbose, testDebug)
+
+	// Format and display results
+	output := testing.FormatValidationResults(results, testVerbose)
+	fmt.Print(output)
+
+	// Exit with error code if validation failed
+	if results.TotalErrors > 0 {
+		fmt.Printf("\n❌ Validation failed with %d errors\n", results.TotalErrors)
+		return fmt.Errorf("validation failed")
+	}
+
+	fmt.Printf("\n✅ All scenarios passed validation!\n")
+	return nil
 }
