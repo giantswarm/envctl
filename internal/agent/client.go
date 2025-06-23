@@ -10,9 +10,18 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
+// TransportType defines the transport type for MCP connections
+type TransportType string
+
+const (
+	TransportSSE               TransportType = "sse"
+	TransportStreamableHTTP    TransportType = "streamable-http"
+)
+
 // Client represents an MCP agent client
 type Client struct {
 	endpoint      string
+	transport     TransportType
 	logger        *Logger
 	client        client.MCPClient
 	toolCache     []mcp.Tool
@@ -21,10 +30,23 @@ type Client struct {
 	mu            sync.RWMutex
 }
 
-// NewClient creates a new agent client
+// NewClient creates a new agent client with default streamable-http transport
 func NewClient(endpoint string, logger *Logger) *Client {
 	return &Client{
 		endpoint:      endpoint,
+		transport:     TransportStreamableHTTP,
+		logger:        logger,
+		toolCache:     []mcp.Tool{},
+		resourceCache: []mcp.Resource{},
+		promptCache:   []mcp.Prompt{},
+	}
+}
+
+// NewClientWithTransport creates a new agent client with specified transport
+func NewClientWithTransport(endpoint string, logger *Logger, transport TransportType) *Client {
+	return &Client{
+		endpoint:      endpoint,
+		transport:     transport,
 		logger:        logger,
 		toolCache:     []mcp.Tool{},
 		resourceCache: []mcp.Resource{},
@@ -34,29 +56,55 @@ func NewClient(endpoint string, logger *Logger) *Client {
 
 // Run executes the agent workflow
 func (c *Client) Run(ctx context.Context) error {
-	c.logger.Info("Connecting to MCP aggregator at %s...", c.endpoint)
+	c.logger.Info("Connecting to MCP aggregator at %s using %s transport...", c.endpoint, c.transport)
 
-	// Create SSE client
-	sseClient, err := client.NewSSEMCPClient(c.endpoint)
-	if err != nil {
-		return fmt.Errorf("failed to create SSE client: %w", err)
-	}
-	c.client = sseClient
+	// Create appropriate client based on transport
+	var mcpClient client.MCPClient
+	var notificationChan chan mcp.JSONRPCNotification
 
-	// Start the SSE transport
-	if err := sseClient.Start(ctx); err != nil {
-		return fmt.Errorf("failed to start SSE client: %w", err)
-	}
-	defer sseClient.Close()
-
-	// Set up notification handler
-	notificationChan := make(chan mcp.JSONRPCNotification, 10)
-	sseClient.OnNotification(func(notification mcp.JSONRPCNotification) {
-		select {
-		case notificationChan <- notification:
-		case <-ctx.Done():
+	switch c.transport {
+	case TransportSSE:
+		sseClient, err := client.NewSSEMCPClient(c.endpoint)
+		if err != nil {
+			return fmt.Errorf("failed to create SSE client: %w", err)
 		}
-	})
+
+		// Start the transport
+		if err := sseClient.Start(ctx); err != nil {
+			return fmt.Errorf("failed to start SSE client: %w", err)
+		}
+		defer sseClient.Close()
+
+		// Set up notification handler for SSE
+		notificationChan = make(chan mcp.JSONRPCNotification, 10)
+		sseClient.OnNotification(func(notification mcp.JSONRPCNotification) {
+			select {
+			case notificationChan <- notification:
+			case <-ctx.Done():
+			}
+		})
+
+		mcpClient = sseClient
+
+	case TransportStreamableHTTP:
+		httpClient, err := client.NewStreamableHttpClient(c.endpoint)
+		if err != nil {
+			return fmt.Errorf("failed to create streamable-http client: %w", err)
+		}
+
+		// Start the transport
+		if err := httpClient.Start(ctx); err != nil {
+			return fmt.Errorf("failed to start streamable-http client: %w", err)
+		}
+		defer httpClient.Close()
+
+		mcpClient = httpClient
+
+	default:
+		return fmt.Errorf("unsupported transport type: %s", c.transport)
+	}
+
+	c.client = mcpClient
 
 	// Initialize the session
 	if err := c.initialize(ctx); err != nil {
@@ -78,7 +126,13 @@ func (c *Client) Run(ctx context.Context) error {
 		return fmt.Errorf("initial prompt listing failed: %w", err)
 	}
 
-	// Wait for notifications
+	// For streamable-http, we just connect and list items, then exit
+	if c.transport == TransportStreamableHTTP {
+		c.logger.Info("Successfully connected and listed available items. Streamable-HTTP transport doesn't support notifications.")
+		return nil
+	}
+
+	// Wait for notifications (SSE only)
 	c.logger.Info("Waiting for notifications (press Ctrl+C to exit)...")
 
 	for {

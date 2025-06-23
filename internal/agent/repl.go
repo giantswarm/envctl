@@ -36,28 +36,53 @@ func NewREPL(client *Client, logger *Logger) *REPL {
 
 // Run starts the REPL
 func (r *REPL) Run(ctx context.Context) error {
-	r.logger.Info("Connecting to MCP aggregator at %s...", r.client.endpoint)
+	r.logger.Info("Connecting to MCP aggregator at %s using %s transport...", r.client.endpoint, r.client.transport)
 
-	// Create SSE client
-	sseClient, err := client.NewSSEMCPClient(r.client.endpoint)
-	if err != nil {
-		return fmt.Errorf("failed to create SSE client: %w", err)
-	}
-	r.client.client = sseClient
+	// Create appropriate client based on transport
+	var mcpClient client.MCPClient
 
-	// Start the SSE transport
-	if err := sseClient.Start(ctx); err != nil {
-		return fmt.Errorf("failed to start SSE client: %w", err)
-	}
-	defer sseClient.Close()
-
-	// Set up notification handler
-	sseClient.OnNotification(func(notification mcp.JSONRPCNotification) {
-		select {
-		case r.notificationChan <- notification:
-		case <-ctx.Done():
+	switch r.client.transport {
+	case TransportSSE:
+		sseClient, err := client.NewSSEMCPClient(r.client.endpoint)
+		if err != nil {
+			return fmt.Errorf("failed to create SSE client: %w", err)
 		}
-	})
+
+		// Start the SSE transport
+		if err := sseClient.Start(ctx); err != nil {
+			return fmt.Errorf("failed to start SSE client: %w", err)
+		}
+		defer sseClient.Close()
+
+		// Set up notification handler for SSE
+		sseClient.OnNotification(func(notification mcp.JSONRPCNotification) {
+			select {
+			case r.notificationChan <- notification:
+			case <-ctx.Done():
+			}
+		})
+
+		mcpClient = sseClient
+
+	case TransportStreamableHTTP:
+		httpClient, err := client.NewStreamableHttpClient(r.client.endpoint)
+		if err != nil {
+			return fmt.Errorf("failed to create streamable-http client: %w", err)
+		}
+
+		// Start the streamable-http transport
+		if err := httpClient.Start(ctx); err != nil {
+			return fmt.Errorf("failed to start streamable-http client: %w", err)
+		}
+		defer httpClient.Close()
+
+		mcpClient = httpClient
+
+	default:
+		return fmt.Errorf("unsupported transport type: %s", r.client.transport)
+	}
+
+	r.client.client = mcpClient
 
 	// Initialize the session
 	if err := r.client.initialize(ctx); err != nil {
@@ -99,12 +124,15 @@ func (r *REPL) Run(ctx context.Context) error {
 	defer rl.Close()
 	r.rl = rl
 
-	// Start notification listener in background
-	r.wg.Add(1)
-	go r.notificationListener(ctx)
-
-	// Display welcome message
-	r.logger.Info("MCP REPL started. Type 'help' for available commands. Use TAB for completion.")
+	// Start notification listener in background (only for SSE transport)
+	if r.client.transport == TransportSSE {
+		r.wg.Add(1)
+		go r.notificationListener(ctx)
+		r.logger.Info("MCP REPL started with notification support. Type 'help' for available commands. Use TAB for completion.")
+	} else {
+		r.logger.Info("MCP REPL started. Type 'help' for available commands. Use TAB for completion.")
+		r.logger.Info("Note: Real-time notifications are not supported with %s transport.", r.client.transport)
+	}
 	fmt.Println()
 
 	// Main REPL loop
@@ -112,8 +140,10 @@ func (r *REPL) Run(ctx context.Context) error {
 		// Check if context is cancelled
 		select {
 		case <-ctx.Done():
-			close(r.stopChan)
-			r.wg.Wait()
+			if r.client.transport == TransportSSE {
+				close(r.stopChan)
+				r.wg.Wait()
+			}
 			r.logger.Info("REPL shutting down...")
 			return nil
 		default:
@@ -126,8 +156,10 @@ func (r *REPL) Run(ctx context.Context) error {
 				continue
 			}
 		} else if err == io.EOF {
-			close(r.stopChan)
-			r.wg.Wait()
+			if r.client.transport == TransportSSE {
+				close(r.stopChan)
+				r.wg.Wait()
+			}
 			r.logger.Info("Goodbye!")
 			return nil
 		} else if err != nil {
@@ -142,8 +174,10 @@ func (r *REPL) Run(ctx context.Context) error {
 		// Parse and execute command
 		if err := r.executeCommand(ctx, input); err != nil {
 			if err.Error() == "exit" {
-				close(r.stopChan)
-				r.wg.Wait()
+				if r.client.transport == TransportSSE {
+					close(r.stopChan)
+					r.wg.Wait()
+				}
 				r.logger.Info("Goodbye!")
 				return nil
 			}
@@ -505,6 +539,11 @@ func (r *REPL) describePrompt(ctx context.Context, name string) error {
 
 // handleNotifications toggles notification display
 func (r *REPL) handleNotifications(setting string) error {
+	if r.client.transport != TransportSSE {
+		fmt.Printf("Notifications are not supported with %s transport. Use --transport=sse for notification support.\n", r.client.transport)
+		return nil
+	}
+
 	switch strings.ToLower(setting) {
 	case "on":
 		r.logger.SetVerbose(true)

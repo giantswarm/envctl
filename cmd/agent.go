@@ -21,6 +21,7 @@ var (
 	agentJSONRPC   bool
 	agentREPL      bool
 	agentMCPServer bool
+	agentTransport string
 )
 
 // agentCmd represents the agent command
@@ -34,9 +35,13 @@ This is useful for connecting the aggregator's behavior, filtering
 tools, and ensuring that the agent can execute tools.
 
 The agent command can run in three modes:
-1. Normal mode (default): Connects, lists tools, and waits for notifications
+1. Normal mode (default): Connects, lists tools, and waits for notifications (SSE only)
 2. REPL mode (--repl): Provides an interactive interface to explore and execute tools
 3. MCP Server mode (--mcp-server): Runs an MCP server that exposes REPL functionality via stdio
+
+Transport options:
+- streamable-http (default): Fast HTTP-based transport, compatible with envctl serve
+- sse: Server-Sent Events transport with real-time notification support
 
 In REPL mode, you can:
 - List available tools, resources, and prompts
@@ -44,7 +49,7 @@ In REPL mode, you can:
 - Execute tools interactively with JSON arguments
 - View resources and retrieve their contents
 - Execute prompts with arguments
-- Toggle notification display
+- Toggle notification display (SSE transport only)
 
 In MCP Server mode:
 - The agent command acts as an MCP server using stdio transport
@@ -70,6 +75,7 @@ func init() {
 	agentCmd.Flags().BoolVar(&agentJSONRPC, "json-rpc", false, "Enable full JSON-RPC message logging")
 	agentCmd.Flags().BoolVar(&agentREPL, "repl", false, "Start interactive REPL mode")
 	agentCmd.Flags().BoolVar(&agentMCPServer, "mcp-server", false, "Run as MCP server (stdio transport)")
+	agentCmd.Flags().StringVar(&agentTransport, "transport", "streamable-http", "Transport to use (streamable-http, sse)")
 
 	// Mark flags as mutually exclusive
 	agentCmd.MarkFlagsMutuallyExclusive("repl", "mcp-server")
@@ -107,18 +113,29 @@ func runDebug(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Parse transport type
+	var transport agent.TransportType
+	switch agentTransport {
+	case "sse":
+		transport = agent.TransportSSE
+	case "streamable-http":
+		transport = agent.TransportStreamableHTTP
+	default:
+		return fmt.Errorf("unsupported transport: %s (supported: streamable-http, sse)", agentTransport)
+	}
+
 	// Create logger
 	logger := agent.NewLogger(agentVerbose, !agentNoColor, agentJSONRPC)
 
 	// Run in MCP Server mode if requested
 	if agentMCPServer {
-		server, err := agent.NewMCPServer(endpoint, logger, false)
+		server, err := agent.NewMCPServerWithTransport(endpoint, logger, false, transport)
 		if err != nil {
 			return fmt.Errorf("failed to create MCP server: %w", err)
 		}
 
 		logger.Info("Starting envctl agent MCP server (stdio transport)...")
-		logger.Info("Connecting to aggregator at: %s", endpoint)
+		logger.Info("Connecting to aggregator at: %s using %s transport", endpoint, transport)
 
 		if err := server.Start(ctx); err != nil {
 			return fmt.Errorf("MCP server error: %w", err)
@@ -127,7 +144,7 @@ func runDebug(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create and run agent client
-	client := agent.NewClient(endpoint, logger)
+	client := agent.NewClientWithTransport(endpoint, logger, transport)
 
 	// Run in REPL mode if requested
 	if agentREPL {
