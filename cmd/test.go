@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/spf13/cobra"
 )
 
@@ -460,45 +461,34 @@ func runSchemaGeneration(ctx context.Context, cmd *cobra.Command, args []string)
 // generateAPISchema generates a JSON schema for the core API tools
 func generateAPISchema(ctx context.Context, client testing.MCPTestClient, verbose, debug bool) (map[string]interface{}, error) {
 	if verbose || debug {
-		fmt.Printf("🔍 Discovering available tools...\n")
+		fmt.Printf("🔍 Discovering available tools with schemas...\n")
 	}
 
-	// Get all available tools
-	allTools, err := client.ListTools(ctx)
+	// Get all available tools with their full schemas
+	allTools, err := client.ListToolsWithSchemas(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list tools: %w", err)
+		return nil, fmt.Errorf("failed to list tools with schemas: %w", err)
 	}
 
-	// Filter for core_* tools
-	coreTools := []string{}
+	if verbose || debug {
+		fmt.Printf("📋 Found %d tools with schemas\n", len(allTools))
+	}
+
+	// Filter for core_* tools and build schemas
+	coreToolSchemas := make(map[string]interface{})
 	for _, tool := range allTools {
-		if strings.HasPrefix(tool, "core_") {
-			coreTools = append(coreTools, tool)
+		if strings.HasPrefix(tool.Name, "core_") {
+			if verbose || debug {
+				fmt.Printf("🔧 Processing tool: %s\n", tool.Name)
+			}
+
+			schema := convertMCPToolToSchema(tool, verbose, debug)
+			coreToolSchemas[tool.Name] = schema
 		}
 	}
 
 	if verbose || debug {
-		fmt.Printf("📋 Found %d core tools: %v\n", len(coreTools), coreTools)
-	}
-
-	// Generate schema for each core tool
-	toolSchemas := make(map[string]interface{})
-
-	for _, tool := range coreTools {
-		if verbose || debug {
-			fmt.Printf("🔧 Analyzing tool: %s\n", tool)
-		}
-
-		schema, err := analyzeToolSchema(ctx, client, tool, verbose, debug)
-		if err != nil {
-			if verbose || debug {
-				fmt.Printf("⚠️  Failed to analyze %s: %v\n", tool, err)
-			}
-			// Continue with other tools rather than failing completely
-			continue
-		}
-
-		toolSchemas[tool] = schema
+		fmt.Printf("✅ Generated schema for %d core tools\n", len(coreToolSchemas))
 	}
 
 	// Create the overall schema structure
@@ -511,180 +501,39 @@ func generateAPISchema(ctx context.Context, client testing.MCPTestClient, verbos
 			"tools": map[string]interface{}{
 				"type":        "object",
 				"description": "Core API tools available in envctl serve",
-				"properties":  toolSchemas,
+				"properties":  coreToolSchemas,
 			},
 		},
 		"generated_at": time.Now().Format(time.RFC3339),
 		"version":      "1.0.0",
 	}
 
-	if verbose || debug {
-		fmt.Printf("✅ Generated schema for %d tools\n", len(toolSchemas))
-	}
-
 	return apiSchema, nil
 }
 
-// analyzeToolSchema attempts to determine the parameter schema for a tool
-func analyzeToolSchema(ctx context.Context, client testing.MCPTestClient, toolName string, verbose, debug bool) (map[string]interface{}, error) {
-	// Try calling the tool with empty parameters to see what error we get
-	// This is a heuristic approach to discover the expected parameters
-
+// convertMCPToolToSchema converts an MCP tool to our schema format
+func convertMCPToolToSchema(tool mcp.Tool, verbose, debug bool) map[string]interface{} {
 	schema := map[string]interface{}{
 		"type":        "object",
-		"description": fmt.Sprintf("Parameters for %s tool", toolName),
+		"description": fmt.Sprintf("Parameters for %s tool", tool.Name),
 		"properties":  make(map[string]interface{}),
 	}
 
-	// Try with empty parameters
-	_, err := client.CallTool(ctx, toolName, map[string]interface{}{})
-	if err != nil {
-		// Analyze the error message to infer required parameters
-		errorMsg := err.Error()
-
-		if verbose || debug {
-			fmt.Printf("  📝 Error analysis for %s: %s\n", toolName, errorMsg)
-		}
-
-		// Extract parameter hints from error messages
-		params := extractParametersFromError(errorMsg, toolName)
-
-		for paramName, paramInfo := range params {
-			if properties, ok := schema["properties"].(map[string]interface{}); ok {
-				properties[paramName] = paramInfo
-			}
-		}
+	if tool.InputSchema.Properties != nil {
+		// Copy properties from the tool's input schema
+		schema["properties"] = tool.InputSchema.Properties
 	}
 
-	// Add common patterns based on tool name
-	addCommonPatterns(schema, toolName)
-
-	return schema, nil
-}
-
-// extractParametersFromError tries to extract parameter information from error messages
-func extractParametersFromError(errorMsg, toolName string) map[string]interface{} {
-	params := make(map[string]interface{})
-
-	// Common error patterns and their parameter extractions
-	patterns := []struct {
-		pattern string
-		param   string
-		info    map[string]interface{}
-	}{
-		{
-			pattern: "missing required parameter",
-			param:   "name",
-			info: map[string]interface{}{
-				"type":        "string",
-				"description": "Resource name",
-				"required":    true,
-			},
-		},
-		{
-			pattern: "name is required",
-			param:   "name",
-			info: map[string]interface{}{
-				"type":        "string",
-				"description": "Resource name",
-				"required":    true,
-			},
-		},
+	if len(tool.InputSchema.Required) > 0 {
+		schema["required"] = tool.InputSchema.Required
 	}
 
-	for _, p := range patterns {
-		if strings.Contains(strings.ToLower(errorMsg), p.pattern) {
-			params[p.param] = p.info
-		}
+	if verbose || debug {
+		propertiesCount := len(tool.InputSchema.Properties)
+		fmt.Printf("  📝 Tool %s has %d properties\n", tool.Name, propertiesCount)
 	}
 
-	return params
-}
-
-// addCommonPatterns adds common parameter patterns based on tool name
-func addCommonPatterns(schema map[string]interface{}, toolName string) {
-	properties, ok := schema["properties"].(map[string]interface{})
-	if !ok {
-		return
-	}
-
-	// Common patterns for different tool types
-	if strings.Contains(toolName, "_create") {
-		properties["name"] = map[string]interface{}{
-			"type":        "string",
-			"description": "Name of the resource to create",
-		}
-	}
-
-	if strings.Contains(toolName, "_get") || strings.Contains(toolName, "_delete") {
-		properties["name"] = map[string]interface{}{
-			"type":        "string",
-			"description": "Name of the resource to retrieve/delete",
-		}
-	}
-
-	if strings.Contains(toolName, "_list") {
-		// List operations typically don't require parameters
-		schema["description"] = "List operation - typically no parameters required"
-	}
-
-	if strings.Contains(toolName, "_available") {
-		properties["name"] = map[string]interface{}{
-			"type":        "string",
-			"description": "Name of the resource to check availability for",
-		}
-	}
-
-	// Tool-specific patterns
-	if strings.Contains(toolName, "service_") {
-		if strings.Contains(toolName, "_create") {
-			properties["serviceClassName"] = map[string]interface{}{
-				"type":        "string",
-				"description": "Name of the ServiceClass to instantiate",
-			}
-			properties["parameters"] = map[string]interface{}{
-				"type":        "object",
-				"description": "Parameters for service creation",
-			}
-		}
-	}
-
-	if strings.Contains(toolName, "serviceclass_create") {
-		properties["type"] = map[string]interface{}{
-			"type":        "string",
-			"description": "ServiceClass type",
-		}
-		properties["version"] = map[string]interface{}{
-			"type":        "string",
-			"description": "ServiceClass version",
-		}
-		properties["serviceConfig"] = map[string]interface{}{
-			"type":        "object",
-			"description": "ServiceClass configuration",
-		}
-	}
-
-	if strings.Contains(toolName, "workflow_create") {
-		properties["steps"] = map[string]interface{}{
-			"type":        "array",
-			"description": "Workflow steps",
-		}
-	}
-
-	if strings.Contains(toolName, "capability_create") {
-		properties["operations"] = map[string]interface{}{
-			"type":        "array",
-			"description": "Capability operations",
-		}
-		properties["type"] = map[string]interface{}{
-			"type":        "string",
-			"description": "Capability type",
-		}
-		properties["version"] = map[string]interface{}{
-			"type":        "string",
-			"description": "Capability version",
-		}
-	}
+	return schema
 }
 
 // writeSchemaToFile writes the generated schema to a JSON file

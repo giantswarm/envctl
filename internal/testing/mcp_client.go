@@ -277,6 +277,29 @@ func (c *mcpTestClient) ListTools(ctx context.Context) ([]string, error) {
 	return toolNames, nil
 }
 
+// ListToolsWithSchemas returns available MCP tools with their full schemas
+func (c *mcpTestClient) ListToolsWithSchemas(ctx context.Context) ([]mcp.Tool, error) {
+	if c.client == nil {
+		return nil, fmt.Errorf("MCP client not connected")
+	}
+
+	// Create timeout context for the tools list request
+	listCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	// Get the list of available tools
+	result, err := c.client.ListTools(listCtx, mcp.ListToolsRequest{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list tools: %w", err)
+	}
+
+	if c.debug {
+		c.logger.Debug("🛠️  Available tools with schemas (%d): %v\n", len(result.Tools), result.Tools)
+	}
+
+	return result.Tools, nil
+}
+
 // Close closes the MCP connection
 func (c *mcpTestClient) Close() error {
 	if c.client == nil {

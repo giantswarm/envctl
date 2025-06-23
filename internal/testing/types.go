@@ -4,6 +4,8 @@ import (
 	"context"
 	"os"
 	"time"
+
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // TestCategory represents the category of tests to execute
@@ -348,6 +350,8 @@ type MCPTestClient interface {
 	CallTool(ctx context.Context, toolName string, parameters map[string]interface{}) (interface{}, error)
 	// ListTools returns available MCP tools
 	ListTools(ctx context.Context) ([]string, error)
+	// ListToolsWithSchemas returns available MCP tools with their full schemas
+	ListToolsWithSchemas(ctx context.Context) ([]mcp.Tool, error)
 	// Close closes the MCP connection
 	Close() error
 }
