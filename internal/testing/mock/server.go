@@ -2,6 +2,7 @@ package mock
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
@@ -149,8 +150,21 @@ func (s *Server) createToolHandler(toolName string) func(context.Context, mcp.Ca
 
 		// Convert result to MCP format
 		if result != nil {
-			resultStr := fmt.Sprintf("%v", result)
-			return mcp.NewToolResultText(resultStr), nil
+			// Check if result is a map or slice - if so, JSON marshal it
+			switch result.(type) {
+			case map[string]interface{}, []interface{}, map[interface{}]interface{}:
+				// JSON marshal structured data
+				if jsonBytes, err := json.Marshal(result); err == nil {
+					return mcp.NewToolResultText(string(jsonBytes)), nil
+				}
+				// Fallback to string representation if JSON marshaling fails
+				resultStr := fmt.Sprintf("%v", result)
+				return mcp.NewToolResultText(resultStr), nil
+			default:
+				// For primitive types, convert to string
+				resultStr := fmt.Sprintf("%v", result)
+				return mcp.NewToolResultText(resultStr), nil
+			}
 		}
 
 		return mcp.NewToolResultText(""), nil

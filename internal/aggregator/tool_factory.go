@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"envctl/internal/api"
+	"envctl/pkg/logging"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -201,6 +202,7 @@ func (a *AggregatorServer) createToolHandler(provider api.ToolProvider, toolName
 		// Execute through the provider
 		result, err := provider.ExecuteTool(ctx, toolName, args)
 		if err != nil {
+			logging.Error("AggregatorToolHandler", err, "Tool execution failed for %s with args %+v", toolName, args)
 			return mcp.NewToolResultError(fmt.Sprintf("Tool execution failed: %v", err)), nil
 		}
 
