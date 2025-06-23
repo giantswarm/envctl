@@ -17,7 +17,7 @@ func (t *TestMCPServer) handleRunScenarios(ctx context.Context, request mcp.Call
 
 	// Extract and validate parameters
 	var config testing.TestConfiguration
-	config.Timeout = 10 * time.Minute // Default timeout
+	config.Timeout = 30 * time.Second // Default timeout
 	config.Parallel = 1               // Default parallel workers
 	config.Verbose = true             // Always verbose for MCP
 	config.Debug = t.debug            // Inherit debug setting from server
@@ -88,22 +88,44 @@ func (t *TestMCPServer) handleRunScenarios(ctx context.Context, request mcp.Call
 		return mcp.NewToolResultText(fmt.Sprintf("No test scenarios found in %s", scenarioPath)), nil
 	}
 
-	// Execute test suite
-	result, err := t.testRunner.Run(ctx, config, scenarios)
-	if err != nil {
+	// Execute test suite with timeout protection
+	// Create a timeout context to prevent the MCP call from hanging
+	timeoutCtx, cancel := context.WithTimeout(ctx, config.Timeout)
+	defer cancel()
+	
+	// Run tests with timeout protection
+	resultChan := make(chan *testing.TestSuiteResult, 1)
+	errorChan := make(chan error, 1)
+	
+	go func() {
+		result, err := t.testRunner.Run(timeoutCtx, config, scenarios)
+		if err != nil {
+			errorChan <- err
+			return
+		}
+		resultChan <- result
+	}()
+	
+	// Wait for result or timeout
+	select {
+	case result := <-resultChan:
+		// Store result for later retrieval
+		t.lastResult = result
+
+		// Format result as JSON
+		jsonData, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to format test results: %v", err)), nil
+		}
+
+		return mcp.NewToolResultText(string(jsonData)), nil
+		
+	case err := <-errorChan:
 		return mcp.NewToolResultError(fmt.Sprintf("Test execution failed: %v", err)), nil
+		
+	case <-timeoutCtx.Done():
+		return mcp.NewToolResultError(fmt.Sprintf("Test execution timed out after %v", config.Timeout)), nil
 	}
-
-	// Store result for later retrieval
-	t.lastResult = result
-
-	// Format result as JSON
-	jsonData, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to format test results: %v", err)), nil
-	}
-
-	return mcp.NewToolResultText(string(jsonData)), nil
 }
 
 // handleListScenarios handles the test_list_scenarios MCP tool
