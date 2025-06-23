@@ -352,13 +352,18 @@ func (o *Orchestrator) CreateServiceClassInstance(ctx context.Context, req Creat
 	}
 
 	// Verify ServiceClass exists and is available
-	_, err := serviceClassMgr.GetServiceClass(req.ServiceClassName)
+	serviceClass, err := serviceClassMgr.GetServiceClass(req.ServiceClassName)
 	if err != nil {
 		return nil, fmt.Errorf("ServiceClass %s not found: %w", req.ServiceClassName, err)
 	}
 
 	if !serviceClassMgr.IsServiceClassAvailable(req.ServiceClassName) {
 		return nil, fmt.Errorf("ServiceClass %s is not available (missing required tools)", req.ServiceClassName)
+	}
+
+	// Validate service creation parameters against ServiceClass parameter definitions
+	if err := serviceClass.ValidateServiceParameters(req.Parameters); err != nil {
+		return nil, fmt.Errorf("parameter validation failed: %w", err)
 	}
 
 	// Check if name is already in use

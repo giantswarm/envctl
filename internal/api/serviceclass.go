@@ -1,6 +1,17 @@
 package api
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
+
+// ParameterDefinition defines validation rules for a service creation parameter
+type ParameterDefinition struct {
+	Type        string      `yaml:"type" json:"type"`               // "string", "integer", "boolean", "number"
+	Required    bool        `yaml:"required" json:"required"`       // Whether this parameter is required
+	Default     interface{} `yaml:"default,omitempty" json:"default,omitempty"` // Default value if not provided
+	Description string      `yaml:"description,omitempty" json:"description,omitempty"` // Human-readable description
+}
 
 // ServiceClass represents a single service class definition and runtime state
 // This consolidates ServiceClassDefinition, ServiceClassInfo, and ServiceClassConfig into one type
@@ -9,6 +20,9 @@ type ServiceClass struct {
 	Name        string `yaml:"name" json:"name"`
 	Version     string `yaml:"version" json:"version"`
 	Description string `yaml:"description" json:"description"`
+
+	// Parameter definitions for service creation validation
+	Parameters map[string]ParameterDefinition `yaml:"parameters,omitempty" json:"parameters,omitempty"`
 
 	// Service lifecycle configuration
 	ServiceConfig ServiceConfig                  `yaml:"serviceConfig" json:"serviceConfig"`
@@ -83,4 +97,76 @@ type ServiceClassManagerHandler interface {
 
 	// Tool provider interface for exposing ServiceClass management tools
 	ToolProvider
+}
+
+// ValidateServiceParameters validates service creation parameters against ServiceClass parameter definitions
+func (sc *ServiceClass) ValidateServiceParameters(parameters map[string]interface{}) error {
+	if sc.Parameters == nil {
+		// If no parameter definitions, accept any parameters (backward compatibility)
+		return nil
+	}
+
+	// Check for required parameters
+	for paramName, paramDef := range sc.Parameters {
+		value, provided := parameters[paramName]
+		
+		if !provided {
+			if paramDef.Required {
+				return fmt.Errorf("missing required parameter: %s", paramName)
+			}
+			// Apply default value if not provided
+			if paramDef.Default != nil {
+				parameters[paramName] = paramDef.Default
+			}
+			continue
+		}
+
+		// Validate parameter type
+		if err := validateParameterType(paramName, value, paramDef.Type); err != nil {
+			return err
+		}
+	}
+
+	// Check for unknown parameters
+	for paramName := range parameters {
+		if _, defined := sc.Parameters[paramName]; !defined {
+			return fmt.Errorf("unknown parameter: %s", paramName)
+		}
+	}
+
+	return nil
+}
+
+// validateParameterType validates that a parameter value matches the expected type
+func validateParameterType(paramName string, value interface{}, expectedType string) error {
+	switch expectedType {
+	case "string":
+		if _, ok := value.(string); !ok {
+			return fmt.Errorf("invalid type for parameter '%s': expected string, got %T", paramName, value)
+		}
+	case "integer":
+		switch value.(type) {
+		case int, int32, int64, float64:
+			// Accept numeric types that can represent integers
+			if f, ok := value.(float64); ok && f != float64(int64(f)) {
+				return fmt.Errorf("invalid type for parameter '%s': expected integer, got float", paramName)
+			}
+		default:
+			return fmt.Errorf("invalid type for parameter '%s': expected integer, got %T", paramName, value)
+		}
+	case "boolean":
+		if _, ok := value.(bool); !ok {
+			return fmt.Errorf("invalid type for parameter '%s': expected boolean, got %T", paramName, value)
+		}
+	case "number":
+		switch value.(type) {
+		case int, int32, int64, float32, float64:
+			// Accept any numeric type
+		default:
+			return fmt.Errorf("invalid type for parameter '%s': expected number, got %T", paramName, value)
+		}
+	default:
+		return fmt.Errorf("unknown parameter type '%s' for parameter '%s'", expectedType, paramName)
+	}
+	return nil
 }
