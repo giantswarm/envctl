@@ -289,6 +289,10 @@ func (a *AggregatorServer) updateCapabilities() {
 
 	// Log summary
 	a.logCapabilitiesSummary(servers)
+
+	// Publish tool update event to notify dependent managers (like ServiceClass manager)
+	// This ensures subscribers are notified when core tools become available during startup
+	a.publishToolUpdateEvent()
 }
 
 // removeObsoleteItems removes items that are no longer available
