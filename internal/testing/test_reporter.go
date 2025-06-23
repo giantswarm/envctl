@@ -294,7 +294,18 @@ func (r *testReporter) ReportScenarioResult(scenarioResult TestScenarioResult) {
 		}
 
 		// Show instance logs if available and there were failures
-		if (failed > 0 || errors > 0) && scenarioResult.InstanceLogs != nil {
+		if r.debug && scenarioResult.InstanceLogs != nil {
+			// Show logs in debug mode even for successful scenarios
+			fmt.Printf("   📄 Instance Logs (debug mode):\n")
+			if scenarioResult.InstanceLogs.Stdout != "" {
+				stdout := scenarioResult.InstanceLogs.Stdout
+				fmt.Printf("   📤 STDOUT:\n%s\n", r.indentText(stdout, "      "))
+			}
+			if scenarioResult.InstanceLogs.Stderr != "" {
+				stderr := scenarioResult.InstanceLogs.Stderr
+				fmt.Printf("   📥 STDERR:\n%s\n", r.indentText(stderr, "      "))
+			}
+		} else if (failed > 0 || errors > 0) && scenarioResult.InstanceLogs != nil {
 			fmt.Printf("   📄 Instance Logs (last execution):\n")
 			if scenarioResult.InstanceLogs.Stdout != "" {
 				fmt.Printf("   📤 STDOUT:\n")
@@ -305,17 +316,6 @@ func (r *testReporter) ReportScenarioResult(scenarioResult TestScenarioResult) {
 				fmt.Printf("   📥 STDERR:\n")
 				stderr := r.trimLogs(scenarioResult.InstanceLogs.Stderr, 1000)
 				fmt.Printf("%s\n", r.indentText(stderr, "      "))
-			}
-		} else if r.debug && scenarioResult.InstanceLogs != nil {
-			// Show logs in debug mode even for successful scenarios
-			fmt.Printf("   📄 Instance Logs (debug mode):\n")
-			if scenarioResult.InstanceLogs.Stdout != "" {
-				stdout := scenarioResult.InstanceLogs.Stdout
-				fmt.Printf("   📤 STDOUT:\n%s\n", r.indentText(stdout, "      "))
-			}
-			if scenarioResult.InstanceLogs.Stderr != "" {
-				stderr := scenarioResult.InstanceLogs.Stderr
-				fmt.Printf("   📥 STDERR:\n%s\n", r.indentText(stderr, "      "))
 			}
 		}
 
