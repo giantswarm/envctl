@@ -23,5 +23,3 @@ type McpDiscreteStatusUpdate struct {
 
 // McpUpdateFunc is a callback function type for receiving McpDiscreteStatusUpdate messages.
 type McpUpdateFunc func(update McpDiscreteStatusUpdate)
-
-// All other types (MCPServerType, MCPServerDefinition) moved to internal/api package

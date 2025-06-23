@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"envctl/pkg/logging"
 
@@ -40,9 +41,15 @@ func (r *ServerRegistry) Register(ctx context.Context, name string, client MCPCl
 		return fmt.Errorf("server %s already registered", name)
 	}
 
-	// Initialize the client
-	if err := client.Initialize(ctx); err != nil {
-		return fmt.Errorf("failed to initialize client for %s: %w", name, err)
+	// Check if client is already initialized, if not try to initialize
+	if initializer, ok := client.(interface{ Initialize(context.Context) error }); ok {
+		// Use a short timeout to avoid blocking
+		initCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
+		
+		if err := initializer.Initialize(initCtx); err != nil {
+			return fmt.Errorf("failed to initialize client for %s: %w", name, err)
+		}
 	}
 
 	// Create server info

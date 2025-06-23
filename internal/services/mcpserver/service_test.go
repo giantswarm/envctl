@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"testing"
+	"time"
 
 	"envctl/internal/api"
 	"envctl/internal/mcpserver"
@@ -40,14 +41,17 @@ func TestStartStop(t *testing.T) {
 	svc, err := NewService(def, manager)
 	require.NoError(t, err)
 
-	// Test start (will fail with echo command but that's expected in test)
-	err = svc.Start(context.Background())
-	// Start might fail since echo exits immediately, but we test the interface
+	// Test start with short timeout context (echo exits immediately and isn't an MCP server)
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	
+	err = svc.Start(ctx)
+	// Start will fail since echo exits immediately, but we test the interface
 	if err != nil {
 		assert.Contains(t, err.Error(), "failed to start")
 	}
 
-	// Test stop
+	// Test stop - should work regardless of start failure
 	err = svc.Stop(context.Background())
 	assert.NoError(t, err)
 	assert.Equal(t, services.StateStopped, svc.GetState())
@@ -64,9 +68,12 @@ func TestRestart(t *testing.T) {
 	svc, err := NewService(def, manager)
 	require.NoError(t, err)
 
-	// Test restart (will fail with echo command but we test the interface)
-	err = svc.Restart(context.Background())
-	// Restart might fail since echo exits immediately, but we test the interface
+	// Test restart with short timeout context
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	
+	err = svc.Restart(ctx)
+	// Restart will fail since echo exits immediately, but we test the interface
 	if err != nil {
 		assert.Contains(t, err.Error(), "failed to start")
 	}

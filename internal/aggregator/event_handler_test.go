@@ -388,18 +388,18 @@ func TestEventHandler_HandlesErrors(t *testing.T) {
 	provider.sendEvent(api.ServiceStateChangedEvent{
 		Name:        "kubernetes",
 		ServiceType: "MCPServer",
-		OldState:    "Stopped",
-		NewState:    "Running",
-		Health:      "Healthy",
+		OldState:    "stopped",
+		NewState:    "running",
+		Health:      "healthy",
 	})
 
 	// Send event that should trigger deregister (but will fail)
 	provider.sendEvent(api.ServiceStateChangedEvent{
 		Name:        "envctl",
 		ServiceType: "MCPServer",
-		OldState:    "Running",
-		NewState:    "Stopped",
-		Health:      "Healthy",
+		OldState:    "running",
+		NewState:    "stopped",
+		Health:      "healthy",
 	})
 
 	// Give time for events to be processed

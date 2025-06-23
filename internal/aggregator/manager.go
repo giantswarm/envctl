@@ -6,6 +6,7 @@ import (
 	"envctl/pkg/logging"
 	"fmt"
 	"sync"
+	"time"
 )
 
 // This file contains aggregator manager logic that coordinates between
@@ -88,6 +89,9 @@ func (am *AggregatorManager) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to start event handler: %w", err)
 	}
 
+	// Start periodic retry mechanism for failed registrations
+	go am.retryFailedRegistrations(am.ctx)
+
 	logging.Info("Aggregator-Manager", "Started aggregator manager on %s", am.aggregatorServer.GetEndpoint())
 	return nil
 }
@@ -162,11 +166,11 @@ func (am *AggregatorManager) GetServiceData() map[string]interface{} {
 		connectedServers := 0
 
 		if am.serviceRegistry != nil {
-			// Get all MCP services (running and stopped)
+			// Get all MCP services
 			allServices := am.serviceRegistry.GetByType(api.TypeMCPServer)
 			totalServers = len(allServices)
 
-			// Count how many are actually healthy and running
+			// Count healthy running services (these have ready clients by definition)
 			for _, service := range allServices {
 				if service.GetState() == api.StateRunning && service.GetHealth() == api.HealthHealthy {
 					connectedServers++
@@ -187,6 +191,7 @@ func (am *AggregatorManager) GetServiceData() map[string]interface{} {
 }
 
 // registerHealthyMCPServers registers all healthy running MCP servers during initial sync
+// In the new architecture, running+healthy guarantees the MCP client is ready
 func (am *AggregatorManager) registerHealthyMCPServers(ctx context.Context) error {
 	if am.serviceRegistry == nil {
 		return fmt.Errorf("service registry not available")
@@ -197,13 +202,12 @@ func (am *AggregatorManager) registerHealthyMCPServers(ctx context.Context) erro
 
 	registeredCount := 0
 	for _, service := range mcpServices {
-		// Only register servers that are both running AND healthy
-		// Use lowercase values to match the current API definitions
+		// Only register servers that are running AND healthy (client is guaranteed ready)
 		if string(service.GetState()) != "running" || string(service.GetHealth()) != "healthy" {
 			continue
 		}
 
-		// Register the healthy server
+		// Register the healthy server (client is guaranteed ready at this point)
 		if err := am.registerSingleServer(ctx, service.GetName()); err != nil {
 			logging.Warn("Aggregator-Manager", "Failed to register healthy MCP server %s: %v",
 				service.GetName(), err)
@@ -221,6 +225,7 @@ func (am *AggregatorManager) registerHealthyMCPServers(ctx context.Context) erro
 }
 
 // registerSingleServer registers a single MCP server with the aggregator
+// Since this is called only when service is running+healthy, we trust that the client is ready
 func (am *AggregatorManager) registerSingleServer(ctx context.Context, serverName string) error {
 	// Get the service from registry
 	service, exists := am.serviceRegistry.Get(serverName)
@@ -228,49 +233,27 @@ func (am *AggregatorManager) registerSingleServer(ctx context.Context, serverNam
 		return fmt.Errorf("service %s not found", serverName)
 	}
 
-	// Get service data to extract tool prefix
+	// Get service data - much simpler now since running+healthy guarantees client readiness
 	serviceData := service.GetServiceData()
 	if serviceData == nil {
 		return fmt.Errorf("no service data available for %s", serverName)
 	}
 
-	// Get the tool prefix from service data
-	toolPrefix := ""
-	if prefix, ok := serviceData["toolPrefix"].(string); ok {
-		toolPrefix = prefix
+	// Extract tool prefix
+	toolPrefix, _ := serviceData["toolPrefix"].(string)
+
+	// Get MCP client from service data - this is now the authoritative source
+	clientInterface, exists := serviceData["client"]
+	if !exists || clientInterface == nil {
+		return fmt.Errorf("no MCP client available for %s (service state inconsistent)", serverName)
 	}
 
-	// Get the actual MCP client from the service
-	var mcpClient MCPClient
-
-	// Check if we can get the client directly from service data
-	if clientInterface, ok := serviceData["client"]; ok && clientInterface != nil {
-		if client, ok := clientInterface.(MCPClient); ok {
-			mcpClient = client
-		}
+	mcpClient, ok := clientInterface.(MCPClient)
+	if !ok {
+		return fmt.Errorf("invalid MCP client type for %s", serverName)
 	}
 
-	// If we didn't get the client from service data, try to get it through type assertion
-	if mcpClient == nil {
-		type mcpClientProvider interface {
-			GetMCPClient() interface{}
-		}
-
-		if provider, ok := service.(mcpClientProvider); ok {
-			if clientInterface := provider.GetMCPClient(); clientInterface != nil {
-				if client, ok := clientInterface.(MCPClient); ok {
-					mcpClient = client
-				}
-			}
-		}
-	}
-
-	// If we still don't have a client, we can't proceed
-	if mcpClient == nil {
-		return fmt.Errorf("no MCP client available for %s", serverName)
-	}
-
-	// Register with the aggregator using the actual client
+	// Register with the aggregator
 	if err := am.aggregatorServer.RegisterServer(ctx, serverName, mcpClient, toolPrefix); err != nil {
 		return fmt.Errorf("failed to register server: %w", err)
 	}
@@ -320,4 +303,50 @@ func (am *AggregatorManager) GetEventHandler() *EventHandler {
 // This can be useful for debugging or forced updates
 func (am *AggregatorManager) ManualRefresh(ctx context.Context) error {
 	return am.registerHealthyMCPServers(ctx)
+}
+
+// retryFailedRegistrations periodically retries registration for services that have ready clients
+func (am *AggregatorManager) retryFailedRegistrations(ctx context.Context) {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			am.attemptPendingRegistrations(ctx)
+		}
+	}
+}
+
+// attemptPendingRegistrations tries to register services that are healthy but not yet registered
+func (am *AggregatorManager) attemptPendingRegistrations(ctx context.Context) {
+	if am.serviceRegistry == nil {
+		return
+	}
+
+	// Get all MCP services
+	mcpServices := am.serviceRegistry.GetByType(api.TypeMCPServer)
+
+	for _, service := range mcpServices {
+		// Only try services that are running and healthy (client is guaranteed ready)
+		if string(service.GetState()) != "running" || string(service.GetHealth()) != "healthy" {
+			continue
+		}
+
+		// Check if already registered with aggregator
+		if am.aggregatorServer != nil {
+			if _, exists := am.aggregatorServer.GetRegistry().GetServerInfo(service.GetName()); exists {
+				continue // Already registered
+			}
+		}
+
+		// Try to register - much simpler now since running+healthy guarantees client readiness
+		if err := am.registerSingleServer(ctx, service.GetName()); err != nil {
+			logging.Debug("Aggregator-Manager", "Retry registration failed for %s: %v", service.GetName(), err)
+		} else {
+			logging.Info("Aggregator-Manager", "Successfully registered %s on retry", service.GetName())
+		}
+	}
 }

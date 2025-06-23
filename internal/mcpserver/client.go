@@ -66,11 +66,11 @@ func (c *StdioClient) Initialize(ctx context.Context) error {
 	logging.Debug("StdioClient", "Stdio client created, initializing MCP protocol for %s", c.command)
 
 	// Initialize the MCP protocol with timeout from context
-	// If no timeout in context, add a reasonable default
+	// If no timeout in context, add a reasonable default (reduced from 30s to 10s for faster failures)
 	initCtx := ctx
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
 		var cancel context.CancelFunc
-		initCtx, cancel = context.WithTimeout(ctx, 30*time.Second)
+		initCtx, cancel = context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 	}
 

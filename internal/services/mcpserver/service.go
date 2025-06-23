@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"envctl/internal/api"
@@ -12,18 +13,13 @@ import (
 )
 
 // Service implements the Service interface for MCP server management
+// The MCP client now handles both process management AND MCP communication
 type Service struct {
 	*services.BaseService
-	definition *api.MCPServer
-	runner     Runner
-	manager    *mcpserver.MCPServerManager
-}
-
-// Runner interface for different MCP server execution types
-type Runner interface {
-	Start(ctx context.Context) error
-	Stop(ctx context.Context) error
-	IsRunning(ctx context.Context) bool
+	definition      *api.MCPServer
+	manager         *mcpserver.MCPServerManager
+	client          interface{} // MCP client that manages the process AND handles MCP communication
+	clientInitMutex sync.Mutex  // Protects client operations
 }
 
 // NewService creates a new MCP server service
@@ -36,29 +32,11 @@ func NewService(definition *api.MCPServer, manager *mcpserver.MCPServerManager) 
 		manager:     manager,
 	}
 
-	// Create appropriate runner based on type
-	var err error
-	service.runner, err = service.createRunner()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create runner: %w", err)
-	}
-
 	return service, nil
 }
 
-// createRunner creates the appropriate runner for the MCP server type
-func (s *Service) createRunner() (Runner, error) {
-	switch s.definition.Type {
-	case api.MCPServerTypeLocalCommand:
-		return mcpserver.NewProcessRunner(s.definition), nil
-	case api.MCPServerTypeContainer:
-		return mcpserver.NewContainerRunner(s.definition)
-	default:
-		return nil, fmt.Errorf("unsupported MCP server type: %s", s.definition.Type)
-	}
-}
-
-// Start starts the MCP server service
+// Start starts the MCP server service by creating and initializing the MCP client
+// The client handles both process startup and MCP protocol initialization
 func (s *Service) Start(ctx context.Context) error {
 	if s.IsRunning() {
 		return fmt.Errorf("service %s is already running", s.GetName())
@@ -67,42 +45,43 @@ func (s *Service) Start(ctx context.Context) error {
 	s.UpdateState(services.StateStarting, services.HealthUnknown, nil)
 	s.LogInfo("Starting MCP server service")
 
-	// Start the runner
-	if err := s.runner.Start(ctx); err != nil {
+	// Create and initialize the MCP client (this starts the process AND establishes MCP communication)
+	if err := s.createAndInitializeClient(ctx); err != nil {
 		s.UpdateState(services.StateFailed, services.HealthUnhealthy, err)
 		return fmt.Errorf("failed to start MCP server: %w", err)
 	}
 
-	// Wait a moment for the server to initialize
-	time.Sleep(100 * time.Millisecond)
-
-	// Check if it's actually running
-	if s.runner.IsRunning(ctx) {
-		s.UpdateState(services.StateRunning, services.HealthHealthy, nil)
-		s.LogInfo("MCP server started successfully")
-	} else {
-		err := fmt.Errorf("MCP server failed to start properly")
-		s.UpdateState(services.StateFailed, services.HealthUnhealthy, err)
-		return err
-	}
+	s.UpdateState(services.StateRunning, services.HealthHealthy, nil)
+	s.LogInfo("MCP server started successfully")
 
 	return nil
 }
 
-// Stop stops the MCP server service
+// Stop stops the MCP server service by closing the MCP client
+// The client handles both MCP protocol cleanup and process termination
 func (s *Service) Stop(ctx context.Context) error {
-	if !s.IsRunning() {
-		s.LogDebug("Service %s is not running, nothing to stop", s.GetName())
+	currentState := s.GetState()
+	
+	// If already stopped, nothing to do
+	if currentState == services.StateStopped {
+		s.LogDebug("Service %s is already stopped", s.GetName())
+		return nil
+	}
+	
+	// If not running and not failed, nothing to stop
+	if currentState != services.StateRunning && currentState != services.StateFailed {
+		s.LogDebug("Service %s is not in a stoppable state (%s), transitioning to stopped", s.GetName(), currentState)
+		s.UpdateState(services.StateStopped, services.HealthUnknown, nil)
 		return nil
 	}
 
 	s.UpdateState(services.StateStopping, s.GetHealth(), nil)
 	s.LogInfo("Stopping MCP server service")
 
-	// Stop the runner
-	if err := s.runner.Stop(ctx); err != nil {
-		s.UpdateState(services.StateFailed, services.HealthUnhealthy, err)
-		return fmt.Errorf("failed to stop MCP server: %w", err)
+	// Close the MCP client (this stops the process AND closes MCP communication)
+	if err := s.closeClient(); err != nil {
+		s.LogWarn("Error during client cleanup: %v", err)
+		// Still transition to stopped state for graceful shutdown
 	}
 
 	s.UpdateState(services.StateStopped, services.HealthUnknown, nil)
@@ -182,14 +161,6 @@ func (s *Service) UpdateConfiguration(newConfig interface{}) error {
 	}
 
 	s.definition = newDef
-
-	// Recreate runner if type changed
-	var err error
-	s.runner, err = s.createRunner()
-	if err != nil {
-		return fmt.Errorf("failed to recreate runner: %w", err)
-	}
-
 	return nil
 }
 
@@ -213,14 +184,39 @@ func (s *Service) GetServiceData() map[string]interface{} {
 		data["error"] = s.GetLastError().Error()
 	}
 
+	// Add client to service data if available and ready
+	s.clientInitMutex.Lock()
+	if s.client != nil {
+		data["client"] = s.client
+		data["clientReady"] = true
+	} else {
+		data["clientReady"] = false
+	}
+	s.clientInitMutex.Unlock()
+
+	// Add tool prefix for aggregator registration
+	data["toolPrefix"] = ""
+
 	return data
 }
 
-// CheckHealth implements HealthChecker
+// CheckHealth implements HealthChecker using MCP protocol
 func (s *Service) CheckHealth(ctx context.Context) (services.HealthStatus, error) {
-	if !s.runner.IsRunning(ctx) {
+	s.clientInitMutex.Lock()
+	client := s.client
+	s.clientInitMutex.Unlock()
+
+	if client == nil {
 		s.UpdateHealth(services.HealthUnhealthy)
-		return services.HealthUnhealthy, fmt.Errorf("MCP server process is not running")
+		return services.HealthUnhealthy, fmt.Errorf("MCP client not available")
+	}
+
+	// Use MCP ping to check health instead of process checking
+	if pinger, ok := client.(interface{ Ping(context.Context) error }); ok {
+		if err := pinger.Ping(ctx); err != nil {
+			s.UpdateHealth(services.HealthUnhealthy)
+			return services.HealthUnhealthy, fmt.Errorf("MCP ping failed: %w", err)
+		}
 	}
 
 	s.UpdateHealth(services.HealthHealthy)
@@ -259,4 +255,84 @@ func (s *Service) LogError(err error, format string, args ...interface{}) {
 // LogWarn logs a warning message with service context
 func (s *Service) LogWarn(format string, args ...interface{}) {
 	logging.Warn(s.GetLogContext(), format, args...)
+}
+
+// createAndInitializeClient creates and initializes the MCP client
+// This single operation starts the process AND establishes MCP communication
+func (s *Service) createAndInitializeClient(ctx context.Context) error {
+	s.clientInitMutex.Lock()
+	defer s.clientInitMutex.Unlock()
+
+	switch s.definition.Type {
+	case api.MCPServerTypeLocalCommand:
+		if len(s.definition.Command) == 0 {
+			return fmt.Errorf("no command specified for local command server")
+		}
+
+		command := s.definition.Command[0]
+		args := s.definition.Command[1:]
+
+		// Create the stdio client - this is our process manager AND MCP client
+		client := mcpserver.NewStdioClientWithEnv(command, args, s.definition.Env)
+		s.LogDebug("Created stdio MCP client for command: %s", command)
+
+		// Initialize the client - this starts the process AND establishes MCP communication
+		initCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+
+		if err := client.Initialize(initCtx); err != nil {
+			return fmt.Errorf("failed to initialize MCP client/process: %w", err)
+		}
+
+		s.client = client
+		s.LogDebug("MCP client initialized successfully for %s", s.GetName())
+		return nil
+
+	case api.MCPServerTypeContainer:
+		// TODO: Implement container client that also manages container lifecycle
+		// This would be similar to stdio client but using container-based MCP communication
+		s.LogWarn("Container MCP client creation not yet implemented")
+		return fmt.Errorf("container MCP client not implemented")
+
+	default:
+		return fmt.Errorf("unsupported MCP server type: %s", s.definition.Type)
+	}
+}
+
+// closeClient closes the MCP client, which also terminates the process
+func (s *Service) closeClient() error {
+	s.clientInitMutex.Lock()
+	defer s.clientInitMutex.Unlock()
+
+	if s.client == nil {
+		return nil
+	}
+
+	// Close the client - this handles both MCP protocol cleanup and process termination
+	if closer, ok := s.client.(interface{ Close() error }); ok {
+		if err := closer.Close(); err != nil {
+			s.LogWarn("Error closing MCP client: %v", err)
+			return err
+		} else {
+			s.LogDebug("MCP client closed successfully")
+		}
+	}
+
+	s.client = nil
+	return nil
+}
+
+// GetMCPClient returns the MCP client for this service (used by aggregator)
+// This is now much simpler since the client IS the process manager
+func (s *Service) GetMCPClient() interface{} {
+	s.clientInitMutex.Lock()
+	defer s.clientInitMutex.Unlock()
+	return s.client
+}
+
+// IsClientReady returns whether the MCP client is initialized and ready
+func (s *Service) IsClientReady() bool {
+	s.clientInitMutex.Lock()
+	defer s.clientInitMutex.Unlock()
+	return s.client != nil
 }
