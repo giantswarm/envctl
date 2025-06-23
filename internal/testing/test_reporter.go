@@ -293,11 +293,11 @@ func (r *testReporter) ReportScenarioResult(scenarioResult TestScenarioResult) {
 			// Show logs in debug mode even for successful scenarios
 			fmt.Printf("   📄 Instance Logs (debug mode):\n")
 			if scenarioResult.InstanceLogs.Stdout != "" {
-				stdout := r.trimLogs(scenarioResult.InstanceLogs.Stdout, 500)
+				stdout := scenarioResult.InstanceLogs.Stdout
 				fmt.Printf("   📤 STDOUT:\n%s\n", r.indentText(stdout, "      "))
 			}
 			if scenarioResult.InstanceLogs.Stderr != "" {
-				stderr := r.trimLogs(scenarioResult.InstanceLogs.Stderr, 500)
+				stderr := scenarioResult.InstanceLogs.Stderr
 				fmt.Printf("   📥 STDERR:\n%s\n", r.indentText(stderr, "      "))
 			}
 		}

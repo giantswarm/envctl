@@ -170,6 +170,28 @@ func (r *testRunner) runScenariosParallel(ctx context.Context, scenarios []TestS
 	return results
 }
 
+// collectInstanceLogs collects logs from an envctl instance and stores them in the result
+func (r *testRunner) collectInstanceLogs(instance *EnvCtlInstance, result *TestScenarioResult) {
+	if instance == nil {
+		return
+	}
+
+	// Get the managed process to collect logs
+	if manager, ok := r.instanceManager.(*envCtlInstanceManager); ok {
+		manager.mu.RLock()
+		if managedProc, exists := manager.processes[instance.ID]; exists && managedProc != nil && managedProc.logCapture != nil {
+			// Get logs without closing the capture yet (defer will handle that)
+			instance.Logs = managedProc.logCapture.getLogs()
+			result.InstanceLogs = instance.Logs
+			if r.debug {
+				r.logger.Debug("📋 Collected instance logs for result: stdout=%d chars, stderr=%d chars\n",
+					len(instance.Logs.Stdout), len(instance.Logs.Stderr))
+			}
+		}
+		manager.mu.RUnlock()
+	}
+}
+
 // runScenario executes a single test scenario
 func (r *testRunner) runScenario(ctx context.Context, scenario TestScenario, config TestConfiguration) TestScenarioResult {
 	result := TestScenarioResult{
@@ -204,6 +226,9 @@ func (r *testRunner) runScenario(ctx context.Context, scenario TestScenario, con
 		result.Error = fmt.Sprintf("failed to create envctl instance: %v", err)
 		result.EndTime = time.Now()
 		result.Duration = result.EndTime.Sub(result.StartTime)
+
+		r.collectInstanceLogs(instance, &result)
+
 		return result
 	}
 
@@ -239,6 +264,9 @@ func (r *testRunner) runScenario(ctx context.Context, scenario TestScenario, con
 		result.Error = fmt.Sprintf("envctl instance not ready: %v", err)
 		result.EndTime = time.Now()
 		result.Duration = result.EndTime.Sub(result.StartTime)
+
+		r.collectInstanceLogs(instance, &result)
+	
 		return result
 	}
 
@@ -252,6 +280,9 @@ func (r *testRunner) runScenario(ctx context.Context, scenario TestScenario, con
 		result.Error = fmt.Sprintf("failed to connect to envctl instance: %v", err)
 		result.EndTime = time.Now()
 		result.Duration = result.EndTime.Sub(result.StartTime)
+
+		r.collectInstanceLogs(instance, &result)
+
 		return result
 	}
 
@@ -330,22 +361,7 @@ func (r *testRunner) runScenario(ctx context.Context, scenario TestScenario, con
 
 	// Collect instance logs by triggering the destroy process early
 	// The defer cleanup will handle the actual cleanup, but we need logs now
-	if instance != nil {
-		// Get the managed process to collect logs before destruction
-		if manager, ok := r.instanceManager.(*envCtlInstanceManager); ok {
-			manager.mu.RLock()
-			if managedProc, exists := manager.processes[instance.ID]; exists && managedProc != nil && managedProc.logCapture != nil {
-				// Get logs without closing the capture yet (defer will handle that)
-				instance.Logs = managedProc.logCapture.getLogs()
-				result.InstanceLogs = instance.Logs
-				if r.debug {
-					r.logger.Debug("📋 Collected instance logs for result: stdout=%d chars, stderr=%d chars\n",
-						len(instance.Logs.Stdout), len(instance.Logs.Stderr))
-				}
-			}
-			manager.mu.RUnlock()
-		}
-	}
+	r.collectInstanceLogs(instance, &result)
 
 	return result
 }

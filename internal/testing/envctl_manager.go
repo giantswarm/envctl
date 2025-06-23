@@ -434,7 +434,7 @@ func (m *envCtlInstanceManager) WaitForReady(ctx context.Context, instance *EnvC
 	}
 
 	// Wait for all expected resources to be available
-	resourceTimeout := 45 * time.Second
+	resourceTimeout := 5 * time.Second
 	resourceCtx, resourceCancel := context.WithTimeout(readyCtx, resourceTimeout)
 	defer resourceCancel()
 
