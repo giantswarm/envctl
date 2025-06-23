@@ -9,9 +9,13 @@ steps:
   tool: "core_workflow_create"
   args:
     name: "invalid-workflow"
+    inputSchema:
+      type: "object"
+      properties: {}
+      required: []
     steps:
       - id: ""  # Invalid empty step id
         tool: "core_capability_list"
   expected:
     success: false
-    error_contains: ["invalid", "step id", "required"] 
+    error_contains: ["validation failed", "steps"] 

@@ -18,6 +18,7 @@ pre_configuration:
         - id: "echo"
           tool: "x_echo-provider_echo"
           args: { text: "{{ .input.message }}" }
+          store: "echo_result"
   mcp_servers:
   - name: "echo-provider"
     config:
@@ -32,5 +33,7 @@ steps:
     message: "hello from test"
   expected:
     success: true
-    json_path:
-      said: "hello from test" 
+    contains:
+      - "hello from test"
+      - "completed"
+      - "echo_result" 

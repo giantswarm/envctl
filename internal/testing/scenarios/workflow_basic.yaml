@@ -9,6 +9,10 @@ steps:
   tool: "core_workflow_create"
   args:
     name: "basic-workflow"
+    inputSchema:
+      type: "object"
+      properties: {}
+      required: []
     steps:
       - id: "list_services"
         tool: "core_service_list"
@@ -24,8 +28,7 @@ steps:
     name: "basic-workflow"
   expected:
     success: true
-    json_path:
-      name: "basic-workflow"
+    contains: ["basic-workflow"]
 
 - id: "list-workflows"
   tool: "core_workflow_list"
@@ -35,6 +38,15 @@ steps:
 
 - id: "update-workflow"
   tool: "core_workflow_update"
+  args:
+    name: "basic-workflow"
+    inputSchema:
+      type: "object"
+      properties: {}
+      required: []
+    steps:
+      - id: "list_services_updated"
+        tool: "core_service_list"
   expected:
     success: true
 

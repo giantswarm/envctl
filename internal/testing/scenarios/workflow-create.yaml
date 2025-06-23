@@ -9,6 +9,10 @@ steps:
   tool: "core_workflow_create"
   args:
     name: "test-workflow"
+    inputSchema:
+      type: "object"
+      properties: {}
+      required: []
     steps:
       - id: "check_service"
         tool: "core_service_list"
@@ -24,6 +28,10 @@ steps:
   tool: "core_workflow_create"
   args:
     name: "advanced-workflow"
+    inputSchema:
+      type: "object"
+      properties: {}
+      required: []
     steps:
       - id: "list_services"
         tool: "core_service_list"

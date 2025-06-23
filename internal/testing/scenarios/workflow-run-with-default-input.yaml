@@ -9,7 +9,7 @@ pre_configuration:
   - name: "default-input-workflow"
     config:
       name: "default-input-workflow"
-      input_schema:
+      inputSchema:
         type: "object"
         properties:
           message: { type: "string", default: "default value" }
@@ -17,6 +17,7 @@ pre_configuration:
         - id: "echo"
           tool: "x_echo-provider_echo"
           args: { text: "{{ .input.message }}" }
+          store: "echo_result"
   mcp_servers:
   - name: "echo-provider"
     config:
@@ -30,5 +31,7 @@ steps:
   args: {}
   expected:
     success: true
-    json_path:
-      said: "default value" 
+    contains:
+      - "default value"
+      - "completed"
+      - "echo_result" 

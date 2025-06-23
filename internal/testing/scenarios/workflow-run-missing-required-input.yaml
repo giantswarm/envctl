@@ -9,7 +9,7 @@ pre_configuration:
   - name: "require-input-workflow"
     config:
       name: "require-input-workflow"
-      input_schema:
+      inputSchema:
         type: "object"
         properties:
           message: { type: "string" }
@@ -21,4 +21,4 @@ steps:
   args: {}
   expected:
     success: false
-    error_contains: ["missing required parameter: message"] 
+    error_contains: ["required field", "message", "missing"] 

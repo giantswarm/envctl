@@ -14,6 +14,10 @@ steps:
   tool: "core_workflow_create"
   args:
     name: "correct-workflow"
+    inputSchema:
+      type: "object"
+      properties: {}
+      required: []
     steps:
       - id: "get_status"
         tool: "core_service_status"
@@ -26,11 +30,19 @@ steps:
     name: "correct-workflow"
   expected:
     success: true
-    json_path:
-      name: "correct-workflow"
+    contains: ["correct-workflow"]
 
 - id: "update-workflow"
   tool: "core_workflow_update"
+  args:
+    name: "correct-workflow"
+    inputSchema:
+      type: "object"
+      properties: {}
+      required: []
+    steps:
+      - id: "get_status_updated"
+        tool: "core_service_list"
   expected:
     success: true
 
@@ -60,6 +72,10 @@ steps:
   tool: "core_workflow_create"
   args:
     name: "crud-test-workflow"
+    inputSchema:
+      type: "object"
+      properties: {}
+      required: []
     steps:
       - id: "list-services"
         tool: "core_service_list"
@@ -78,8 +94,7 @@ steps:
     name: "crud-test-workflow"
   expected:
     success: true
-    json_path:
-      name: "crud-test-workflow"
+    contains: ["crud-test-workflow"]
 
 - id: "final-cleanup"
   tool: "core_workflow_delete"

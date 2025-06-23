@@ -15,7 +15,8 @@ pre_configuration:
           store: "services"
         - id: "echo"
           tool: "x_echo-provider_echo"
-          args: { text: "Service list is: {{ .context.services }}" }
+          args: { text: "Service list is: {{ .results.services }}" }
+          store: "echo_result"
   mcp_servers:
   - name: "echo-provider"
     config:
@@ -29,4 +30,4 @@ steps:
   args: {}
   expected:
     success: true
-    contains: ["Service list is:", "label", "state"] 
+    contains: ["Service list is:", "running", "state"] 

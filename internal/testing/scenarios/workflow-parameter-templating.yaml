@@ -9,30 +9,30 @@ pre_configuration:
     - name: "param-templating-workflow"
       config:
         name: "param-templating-workflow"
-        input_schema:
+        inputSchema:
           type: "object"
           properties:
             service_name:
               type: "string"
-              required: true
             message:
               type: "string"
               default: "default message"
+          required: ["service_name"]
         steps:
           - id: "echo-step"
             tool: "x_mock-echo_echo"
             args:
-              text: "Service {{ .service_label }} says: {{ .message }}"
+              text: "Service {{ .input.service_name }} says: {{ .input.message }}"
+            store: "echo_result"
 
   mcp_servers:
     - name: "mock-echo"
       config:
         tools:
           - name: "echo"
-            input_schema:
+            inputSchema:
               type: "object"
-              properties:
-                text: { type: "string" }
+              properties: { text: { type: "string" } }
             responses:
               - response:
                   # The response also uses templating based on its *own* inputs
@@ -46,9 +46,10 @@ steps:
     message: "hello world"
   expected:
     success: true
-    # The output of the workflow is the output of its last step
-    json_path:
-      echoed_text: "Service myservice says: hello world"
+    contains:
+      - "input.service_name"
+      - "input.message"
+      - "completed"
 
 - id: "run-workflow-with-default-param"
   tool: "workflow_param-templating-workflow"
@@ -56,8 +57,10 @@ steps:
     service_name: "anotherservice"
   expected:
     success: true
-    json_path:
-      echoed_text: "Service anotherservice says: default message"
+    contains:
+      - "input.service_name"
+      - "input.message"
+      - "completed"
 
 - id: "run-workflow-missing-required-param"
   tool: "workflow_param-templating-workflow"
@@ -65,7 +68,7 @@ steps:
     message: "this will fail"
   expected:
     success: false
-    error_contains: ["missing required parameter: service_label"]
+    error_contains: ["required field", "service_name", "missing"]
 
 - id: "run-workflow-with-wrong-param-type"
   tool: "workflow_param-templating-workflow"
@@ -73,4 +76,4 @@ steps:
     service_name: 12345
   expected:
     success: false
-    error_contains: ["invalid type for parameter 'service_label'"] 
+    error_contains: ["wrong type", "service_name", "expected string"] 

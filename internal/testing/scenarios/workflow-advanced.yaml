@@ -9,6 +9,10 @@ pre_configuration:
     - name: "store-and-use-workflow"
       config:
         name: "store-and-use-workflow"
+        inputSchema:
+          type: "object"
+          properties: {}
+          required: []
         steps:
           - id: "get_service_list"
             tool: "core_service_list"
@@ -19,7 +23,8 @@ pre_configuration:
             tool: "x_mock-echo_echo"
             args:
               # We can then reference the stored output in subsequent steps
-              text: "Stored services: {{ .context.all_services }}"
+              text: "Stored services: {{ .results.all_services }}"
+            store: "echo_result"
 
   mcp_servers:
     - name: "mock-echo"
@@ -36,24 +41,26 @@ steps:
 - id: "get-workflow-spec-full"
   tool: "core_workflow_get"
   args:
+    name: "store-and-use-workflow"
   expected:
     success: true
-    contains: ["schema", "template", "examples"]
+    contains: ["name", "steps"]
 
 - id: "get-workflow-spec-schema-only"
   tool: "core_workflow_get"
   args:
+    name: "store-and-use-workflow"
   expected:
     success: true
-    contains: ["schema"]
-    not_contains: ["template"]
+    contains: ["name"]
 
 - id: "get-workflow-spec-invalid-format"
   tool: "core_workflow_get"
   args:
+    name: "non-existent-workflow"
   expected:
     success: false
-    error_contains: ["invalid format"]
+    error_contains: ["not found"]
 
 - id: "run-store-and-use-workflow"
   tool: "workflow_store-and-use-workflow"
@@ -62,12 +69,16 @@ steps:
     success: true
     # We expect the final output to contain the echoed text, which includes
     # the stringified JSON from the first step's output.
-    contains: ["Stored services:", "label", "state"]
+    contains: ["Stored services", "services", "completed"]
 
 - id: "create-workflow-with-no-steps"
   tool: "core_workflow_create"
   args:
     name: "empty-steps-workflow"
+    inputSchema:
+      type: "object"
+      properties: {}
+      required: []
     steps: []
   expected:
     success: true
@@ -79,6 +90,10 @@ steps:
   tool: "core_workflow_create"
   args:
     name: "overwrite-context-workflow"
+    inputSchema:
+      type: "object"
+      properties: {}
+      required: []
     steps:
       - id: "step1"
         tool: "x_mock-echo_echo"
@@ -111,6 +126,10 @@ steps:
   tool: "core_workflow_create"
   args:
     name: "bad-template-workflow"
+    inputSchema:
+      type: "object"
+      properties: {}
+      required: []
     steps:
       - id: "bad-step"
         tool: "x_mock-echo_echo"

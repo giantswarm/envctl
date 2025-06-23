@@ -9,6 +9,10 @@ steps:
   tool: "core_workflow_create"
   args:
     name: "no-steps-workflow"
+    inputSchema:
+      type: "object"
+      properties: {}
+      required: []
   expected:
     success: false
     error_contains: ["steps", "required"] 
