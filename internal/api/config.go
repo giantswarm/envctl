@@ -8,7 +8,7 @@ import (
 )
 
 // ConfigServiceAPI defines the interface for managing configuration at runtime
-type ConfigServiceAPI interface {
+type ConfigAPI interface {
 	// Get entire configuration
 	GetConfig(ctx context.Context) (*config.EnvctlConfig, error)
 
@@ -28,13 +28,13 @@ type ConfigServiceAPI interface {
 }
 
 // configServiceAPI implements the ConfigServiceAPI interface
-type configServiceAPI struct {
+type configAPI struct {
 	// No fields - uses handlers from registry
 }
 
 // NewConfigServiceAPI creates a new ConfigServiceAPI instance
-func NewConfigServiceAPI() ConfigServiceAPI {
-	return &configServiceAPI{}
+func NewConfigServiceAPI() ConfigAPI {
+	return &configAPI{}
 }
 
 // ConfigHandler provides configuration management functionality
@@ -58,7 +58,7 @@ type ConfigHandler interface {
 }
 
 // GetConfig returns the entire configuration
-func (c *configServiceAPI) GetConfig(ctx context.Context) (*config.EnvctlConfig, error) {
+func (c *configAPI) GetConfig(ctx context.Context) (*config.EnvctlConfig, error) {
 	handler := GetConfigHandler()
 	if handler == nil {
 		return nil, fmt.Errorf("config handler not registered")
@@ -67,7 +67,7 @@ func (c *configServiceAPI) GetConfig(ctx context.Context) (*config.EnvctlConfig,
 }
 
 // GetAggregatorConfig returns the aggregator configuration
-func (c *configServiceAPI) GetAggregatorConfig(ctx context.Context) (*config.AggregatorConfig, error) {
+func (c *configAPI) GetAggregatorConfig(ctx context.Context) (*config.AggregatorConfig, error) {
 	handler := GetConfigHandler()
 	if handler == nil {
 		return nil, fmt.Errorf("config handler not registered")
@@ -76,7 +76,7 @@ func (c *configServiceAPI) GetAggregatorConfig(ctx context.Context) (*config.Agg
 }
 
 // GetGlobalSettings returns the global settings
-func (c *configServiceAPI) GetGlobalSettings(ctx context.Context) (*config.GlobalSettings, error) {
+func (c *configAPI) GetGlobalSettings(ctx context.Context) (*config.GlobalSettings, error) {
 	handler := GetConfigHandler()
 	if handler == nil {
 		return nil, fmt.Errorf("config handler not registered")
@@ -85,7 +85,7 @@ func (c *configServiceAPI) GetGlobalSettings(ctx context.Context) (*config.Globa
 }
 
 // UpdateAggregatorConfig updates the aggregator configuration
-func (c *configServiceAPI) UpdateAggregatorConfig(ctx context.Context, aggregator config.AggregatorConfig) error {
+func (c *configAPI) UpdateAggregatorConfig(ctx context.Context, aggregator config.AggregatorConfig) error {
 	handler := GetConfigHandler()
 	if handler == nil {
 		return fmt.Errorf("config handler not registered")
@@ -94,7 +94,7 @@ func (c *configServiceAPI) UpdateAggregatorConfig(ctx context.Context, aggregato
 }
 
 // UpdateGlobalSettings updates the global settings
-func (c *configServiceAPI) UpdateGlobalSettings(ctx context.Context, settings config.GlobalSettings) error {
+func (c *configAPI) UpdateGlobalSettings(ctx context.Context, settings config.GlobalSettings) error {
 	handler := GetConfigHandler()
 	if handler == nil {
 		return fmt.Errorf("config handler not registered")
@@ -103,7 +103,7 @@ func (c *configServiceAPI) UpdateGlobalSettings(ctx context.Context, settings co
 }
 
 // SaveConfig persists the configuration to file
-func (c *configServiceAPI) SaveConfig(ctx context.Context) error {
+func (c *configAPI) SaveConfig(ctx context.Context) error {
 	handler := GetConfigHandler()
 	if handler == nil {
 		return fmt.Errorf("config handler not registered")
@@ -112,7 +112,7 @@ func (c *configServiceAPI) SaveConfig(ctx context.Context) error {
 }
 
 // ReloadConfig reloads the configuration from disk
-func (c *configServiceAPI) ReloadConfig(ctx context.Context) error {
+func (c *configAPI) ReloadConfig(ctx context.Context) error {
 	handler := GetConfigHandler()
 	if handler == nil {
 		return fmt.Errorf("config handler not registered")

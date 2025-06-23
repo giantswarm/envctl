@@ -126,7 +126,7 @@ func (atc *ToolCaller) GetAvailableTools() []string {
 	return aggregatorHandler.GetAvailableTools()
 }
 
-// APIToolChecker implements config.ToolAvailabilityChecker using the API layer
+// ToolChecker implements config.ToolAvailabilityChecker using the API layer
 type ToolChecker struct{}
 
 // NewToolChecker creates a new API-based tool checker

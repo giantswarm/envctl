@@ -20,7 +20,7 @@ import (
 type Services struct {
 	Orchestrator    *orchestrator.Orchestrator
 	OrchestratorAPI api.OrchestratorAPI
-	ConfigAPI       api.ConfigServiceAPI
+	ConfigAPI       api.ConfigAPI
 	AggregatorPort  int
 }
 

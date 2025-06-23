@@ -912,7 +912,7 @@ func (m *envCtlInstanceManager) generateConfigFiles(configPath string, config *E
 				serverDef := map[string]interface{}{
 					"name":             mcpServer.Name,
 					"type":             "localCommand",
-					"enabledByDefault": true,
+					"autoStart": true,
 					"command":          []string{envctlPath, "test", "--mock-mcp-server", "--mock-config", mockConfigFile},
 				}
 
