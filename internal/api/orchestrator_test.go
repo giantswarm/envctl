@@ -505,7 +505,7 @@ func TestOrchestratorAPI_GetServiceStatus(t *testing.T) {
 	// Add a test service
 	svc := &mockServiceInfo{
 		name:    "test-service",
-		svcType: TypePortForward,
+		svcType: TypeMCPServer,
 		state:   StateRunning,
 		health:  HealthHealthy,
 		lastErr: nil,
@@ -526,8 +526,8 @@ func TestOrchestratorAPI_GetServiceStatus(t *testing.T) {
 	if status.Name != "test-service" {
 		t.Errorf("Expected name %s, got %s", "test-service", status.Name)
 	}
-	if status.ServiceType != "PortForward" {
-		t.Errorf("Expected type %s, got %s", "PortForward", status.ServiceType)
+	if status.ServiceType != "MCPServer" {
+		t.Errorf("Expected type %s, got %s", "MCPServer", status.ServiceType)
 	}
 	if status.State != StateRunning {
 		t.Errorf("Expected state %s, got %s", StateRunning, status.State)
@@ -585,7 +585,7 @@ func TestServiceStateChangedEvent_Structure(t *testing.T) {
 	// Test that the event structure has all expected fields
 	event := ServiceStateChangedEvent{
 		Name:        "test",
-		ServiceType: "PortForward",
+		ServiceType: "MCPServer",
 		OldState:    "stopped",
 		NewState:    "running",
 		Health:      "healthy",
@@ -597,8 +597,8 @@ func TestServiceStateChangedEvent_Structure(t *testing.T) {
 		t.Errorf("Expected Name 'test', got %s", event.Name)
 	}
 
-	if event.ServiceType != "PortForward" {
-		t.Errorf("Expected ServiceType 'PortForward', got %s", event.ServiceType)
+	if event.ServiceType != "MCPServer" {
+		t.Errorf("Expected ServiceType 'MCPServer', got %s", event.ServiceType)
 	}
 
 	if event.OldState != "stopped" {
@@ -634,7 +634,7 @@ func TestOrchestratorAPI_GetAllServices(t *testing.T) {
 	services := []ServiceInfo{
 		&mockServiceInfo{
 			name:    "service1",
-			svcType: TypePortForward,
+			svcType: TypeMCPServer,
 			state:   StateRunning,
 			health:  HealthHealthy,
 		},
@@ -646,7 +646,7 @@ func TestOrchestratorAPI_GetAllServices(t *testing.T) {
 		},
 		&mockServiceInfo{
 			name:    "service3",
-			svcType: TypeKubeConnection,
+			svcType: TypeMCPServer,
 			state:   StateError,
 			health:  HealthUnhealthy,
 			lastErr: errors.New("connection failed"),

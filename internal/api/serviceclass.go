@@ -1,5 +1,7 @@
 package api
 
+import "time"
+
 // ServiceClass represents a single service class definition and runtime state
 // This consolidates ServiceClassDefinition, ServiceClassInfo, and ServiceClassConfig into one type
 type ServiceClass struct {
@@ -62,4 +64,23 @@ type LifecycleTools struct {
 
 	// Tool to call to get service status/info (optional)
 	Status *ToolCall `yaml:"status,omitempty" json:"status,omitempty"`
+}
+
+// ServiceClassManagerHandler defines the interface for service class management operations
+type ServiceClassManagerHandler interface {
+	// Service class definition management
+	ListServiceClasses() []ServiceClass
+	GetServiceClass(name string) (*ServiceClass, error)
+	IsServiceClassAvailable(name string) bool
+
+	// Lifecycle tool access (for service orchestration without direct coupling)
+	GetStartTool(name string) (toolName string, arguments map[string]interface{}, responseMapping map[string]string, err error)
+	GetStopTool(name string) (toolName string, arguments map[string]interface{}, responseMapping map[string]string, err error)
+	GetRestartTool(name string) (toolName string, arguments map[string]interface{}, responseMapping map[string]string, err error)
+	GetHealthCheckTool(name string) (toolName string, arguments map[string]interface{}, responseMapping map[string]string, err error)
+	GetHealthCheckConfig(name string) (enabled bool, interval time.Duration, failureThreshold, successThreshold int, err error)
+	GetServiceDependencies(name string) ([]string, error)
+
+	// Tool provider interface for exposing ServiceClass management tools
+	ToolProvider
 }

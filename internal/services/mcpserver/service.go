@@ -61,13 +61,13 @@ func (s *Service) Start(ctx context.Context) error {
 // The client handles both MCP protocol cleanup and process termination
 func (s *Service) Stop(ctx context.Context) error {
 	currentState := s.GetState()
-	
+
 	// If already stopped, nothing to do
 	if currentState == services.StateStopped {
 		s.LogDebug("Service %s is already stopped", s.GetName())
 		return nil
 	}
-	
+
 	// If not running and not failed, nothing to stop
 	if currentState != services.StateRunning && currentState != services.StateFailed {
 		s.LogDebug("Service %s is not in a stoppable state (%s), transitioning to stopped", s.GetName(), currentState)

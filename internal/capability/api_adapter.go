@@ -11,20 +11,20 @@ import (
 
 // Adapter provides the API adapter for capability management
 type Adapter struct {
-	manager          *CapabilityManager
-	workflowExecutor api.ToolCaller
+	manager    *CapabilityManager
+	toolCaller *api.ToolCaller
 }
 
 // NewAdapter creates a new capability API adapter
-func NewAdapter(toolChecker config.ToolAvailabilityChecker, workflowExecutor api.ToolCaller, storage *config.Storage) (*Adapter, error) {
+func NewAdapter(toolChecker *api.ToolChecker, toolCaller *api.ToolCaller, storage *config.Storage) (*Adapter, error) {
 	manager, err := NewCapabilityManager(storage, toolChecker)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create capability manager: %w", err)
 	}
 
 	return &Adapter{
-		manager:          manager,
-		workflowExecutor: workflowExecutor,
+		manager:    manager,
+		toolCaller: toolCaller,
 	}, nil
 }
 

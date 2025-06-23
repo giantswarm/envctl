@@ -37,6 +37,26 @@ func NewConfigServiceAPI() ConfigServiceAPI {
 	return &configServiceAPI{}
 }
 
+// ConfigHandler provides configuration management functionality
+type ConfigHandler interface {
+	// Get configuration
+	GetConfig(ctx context.Context) (*config.EnvctlConfig, error)
+	GetAggregatorConfig(ctx context.Context) (*config.AggregatorConfig, error)
+	GetGlobalSettings(ctx context.Context) (*config.GlobalSettings, error)
+
+	// Update configuration
+	UpdateAggregatorConfig(ctx context.Context, aggregator config.AggregatorConfig) error
+	UpdateGlobalSettings(ctx context.Context, settings config.GlobalSettings) error
+
+	// Save configuration
+	SaveConfig(ctx context.Context) error
+
+	// Reload configuration from disk
+	ReloadConfig(ctx context.Context) error
+
+	ToolProvider
+}
+
 // GetConfig returns the entire configuration
 func (c *configServiceAPI) GetConfig(ctx context.Context) (*config.EnvctlConfig, error) {
 	handler := GetConfigHandler()

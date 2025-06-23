@@ -5,14 +5,6 @@ import (
 	"fmt"
 )
 
-// ServiceOrchestrator is the interface that the orchestrator must implement
-type ServiceOrchestrator interface {
-	StartService(name string) error
-	StopService(name string) error
-	RestartService(name string) error
-	SubscribeToStateChanges() <-chan ServiceStateChangedEvent
-}
-
 // OrchestratorAPI defines the interface for orchestrating services
 type OrchestratorAPI interface {
 	// Service lifecycle management

@@ -266,7 +266,7 @@ func (r *testRunner) runScenario(ctx context.Context, scenario TestScenario, con
 		result.Duration = result.EndTime.Sub(result.StartTime)
 
 		r.collectInstanceLogs(instance, &result)
-	
+
 		return result
 	}
 

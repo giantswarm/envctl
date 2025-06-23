@@ -19,7 +19,7 @@ type Adapter struct {
 }
 
 // NewAdapter creates a new workflow adapter
-func NewAdapter(manager *WorkflowManager, toolCaller api.ToolCaller) *Adapter {
+func NewAdapter(manager *WorkflowManager, toolCaller *api.ToolCaller) *Adapter {
 	return &Adapter{
 		manager: manager,
 	}
@@ -32,13 +32,9 @@ func (a *Adapter) Register() {
 }
 
 // SetToolCaller sets the ToolCaller for workflow execution
-func (a *Adapter) SetToolCaller(toolCaller interface{}) {
-	if tc, ok := toolCaller.(ToolCaller); ok {
-		a.manager.SetToolCaller(tc)
-		logging.Debug("WorkflowAdapter", "Updated ToolCaller for workflow execution")
-	} else {
-		logging.Error("WorkflowAdapter", fmt.Errorf("invalid ToolCaller type"), "Failed to set ToolCaller")
-	}
+func (a *Adapter) SetToolCaller(toolCaller *api.ToolCaller) {
+	a.manager.SetToolCaller(toolCaller)
+	logging.Debug("WorkflowAdapter", "Updated ToolCaller for workflow execution")
 }
 
 // ExecuteWorkflow executes a workflow and returns MCP result
@@ -462,12 +458,6 @@ func convertToWorkflow(args map[string]interface{}) (api.Workflow, error) {
 	}
 	if version, ok := args["version"].(int); ok {
 		wf.Version = version
-	}
-	if icon, ok := args["icon"].(string); ok {
-		wf.Icon = icon
-	}
-	if agentModifiable, ok := args["agentModifiable"].(bool); ok {
-		wf.AgentModifiable = agentModifiable
 	}
 	if createdBy, ok := args["createdBy"].(string); ok {
 		wf.CreatedBy = createdBy

@@ -2,20 +2,10 @@ package app
 
 import (
 	"envctl/internal/config"
-	"envctl/internal/services"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
-
-// mockOrchestrator implements minimal orchestrator interface for testing
-type mockOrchestrator struct {
-	registry services.ServiceRegistry
-}
-
-func (m *mockOrchestrator) GetServiceRegistry() services.ServiceRegistry {
-	return m.registry
-}
 
 func TestInitializeServices(t *testing.T) {
 	tests := []struct {
@@ -43,9 +33,6 @@ func TestInitializeServices(t *testing.T) {
 				}
 				if s.OrchestratorAPI == nil {
 					t.Error("OrchestratorAPI should not be nil")
-				}
-				if s.AggregatorAPI == nil {
-					t.Error("AggregatorAPI should not be nil")
 				}
 				if s.ConfigAPI == nil {
 					t.Error("ConfigAPI should not be nil")
@@ -155,6 +142,5 @@ func TestServices_Creation(t *testing.T) {
 	// Test that services are created
 	assert.NotNil(t, services.Orchestrator)
 	assert.NotNil(t, services.OrchestratorAPI)
-	assert.NotNil(t, services.AggregatorAPI)
 	assert.NotNil(t, services.ConfigAPI)
 }

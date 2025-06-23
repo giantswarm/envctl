@@ -46,7 +46,7 @@ func (r *ServerRegistry) Register(ctx context.Context, name string, client MCPCl
 		// Use a short timeout to avoid blocking
 		initCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		defer cancel()
-		
+
 		if err := initializer.Initialize(initCtx); err != nil {
 			return fmt.Errorf("failed to initialize client for %s: %w", name, err)
 		}

@@ -16,14 +16,14 @@ type CapabilityManager struct {
 	mu           sync.RWMutex
 	loader       *config.ConfigurationLoader
 	definitions  map[string]*api.Capability // capability name -> definition
-	toolChecker  config.ToolAvailabilityChecker
+	toolChecker  *api.ToolChecker
 	exposedTools map[string]bool // Track which capability tools we've exposed
 	storage      *config.Storage
 	configPath   string // Optional custom config path
 }
 
 // NewCapabilityManager creates a new capability manager
-func NewCapabilityManager(storage *config.Storage, toolChecker config.ToolAvailabilityChecker) (*CapabilityManager, error) {
+func NewCapabilityManager(storage *config.Storage, toolChecker *api.ToolChecker) (*CapabilityManager, error) {
 	loader, err := config.NewConfigurationLoader()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create configuration loader: %w", err)
@@ -269,10 +269,6 @@ func (cm *CapabilityManager) updateAvailableCapabilities() {
 
 // areRequiredToolsAvailable checks if all required tools are available
 func (cm *CapabilityManager) areRequiredToolsAvailable(requiredTools []string) bool {
-	if cm.toolChecker == nil {
-		return false
-	}
-
 	for _, tool := range requiredTools {
 		if !cm.toolChecker.IsToolAvailable(tool) {
 			return false

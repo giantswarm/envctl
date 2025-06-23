@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"time"
 )
 
@@ -67,4 +68,36 @@ type CapabilityUpdate struct {
 	CapabilityID string          `json:"capability_id"`
 	State        CapabilityState `json:"state"`
 	Error        string          `json:"error,omitempty"`
+}
+
+// CapabilityState represents the state of a capability
+type CapabilityState string
+
+const (
+	CapabilityStateRegistering CapabilityState = "registering"
+	CapabilityStateActive      CapabilityState = "active"
+	CapabilityStateUnhealthy   CapabilityState = "unhealthy"
+	CapabilityStateInactive    CapabilityState = "inactive"
+)
+
+// IsValidCapabilityType checks if a capability type is valid
+// A valid capability type is any non-empty string with valid characters
+func IsValidCapabilityType(capType string) bool {
+	// Allow any non-empty string as a capability type
+	// Users can define their own capability types like "database", "monitoring", etc.
+	return len(capType) > 0 && capType != ""
+}
+
+// CapabilityHandler defines the interface for capability operations
+type CapabilityHandler interface {
+	// Capability execution
+	ExecuteCapability(ctx context.Context, capabilityType, operation string, params map[string]interface{}) (*CallToolResult, error)
+
+	// Capability information and availability
+	ListCapabilities() []Capability
+	GetCapability(name string) (interface{}, error)
+	IsCapabilityAvailable(capabilityType, operation string) bool
+
+	// Embed ToolProvider for tool generation
+	ToolProvider
 }

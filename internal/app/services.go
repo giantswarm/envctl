@@ -20,7 +20,6 @@ import (
 type Services struct {
 	Orchestrator    *orchestrator.Orchestrator
 	OrchestratorAPI api.OrchestratorAPI
-	AggregatorAPI   api.AggregatorAPI
 	ConfigAPI       api.ConfigServiceAPI
 	AggregatorPort  int
 }
@@ -36,8 +35,8 @@ func InitializeServices(cfg *Config) (*Services, error) {
 	}
 
 	// Create API-based tool checker and caller
-	toolChecker := api.NewAPIToolChecker()
-	apiToolCaller := api.NewAPIToolCaller()
+	toolChecker := api.NewToolChecker()
+	toolCaller := api.NewToolCaller()
 
 	// Create orchestrator without ToolCaller initially
 	orchConfig := orchestrator.Config{
@@ -96,7 +95,7 @@ func InitializeServices(cfg *Config) (*Services, error) {
 	}
 
 	// Initialize and register Capability adapter
-	capabilityAdapter, err := capability.NewAdapter(toolChecker, nil, storage)
+	capabilityAdapter, err := capability.NewAdapter(toolChecker, toolCaller, storage)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Capability adapter: %w", err)
 	}
@@ -117,7 +116,7 @@ func InitializeServices(cfg *Config) (*Services, error) {
 		return nil, fmt.Errorf("failed to create Workflow manager: %w", err)
 	}
 
-	workflowAdapter := workflow.NewAdapter(workflowManager, nil)
+	workflowAdapter := workflow.NewAdapter(workflowManager, toolCaller)
 	workflowAdapter.Register()
 
 	// Load Workflow definitions
@@ -150,7 +149,6 @@ func InitializeServices(cfg *Config) (*Services, error) {
 
 	// Step 2: Create APIs that use the registered handlers
 	orchestratorAPI := api.NewOrchestratorAPI()
-	aggregatorAPI := api.NewAggregatorAPI()
 	configAPI := api.NewConfigServiceAPI()
 
 	// Step 3: Create and register actual services
@@ -233,15 +231,15 @@ func InitializeServices(cfg *Config) (*Services, error) {
 				logging.Info("Bootstrap", "Setting up ToolCaller for ServiceClass-based services")
 
 				// Set the API-based tool caller on the orchestrator
-				orch.SetToolCaller(apiToolCaller)
-				logging.Info("Bootstrap", "Set up API-based ToolCaller for ServiceClass-based services")
+				orch.SetToolCaller(toolCaller)
+				logging.Info("Bootstrap", "Set up ToolCaller for ServiceClass-based services")
 
 				// Also set the toolCaller on the workflow manager
 				workflowHandler := api.GetWorkflow()
 				if workflowHandler != nil {
 					logging.Debug("Bootstrap", "Found workflow handler, attempting to set ToolCaller")
 					if workflowSetter, ok := workflowHandler.(interface{ SetToolCaller(interface{}) }); ok {
-						workflowSetter.SetToolCaller(apiToolCaller)
+						workflowSetter.SetToolCaller(toolCaller)
 						logging.Info("Bootstrap", "Set up API-based ToolCaller for workflow execution")
 					} else {
 						logging.Warn("Bootstrap", "Workflow handler does not support SetToolCaller")
@@ -277,7 +275,6 @@ func InitializeServices(cfg *Config) (*Services, error) {
 	return &Services{
 		Orchestrator:    orch,
 		OrchestratorAPI: orchestratorAPI,
-		AggregatorAPI:   aggregatorAPI,
 		ConfigAPI:       configAPI,
 		AggregatorPort:  cfg.EnvctlConfig.Aggregator.Port,
 	}, nil

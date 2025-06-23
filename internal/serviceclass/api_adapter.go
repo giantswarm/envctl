@@ -71,10 +71,10 @@ func (a *Adapter) GetStartTool(name string) (toolName string, arguments map[stri
 
 	// Convert response mapping to simple map
 	respMapping := map[string]string{
-		"serviceId": startTool.ResponseMapping.ServiceID,
-		"status":    startTool.ResponseMapping.Status,
-		"health":    startTool.ResponseMapping.Health,
-		"error":     startTool.ResponseMapping.Error,
+		"name":   startTool.ResponseMapping.Name,
+		"status": startTool.ResponseMapping.Status,
+		"health": startTool.ResponseMapping.Health,
+		"error":  startTool.ResponseMapping.Error,
 	}
 
 	return startTool.Tool, startTool.Arguments, respMapping, nil
@@ -98,10 +98,10 @@ func (a *Adapter) GetStopTool(name string) (toolName string, arguments map[strin
 
 	// Convert response mapping to simple map
 	respMapping := map[string]string{
-		"serviceId": stopTool.ResponseMapping.ServiceID,
-		"status":    stopTool.ResponseMapping.Status,
-		"health":    stopTool.ResponseMapping.Health,
-		"error":     stopTool.ResponseMapping.Error,
+		"name":   stopTool.ResponseMapping.Name,
+		"status": stopTool.ResponseMapping.Status,
+		"health": stopTool.ResponseMapping.Health,
+		"error":  stopTool.ResponseMapping.Error,
 	}
 
 	return stopTool.Tool, stopTool.Arguments, respMapping, nil
@@ -126,10 +126,10 @@ func (a *Adapter) GetRestartTool(name string) (toolName string, arguments map[st
 
 	// Convert response mapping to simple map
 	respMapping := map[string]string{
-		"serviceId": restartTool.ResponseMapping.ServiceID,
-		"status":    restartTool.ResponseMapping.Status,
-		"health":    restartTool.ResponseMapping.Health,
-		"error":     restartTool.ResponseMapping.Error,
+		"name":   restartTool.ResponseMapping.Name,
+		"status": restartTool.ResponseMapping.Status,
+		"health": restartTool.ResponseMapping.Health,
+		"error":  restartTool.ResponseMapping.Error,
 	}
 
 	return restartTool.Tool, restartTool.Arguments, respMapping, nil
@@ -157,10 +157,10 @@ func (a *Adapter) GetHealthCheckTool(name string) (toolName string, arguments ma
 
 	// Convert response mapping to simple map
 	respMapping := map[string]string{
-		"serviceId": healthTool.ResponseMapping.ServiceID,
-		"status":    healthTool.ResponseMapping.Status,
-		"health":    healthTool.ResponseMapping.Health,
-		"error":     healthTool.ResponseMapping.Error,
+		"name":   healthTool.ResponseMapping.Name,
+		"status": healthTool.ResponseMapping.Status,
+		"health": healthTool.ResponseMapping.Health,
+		"error":  healthTool.ResponseMapping.Error,
 	}
 
 	return healthTool.Tool, healthTool.Arguments, respMapping, nil

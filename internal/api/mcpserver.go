@@ -34,3 +34,37 @@ type MCPServer struct {
 	Error       string       `json:"error,omitempty" yaml:"-"`
 	Description string       `json:"description,omitempty" yaml:"-"`
 }
+
+// MCPServerType defines the type of MCP server
+type MCPServerType string
+
+const (
+	MCPServerTypeLocalCommand MCPServerType = "localCommand"
+	MCPServerTypeContainer    MCPServerType = "container"
+)
+
+// MCPServerInfo contains consolidated MCP server information (API response)
+type MCPServerInfo struct {
+	Name        string            `json:"name"`
+	Type        string            `json:"type"`
+	State       string            `json:"state"`
+	Health      string            `json:"health"`
+	AutoStart   bool              `json:"autoStart"`
+	Available   bool              `json:"available"`
+	Description string            `json:"description,omitempty"`
+	Command     []string          `json:"command,omitempty"`
+	Image       string            `json:"image,omitempty"`
+	Env         map[string]string `json:"env,omitempty"`
+	Error       string            `json:"error,omitempty"`
+}
+
+// MCPServerManagerHandler defines the interface for MCP server management operations
+type MCPServerManagerHandler interface {
+	// MCP server definition management
+	ListMCPServers() []MCPServerInfo
+	GetMCPServer(name string) (*MCPServerInfo, error)
+	IsMCPServerAvailable(name string) bool
+
+	// Tool provider interface for exposing MCP server management tools
+	ToolProvider
+}

@@ -28,14 +28,6 @@ func (m *mockOrchestratorAPI) GetServiceStatus(name string) (*api.ServiceStatus,
 	return nil, nil
 }
 func (m *mockOrchestratorAPI) GetAllServices() []api.ServiceStatus { return nil }
-func (m *mockOrchestratorAPI) GetAvailableClusters(role api.ClusterRole) []api.ClusterDefinition {
-	return nil
-}
-func (m *mockOrchestratorAPI) GetActiveCluster(role api.ClusterRole) (string, bool) { return "", false }
-func (m *mockOrchestratorAPI) SwitchCluster(role api.ClusterRole, clusterName string) error {
-	return nil
-}
-
 func (m *mockOrchestratorAPI) SubscribeToStateChanges() <-chan api.ServiceStateChangedEvent {
 	return m.eventChan
 }

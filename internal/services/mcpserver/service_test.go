@@ -44,7 +44,7 @@ func TestStartStop(t *testing.T) {
 	// Test start with short timeout context (echo exits immediately and isn't an MCP server)
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
-	
+
 	err = svc.Start(ctx)
 	// Start will fail since echo exits immediately, but we test the interface
 	if err != nil {
@@ -71,7 +71,7 @@ func TestRestart(t *testing.T) {
 	// Test restart with short timeout context
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
-	
+
 	err = svc.Restart(ctx)
 	// Restart will fail since echo exits immediately, but we test the interface
 	if err != nil {
