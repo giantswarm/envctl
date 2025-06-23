@@ -379,6 +379,23 @@ func (a *Adapter) handleServiceStart(args map[string]interface{}) (*api.CallTool
 		}, nil
 	}
 
+	// Check current state before starting
+	status, err := a.GetServiceStatus(name)
+	if err != nil {
+		return &api.CallToolResult{
+			Content: []interface{}{fmt.Sprintf("Failed to start service: %v", err)},
+			IsError: true,
+		}, nil
+	}
+
+	// If already running, return appropriate message
+	if status.State == "running" {
+		return &api.CallToolResult{
+			Content: []interface{}{fmt.Sprintf("Service '%s' is already running", name)},
+			IsError: false,
+		}, nil
+	}
+
 	if err := a.StartService(name); err != nil {
 		return &api.CallToolResult{
 			Content: []interface{}{fmt.Sprintf("Failed to start service: %v", err)},
@@ -398,6 +415,23 @@ func (a *Adapter) handleServiceStop(args map[string]interface{}) (*api.CallToolR
 		return &api.CallToolResult{
 			Content: []interface{}{"name is required"},
 			IsError: true,
+		}, nil
+	}
+
+	// Check current state before stopping
+	status, err := a.GetServiceStatus(name)
+	if err != nil {
+		return &api.CallToolResult{
+			Content: []interface{}{fmt.Sprintf("Failed to stop service: %v", err)},
+			IsError: true,
+		}, nil
+	}
+
+	// If already stopped, return appropriate message
+	if status.State == "stopped" {
+		return &api.CallToolResult{
+			Content: []interface{}{fmt.Sprintf("Service '%s' is already stopped", name)},
+			IsError: false,
 		}, nil
 	}
 

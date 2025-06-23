@@ -9,8 +9,6 @@ import (
 	"fmt"
 	"sync"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 // StopReason tracks why a service was stopped.
@@ -376,9 +374,6 @@ func (o *Orchestrator) CreateServiceClassInstance(ctx context.Context, req Creat
 		return nil, fmt.Errorf("static service with name %s already exists", req.Name)
 	}
 
-	// Generate unique service ID
-	name := uuid.New().String()
-
 	// Create GenericServiceInstance
 	instance := services.NewGenericServiceInstance(
 		req.Name,
@@ -393,10 +388,10 @@ func (o *Orchestrator) CreateServiceClassInstance(ctx context.Context, req Creat
 	}
 
 	// Set up state change callback
-	instance.SetStateChangeCallback(o.createDynamicServiceStateChangeCallback(name))
+	instance.SetStateChangeCallback(o.createDynamicServiceStateChangeCallback(req.Name))
 
-	// Store the instance
-	o.instances[name] = instance
+	// Store the instance using service name as key
+	o.instances[req.Name] = instance
 	o.mu.Unlock()
 
 	logging.Info("Orchestrator", "Creating ServiceClass-based service instance: %s (ServiceClass: %s)", req.Name, req.ServiceClassName)
@@ -407,7 +402,7 @@ func (o *Orchestrator) CreateServiceClassInstance(ctx context.Context, req Creat
 
 		// Remove from tracking on failure
 		o.mu.Lock()
-		delete(o.instances, name)
+		delete(o.instances, req.Name)
 		o.mu.Unlock()
 
 		return nil, fmt.Errorf("failed to start ServiceClass instance: %w", err)
@@ -417,7 +412,7 @@ func (o *Orchestrator) CreateServiceClassInstance(ctx context.Context, req Creat
 	if err := o.registry.Register(instance); err != nil {
 		// Remove from tracking on registration failure
 		o.mu.Lock()
-		delete(o.instances, name)
+		delete(o.instances, req.Name)
 		o.mu.Unlock()
 
 		return nil, fmt.Errorf("failed to register ServiceClass instance in registry: %w", err)
@@ -511,8 +506,8 @@ func (o *Orchestrator) ListServiceClassInstances() []ServiceInstanceInfo {
 	defer o.mu.RUnlock()
 
 	result := make([]ServiceInstanceInfo, 0, len(o.instances))
-	for name, instance := range o.instances {
-		result = append(result, *o.serviceInstanceToInfo(name, instance))
+	for serviceName, instance := range o.instances {
+		result = append(result, *o.serviceInstanceToInfo(serviceName, instance))
 	}
 
 	return result
@@ -543,9 +538,9 @@ func (o *Orchestrator) validateCreateRequest(req CreateServiceRequest) error {
 }
 
 // serviceInstanceToInfo converts a GenericServiceInstance to ServiceInstanceInfo
-func (o *Orchestrator) serviceInstanceToInfo(name string, instance *services.GenericServiceInstance) *ServiceInstanceInfo {
+func (o *Orchestrator) serviceInstanceToInfo(serviceName string, instance *services.GenericServiceInstance) *ServiceInstanceInfo {
 	return &ServiceInstanceInfo{
-		Name:               name,
+		Name:               instance.GetName(), // Use the instance's actual name
 		ServiceClassName:   instance.GetServiceClassName(),
 		ServiceClassType:   string(instance.GetType()),
 		State:              string(instance.GetState()),
