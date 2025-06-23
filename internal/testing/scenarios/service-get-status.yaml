@@ -9,6 +9,7 @@ pre_configuration:
   - name: "sc-for-status"
     config:
       name: "sc-for-status"
+      version: "1.0.0"
       serviceConfig:
         lifecycleTools:
           start: { tool: "core_config_get" }
@@ -23,5 +24,6 @@ steps:
     args: { name: "status-test-service" }
 - id: "get-the-status"
   tool: "core_service_status"
+  args: { name: "status-test-service" }
   expected:
     success: true 

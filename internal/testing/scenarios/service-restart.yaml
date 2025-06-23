@@ -9,6 +9,7 @@ pre_configuration:
   - name: "sc-for-restart"
     config:
       name: "sc-for-restart"
+      version: "1.0.0"
       serviceConfig:
         lifecycleTools:
           start: { tool: "core_config_get" }
@@ -23,6 +24,7 @@ steps:
     args: { name: "restart-test-service" }
 - id: "restart-the-service"
   tool: "core_service_restart"
+  args: { name: "restart-test-service" }
   expected: { success: true }
 - id: "verify-service-restarted"
   tool: "core_service_get"

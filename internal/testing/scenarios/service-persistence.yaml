@@ -9,10 +9,12 @@ pre_configuration:
     - name: "persistent-sc"
       config:
         name: persistent-sc
+        version: "1.0.0"
         type: basic
         serviceConfig:
           lifecycleTools:
             start: { tool: "core_service_list" }
+            stop: { tool: "core_service_list" }
 
 steps:
 # The core test here is creating a service with persist=true.

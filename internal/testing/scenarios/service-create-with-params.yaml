@@ -16,6 +16,7 @@ pre_configuration:
   - name: "sc-with-params"
     config:
       name: "sc-with-params"
+      version: "1.0.0"
       serviceConfig:
         createParameters:
           message:

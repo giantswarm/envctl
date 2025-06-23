@@ -9,6 +9,7 @@ pre_configuration:
   - name: "sc-for-idempotency"
     config:
       name: "sc-for-idempotency"
+      version: "1.0.0"
       serviceConfig:
         lifecycleTools:
           start: { tool: "core_config_get" }
@@ -23,11 +24,11 @@ steps:
     args: { name: "idempotent-stop-test" }
 - id: "stop-service-once"
   tool: "core_service_stop"
-  
+  args: { name: "idempotent-stop-test" }
   expected: { success: true }
 - id: "stop-service-again"
   tool: "core_service_stop"
-  
+  args: { name: "idempotent-stop-test" }
   expected:
     success: true
     contains: ["already stopped"] 

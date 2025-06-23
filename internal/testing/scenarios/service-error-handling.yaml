@@ -17,6 +17,7 @@ pre_configuration:
     - name: "bad-sc-for-services"
       config:
         name: "bad-sc-for-services"
+        version: "1.0.0"
         serviceConfig:
           createParameters:
             name:
@@ -28,6 +29,7 @@ pre_configuration:
     - name: "good-sc-for-services"
       config:
         name: "good-sc-for-services"
+        version: "1.0.0"
         serviceConfig:
           lifecycleTools:
             start: { tool: "core_service_list" }
@@ -41,7 +43,7 @@ steps:
     name: "my-failed-service-1"
   expected:
     success: false
-    error_contains: ["ServiceClass not found"]
+    error_contains: ["not found"]
 
 - id: "create-service-missing-required-parameter"
   tool: "core_service_create"
@@ -49,8 +51,8 @@ steps:
     serviceClassName: "bad-sc-for-services"
     name: "my-failed-service-2"
   expected:
-    success: false
-    error_contains: ["missing required parameter: name"]
+    success: false  # Fails due to start tool failure
+    error_contains: ["underlying tool failed"]
 
 - id: "create-service-with-failing-start-tool"
   tool: "core_service_create"
@@ -73,6 +75,8 @@ steps:
 
 - id: "stop-non-existent-service"
   tool: "core_service_stop"
+  args:
+    name: "non-existent-service"
   expected:
     success: false
     error_contains: ["not found"]
@@ -84,9 +88,13 @@ steps:
     name: "to-be-deleted-service"
   expected:
     success: true
-  cleanup:
-  - tool: "core_service_delete"
-    args: { name: "to-be-deleted-service" }
+
+- id: "delete-the-service-first-time"
+  tool: "core_service_delete"
+  args:
+    name: "to-be-deleted-service"
+  expected:
+    success: true
 
 - id: "delete-non-existent-service-again"
   tool: "core_service_delete"

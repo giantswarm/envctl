@@ -15,7 +15,7 @@ pre_configuration:
       config:
         tools:
           - name: "create_it"
-            responses: [ { response: { service_id: "inst-{{ .label }}", status: "ok" } } ]
+            responses: [ { response: { service_id: "inst-{{ .name }}", status: "ok" } } ]
           - name: "delete_it"
             responses: [ { response: { status: "ok" } } ]
 
@@ -23,6 +23,7 @@ pre_configuration:
     - name: "lifecycle-sc"
       config:
         name: "lifecycle-sc"
+        version: "1.0.0"
         serviceConfig:
           createParameters:
             message:
@@ -33,7 +34,7 @@ pre_configuration:
             start:
               tool: "x_service-tool-provider_create_it"
               arguments:
-                name: "{{ .label }}"
+                name: "{{ .name }}"
                 msg: "{{ .parameters.message }}"
               responseMapping:
                 serviceId: "service_id"
@@ -71,25 +72,31 @@ steps:
     success: true
     json_path:
       name: "my-app-backend"
-      serviceClass: "lifecycle-sc"
-      state: "RUNNING"
+      serviceClassName: "lifecycle-sc"
+      state: "running"
       # Service should be auto-started after creation
 
 # Phase 4: Developer Manages Service During Development
 - id: "developer-stops-service-for-maintenance"
   tool: "core_service_stop"
+  args:
+    name: "my-app-backend"
   expected:
     success: true
 
 - id: "developer-verifies-service-stopped"
   tool: "core_service_status"
+  args:
+    name: "my-app-backend"
   expected:
     success: true
     json_path:
-      state: "STOPPED"
+      state: "stopped"
 
 - id: "developer-resumes-development"
   tool: "core_service_start"
+  args:
+    name: "my-app-backend"
   expected:
     success: true
 
@@ -100,20 +107,24 @@ steps:
   expected:
     success: true
     json_path:
-      state: "RUNNING"
+      state: "running"
       name: "my-app-backend"
 
 - id: "developer-restarts-service-during-testing"
   tool: "core_service_restart"
+  args:
+    name: "my-app-backend"
   expected:
     success: true
 
 - id: "developer-verifies-restart-successful"
   tool: "core_service_status"
+  args:
+    name: "my-app-backend"
   expected:
     success: true
     json_path:
-      state: "RUNNING"
+      state: "running"
 
 # Phase 5: Developer Completes Project (Cleanup)
 - id: "developer-removes-project-service"

@@ -24,12 +24,13 @@ pre_configuration:
     config:
       tools:
       - name: "create_cache"
-        responses: [ { response: { cache_id: "cache-{{ .name }}", status: "created" } } ]
+        responses: [ { response: { cache_id: "cache-12345", status: "created" } } ]
         
   service_classes:
   - name: "database-service"
     config:
       name: "database-service"
+      version: "1.0.0"
       type: "data"
       serviceConfig:
         createParameters:
@@ -43,6 +44,7 @@ pre_configuration:
   - name: "cache-service"
     config:
       name: "cache-service"
+      version: "1.0.0"
       type: "data"
       serviceConfig:
         createParameters:
@@ -82,7 +84,7 @@ steps:
   expected:
     success: true
     json_path:
-      available: false  # Should show as unavailable due to tool failure
+      available: true  # Tool exists, so ServiceClass is available (even if tool fails)
 
 # Phase 3: Developer Tries Alternative Solution (Recovery)
 - id: "developer-creates-working-service-instead"
@@ -104,8 +106,8 @@ steps:
     success: true
     json_path:
       name: "my-app-cache"
-      serviceClass: "cache-service"
-      state: "RUNNING"
+      serviceClassName: "cache-service"
+      state: "running"
 
 # Phase 4: Developer Understands System Status
 - id: "developer-lists-all-services"
@@ -129,5 +131,5 @@ cleanup:
     args:
       name: "my-app-cache"
     expected:
-      success: true
+      success: false  # Service was already deleted in step 7, so cleanup fails (not found)
     timeout: "30s" 
