@@ -42,7 +42,7 @@ func InitializeServices(cfg *Config) (*Services, error) {
 	orchConfig := orchestrator.Config{
 		Aggregator: cfg.EnvctlConfig.Aggregator,
 		Yolo:       cfg.Yolo,
-		ToolCaller: nil, // Will be set up after aggregator is available
+		ToolCaller: toolCaller,
 		Storage:    storage,
 	}
 
@@ -224,51 +224,6 @@ func InitializeServices(cfg *Config) (*Services, error) {
 			// Create aggregator API adapter
 			aggAdapter := aggregatorService.NewAPIAdapter(aggService)
 			aggAdapter.Register()
-
-			// Set up ToolCaller for ServiceClass-based services using orchestrator's event system
-			// This follows our architectural principles by using event-driven patterns instead of time.Sleep
-			setupToolCaller := func() {
-				logging.Info("Bootstrap", "Setting up ToolCaller for ServiceClass-based services")
-
-				// Set the API-based tool caller on the orchestrator
-				orch.SetToolCaller(toolCaller)
-				logging.Info("Bootstrap", "Set up ToolCaller for ServiceClass-based services")
-
-				// Also set the toolCaller on the workflow manager
-				workflowHandler := api.GetWorkflow()
-				if workflowHandler != nil {
-					logging.Debug("Bootstrap", "Found workflow handler, attempting to set ToolCaller")
-					if workflowSetter, ok := workflowHandler.(interface{ SetToolCaller(interface{}) }); ok {
-						workflowSetter.SetToolCaller(toolCaller)
-						logging.Info("Bootstrap", "Set up API-based ToolCaller for workflow execution")
-					} else {
-						logging.Warn("Bootstrap", "Workflow handler does not support SetToolCaller")
-					}
-				} else {
-					logging.Warn("Bootstrap", "Workflow handler not found when setting up ToolCaller")
-				}
-
-				// Phase 1: Availability refresh is now transparent, no manual refresh needed
-				logging.Info("Bootstrap", "ServiceClass and Capability availability is managed transparently")
-			}
-
-			// Subscribe to orchestrator state change events to detect when aggregator becomes running
-			go func() {
-				stateChanges := orch.SubscribeToStateChanges()
-				for event := range stateChanges {
-					if event.Name == "mcp-aggregator" && event.NewState == "running" && event.OldState != "running" {
-						logging.Info("Bootstrap", "Aggregator service transitioned to running state via orchestrator event")
-						setupToolCaller()
-						return // Exit goroutine after setting up ToolCaller
-					}
-				}
-			}()
-
-			// Check if aggregator is already running and set up ToolCaller immediately
-			if aggService.GetState() == services.StateRunning {
-				logging.Info("Bootstrap", "Aggregator service is already running")
-				setupToolCaller()
-			}
 		}
 	}
 

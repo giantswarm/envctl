@@ -20,6 +20,7 @@ type Adapter struct {
 
 // NewAdapter creates a new workflow adapter
 func NewAdapter(manager *WorkflowManager, toolCaller *api.ToolCaller) *Adapter {
+	manager.SetToolCaller(toolCaller)
 	return &Adapter{
 		manager: manager,
 	}
@@ -29,12 +30,6 @@ func NewAdapter(manager *WorkflowManager, toolCaller *api.ToolCaller) *Adapter {
 func (a *Adapter) Register() {
 	api.RegisterWorkflow(a)
 	logging.Debug("WorkflowAdapter", "Registered workflow adapter with API layer")
-}
-
-// SetToolCaller sets the ToolCaller for workflow execution
-func (a *Adapter) SetToolCaller(toolCaller *api.ToolCaller) {
-	a.manager.SetToolCaller(toolCaller)
-	logging.Debug("WorkflowAdapter", "Updated ToolCaller for workflow execution")
 }
 
 // ExecuteWorkflow executes a workflow and returns MCP result
