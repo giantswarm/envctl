@@ -908,13 +908,12 @@ func (m *envCtlInstanceManager) generateConfigFiles(configPath string, config *E
 				}
 
 				// Create the localCommand server definition for envctl serve
+				mockConfigFile := filepath.Join(configPath, "mocks", mcpServer.Name+".yaml")
 				serverDef := map[string]interface{}{
 					"name":             mcpServer.Name,
 					"type":             "localCommand",
 					"enabledByDefault": true,
-					"icon":             "m",
-					"category":         "Test",
-					"command":          []string{envctlPath, "test", "--mock-mcp-server", "--mock-config", filepath.Join(configPath, "mocks", mcpServer.Name+".yaml")},
+					"command":          []string{envctlPath, "test", "--mock-mcp-server", "--mock-config", mockConfigFile},
 				}
 
 				if m.debug {
@@ -929,7 +928,6 @@ func (m *envCtlInstanceManager) generateConfigFiles(configPath string, config *E
 				}
 
 				// Save mock tools config to mocks directory (what mock server reads)
-				mockConfigFile := filepath.Join(configPath, "mocks", mcpServer.Name+".yaml")
 				if err := m.writeYAMLFile(mockConfigFile, mcpServer.Config); err != nil {
 					return fmt.Errorf("failed to write mock config %s: %w", mcpServer.Name, err)
 				}
