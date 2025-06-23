@@ -10,17 +10,29 @@ import (
 
 // testReporter implements the TestReporter interface
 type testReporter struct {
-	verbose    bool
-	debug      bool
-	reportPath string
+	verbose       bool
+	debug         bool
+	reportPath    string
+	parallelMode  bool                       // NEW: Track if we're in parallel mode
+	scenarioBuffers map[string]string       // NEW: Buffer scenario start messages for parallel execution
 }
 
 // NewTestReporter creates a new test reporter
 func NewTestReporter(verbose, debug bool, reportPath string) TestReporter {
 	return &testReporter{
-		verbose:    verbose,
-		debug:      debug,
-		reportPath: reportPath,
+		verbose:         verbose,
+		debug:          debug,
+		reportPath:     reportPath,
+		parallelMode:   false,
+		scenarioBuffers: make(map[string]string),
+	}
+}
+
+// SetParallelMode enables or disables parallel output buffering
+func (r *testReporter) SetParallelMode(parallel bool) {
+	r.parallelMode = parallel
+	if parallel {
+		r.scenarioBuffers = make(map[string]string)
 	}
 }
 
@@ -143,7 +155,12 @@ func (r *testReporter) ReportScenarioStart(scenario TestScenario) {
 
 		fmt.Printf("\n")
 	} else {
-		fmt.Printf("🎯 %s... ", scenario.Name)
+		// In parallel mode, buffer the start message instead of printing immediately
+		if r.parallelMode {
+			r.scenarioBuffers[scenario.Name] = fmt.Sprintf("🎯 %s... ", scenario.Name)
+		} else {
+			fmt.Printf("🎯 %s... ", scenario.Name)
+		}
 	}
 }
 
@@ -304,8 +321,20 @@ func (r *testReporter) ReportScenarioResult(scenarioResult TestScenarioResult) {
 
 		fmt.Printf("\n")
 	} else {
-		// Compact output
-		fmt.Printf("%s (%v)\n", symbol, scenarioResult.Duration)
+		// In parallel mode, print the complete buffered line
+		if r.parallelMode {
+			if bufferedStart, exists := r.scenarioBuffers[scenarioResult.Scenario.Name]; exists {
+				fmt.Printf("%s%s (%v)\n", bufferedStart, symbol, scenarioResult.Duration)
+				// Clean up the buffer entry
+				delete(r.scenarioBuffers, scenarioResult.Scenario.Name)
+			} else {
+				// Fallback if buffer missing (shouldn't happen)
+				fmt.Printf("🎯 %s... %s (%v)\n", scenarioResult.Scenario.Name, symbol, scenarioResult.Duration)
+			}
+		} else {
+			// Sequential mode - just print the result (start was already printed)
+			fmt.Printf("%s (%v)\n", symbol, scenarioResult.Duration)
+		}
 	}
 }
 
@@ -660,14 +689,19 @@ func (r *quietReporter) ReportScenarioResult(scenarioResult TestScenarioResult) 
 }
 
 func (r *quietReporter) ReportSuiteResult(suiteResult TestSuiteResult) {
-	// Only output final summary
+	// Print just the final summary
 	if suiteResult.FailedScenarios == 0 && suiteResult.ErrorScenarios == 0 {
-		fmt.Printf("✅ All %d tests passed\n", suiteResult.PassedScenarios)
+		fmt.Printf("✅ All %d tests passed (%v)\n", suiteResult.TotalScenarios, suiteResult.Duration)
 	} else {
-		fmt.Printf("❌ %d/%d tests failed\n",
+		fmt.Printf("❌ %d/%d tests failed (%v)\n",
 			suiteResult.FailedScenarios+suiteResult.ErrorScenarios,
-			suiteResult.TotalScenarios)
+			suiteResult.TotalScenarios,
+			suiteResult.Duration)
 	}
+}
+
+func (r *quietReporter) SetParallelMode(parallel bool) {
+	// Quiet reporter doesn't need special parallel handling
 }
 
 // NewJSONReporter creates a reporter that outputs JSON for CI/CD integration
@@ -699,12 +733,15 @@ func (r *jsonReporter) ReportScenarioResult(scenarioResult TestScenarioResult) {
 }
 
 func (r *jsonReporter) ReportSuiteResult(suiteResult TestSuiteResult) {
-	// Output complete result as JSON
-	jsonData, err := json.MarshalIndent(suiteResult, "", "  ")
-	if err != nil {
-		fmt.Printf(`{"error": "Failed to marshal results: %v"}`, err)
-		return
+	output := map[string]interface{}{
+		"configuration": r.config,
+		"results":       r.results,
+		"summary":       suiteResult,
 	}
+	jsonBytes, _ := json.MarshalIndent(output, "", "  ")
+	fmt.Println(string(jsonBytes))
+}
 
-	fmt.Println(string(jsonData))
+func (r *jsonReporter) SetParallelMode(parallel bool) {
+	// JSON reporter doesn't need special parallel handling - it outputs structured data at the end
 }

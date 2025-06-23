@@ -372,6 +372,8 @@ type TestReporter interface {
 	ReportScenarioResult(scenarioResult TestScenarioResult)
 	// ReportSuiteResult is called when all tests complete
 	ReportSuiteResult(suiteResult TestSuiteResult)
+	// SetParallelMode enables or disables parallel output buffering
+	SetParallelMode(parallel bool)
 }
 
 // StructuredTestReporter extends TestReporter with methods for structured data access

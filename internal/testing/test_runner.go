@@ -71,6 +71,7 @@ func (r *testRunner) Run(ctx context.Context, config TestConfiguration, scenario
 	// Each scenario now manages its own envctl instance
 	if config.Parallel <= 1 {
 		// Sequential execution
+		r.reporter.SetParallelMode(false)
 		for _, scenario := range filteredScenarios {
 			scenarioResult := r.runScenario(ctx, scenario, config)
 			result.ScenarioResults = append(result.ScenarioResults, scenarioResult)
@@ -88,14 +89,9 @@ func (r *testRunner) Run(ctx context.Context, config TestConfiguration, scenario
 		}
 	} else {
 		// Parallel execution
-		results := r.runScenariosParallel(ctx, filteredScenarios, config)
+		r.reporter.SetParallelMode(true)
+		results := r.runScenariosParallel(ctx, filteredScenarios, config, result)
 		result.ScenarioResults = results
-
-		// Update counters for all results
-		for _, scenarioResult := range results {
-			r.updateCounters(result, scenarioResult)
-			r.reporter.ReportScenarioResult(scenarioResult)
-		}
 	}
 
 	// Finalize result
@@ -110,7 +106,7 @@ func (r *testRunner) Run(ctx context.Context, config TestConfiguration, scenario
 
 // runScenariosParallel executes scenarios in parallel with a worker pool
 // Each scenario gets its own envctl instance
-func (r *testRunner) runScenariosParallel(ctx context.Context, scenarios []TestScenario, config TestConfiguration) []TestScenarioResult {
+func (r *testRunner) runScenariosParallel(ctx context.Context, scenarios []TestScenario, config TestConfiguration, suiteResult *TestSuiteResult) []TestScenarioResult {
 	// Create channels
 	scenarioChan := make(chan TestScenario, len(scenarios))
 	resultChan := make(chan TestScenarioResult, len(scenarios))
@@ -142,15 +138,6 @@ func (r *testRunner) runScenariosParallel(ctx context.Context, scenarios []TestS
 				// Each worker runs scenario with its own envctl instance
 				scenarioResult := r.runScenario(ctx, scenario, config)
 				resultChan <- scenarioResult
-
-				// Check if we should stop due to fail-fast
-				if config.FailFast && scenarioResult.Result == ResultFailed {
-					// Drain remaining scenarios
-					for range scenarioChan {
-						// Skip remaining scenarios
-					}
-					return
-				}
 			}
 		}(i)
 	}
@@ -161,10 +148,37 @@ func (r *testRunner) runScenariosParallel(ctx context.Context, scenarios []TestS
 		close(resultChan)
 	}()
 
-	// Collect results
+	// Collect results and handle fail-fast in main thread
 	var results []TestScenarioResult
+	expectedResults := len(scenarios)
+	
 	for result := range resultChan {
 		results = append(results, result)
+		
+		// 🚀 REAL-TIME: Report result immediately as it comes in
+		r.updateCounters(suiteResult, result)
+		r.reporter.ReportScenarioResult(result)
+		
+		// Handle fail-fast by breaking out of collection loop
+		// This allows workers to finish naturally without deadlocking
+		if config.FailFast && result.Result == ResultFailed {
+			if r.debug {
+				r.logger.Debug("🛑 Fail-fast triggered by scenario: %s\n", result.Scenario.Name)
+			}
+			break
+		}
+	}
+	
+	// If we broke early due to fail-fast, continue collecting remaining results
+	// but don't process them (just let workers finish cleanly)
+	if len(results) < expectedResults {
+		for result := range resultChan {
+			// Collect remaining results but don't report them in fail-fast mode
+			results = append(results, result)
+			if r.debug {
+				r.logger.Debug("📋 Collected remaining result: %s (not reported due to fail-fast)\n", result.Scenario.Name)
+			}
+		}
 	}
 
 	return results

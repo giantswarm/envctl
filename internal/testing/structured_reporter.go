@@ -197,6 +197,11 @@ func (r *structuredReporter) IsDebug() bool {
 	return r.debug
 }
 
+// SetParallelMode enables or disables parallel output buffering
+func (r *structuredReporter) SetParallelMode(parallel bool) {
+	// Structured reporter doesn't need special parallel handling - it captures all data for programmatic access
+}
+
 // updateSuiteCounters updates the suite-level counters based on scenario result
 func (r *structuredReporter) updateSuiteCounters(scenarioResult TestScenarioResult) {
 	switch scenarioResult.Result {
