@@ -198,8 +198,8 @@ func (am *AggregatorManager) registerHealthyMCPServers(ctx context.Context) erro
 	registeredCount := 0
 	for _, service := range mcpServices {
 		// Only register servers that are both running AND healthy
-		// Compare string values to handle case mismatch between services and API types
-		if string(service.GetState()) != "Running" || string(service.GetHealth()) != "Healthy" {
+		// Use lowercase values to match the current API definitions
+		if string(service.GetState()) != "running" || string(service.GetHealth()) != "healthy" {
 			continue
 		}
 

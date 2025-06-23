@@ -154,7 +154,7 @@ func InitializeServices(cfg *Config) (*Services, error) {
 	configAPI := api.NewConfigServiceAPI()
 
 	// Step 3: Create and register actual services
-	// Create MCP server services using the new directory-based loading
+	// Create MCP server services
 	mcpServerDefinitions := mcpServerManager.ListDefinitions()
 	for _, mcpDef := range mcpServerDefinitions {
 		if mcpDef.AutoStart {
@@ -258,7 +258,7 @@ func InitializeServices(cfg *Config) (*Services, error) {
 			go func() {
 				stateChanges := orch.SubscribeToStateChanges()
 				for event := range stateChanges {
-					if event.Name == "mcp-aggregator" && event.NewState == "Running" && event.OldState != "Running" {
+					if event.Name == "mcp-aggregator" && event.NewState == "running" && event.OldState != "running" {
 						logging.Info("Bootstrap", "Aggregator service transitioned to running state via orchestrator event")
 						setupToolCaller()
 						return // Exit goroutine after setting up ToolCaller

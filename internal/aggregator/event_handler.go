@@ -122,7 +122,7 @@ func (eh *EventHandler) processEvent(event api.ServiceStateChangedEvent) {
 		event.Name, event.NewState, event.Health)
 
 	// Only register servers that are BOTH Running AND Healthy
-	isHealthyAndRunning := event.NewState == "Running" && event.Health == "Healthy"
+	isHealthyAndRunning := event.NewState == "running" && event.Health == "healthy"
 
 	if isHealthyAndRunning {
 		// Register the healthy running server
