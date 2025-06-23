@@ -1,4 +1,5 @@
 name: "serviceclass-create-conflicting-name"
+description: "Test creating ServiceClass with conflicting name (should fail)"
 category: "behavioral"
 concept: "serviceclass"
 tags: ["serviceclass", "create", "error-handling", "conflict", "core-api"]
@@ -9,19 +10,24 @@ pre_configuration:
     - name: "existing-sc"
       config:
         name: "existing-sc"
+        version: "1.0.0"
         serviceConfig:
           lifecycleTools:
             start: { tool: "core_service_list" }
+            stop: { tool: "core_service_list" }
 
 steps:
 - id: "attempt-conflicting-create"
+  description: "Attempt to create ServiceClass with existing name"
   tool: "core_serviceclass_create"
   args:
     name: "existing-sc"
-    type: "another-type"
+    version: "1.0.0"
     serviceConfig:
       lifecycleTools:
         start:
+          tool: "core_service_list"
+        stop:
           tool: "core_service_list"
   expected:
     success: false

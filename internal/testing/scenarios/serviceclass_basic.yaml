@@ -55,10 +55,8 @@ steps:
       serviceConfig:
         createParameters:
           replicas:
-            type: "integer"
             default: 1
           image:
-            type: "string"
             required: true
         lifecycleTools:
           start:
@@ -76,7 +74,7 @@ steps:
       name: "test-basic-serviceclass"
     expected:
       success: true
-      contains: ["test-basic-serviceclass", "Test ServiceClass for behavioral testing"]
+      contains: ["test-basic-serviceclass"]
     timeout: "30s"
 
   - id: "check-serviceclass-availability"

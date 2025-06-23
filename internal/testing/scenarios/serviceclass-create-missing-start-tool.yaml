@@ -9,6 +9,7 @@ steps:
   tool: "core_serviceclass_create"
   args:
     name: "missing-start-sc"
+    version: "1.0.0"
     serviceConfig:
       lifecycleTools:
         stop:
@@ -16,4 +17,4 @@ steps:
         # missing start tool
   expected:
     success: false
-    error_contains: ["start tool is required"] 
+    error_contains: ["start.tool", "is required"] 

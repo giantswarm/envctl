@@ -9,6 +9,7 @@ pre_configuration:
     - name: "get-test-sc"
       config:
         name: "get-test-sc"
+        version: "1.0.0"
         serviceConfig:
           lifecycleTools:
             start: { tool: "core_service_list" }

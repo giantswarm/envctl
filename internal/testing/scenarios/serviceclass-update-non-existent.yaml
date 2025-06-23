@@ -7,6 +7,15 @@ timeout: "1m"
 steps:
 - id: "update-non-existent-serviceclass"
   tool: "core_serviceclass_update"
+  args:
+    name: "non-existent-sc"
+    version: "1.0.0"
+    serviceConfig:
+      lifecycleTools:
+        start:
+          tool: "core_config_get"
+        stop:
+          tool: "core_config_get"
   expected:
     success: false
-    error_contains: ["not found", "does not exist"] 
+    error_contains: ["not found"] 

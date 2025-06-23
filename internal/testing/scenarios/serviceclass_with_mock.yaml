@@ -177,6 +177,8 @@ steps:
 
   - id: test-service-lifecycle-stop
     tool: "core_service_stop"
+    args:
+      name: "test-web-app"
     expected:
       success: true
       contains: ["test-web-app"]
@@ -184,6 +186,8 @@ steps:
 
   - id: test-service-lifecycle-start
     tool: "core_service_start"
+    args:
+      name: "test-web-app"
     expected:
       success: true
       contains: ["test-web-app"]

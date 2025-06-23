@@ -9,6 +9,7 @@ pre_configuration:
     - name: "available-sc"
       config:
         name: "available-sc"
+        version: "1.0.0"
         serviceConfig:
           lifecycleTools:
             start: { tool: "core_service_list" }

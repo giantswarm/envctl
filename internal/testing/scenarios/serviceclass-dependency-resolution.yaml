@@ -29,10 +29,10 @@ pre_configuration:
 
 steps:
 - id: "create-sc-with-capability-dependency"
+  description: "Create ServiceClass with capability dependency"
   tool: "core_serviceclass_create"
   args:
     name: "sc-with-capability-dep"
-    type: "basic"
     version: "1.0.0"
     serviceConfig:
       serviceType: "test-service"
@@ -55,10 +55,10 @@ steps:
     success: true
 
 - id: "create-sc-with-unmet-capability-dependency"
+  description: "Create ServiceClass with unmet dependency"
   tool: "core_serviceclass_create"
   args:
     name: "sc-with-unmet-dep"
-    type: "basic"
     version: "1.0.0"
     serviceConfig:
       serviceType: "test-service"

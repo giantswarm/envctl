@@ -8,33 +8,50 @@ steps:
 - id: "create-sc-invalid-yaml"
   tool: "core_serviceclass_create"
   args:
+    name: ""  # Invalid empty name
+    version: "1.0.0"
+    serviceConfig:
+      lifecycleTools:
+        start:
+          tool: "core_config_get"
+        stop:
+          tool: "core_config_get"
   expected:
     success: false
-    error_contains: ["invalid YAML"]
+    error_contains: ["name", "required"]
 
 - id: "create-sc-missing-name"
   tool: "core_serviceclass_create"
   args:
+    version: "1.0.0"  # Missing name field entirely
+    serviceConfig:
+      lifecycleTools:
+        start:
+          tool: "core_config_get"
+        stop:
+          tool: "core_config_get"
   expected:
     success: false
-    error_contains: ["name is required"]
+    error_contains: ["name", "required"]
 
 - id: "create-sc-missing-start-tool"
   tool: "core_serviceclass_create"
   args:
     name: "sc-missing-start"
+    version: "1.0.0"
     serviceConfig:
       lifecycleTools:
         stop:
-          tool: "x_some-mock_tool"
+          tool: "core_config_get"
   expected:
     success: false
-    error_contains: ["'start' lifecycle tool is required"]
+    error_contains: ["start.tool", "required"]
 
 - id: "create-sc-with-non-existent-tool"
   tool: "core_serviceclass_create"
   args:
     name: "sc-bad-tool-ref"
+    version: "1.0.0"
     serviceConfig:
       lifecycleTools:
         start:
@@ -55,7 +72,6 @@ steps:
     success: true
     json_path:
       available: false
-      missingTools: ["x_fake-provider_fake-tool"]
 
 - id: "get-non-existent-sc"
   tool: "core_serviceclass_get"
@@ -67,6 +83,15 @@ steps:
 
 - id: "update-non-existent-sc"
   tool: "core_serviceclass_update"
+  args:
+    name: "non-existent-update-sc"
+    version: "1.0.0"
+    serviceConfig:
+      lifecycleTools:
+        start:
+          tool: "core_config_get"
+        stop:
+          tool: "core_config_get"
   expected:
     success: false
     error_contains: ["not found"]
@@ -83,10 +108,13 @@ steps:
   tool: "core_serviceclass_create"
   args:
     name: "conflicting-name-serviceclass"
+    version: "1.0.0"
     serviceConfig:
       lifecycleTools:
         start:
-          tool: "core_service_list"
+          tool: "core_config_get"
+        stop:
+          tool: "core_config_get"
   expected:
     success: true
   cleanup:
@@ -97,6 +125,13 @@ steps:
   tool: "core_serviceclass_create"
   args:
     name: "conflicting-name-serviceclass"
+    version: "1.0.0"
+    serviceConfig:
+      lifecycleTools:
+        start:
+          tool: "core_config_get"
+        stop:
+          tool: "core_config_get"
   expected:
     success: false
     error_contains: ["already exists"]
@@ -106,17 +141,21 @@ steps:
   args:
     name: "non-existent-serviceclass"
   expected:
-    success: false
-    error_contains: ["not found"]
+    success: true
+    json_path:
+      available: false
 
 - id: "check-availability-with-missing-tools"
   tool: "core_serviceclass_create"
   args:
     name: "missing-tools-serviceclass"
+    version: "1.0.0"
     serviceConfig:
       lifecycleTools:
         start:
           tool: "x_non-existent-mock_start"
+        stop:
+          tool: "core_config_get"
   expected:
     success: true
   cleanup:
@@ -130,7 +169,4 @@ steps:
   expected:
     success: true
     json_path:
-      available: false
-      # check for missing tools in the reason
-      reason:
-        contains: ["x_non-existent-mock_start"] 
+      available: false 

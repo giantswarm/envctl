@@ -89,10 +89,10 @@ steps:
         
   # Phase 3: Platform Engineer creates service classes for developers
   - id: "create-development-namespace-serviceclass"
+    description: "Create ServiceClass for development namespaces"
     tool: "core_serviceclass_create"
     args:
       name: "dev-namespace"
-      type: "kubernetes"
       version: "1.0.0"
       serviceConfig:
         serviceType: "namespace"
@@ -108,10 +108,10 @@ steps:
         args: { name: "dev-namespace" }
       
   - id: "create-monitoring-serviceclass"
+    description: "Create ServiceClass for monitoring stack"
     tool: "core_serviceclass_create"
     args:
       name: "monitoring-stack"
-      type: "monitoring"
       version: "1.0.0"
       serviceConfig:
         serviceType: "monitoring"

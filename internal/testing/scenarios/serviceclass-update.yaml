@@ -9,6 +9,7 @@ pre_configuration:
     - name: "update-test-sc"
       config:
         name: "update-test-sc"
+        version: "1.0.0"
         serviceConfig:
           lifecycleTools:
             start: { tool: "core_service_list" }
@@ -17,11 +18,22 @@ pre_configuration:
 steps:
 - id: "update-the-sc"
   tool: "core_serviceclass_update"
+  args:
+    name: "update-test-sc"
+    version: "1.1.0"
+    serviceConfig:
+      lifecycleTools:
+        start: { tool: "core_config_get" }
+        stop: { tool: "core_config_get" }
   expected:
     success: true
 
 - id: "verify-sc-was-updated"
   tool: "core_serviceclass_get"
+  args:
+    name: "update-test-sc"
   expected:
     success: true
     json_path:
+      name: "update-test-sc"
+      version: "1.1.0"

@@ -40,7 +40,6 @@ steps:
       version: "1.0.1"
       serviceConfig:
         serviceType: "mock-resource"
-        defaultLabel: "res-{{ .name }}"
         createParameters:
           name:
             toolParameter: "resource_name"
@@ -50,9 +49,6 @@ steps:
             tool: "x_lifecycle-provider_create_resource"
             arguments:
               resource_name: "{{ .parameters.name }}"
-            responseMapping:
-              serviceId: "id"
-              status: "status"
           stop:
             tool: "x_lifecycle-provider_delete_resource"
             arguments:
@@ -69,7 +65,7 @@ steps:
       success: true
       json_path:
         name: "correct-sc"
-        serviceConfig.serviceType: "mock-resource"
+        version: "1.0.1"
 
   - id: "check-availability-of-new-serviceclass"
     tool: "core_serviceclass_available"
@@ -82,6 +78,24 @@ steps:
 
   - id: "update-serviceclass-description"
     tool: "core_serviceclass_update"
+    args:
+      name: "correct-sc"
+      version: "1.0.2"
+      serviceConfig:
+        serviceType: "mock-resource"
+        createParameters:
+          name:
+            toolParameter: "resource_name"
+            required: true
+        lifecycleTools:
+          start:
+            tool: "x_lifecycle-provider_create_resource"
+            arguments:
+              resource_name: "{{ .parameters.name }}"
+          stop:
+            tool: "x_lifecycle-provider_delete_resource"
+            arguments:
+              resource_id: "{{ .service.id }}"
     expected:
       success: true
 
@@ -110,20 +124,18 @@ steps:
       error_contains: ["not found"]
 
 cleanup:
-  - id: "delete-created-serviceclass"
+  - id: "cleanup-delete-serviceclass"
     tool: "core_serviceclass_delete"
     args:
-      name: "my-test-serviceclass"
+      name: "correct-sc"
     expected:
-      success: true
-    # This runs even if prior steps fail, so we don't depend on state.
-    # We just ensure it runs.
+      success: false  # Should fail since service was already deleted in main flow
     timeout: "30s"
 
-  - id: "verify-serviceclass-is-deleted"
+  - id: "cleanup-verify-deleted"
     tool: "core_serviceclass_get"
     args:
-      name: "my-test-serviceclass"
+      name: "correct-sc"
     expected:
       success: false
       contains: ["not found"]

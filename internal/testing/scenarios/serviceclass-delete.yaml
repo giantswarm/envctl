@@ -9,6 +9,7 @@ pre_configuration:
     - name: "delete-test-sc"
       config:
         name: "delete-test-sc"
+        version: "1.0.0"
         serviceConfig:
           lifecycleTools:
             start: { tool: "core_service_list" }
