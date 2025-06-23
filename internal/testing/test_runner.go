@@ -473,23 +473,10 @@ func (r *testRunner) validateExpectations(expected TestExpectation, response int
 	// Check if response indicates an error (for MCP responses)
 	isResponseError := false
 	if response != nil {
-		// Check if this is a CallToolResult with IsError field
-		if mcpResult, ok := response.(*mcp.CallToolResult); ok {
+		// Check if this is a CallToolResult
+		mcpResult, ok := response.(*mcp.CallToolResult)
+		if ok {
 			isResponseError = mcpResult.IsError
-		} else if mcpResponse, ok := response.(map[string]interface{}); ok {
-			// The response might be a map with an isError field
-			if isErr, exists := mcpResponse["isError"]; exists {
-				if isErrBool, ok := isErr.(bool); ok {
-					isResponseError = isErrBool
-				}
-			}
-		} else {
-			// Try to access IsError field via reflection or struct field
-			// This handles the case where response is a struct type
-			responseStr := fmt.Sprintf("%+v", response)
-			if containsText(responseStr, "IsError:true") || containsText(responseStr, "IsError: true") {
-				isResponseError = true
-			}
 		}
 	}
 
