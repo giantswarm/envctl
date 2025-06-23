@@ -7,5 +7,9 @@ timeout: "1m"
 steps:
 - id: "validate-mcpservers"
   tool: "core_mcpserver_validate"
+  args:
+    name: "local-command-server"
+    type: "localCommand"
+    command: ["echo", "Hello, World"]
   expected:
     success: true 

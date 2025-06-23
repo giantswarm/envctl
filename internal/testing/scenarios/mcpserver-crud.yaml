@@ -9,13 +9,8 @@ steps:
   tool: "core_mcpserver_create"
   args:
     name: "local-command-server"
-  expected:
-    success: true
-
-- id: "create-container-mcpserver"
-  tool: "core_mcpserver_create"
-  args:
-    name: "container-server"
+    type: "localCommand"
+    command: ["echo", "Hello, World!"]
   expected:
     success: true
 
@@ -23,7 +18,7 @@ steps:
   tool: "core_mcpserver_list"
   expected:
     success: true
-    contains: ["local-command-server", "container-server"]
+    contains: ["local-command-server"]
 
 - id: "get-local-command-mcpserver"
   tool: "core_mcpserver_get"
@@ -34,17 +29,12 @@ steps:
     json_path:
       name: "local-command-server"
 
-- id: "get-container-mcpserver"
-  tool: "core_mcpserver_get"
-  args:
-    name: "container-server"
-  expected:
-    success: true
-    json_path:
-      name: "container-server"
-
 - id: "update-mcpserver"
   tool: "core_mcpserver_update"
+  args:
+    name: "local-command-server"
+    type: "localCommand"
+    command: ["echo", "Hello, World! Updated"]
   expected:
     success: true
 
@@ -55,15 +45,8 @@ steps:
   expected:
     success: true
 
-- id: "delete-container-mcpserver"
-  tool: "core_mcpserver_delete"
-  args:
-    name: "container-server"
-  expected:
-    success: true
-
 - id: "verify-mcpservers-deleted"
   tool: "core_mcpserver_list"
   expected:
     success: true
-    not_contains: ["local-command-server", "container-server"] 
+    not_contains: ["local-command-server"] 

@@ -9,6 +9,7 @@ steps:
   tool: "core_mcpserver_create"
   args:
     name: "invalid-mcp"
+    type: "localCommand"
   expected:
     success: false
     error_contains: ["invalid", "command", "required"] 

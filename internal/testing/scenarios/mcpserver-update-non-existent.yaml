@@ -7,6 +7,10 @@ timeout: "1m"
 steps:
 - id: "update-non-existent-mcpserver"
   tool: "core_mcpserver_update"
+  args:
+    name: "non-existent-server"
+    type: "localCommand"
+    command: ["echo", "Hello, World"]
   expected:
     success: false
-    error_contains: ["not found", "does not exist"] 
+    error_contains: ["MCP server non-existent-server not found"] 

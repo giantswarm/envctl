@@ -9,6 +9,8 @@ steps:
   tool: "core_mcpserver_create"
   args:
     name: "missing-command-server"
+    type: "localCommand"
+    command: ["missing-command"]
   expected:
     success: false
     error_contains: ["command", "required"] 

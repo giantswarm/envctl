@@ -4,8 +4,29 @@ concept: "mcpserver"
 tags: ["mcpserver", "list", "core-api"]
 timeout: "1m"
 
+pre_configuration:
+  mcp_servers:
+  - name: "local-command-server"
+    config:
+      name: "local-command-server"
+      tools:
+        - name: "foobar"
+          input_schema:
+            type: "object"
+            properties:
+              repo_url:
+                type: "string"
+              branch:
+                type: "string"
+                default: "main"
+          responses:
+            - response:
+                repo_path: "/tmp/{{ .repo_url | basename }}"
+                branch: "{{ .branch }}"
+                status: "cloned"
 steps:
 - id: "list-all-mcpservers"
   tool: "core_mcpserver_list"
   expected:
     success: true 
+    contains: ["local-command-server"]

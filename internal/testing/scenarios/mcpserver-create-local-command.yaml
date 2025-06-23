@@ -9,6 +9,8 @@ steps:
   tool: "core_mcpserver_create"
   args:
     name: "local-command-test-server"
+    type: "localCommand"
+    command: ["echo", "Hello, World!"]
   expected:
     success: true
   cleanup:
