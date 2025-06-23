@@ -246,7 +246,7 @@ metadata:
 	require.NoError(t, err)
 
 	// Load definitions
-	require.NoError(t, manager.LoadServiceDefinitions())
+	require.NoError(t, manager.LoadDefinitions())
 
 	// Test that ServiceClass is loaded and available
 	assert.True(t, manager.IsServiceClassAvailable("test_k8s_connection"))
@@ -336,7 +336,7 @@ metadata:
 	require.NoError(t, err)
 
 	// Load definitions
-	require.NoError(t, manager.LoadServiceDefinitions())
+	require.NoError(t, manager.LoadDefinitions())
 
 	// Test that ServiceClass is loaded but not available
 	assert.False(t, manager.IsServiceClassAvailable("test_portforward"))
@@ -410,7 +410,7 @@ metadata:
 	require.NoError(t, err)
 
 	// Load definitions explicitly (internal method still needed for startup)
-	require.NoError(t, manager.LoadServiceDefinitions())
+	require.NoError(t, manager.LoadDefinitions())
 
 	adapter := NewAdapter(manager)
 
@@ -466,7 +466,7 @@ description: "Invalid service class for testing"
 	require.NoError(t, err)
 
 	// Loading should succeed but invalid definitions should be skipped
-	require.NoError(t, manager.LoadServiceDefinitions())
+	require.NoError(t, manager.LoadDefinitions())
 
 	// Invalid ServiceClass should not be available
 	assert.False(t, manager.IsServiceClassAvailable("test_invalid"))

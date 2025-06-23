@@ -90,7 +90,7 @@ func InitializeServices(cfg *Config) (*Services, error) {
 	if cfg.ConfigPath != "" {
 		serviceClassManager.SetConfigPath(cfg.ConfigPath)
 	}
-	if err := serviceClassManager.LoadServiceDefinitions(); err != nil {
+	if err := serviceClassManager.LoadDefinitions(); err != nil {
 		// Log warning but don't fail - ServiceClass is optional
 		logging.Warn("Services", "Failed to load ServiceClass definitions: %v", err)
 	}

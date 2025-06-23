@@ -72,9 +72,9 @@ func (m *ServiceClassManager) SetConfigPath(configPath string) {
 	m.configPath = configPath
 }
 
-// LoadServiceDefinitions loads all service class definitions from YAML files.
+// LoadDefinitions loads all service class definitions from YAML files.
 // All service classes are just YAML files, regardless of how they were created.
-func (m *ServiceClassManager) LoadServiceDefinitions() error {
+func (m *ServiceClassManager) LoadDefinitions() error {
 	// Load all service class YAML files using the config path-aware helper
 	validator := func(def api.ServiceClass) error {
 		return m.validateServiceClassDefinition(&def)
