@@ -231,13 +231,19 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 
 	// Add a tool for each workflow
 	workflows := a.GetWorkflows()
+	logging.Info("WorkflowAdapter", "GetTools called: found %d workflows", len(workflows))
+	
 	for _, wf := range workflows {
+		toolName := fmt.Sprintf("action_%s", wf.Name)
+		logging.Info("WorkflowAdapter", "Adding workflow tool: %s for workflow %s", toolName, wf.Name)
 		tools = append(tools, api.ToolMetadata{
-			Name:        fmt.Sprintf("action_%s", wf.Name),
+			Name:        toolName,
 			Description: wf.Description,
 			Parameters:  a.convertWorkflowParameters(wf.Name),
 		})
 	}
+	
+	logging.Info("WorkflowAdapter", "GetTools returning %d total tools (6 management + %d workflow execution)", len(tools), len(workflows))
 
 	return tools
 }
@@ -363,16 +369,25 @@ func (a *Adapter) handleCreate(args map[string]interface{}) (*api.CallToolResult
 		}, nil
 	}
 
-	if err := a.CreateWorkflowFromStructured(args); err != nil {
-		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Failed to create workflow: %v", err)},
-			IsError: true,
-		}, nil
+	// Convert structured parameters to api.Workflow
+	wf, err := convertToWorkflow(args)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create workflow: %w", err)
+	}
+
+	// Create workflow through manager
+	if err := a.manager.CreateWorkflow(wf); err != nil {
+		return nil, fmt.Errorf("failed to create workflow: %w", err)
+	}
+
+	// Refresh aggregator capabilities to include the new workflow tool
+	if aggregator := api.GetAggregator(); aggregator != nil {
+		logging.Info("WorkflowAdapter", "Refreshing aggregator capabilities after creating workflow %s", wf.Name)
+		aggregator.UpdateCapabilities()
 	}
 
 	return &api.CallToolResult{
 		Content: []interface{}{"Workflow created successfully"},
-		IsError: false,
 	}, nil
 }
 

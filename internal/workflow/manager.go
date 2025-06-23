@@ -116,10 +116,8 @@ func (wm *WorkflowManager) validateWorkflowDefinition(def *api.Workflow) error {
 		}
 	}
 
-	// Validate steps
-	if len(def.Steps) == 0 {
-		errors.Add("steps", "must have at least one step for workflow")
-	} else {
+	// Validate steps (allow empty workflows as per test requirements)
+	if len(def.Steps) > 0 {
 		stepIDs := make(map[string]bool)
 
 		// Validate each step
@@ -372,6 +370,7 @@ func (wm *WorkflowManager) CreateWorkflow(wf api.Workflow) error {
 	// Add to in-memory store after successful save
 	wm.workflows[wf.Name] = &wf
 	logging.Info("WorkflowManager", "Created workflow %s with tool name: action_%s", wf.Name, wf.Name)
+	
 	return nil
 }
 
@@ -403,6 +402,7 @@ func (wm *WorkflowManager) UpdateWorkflow(name string, wf api.Workflow) error {
 	// Update in-memory store after successful save
 	wm.workflows[name] = &wf
 	logging.Info("WorkflowManager", "Updated workflow %s with tool name: action_%s", name, name)
+	
 	return nil
 }
 
@@ -422,6 +422,7 @@ func (wm *WorkflowManager) DeleteWorkflow(name string) error {
 	// Delete from in-memory store after successful deletion from YAML files
 	delete(wm.workflows, name)
 	logging.Info("WorkflowManager", "Deleted workflow %s (was tool: action_%s)", name, name)
+	
 	return nil
 }
 

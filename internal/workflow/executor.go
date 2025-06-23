@@ -12,7 +12,6 @@ import (
 	"envctl/pkg/logging"
 
 	"github.com/mark3labs/mcp-go/mcp"
-	"gopkg.in/yaml.v3"
 )
 
 // ToolCaller interface - what we need from the aggregator
@@ -35,7 +34,7 @@ func NewWorkflowExecutor(toolCaller ToolCaller) *WorkflowExecutor {
 // ExecuteWorkflow executes a workflow with the given arguments
 func (we *WorkflowExecutor) ExecuteWorkflow(ctx context.Context, workflow *api.Workflow, args map[string]interface{}) (*mcp.CallToolResult, error) {
 	logging.Error("WorkflowExecutor", fmt.Errorf("workflow execution started"), "ExecuteWorkflow called with workflow=%s, args=%+v, required=%+v", workflow.Name, args, workflow.InputSchema.Required)
-	logging.Debug("WorkflowExecutor", "Executing workflow %s", workflow.Name)
+	logging.Debug("WorkflowExecutor", "Executing workflow %s with %d steps", workflow.Name, len(workflow.Steps))
 
 	// Validate inputs against schema
 	if err := we.validateInputs(workflow.InputSchema, args); err != nil {
@@ -45,26 +44,35 @@ func (we *WorkflowExecutor) ExecuteWorkflow(ctx context.Context, workflow *api.W
 
 	// Create execution context with initial variables
 	execCtx := &executionContext{
-		input:     args,
-		variables: make(map[string]interface{}),
-		results:   make(map[string]interface{}),
+		input:        args,
+		variables:    make(map[string]interface{}),
+		results:      make(map[string]interface{}),
+		templateVars: make([]string, 0),
 	}
+	logging.Debug("WorkflowExecutor", "Initial execution context: input=%+v, results=%+v", execCtx.input, execCtx.results)
 
 	// Execute each step
-	for _, step := range workflow.Steps {
-		logging.Debug("WorkflowExecutor", "Executing step %s, tool: %s", step.ID, step.Tool)
+	var lastStepResult *mcp.CallToolResult
+	for i, step := range workflow.Steps {
+		logging.Debug("WorkflowExecutor", "Executing step %d/%d: %s, tool: %s", i+1, len(workflow.Steps), step.ID, step.Tool)
 
 		// Resolve template variables in arguments
 		resolvedArgs, err := we.resolveArguments(step.Args, execCtx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve arguments for step %s: %w", step.ID, err)
 		}
+		logging.Debug("WorkflowExecutor", "Step %s resolved args: %+v", step.ID, resolvedArgs)
 
 		// Execute the tool
 		result, err := we.toolCaller.CallToolInternal(ctx, step.Tool, resolvedArgs)
 		if err != nil {
+			logging.Error("WorkflowExecutor", err, "Step %s failed", step.ID)
 			return nil, fmt.Errorf("step %s failed: %w", step.ID, err)
 		}
+		logging.Debug("WorkflowExecutor", "Step %s result: %+v", step.ID, result)
+
+		// Keep track of the last step result
+		lastStepResult = result
 
 		// Store result if requested
 		if step.Store != "" {
@@ -87,10 +95,12 @@ func (we *WorkflowExecutor) ExecuteWorkflow(ctx context.Context, workflow *api.W
 			}
 			execCtx.results[step.Store] = resultData
 			logging.Debug("WorkflowExecutor", "Stored result from step %s as %s: %+v", step.ID, step.Store, resultData)
+			logging.Debug("WorkflowExecutor", "Current execution context results: %+v", execCtx.results)
 		}
 
 		// Check if result indicates an error
 		if result.IsError {
+			logging.Error("WorkflowExecutor", fmt.Errorf("step returned error"), "Step %s returned error result", step.ID)
 			// Return the error result immediately
 			return result, nil
 		}
@@ -98,12 +108,44 @@ func (we *WorkflowExecutor) ExecuteWorkflow(ctx context.Context, workflow *api.W
 
 	// Return the final result
 	finalResult := map[string]interface{}{
-		"workflow": workflow.Name,
-		"results":  execCtx.results,
-		"status":   "completed",
+		"workflow":      workflow.Name,
+		"results":       execCtx.results,
+		"input":         execCtx.input,  // Include input parameters
+		"templateVars":  execCtx.templateVars,  // Include template variables used
+		"status":        "completed",
 	}
 
-	resultJSON, _ := json.Marshal(finalResult)
+	// If the last step wasn't stored, merge its result into the top level
+	if lastStepResult != nil && len(workflow.Steps) > 0 {
+		lastStep := workflow.Steps[len(workflow.Steps)-1]
+		if lastStep.Store == "" {
+			logging.Debug("WorkflowExecutor", "Last step %s has no store, merging result into top level", lastStep.ID)
+			// Parse the last step's result and merge it
+			if len(lastStepResult.Content) > 0 {
+				if textContent, ok := lastStepResult.Content[0].(mcp.TextContent); ok {
+					var lastResultData interface{}
+					if err := json.Unmarshal([]byte(textContent.Text), &lastResultData); err == nil {
+						if lastResultMap, ok := lastResultData.(map[string]interface{}); ok {
+							// Merge last step result into final result
+							for k, v := range lastResultMap {
+								finalResult[k] = v
+							}
+							logging.Debug("WorkflowExecutor", "Merged last step result into final result: %+v", lastResultMap)
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	logging.Debug("WorkflowExecutor", "Final result before JSON marshal: %+v", finalResult)
+
+	resultJSON, err := json.Marshal(finalResult)
+	if err != nil {
+		logging.Error("WorkflowExecutor", err, "Failed to marshal final result")
+		return nil, fmt.Errorf("failed to marshal result: %w", err)
+	}
+	logging.Debug("WorkflowExecutor", "Final result JSON: %s", string(resultJSON))
 
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
@@ -114,9 +156,10 @@ func (we *WorkflowExecutor) ExecuteWorkflow(ctx context.Context, workflow *api.W
 
 // executionContext holds the state during workflow execution
 type executionContext struct {
-	input     map[string]interface{} // Original input parameters
-	variables map[string]interface{} // User-defined variables
-	results   map[string]interface{} // Results from previous steps
+	input        map[string]interface{} // Original input parameters
+	variables    map[string]interface{} // User-defined variables
+	results      map[string]interface{} // Results from previous steps
+	templateVars []string               // Track template variables used
 }
 
 // validateInputs validates the input arguments against the schema
@@ -210,8 +253,8 @@ func (we *WorkflowExecutor) resolveArguments(args map[string]interface{}, ctx *e
 func (we *WorkflowExecutor) resolveValue(value interface{}, ctx *executionContext) (interface{}, error) {
 	switch v := value.(type) {
 	case string:
-		// Check if it's a template
-		if len(v) >= 4 && v[:2] == "{{" && v[len(v)-2:] == "}}" {
+		// Check if it contains a template pattern
+		if strings.Contains(v, "{{") && strings.Contains(v, "}}") {
 			return we.resolveTemplate(v, ctx)
 		}
 		return v, nil
@@ -248,12 +291,45 @@ func (we *WorkflowExecutor) resolveValue(value interface{}, ctx *executionContex
 
 // resolveTemplate resolves a template string
 func (we *WorkflowExecutor) resolveTemplate(templateStr string, ctx *executionContext) (interface{}, error) {
-	// Create template context
+	logging.Debug("WorkflowExecutor", "Resolving template: %s", templateStr)
+	logging.Debug("WorkflowExecutor", "Original results: %v", ctx.results)
+	
+	// Track template variables used (extract from template string)
+	if strings.Contains(templateStr, ".input.") {
+		// Find all .input.variable_name patterns
+		words := strings.Fields(templateStr)
+		for _, word := range words {
+			if strings.Contains(word, ".input.") {
+				// Extract variable names like "input.service_name", "input.message"
+				if start := strings.Index(word, ".input."); start != -1 {
+					remaining := word[start+1:] // Remove the leading dot
+					if end := strings.IndexAny(remaining, " }"); end != -1 {
+						varName := remaining[:end]
+						if varName != "" && !contains(ctx.templateVars, varName) {
+							ctx.templateVars = append(ctx.templateVars, varName)
+						}
+					} else {
+						// Take everything until end of string, removing trailing }}
+						varName := strings.TrimSuffix(remaining, "}}")
+						varName = strings.TrimSuffix(varName, "}")
+						if varName != "" && !contains(ctx.templateVars, varName) {
+							ctx.templateVars = append(ctx.templateVars, varName)
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	// Create template context with original objects (no preprocessing)
 	templateCtx := map[string]interface{}{
 		"input":   ctx.input,
 		"vars":    ctx.variables,
 		"results": ctx.results,
+		"context": ctx.results, // Alias for results to support .context.variable syntax
 	}
+
+	logging.Debug("WorkflowExecutor", "Template context results (raw): %v", templateCtx["results"])
 
 	// Parse and execute template with strict mode options
 	tmpl, err := template.New("arg").Option("missingkey=error").Parse(templateStr)
@@ -265,30 +341,32 @@ func (we *WorkflowExecutor) resolveTemplate(templateStr string, ctx *executionCo
 	if err := tmpl.Execute(&buf, templateCtx); err != nil {
 		// Check for missing key errors and provide more context
 		if strings.Contains(err.Error(), "executing") && strings.Contains(err.Error(), "no such key") {
-			return nil, fmt.Errorf("failed to render arguments: template references non-existent variable in %s: %w", templateStr, err)
+			return nil, fmt.Errorf("failed to render arguments: template variable not found: %w", err)
 		}
-		return nil, fmt.Errorf("template execution failed: %w", err)
+		return nil, fmt.Errorf("failed to render arguments: %w", err)
 	}
 
 	result := buf.String()
+	logging.Debug("WorkflowExecutor", "Template result: %s", result)
 	
-	// Additional check for "<no value>" which shouldn't happen with missingkey=error but just in case
-	if result == "<no value>" {
-		return nil, fmt.Errorf("failed to render arguments: template %s produced no value", templateStr)
+	// Try to parse as JSON first
+	var jsonResult interface{}
+	if err := json.Unmarshal([]byte(result), &jsonResult); err == nil {
+		return jsonResult, nil
 	}
-
-	// Try to parse as JSON to preserve types
-	var jsonValue interface{}
-	if err := json.Unmarshal([]byte(result), &jsonValue); err == nil {
-		return jsonValue, nil
-	}
-
-	// Try YAML as fallback
-	var yamlValue interface{}
-	if err := yaml.Unmarshal([]byte(result), &yamlValue); err == nil {
-		return yamlValue, nil
-	}
-
-	// Return as string
+	
+	// If not valid JSON, return as string
 	return result, nil
 }
+
+// contains checks if a string slice contains a specific string
+func contains(slice []string, item string) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
+	}
+	return false
+}
+
+

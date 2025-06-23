@@ -90,6 +90,11 @@ func (a *AggregatorServer) Start(ctx context.Context) error {
 	a.wg.Add(1)
 	go a.monitorRegistryUpdates()
 
+	// Subscribe to tool update events from workflow and other managers
+	logging.Info("Aggregator", "Subscribing to tool update events...")
+	api.SubscribeToToolUpdates(a)
+	logging.Info("Aggregator", "Successfully subscribed to tool update events")
+
 	// Release the lock before calling updateCapabilities to avoid deadlock
 	a.mu.Unlock()
 
@@ -662,4 +667,25 @@ func (a *AggregatorServer) GetAvailableTools() []string {
 	}
 	
 	return allToolNames
+}
+
+// UpdateCapabilities provides public access to update capabilities (for workflow manager)
+func (a *AggregatorServer) UpdateCapabilities() {
+	a.updateCapabilities()
+}
+
+// OnToolsUpdated implements ToolUpdateSubscriber interface to handle workflow tool changes
+func (a *AggregatorServer) OnToolsUpdated(event api.ToolUpdateEvent) {
+	logging.Info("Aggregator", "Received tool update event: type=%s, server=%s, tools=%d",
+		event.Type, event.ServerName, len(event.Tools))
+	
+	// Handle workflow tool updates by refreshing capabilities
+	if event.ServerName == "workflow-manager" && strings.HasPrefix(event.Type, "workflow_") {
+		logging.Info("Aggregator", "Refreshing capabilities due to workflow tool update: %s", event.Type)
+		go func() {
+			// Small delay to ensure workflow manager has released its mutex
+			time.Sleep(10 * time.Millisecond)
+			a.updateCapabilities()
+		}()
+	}
 }

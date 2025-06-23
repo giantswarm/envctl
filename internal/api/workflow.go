@@ -11,7 +11,7 @@ type Workflow struct {
 	// Configuration fields (from YAML)
 	Name         string                 `yaml:"name" json:"name"`
 	Description  string                 `yaml:"description" json:"description"`
-	Version      int                    `yaml:"version,omitempty" json:"version"`
+	Version      int                    `yaml:"version" json:"version"`
 	InputSchema  WorkflowInputSchema    `yaml:"inputSchema" json:"inputSchema"`
 	Steps        []WorkflowStep         `yaml:"steps" json:"steps"`
 	OutputSchema map[string]interface{} `yaml:"outputSchema,omitempty" json:"outputSchema,omitempty"`
@@ -23,8 +23,8 @@ type Workflow struct {
 
 	// Metadata fields
 	CreatedBy    string    `yaml:"createdBy,omitempty" json:"createdBy,omitempty"`
-	CreatedAt    time.Time `yaml:"createdAt,omitempty" json:"createdAt,omitempty"`
-	LastModified time.Time `yaml:"lastModified,omitempty" json:"lastModified,omitempty"`
+	CreatedAt    time.Time `yaml:"createdAt,omitempty" json:"createdAt"`
+	LastModified time.Time `yaml:"lastModified,omitempty" json:"lastModified"`
 }
 
 // WorkflowConfig for separate workflow files (used for loading multiple workflows)
@@ -99,4 +99,12 @@ type WorkflowHandler interface {
 
 	// Embed ToolProvider for tool generation
 	ToolProvider
+}
+
+// CreateWorkflowRequest represents a request to create a new workflow
+type CreateWorkflowRequest struct {
+	Name        string                 `yaml:"name" json:"name"`
+	Description string                 `yaml:"description,omitempty" json:"description,omitempty"`
+	InputSchema     map[string]interface{} `yaml:"inputSchema" json:"inputSchema"`
+	Steps       []WorkflowStep         `yaml:"steps" json:"steps"`
 }

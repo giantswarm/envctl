@@ -144,6 +144,25 @@ func (a *APIAdapter) GetAvailableTools() []string {
 	return server.GetAvailableTools()
 }
 
+// UpdateCapabilities updates the aggregator's capabilities
+func (a *APIAdapter) UpdateCapabilities() {
+	if a.service == nil {
+		return
+	}
+
+	manager := a.service.GetManager()
+	if manager == nil {
+		return
+	}
+
+	server := manager.GetAggregatorServer()
+	if server == nil {
+		return
+	}
+
+	server.UpdateCapabilities()
+}
+
 // Register registers this adapter with the API package
 func (a *APIAdapter) Register() {
 	api.RegisterAggregator(a)
