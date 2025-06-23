@@ -232,7 +232,7 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 	// Add a tool for each workflow
 	workflows := a.GetWorkflows()
 	logging.Info("WorkflowAdapter", "GetTools called: found %d workflows", len(workflows))
-	
+
 	for _, wf := range workflows {
 		toolName := fmt.Sprintf("action_%s", wf.Name)
 		logging.Info("WorkflowAdapter", "Adding workflow tool: %s for workflow %s", toolName, wf.Name)
@@ -242,7 +242,7 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 			Parameters:  a.convertWorkflowParameters(wf.Name),
 		})
 	}
-	
+
 	logging.Info("WorkflowAdapter", "GetTools returning %d total tools (6 management + %d workflow execution)", len(tools), len(workflows))
 
 	return tools

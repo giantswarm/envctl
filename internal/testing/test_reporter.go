@@ -11,21 +11,21 @@ import (
 
 // testReporter implements the TestReporter interface
 type testReporter struct {
-	verbose       bool
-	debug         bool
-	reportPath    string
-	parallelMode  bool                       // NEW: Track if we're in parallel mode
-	scenarioBuffers map[string]string       // NEW: Buffer scenario start messages for parallel execution
-	bufferMutex   sync.RWMutex              // NEW: Protect scenarioBuffers from concurrent access
+	verbose         bool
+	debug           bool
+	reportPath      string
+	parallelMode    bool              // NEW: Track if we're in parallel mode
+	scenarioBuffers map[string]string // NEW: Buffer scenario start messages for parallel execution
+	bufferMutex     sync.RWMutex      // NEW: Protect scenarioBuffers from concurrent access
 }
 
 // NewTestReporter creates a new test reporter
 func NewTestReporter(verbose, debug bool, reportPath string) TestReporter {
 	return &testReporter{
 		verbose:         verbose,
-		debug:          debug,
-		reportPath:     reportPath,
-		parallelMode:   false,
+		debug:           debug,
+		reportPath:      reportPath,
+		parallelMode:    false,
 		scenarioBuffers: make(map[string]string),
 	}
 }
@@ -34,7 +34,7 @@ func NewTestReporter(verbose, debug bool, reportPath string) TestReporter {
 func (r *testReporter) SetParallelMode(parallel bool) {
 	r.bufferMutex.Lock()
 	defer r.bufferMutex.Unlock()
-	
+
 	r.parallelMode = parallel
 	if parallel {
 		r.scenarioBuffers = make(map[string]string)
@@ -337,7 +337,7 @@ func (r *testReporter) ReportScenarioResult(scenarioResult TestScenarioResult) {
 				delete(r.scenarioBuffers, scenarioResult.Scenario.Name)
 			}
 			r.bufferMutex.Unlock()
-			
+
 			if exists {
 				fmt.Printf("%s%s (%v)\n", bufferedStart, symbol, scenarioResult.Duration)
 			} else {

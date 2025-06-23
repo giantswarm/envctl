@@ -108,11 +108,11 @@ func (we *WorkflowExecutor) ExecuteWorkflow(ctx context.Context, workflow *api.W
 
 	// Return the final result
 	finalResult := map[string]interface{}{
-		"workflow":      workflow.Name,
-		"results":       execCtx.results,
-		"input":         execCtx.input,  // Include input parameters
-		"templateVars":  execCtx.templateVars,  // Include template variables used
-		"status":        "completed",
+		"workflow":     workflow.Name,
+		"results":      execCtx.results,
+		"input":        execCtx.input,        // Include input parameters
+		"templateVars": execCtx.templateVars, // Include template variables used
+		"status":       "completed",
 	}
 
 	// If the last step wasn't stored, merge its result into the top level
@@ -137,7 +137,7 @@ func (we *WorkflowExecutor) ExecuteWorkflow(ctx context.Context, workflow *api.W
 			}
 		}
 	}
-	
+
 	logging.Debug("WorkflowExecutor", "Final result before JSON marshal: %+v", finalResult)
 
 	resultJSON, err := json.Marshal(finalResult)
@@ -166,7 +166,7 @@ type executionContext struct {
 func (we *WorkflowExecutor) validateInputs(schema api.WorkflowInputSchema, args map[string]interface{}) error {
 	logging.Debug("WorkflowExecutor", "validateInputs called with args: %+v", args)
 	logging.Debug("WorkflowExecutor", "validateInputs schema properties: %+v", schema.Properties)
-	
+
 	// Check required fields
 	logging.Debug("WorkflowExecutor", "Checking required fields: %+v", schema.Required)
 	for _, required := range schema.Required {
@@ -198,7 +198,7 @@ func (we *WorkflowExecutor) validateInputs(schema api.WorkflowInputSchema, args 
 			args[key] = prop.Default
 		}
 	}
-	
+
 	logging.Debug("WorkflowExecutor", "validateInputs final args: %+v", args)
 	return nil
 }
@@ -293,7 +293,7 @@ func (we *WorkflowExecutor) resolveValue(value interface{}, ctx *executionContex
 func (we *WorkflowExecutor) resolveTemplate(templateStr string, ctx *executionContext) (interface{}, error) {
 	logging.Debug("WorkflowExecutor", "Resolving template: %s", templateStr)
 	logging.Debug("WorkflowExecutor", "Original results: %v", ctx.results)
-	
+
 	// Track template variables used (extract from template string)
 	if strings.Contains(templateStr, ".input.") {
 		// Find all .input.variable_name patterns
@@ -320,7 +320,7 @@ func (we *WorkflowExecutor) resolveTemplate(templateStr string, ctx *executionCo
 			}
 		}
 	}
-	
+
 	// Create template context with original objects (no preprocessing)
 	templateCtx := map[string]interface{}{
 		"input":   ctx.input,
@@ -348,13 +348,13 @@ func (we *WorkflowExecutor) resolveTemplate(templateStr string, ctx *executionCo
 
 	result := buf.String()
 	logging.Debug("WorkflowExecutor", "Template result: %s", result)
-	
+
 	// Try to parse as JSON first
 	var jsonResult interface{}
 	if err := json.Unmarshal([]byte(result), &jsonResult); err == nil {
 		return jsonResult, nil
 	}
-	
+
 	// If not valid JSON, return as string
 	return result, nil
 }
@@ -368,5 +368,3 @@ func contains(slice []string, item string) bool {
 	}
 	return false
 }
-
-

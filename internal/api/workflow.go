@@ -105,6 +105,6 @@ type WorkflowHandler interface {
 type CreateWorkflowRequest struct {
 	Name        string                 `yaml:"name" json:"name"`
 	Description string                 `yaml:"description,omitempty" json:"description,omitempty"`
-	InputSchema     map[string]interface{} `yaml:"inputSchema" json:"inputSchema"`
+	InputSchema map[string]interface{} `yaml:"inputSchema" json:"inputSchema"`
 	Steps       []WorkflowStep         `yaml:"steps" json:"steps"`
 }

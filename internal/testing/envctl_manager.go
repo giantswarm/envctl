@@ -910,10 +910,10 @@ func (m *envCtlInstanceManager) generateConfigFiles(configPath string, config *E
 				// Create the localCommand server definition for envctl serve
 				mockConfigFile := filepath.Join(configPath, "mocks", mcpServer.Name+".yaml")
 				serverDef := map[string]interface{}{
-					"name":             mcpServer.Name,
-					"type":             "localCommand",
+					"name":      mcpServer.Name,
+					"type":      "localCommand",
 					"autoStart": true,
-					"command":          []string{envctlPath, "test", "--mock-mcp-server", "--mock-config", mockConfigFile},
+					"command":   []string{envctlPath, "test", "--mock-mcp-server", "--mock-config", mockConfigFile},
 				}
 
 				if m.debug {

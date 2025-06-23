@@ -25,8 +25,8 @@ func DefaultMCPClientTimeouts() MCPClientTimeouts {
 		Connect:     30 * time.Second,
 		CallTool:    30 * time.Second,
 		ListTools:   15 * time.Second,
-		HTTPTimeout: 10 * time.Second,  // Transport-level timeout
-		IdleTimeout: 90 * time.Second,  // How long to keep idle connections
+		HTTPTimeout: 10 * time.Second, // Transport-level timeout
+		IdleTimeout: 90 * time.Second, // How long to keep idle connections
 	}
 }
 
@@ -36,7 +36,7 @@ func AggressiveMCPClientTimeouts() MCPClientTimeouts {
 		Connect:     10 * time.Second,
 		CallTool:    15 * time.Second,
 		ListTools:   8 * time.Second,
-		HTTPTimeout: 5 * time.Second,   // Shorter transport timeout
+		HTTPTimeout: 5 * time.Second, // Shorter transport timeout
 		IdleTimeout: 30 * time.Second,
 	}
 }

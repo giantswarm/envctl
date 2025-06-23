@@ -92,11 +92,11 @@ func (t *TestMCPServer) handleRunScenarios(ctx context.Context, request mcp.Call
 	// Create a timeout context to prevent the MCP call from hanging
 	timeoutCtx, cancel := context.WithTimeout(ctx, config.Timeout)
 	defer cancel()
-	
+
 	// Run tests with timeout protection
 	resultChan := make(chan *testing.TestSuiteResult, 1)
 	errorChan := make(chan error, 1)
-	
+
 	go func() {
 		result, err := t.testRunner.Run(timeoutCtx, config, scenarios)
 		if err != nil {
@@ -105,7 +105,7 @@ func (t *TestMCPServer) handleRunScenarios(ctx context.Context, request mcp.Call
 		}
 		resultChan <- result
 	}()
-	
+
 	// Wait for result or timeout
 	select {
 	case result := <-resultChan:
@@ -119,10 +119,10 @@ func (t *TestMCPServer) handleRunScenarios(ctx context.Context, request mcp.Call
 		}
 
 		return mcp.NewToolResultText(string(jsonData)), nil
-		
+
 	case err := <-errorChan:
 		return mcp.NewToolResultError(fmt.Sprintf("Test execution failed: %v", err)), nil
-		
+
 	case <-timeoutCtx.Done():
 		return mcp.NewToolResultError(fmt.Sprintf("Test execution timed out after %v", config.Timeout)), nil
 	}

@@ -480,7 +480,7 @@ func (a *AggregatorServer) IsYoloMode() bool {
 // CallToolInternal allows internal components to call tools directly
 func (a *AggregatorServer) CallToolInternal(ctx context.Context, toolName string, args map[string]interface{}) (*mcp.CallToolResult, error) {
 	logging.Debug("Aggregator", "CallToolInternal called for tool: %s", toolName)
-	
+
 	// First, try to resolve the tool name to find which server provides it
 	serverName, originalName, err := a.registry.ResolveToolName(toolName)
 	if err == nil {
@@ -490,18 +490,18 @@ func (a *AggregatorServer) CallToolInternal(ctx context.Context, toolName string
 		if !exists || serverInfo == nil {
 			return nil, fmt.Errorf("server not found: %s", serverName)
 		}
-		
+
 		// Call the tool through the client using the original name
 		return serverInfo.Client.CallTool(ctx, originalName, args)
 	}
-	
+
 	logging.Debug("Aggregator", "Tool %s not found in registry (error: %v), checking core tools", toolName, err)
-	
+
 	// If not found in registry, check if it's a core tool in the aggregator's own server
 	a.mu.RLock()
 	server := a.server
 	a.mu.RUnlock()
-	
+
 	if server != nil {
 		// Check if this is a core tool by looking at the tools we created
 		coreTools := a.createToolsFromProviders()
@@ -520,7 +520,7 @@ func (a *AggregatorServer) CallToolInternal(ctx context.Context, toolName string
 	} else {
 		logging.Debug("Aggregator", "Aggregator server is nil")
 	}
-	
+
 	return nil, fmt.Errorf("tool not found: %s", toolName)
 }
 
@@ -530,7 +530,7 @@ func (a *AggregatorServer) callCoreToolDirectly(ctx context.Context, toolName st
 	// Remove the core_ prefix to get the original tool name
 	originalToolName := strings.TrimPrefix(toolName, "core_")
 	logging.Debug("Aggregator", "Original tool name after prefix removal: %s", originalToolName)
-	
+
 	// Determine which provider handles this tool based on the tool name prefix
 	switch {
 	case strings.HasPrefix(originalToolName, "workflow_"):
@@ -545,7 +545,7 @@ func (a *AggregatorServer) callCoreToolDirectly(ctx context.Context, toolName st
 			}
 			return convertToMCPResult(result), nil
 		}
-		
+
 	case strings.HasPrefix(originalToolName, "capability_") || strings.HasPrefix(originalToolName, "api_"):
 		handler := api.GetCapability()
 		if handler == nil {
@@ -558,7 +558,7 @@ func (a *AggregatorServer) callCoreToolDirectly(ctx context.Context, toolName st
 			}
 			return convertToMCPResult(result), nil
 		}
-		
+
 	case strings.HasPrefix(originalToolName, "service_"):
 		handler := api.GetServiceManager()
 		if handler == nil {
@@ -571,7 +571,7 @@ func (a *AggregatorServer) callCoreToolDirectly(ctx context.Context, toolName st
 			}
 			return convertToMCPResult(result), nil
 		}
-		
+
 	case strings.HasPrefix(originalToolName, "config_"):
 		handler := api.GetConfig()
 		if handler == nil {
@@ -584,7 +584,7 @@ func (a *AggregatorServer) callCoreToolDirectly(ctx context.Context, toolName st
 			}
 			return convertToMCPResult(result), nil
 		}
-		
+
 	case strings.HasPrefix(originalToolName, "serviceclass_"):
 		handler := api.GetServiceClassManager()
 		if handler == nil {
@@ -597,7 +597,7 @@ func (a *AggregatorServer) callCoreToolDirectly(ctx context.Context, toolName st
 			}
 			return convertToMCPResult(result), nil
 		}
-		
+
 	case strings.HasPrefix(originalToolName, "mcpserver_"):
 		handler := api.GetMCPServerManager()
 		if handler == nil {
@@ -611,7 +611,7 @@ func (a *AggregatorServer) callCoreToolDirectly(ctx context.Context, toolName st
 			return convertToMCPResult(result), nil
 		}
 	}
-	
+
 	return nil, fmt.Errorf("no handler found for core tool: %s", toolName)
 }
 
@@ -633,7 +633,7 @@ func (a *AggregatorServer) IsToolAvailable(toolName string) bool {
 	if err == nil {
 		return true // Found in registry
 	}
-	
+
 	// Check if it's a core tool by recreating the core tools list
 	coreTools := a.createToolsFromProviders()
 	for _, tool := range coreTools {
@@ -641,7 +641,7 @@ func (a *AggregatorServer) IsToolAvailable(toolName string) bool {
 			return true // Found in core tools
 		}
 	}
-	
+
 	return false // Not found anywhere
 }
 
@@ -649,23 +649,23 @@ func (a *AggregatorServer) IsToolAvailable(toolName string) bool {
 func (a *AggregatorServer) GetAvailableTools() []string {
 	// Get tools from external servers via registry
 	registryTools := a.registry.GetAllTools()
-	
+
 	// Get core tools by recreating them using the same logic as updateCapabilities
 	coreTools := a.createToolsFromProviders()
-	
+
 	// Combine all tool names
 	allToolNames := make([]string, 0, len(registryTools)+len(coreTools))
-	
+
 	// Add registry tool names
 	for _, tool := range registryTools {
 		allToolNames = append(allToolNames, tool.Name)
 	}
-	
+
 	// Add core tool names
 	for _, tool := range coreTools {
 		allToolNames = append(allToolNames, tool.Tool.Name)
 	}
-	
+
 	return allToolNames
 }
 
@@ -678,7 +678,7 @@ func (a *AggregatorServer) UpdateCapabilities() {
 func (a *AggregatorServer) OnToolsUpdated(event api.ToolUpdateEvent) {
 	logging.Info("Aggregator", "Received tool update event: type=%s, server=%s, tools=%d",
 		event.Type, event.ServerName, len(event.Tools))
-	
+
 	// Handle workflow tool updates by refreshing capabilities
 	if event.ServerName == "workflow-manager" && strings.HasPrefix(event.Type, "workflow_") {
 		logging.Info("Aggregator", "Refreshing capabilities due to workflow tool update: %s", event.Type)

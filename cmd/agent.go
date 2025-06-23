@@ -14,27 +14,26 @@ import (
 )
 
 var (
-	debugEndpoint  string
-	debugTimeout   time.Duration
-	debugVerbose   bool
-	debugNoColor   bool
-	debugJSONRPC   bool
-	debugREPL      bool
-	debugMCPServer bool
+	agentEndpoint  string
+	agentTimeout   time.Duration
+	agentVerbose   bool
+	agentNoColor   bool
+	agentJSONRPC   bool
+	agentREPL      bool
+	agentMCPServer bool
 )
 
-// debugCmd represents the debug command
-var debugCmd = &cobra.Command{
-	Use:   "debug",
+// agentCmd represents the agent command
+var agentCmd = &cobra.Command{
+	Use:   "agent",
 	Short: "Debug the envctl aggregator server using an MCP client",
-	Long: `The debug command connects to the MCP aggregator as a client agent, 
+	Long: `The agent command connects to the MCP aggregator as a client agent, 
 logs all JSON-RPC communication, and demonstrates dynamic tool updates.
 
-This is useful for debugging the aggregator's behavior, verifying that
-tools are properly aggregated, and ensuring that notifications work correctly
-when tools are added or removed.
+This is useful for connecting the aggregator's behavior, filtering
+tools, and ensuring that the agent can execute tools.
 
-The debug command can run in three modes:
+The agent command can run in three modes:
 1. Normal mode (default): Connects, lists tools, and waits for notifications
 2. REPL mode (--repl): Provides an interactive interface to explore and execute tools
 3. MCP Server mode (--mcp-server): Runs an MCP server that exposes REPL functionality via stdio
@@ -48,7 +47,7 @@ In REPL mode, you can:
 - Toggle notification display
 
 In MCP Server mode:
-- The debug command acts as an MCP server using stdio transport
+- The agent command acts as an MCP server using stdio transport
 - It exposes all REPL functionality as MCP tools
 - It's designed for integration with AI assistants like Claude or Cursor
 - Configure it in your AI assistant's MCP settings
@@ -61,19 +60,19 @@ Note: The aggregator server must be running (use 'envctl serve') before using th
 }
 
 func init() {
-	rootCmd.AddCommand(debugCmd)
+	rootCmd.AddCommand(agentCmd)
 
 	// Add flags
-	debugCmd.Flags().StringVar(&debugEndpoint, "endpoint", "", "Aggregator MCP endpoint URL (default: from config)")
-	debugCmd.Flags().DurationVar(&debugTimeout, "timeout", 5*time.Minute, "Timeout for waiting for notifications")
-	debugCmd.Flags().BoolVar(&debugVerbose, "verbose", false, "Enable verbose logging (show keepalive messages)")
-	debugCmd.Flags().BoolVar(&debugNoColor, "no-color", false, "Disable colored output")
-	debugCmd.Flags().BoolVar(&debugJSONRPC, "json-rpc", false, "Enable full JSON-RPC message logging")
-	debugCmd.Flags().BoolVar(&debugREPL, "repl", false, "Start interactive REPL mode")
-	debugCmd.Flags().BoolVar(&debugMCPServer, "mcp-server", false, "Run as MCP server (stdio transport)")
+	agentCmd.Flags().StringVar(&agentEndpoint, "endpoint", "", "Aggregator MCP endpoint URL (default: from config)")
+	agentCmd.Flags().DurationVar(&agentTimeout, "timeout", 5*time.Minute, "Timeout for waiting for notifications")
+	agentCmd.Flags().BoolVar(&agentVerbose, "verbose", false, "Enable verbose logging (show keepalive messages)")
+	agentCmd.Flags().BoolVar(&agentNoColor, "no-color", false, "Disable colored output")
+	agentCmd.Flags().BoolVar(&agentJSONRPC, "json-rpc", false, "Enable full JSON-RPC message logging")
+	agentCmd.Flags().BoolVar(&agentREPL, "repl", false, "Start interactive REPL mode")
+	agentCmd.Flags().BoolVar(&agentMCPServer, "mcp-server", false, "Run as MCP server (stdio transport)")
 
 	// Mark flags as mutually exclusive
-	debugCmd.MarkFlagsMutuallyExclusive("repl", "mcp-server")
+	agentCmd.MarkFlagsMutuallyExclusive("repl", "mcp-server")
 }
 
 func runDebug(cmd *cobra.Command, args []string) error {
@@ -86,21 +85,21 @@ func runDebug(cmd *cobra.Command, args []string) error {
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-sigChan
-		if !debugMCPServer {
+		if !agentMCPServer {
 			fmt.Println("\nReceived interrupt signal, shutting down gracefully...")
 		}
 		cancel()
 	}()
 
 	// Determine endpoint using the same logic as CLI commands
-	endpoint := debugEndpoint
+	endpoint := agentEndpoint
 	if endpoint == "" {
 		// Use the same endpoint detection logic as CLI commands
 		detectedEndpoint, err := cli.DetectAggregatorEndpoint()
 		if err != nil {
 			// Use fallback default that matches system defaults
 			endpoint = "http://localhost:8090/mcp"
-			if !debugMCPServer && debugVerbose {
+			if !agentMCPServer && agentVerbose {
 				fmt.Printf("Warning: Could not detect endpoint (%v), using default: %s\n", err, endpoint)
 			}
 		} else {
@@ -109,16 +108,16 @@ func runDebug(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create logger
-	logger := agent.NewLogger(debugVerbose, !debugNoColor, debugJSONRPC)
+	logger := agent.NewLogger(agentVerbose, !agentNoColor, agentJSONRPC)
 
 	// Run in MCP Server mode if requested
-	if debugMCPServer {
+	if agentMCPServer {
 		server, err := agent.NewMCPServer(endpoint, logger, false)
 		if err != nil {
 			return fmt.Errorf("failed to create MCP server: %w", err)
 		}
 
-		logger.Info("Starting envctl debug MCP server (stdio transport)...")
+		logger.Info("Starting envctl agent MCP server (stdio transport)...")
 		logger.Info("Connecting to aggregator at: %s", endpoint)
 
 		if err := server.Start(ctx); err != nil {
@@ -131,7 +130,7 @@ func runDebug(cmd *cobra.Command, args []string) error {
 	client := agent.NewClient(endpoint, logger)
 
 	// Run in REPL mode if requested
-	if debugREPL {
+	if agentREPL {
 		// REPL mode doesn't use timeout
 		repl := agent.NewREPL(client, logger)
 		if err := repl.Run(ctx); err != nil {
@@ -141,16 +140,16 @@ func runDebug(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create timeout context for non-REPL mode
-	timeoutCtx, timeoutCancel := context.WithTimeout(ctx, debugTimeout)
+	timeoutCtx, timeoutCancel := context.WithTimeout(ctx, agentTimeout)
 	defer timeoutCancel()
 
 	// Run the agent in normal mode
 	if err := client.Run(timeoutCtx); err != nil {
 		if err == context.DeadlineExceeded {
-			logger.Info("Timeout reached after %v", debugTimeout)
+			logger.Info("Timeout reached after %v", agentTimeout)
 			return nil
 		}
-		return fmt.Errorf("debug error: %w", err)
+		return fmt.Errorf("agent error: %w", err)
 	}
 
 	return nil

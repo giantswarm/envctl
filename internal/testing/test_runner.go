@@ -151,14 +151,14 @@ func (r *testRunner) runScenariosParallel(ctx context.Context, scenarios []TestS
 	// Collect results and handle fail-fast in main thread
 	var results []TestScenarioResult
 	expectedResults := len(scenarios)
-	
+
 	for result := range resultChan {
 		results = append(results, result)
-		
+
 		// 🚀 REAL-TIME: Report result immediately as it comes in
 		r.updateCounters(suiteResult, result)
 		r.reporter.ReportScenarioResult(result)
-		
+
 		// Handle fail-fast by breaking out of collection loop
 		// This allows workers to finish naturally without deadlocking
 		if config.FailFast && result.Result == ResultFailed {
@@ -168,7 +168,7 @@ func (r *testRunner) runScenariosParallel(ctx context.Context, scenarios []TestS
 			break
 		}
 	}
-	
+
 	// If we broke early due to fail-fast, continue collecting remaining results
 	// but don't process them (just let workers finish cleanly)
 	if len(results) < expectedResults {

@@ -28,7 +28,7 @@ type AggregatorHandler interface {
 	CallToolInternal(ctx context.Context, toolName string, args map[string]interface{}) (*mcp.CallToolResult, error)
 	IsToolAvailable(toolName string) bool
 	GetAvailableTools() []string
-	
+
 	// Capability management
 	UpdateCapabilities()
 }

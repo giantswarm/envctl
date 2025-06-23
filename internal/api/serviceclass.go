@@ -7,9 +7,9 @@ import (
 
 // ParameterDefinition defines validation rules for a service creation parameter
 type ParameterDefinition struct {
-	Type        string      `yaml:"type" json:"type"`               // "string", "integer", "boolean", "number"
-	Required    bool        `yaml:"required" json:"required"`       // Whether this parameter is required
-	Default     interface{} `yaml:"default,omitempty" json:"default,omitempty"` // Default value if not provided
+	Type        string      `yaml:"type" json:"type"`                                   // "string", "integer", "boolean", "number"
+	Required    bool        `yaml:"required" json:"required"`                           // Whether this parameter is required
+	Default     interface{} `yaml:"default,omitempty" json:"default,omitempty"`         // Default value if not provided
 	Description string      `yaml:"description,omitempty" json:"description,omitempty"` // Human-readable description
 }
 
@@ -109,7 +109,7 @@ func (sc *ServiceClass) ValidateServiceParameters(parameters map[string]interfac
 	// Check for required parameters
 	for paramName, paramDef := range sc.Parameters {
 		value, provided := parameters[paramName]
-		
+
 		if !provided {
 			if paramDef.Required {
 				return fmt.Errorf("missing required parameter: %s", paramName)

@@ -370,7 +370,7 @@ func (wm *WorkflowManager) CreateWorkflow(wf api.Workflow) error {
 	// Add to in-memory store after successful save
 	wm.workflows[wf.Name] = &wf
 	logging.Info("WorkflowManager", "Created workflow %s with tool name: action_%s", wf.Name, wf.Name)
-	
+
 	return nil
 }
 
@@ -402,7 +402,7 @@ func (wm *WorkflowManager) UpdateWorkflow(name string, wf api.Workflow) error {
 	// Update in-memory store after successful save
 	wm.workflows[name] = &wf
 	logging.Info("WorkflowManager", "Updated workflow %s with tool name: action_%s", name, name)
-	
+
 	return nil
 }
 
@@ -422,7 +422,7 @@ func (wm *WorkflowManager) DeleteWorkflow(name string) error {
 	// Delete from in-memory store after successful deletion from YAML files
 	delete(wm.workflows, name)
 	logging.Info("WorkflowManager", "Deleted workflow %s (was tool: action_%s)", name, name)
-	
+
 	return nil
 }
 
