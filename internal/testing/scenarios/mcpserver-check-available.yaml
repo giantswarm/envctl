@@ -1,4 +1,5 @@
 name: "mcpserver-check-available"
+description: "Test checking availability of existing MCP servers"
 category: "behavioral"
 concept: "mcpserver"
 tags: ["mcpserver", "available", "core-api"]
@@ -9,8 +10,11 @@ pre_configuration:
   - name: "available-server"
     config:
       name: "available-server"
+      type: "localCommand"
+      command: ["echo", "mock server available"]
 steps:
 - id: "check-available"
+  description: "Check if the pre-configured MCP server is available"
   tool: "core_mcpserver_available"
   args:
     name: "available-server"

@@ -1,4 +1,5 @@
 name: "mcpserver-create-local-command"
+description: "Test creating a local command MCP server"
 category: "behavioral"
 concept: "mcpserver"
 tags: ["mcpserver", "create", "local-command", "core-api"]
@@ -6,15 +7,31 @@ timeout: "1m"
 
 steps:
 - id: "create-local-command-mcpserver"
+  description: "Create a new local command MCP server"
   tool: "core_mcpserver_create"
   args:
-    name: "local-command-test-server"
+    name: "local-command-server"
     type: "localCommand"
-    command: ["echo", "Hello, World!"]
+    command: ["echo", "test-mcp-server"]
+    autoStart: false
   expected:
     success: true
-  cleanup:
-    - id: "delete-created-mcpserver"
-      tool: "core_mcpserver_delete"
-      args:
-        name: "local-command-test-server" 
+
+- id: "verify-mcpserver-created"
+  description: "Verify the MCP server was created successfully"
+  tool: "core_mcpserver_get"
+  args:
+    name: "local-command-server"
+  expected:
+    success: true
+    json_path:
+      name: "local-command-server"
+
+cleanup:
+- id: "delete-local-command-mcpserver"
+  description: "Delete the test MCP server"
+  tool: "core_mcpserver_delete"
+  args:
+    name: "local-command-server"
+  expected:
+    success: true 

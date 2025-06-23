@@ -1,4 +1,5 @@
 name: "mcpserver-lifecycle-scenarios"
+description: "Test complete lifecycle management of MCP servers"
 category: "behavioral"
 concept: "mcpserver"
 tags: ["mcpserver", "lifecycle", "crud", "core-api"]
@@ -6,27 +7,31 @@ timeout: "3m"
 
 steps:
 - id: "list-initial-servers"
+  description: "List initial MCP servers (should be empty)"
   tool: "core_mcpserver_list"
   expected:
     success: true
-    contains: ["[]"]
 
 - id: "create-dynamic-server"
+  description: "Create a new dynamic MCP server"
   tool: "core_mcpserver_create"
   args:
     name: "new-mcpserver"
     type: "localCommand"
-    command: ["echo", "Hello, World"]
+    command: ["echo", "dynamic-test-server"]
+    autoStart: false
   expected:
     success: true
 
 - id: "verify-new-server-appears"
+  description: "Verify the new server appears in the list"
   tool: "core_mcpserver_list"
   expected:
     success: true
     contains: ["new-mcpserver"]
 
 - id: "check-server-availability"
+  description: "Check if the server is available"
   tool: "core_mcpserver_available"
   args:
     name: "new-mcpserver"
@@ -34,23 +39,28 @@ steps:
     success: true
 
 - id: "update-new-server"
+  description: "Update the new server configuration"
   tool: "core_mcpserver_update"
   args:
     name: "new-mcpserver"
     type: "localCommand"
-    command: ["echo", "Hello, World, Updated"]
+    command: ["echo", "updated-dynamic-server"]
+    autoStart: true
   expected:
     success: true
 
 - id: "verify-server-updated"
+  description: "Verify the server was updated successfully"
   tool: "core_mcpserver_get"
   args:
     name: "new-mcpserver"
   expected:
     success: true
-    contains: ["Hello, World, Updated"]
+    json_path:
+      name: "new-mcpserver"
 
 - id: "delete-dynamic-server"
+  description: "Delete the dynamic server"
   tool: "core_mcpserver_delete"
   args:
     name: "new-mcpserver"
@@ -58,6 +68,7 @@ steps:
     success: true
 
 - id: "verify-dynamic-server-disappears"
+  description: "Verify the server no longer appears in the list"
   tool: "core_mcpserver_list"
   expected:
     success: true

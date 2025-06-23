@@ -1,4 +1,5 @@
 name: "mcpserver-get"
+description: "Test getting MCP server details and configuration"
 category: "behavioral"
 concept: "mcpserver"
 tags: ["mcpserver", "get", "core-api"]
@@ -9,8 +10,26 @@ pre_configuration:
   - name: "get-test-server"
     config:
       name: "get-test-server"
+      type: "localCommand"
+      command: ["echo", "mock server for get test"]
+      tools:
+        - name: "foobar"
+          input_schema:
+            type: "object"
+            properties:
+              repo_url:
+                type: "string"
+              branch:
+                type: "string"
+                default: "main"
+          responses:
+            - response:
+                repo_path: "/tmp/{{ .repo_url | basename }}"
+                branch: "{{ .branch }}"
+                status: "cloned"
 steps:
 - id: "get-specific-server"
+  description: "Get details of a specific MCP server"
   tool: "core_mcpserver_get"
   args:
     name: "get-test-server"
