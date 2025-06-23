@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -15,6 +16,7 @@ type testReporter struct {
 	reportPath    string
 	parallelMode  bool                       // NEW: Track if we're in parallel mode
 	scenarioBuffers map[string]string       // NEW: Buffer scenario start messages for parallel execution
+	bufferMutex   sync.RWMutex              // NEW: Protect scenarioBuffers from concurrent access
 }
 
 // NewTestReporter creates a new test reporter
@@ -30,6 +32,9 @@ func NewTestReporter(verbose, debug bool, reportPath string) TestReporter {
 
 // SetParallelMode enables or disables parallel output buffering
 func (r *testReporter) SetParallelMode(parallel bool) {
+	r.bufferMutex.Lock()
+	defer r.bufferMutex.Unlock()
+	
 	r.parallelMode = parallel
 	if parallel {
 		r.scenarioBuffers = make(map[string]string)
@@ -157,7 +162,9 @@ func (r *testReporter) ReportScenarioStart(scenario TestScenario) {
 	} else {
 		// In parallel mode, buffer the start message instead of printing immediately
 		if r.parallelMode {
+			r.bufferMutex.Lock()
 			r.scenarioBuffers[scenario.Name] = fmt.Sprintf("🎯 %s... ", scenario.Name)
+			r.bufferMutex.Unlock()
 		} else {
 			fmt.Printf("🎯 %s... ", scenario.Name)
 		}
@@ -323,10 +330,16 @@ func (r *testReporter) ReportScenarioResult(scenarioResult TestScenarioResult) {
 	} else {
 		// In parallel mode, print the complete buffered line
 		if r.parallelMode {
-			if bufferedStart, exists := r.scenarioBuffers[scenarioResult.Scenario.Name]; exists {
-				fmt.Printf("%s%s (%v)\n", bufferedStart, symbol, scenarioResult.Duration)
+			r.bufferMutex.Lock()
+			bufferedStart, exists := r.scenarioBuffers[scenarioResult.Scenario.Name]
+			if exists {
 				// Clean up the buffer entry
 				delete(r.scenarioBuffers, scenarioResult.Scenario.Name)
+			}
+			r.bufferMutex.Unlock()
+			
+			if exists {
+				fmt.Printf("%s%s (%v)\n", bufferedStart, symbol, scenarioResult.Duration)
 			} else {
 				// Fallback if buffer missing (shouldn't happen)
 				fmt.Printf("🎯 %s... %s (%v)\n", scenarioResult.Scenario.Name, symbol, scenarioResult.Duration)
