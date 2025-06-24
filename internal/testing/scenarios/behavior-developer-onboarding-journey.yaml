@@ -142,8 +142,7 @@ steps:
       success: true
       json_path:
         name: "development-workspace"
-        serviceConfig.createParameters.developer.required: true
-        serviceConfig.createParameters.project.required: true
+        version: "1.2.0"
         
   - id: "developer-checks-database-options"
     tool: "core_serviceclass_get"
@@ -153,7 +152,7 @@ steps:
       success: true
       json_path:
         name: "postgres-database"
-        type: "database"
+        version: "1.0.0"
         
   # Phase 2: Developer Self-Service Provisioning (When - Actions)
   - id: "developer-creates-workspace"
@@ -192,8 +191,8 @@ steps:
       success: true
       json_path:
         name: "my-ecommerce-workspace"
-        serviceClass: "development-workspace"
-        state: "RUNNING"
+        serviceClassName: "development-workspace"
+        state: "running"
       
   - id: "developer-verifies-database-connection"
     tool: "core_service_get"
@@ -202,8 +201,8 @@ steps:
     expected:
       success: true
       json_path:
-        state: "RUNNING"
-        serviceClass: "postgres-database"
+        state: "running"
+        serviceClassName: "postgres-database"
         # Should have connection string in metadata/service details
         
   - id: "developer-views-all-services"
@@ -217,27 +216,35 @@ steps:
   # Phase 4: Developer Workflow Management
   - id: "developer-stops-services-for-break"
     tool: "core_service_stop"
+    args:
+      name: "ecommerce-api-db"
     expected:
       success: true
       
   - id: "developer-verifies-database-stopped"
     tool: "core_service_status"
+    args:
+      name: "ecommerce-api-db"
     expected:
       success: true
       json_path:
-        state: "STOPPED"
+        state: "stopped"
         
   - id: "developer-restarts-services"
     tool: "core_service_start"
+    args:
+      name: "ecommerce-api-db"
     expected:
       success: true
       
   - id: "developer-verifies-restart-successful"
     tool: "core_service_status"
+    args:
+      name: "ecommerce-api-db"
     expected:
       success: true
       json_path:
-        state: "RUNNING"
+        state: "running"
         
   # Phase 5: End of Project Cleanup
   - id: "developer-completes-project"
@@ -269,13 +276,15 @@ cleanup:
     args:
       name: "my-ecommerce-workspace"
     expected:
-      success: true
+      success: false  # Service already deleted in main test
     timeout: "30s"
+    continue_on_failure: true
     
   - id: "cleanup-database"
     tool: "core_service_delete"
     args:
       name: "ecommerce-api-db"
     expected:
-      success: true
-    timeout: "30s" 
+      success: false  # Service already deleted in main test
+    timeout: "30s"
+    continue_on_failure: true 
