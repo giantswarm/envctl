@@ -28,6 +28,23 @@ type Command interface {
 	Aliases() []string
 }
 
+// OutputLogger defines the interface for structured command output.
+// This separates user-facing output from system logging.
+type OutputLogger interface {
+	// User-facing output (goes to stdout, no timestamps)
+	Output(format string, args ...interface{})       // For command results
+	OutputLine(format string, args ...interface{})   // Same as Output but with newline
+	
+	// System messages (structured logging with timestamps)
+	Info(format string, args ...interface{})    // Status messages
+	Debug(format string, args ...interface{})   // Debug information
+	Error(format string, args ...interface{})   // Error messages
+	Success(format string, args ...interface{}) // Success messages
+	
+	// Configuration
+	SetVerbose(verbose bool)
+}
+
 // Registry manages available commands for the REPL.
 type Registry struct {
 	commands map[string]Command

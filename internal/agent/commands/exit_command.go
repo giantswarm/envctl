@@ -5,21 +5,21 @@ import (
 	"fmt"
 )
 
-// ExitCommand handles exiting the REPL
+// ExitCommand handles REPL exit
 type ExitCommand struct {
 	*BaseCommand
 }
 
 // NewExitCommand creates a new exit command
-func NewExitCommand(client ClientInterface, logger LoggerInterface, transport TransportInterface) *ExitCommand {
+func NewExitCommand(client ClientInterface, output OutputLogger, transport TransportInterface) *ExitCommand {
 	return &ExitCommand{
-		BaseCommand: NewBaseCommand(client, logger, transport),
+		BaseCommand: NewBaseCommand(client, output, transport),
 	}
 }
 
-// Execute runs the exit command
+// Execute exits the REPL
 func (e *ExitCommand) Execute(ctx context.Context, args []string) error {
-	// Return special error that REPL recognizes as exit signal
+	// Return special "exit" error to signal REPL shutdown
 	return fmt.Errorf("exit")
 }
 
@@ -40,5 +40,5 @@ func (e *ExitCommand) Completions(input string) []string {
 
 // Aliases returns command aliases
 func (e *ExitCommand) Aliases() []string {
-	return []string{"quit"}
+	return []string{"quit", "q"}
 }

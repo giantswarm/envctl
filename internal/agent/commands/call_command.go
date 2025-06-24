@@ -3,78 +3,87 @@ package commands
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-// CallCommand handles calling MCP tools
+// CallCommand executes tools with arguments
 type CallCommand struct {
 	*BaseCommand
 }
 
 // NewCallCommand creates a new call command
-func NewCallCommand(client ClientInterface, logger LoggerInterface, transport TransportInterface) *CallCommand {
+func NewCallCommand(client ClientInterface, output OutputLogger, transport TransportInterface) *CallCommand {
 	return &CallCommand{
-		BaseCommand: NewBaseCommand(client, logger, transport),
+		BaseCommand: NewBaseCommand(client, output, transport),
 	}
 }
 
-// Execute runs the call command
+// Execute calls a tool with the given arguments
 func (c *CallCommand) Execute(ctx context.Context, args []string) error {
-	if len(args) < 1 {
-		return fmt.Errorf("usage: %s", c.Usage())
-	}
-
-	toolName := args[0]
-	argsStr := strings.Join(args[1:], " ")
-
-	// Find and validate tool exists
-	tools := c.client.GetToolCache()
-	tool := c.getFormatters().FindTool(tools, toolName)
-	if tool == nil {
-		return fmt.Errorf("tool not found: %s", toolName)
-	}
-
-	// Parse arguments
-	arguments, err := c.parseJSONArgs(argsStr, "call", toolName)
+	parsed, err := c.parseArgs(args, 1, c.Usage())
 	if err != nil {
 		return err
 	}
 
-	// Execute the tool
-	fmt.Printf("Executing tool: %s...\n", toolName)
-	result, err := c.client.CallTool(ctx, toolName, arguments)
+	toolName := parsed[0]
+	
+	// Parse arguments (default to empty JSON object if not provided)
+	var toolArgs map[string]interface{}
+	if len(parsed) > 1 {
+		argsStr := c.joinArgsFrom(parsed, 1)
+		if err := json.Unmarshal([]byte(argsStr), &toolArgs); err != nil {
+			c.output.Error("Arguments must be valid JSON")
+			c.output.OutputLine("Example: %s %s {\"param1\": \"value1\", \"param2\": 123}", "call", toolName)
+			return nil
+		}
+	} else {
+		toolArgs = make(map[string]interface{})
+	}
+
+	// Show what we're doing
+	c.output.Info("Executing tool: %s...", toolName)
+
+	// Call the tool
+	result, err := c.client.CallTool(ctx, toolName, toolArgs)
 	if err != nil {
-		return fmt.Errorf("tool execution failed: %w", err)
+		c.output.Error("Tool execution failed: %v", err)
+		return nil
+	}
+
+	// Handle error results
+	if result.IsError {
+		c.output.OutputLine("Tool returned an error:")
+		for _, content := range result.Content {
+			if textContent, ok := content.(mcp.TextContent); ok {
+				c.output.OutputLine("  %s", textContent.Text)
+			}
+		}
+		return nil
 	}
 
 	// Display results
-	if result.IsError {
-		fmt.Println("Tool returned an error:")
-		for _, content := range result.Content {
-			if textContent, ok := mcp.AsTextContent(content); ok {
-				fmt.Printf("  %s\n", textContent.Text)
-			}
-		}
-	} else {
-		fmt.Println("Result:")
-		for _, content := range result.Content {
-			if textContent, ok := mcp.AsTextContent(content); ok {
-				// Try to pretty-print if it's JSON
-				var jsonData interface{}
-				if err := json.Unmarshal([]byte(textContent.Text), &jsonData); err == nil {
-					b, _ := json.MarshalIndent(jsonData, "", "  ")
-					fmt.Println(string(b))
+	c.output.OutputLine("Result:")
+	for _, content := range result.Content {
+		switch v := content.(type) {
+		case mcp.TextContent:
+			// Try to format as JSON if possible
+			var jsonObj interface{}
+			if err := json.Unmarshal([]byte(v.Text), &jsonObj); err == nil {
+				if b, err := json.MarshalIndent(jsonObj, "", "  "); err == nil {
+					c.output.OutputLine(string(b))
 				} else {
-					fmt.Println(textContent.Text)
+					c.output.OutputLine(v.Text)
 				}
-			} else if imageContent, ok := mcp.AsImageContent(content); ok {
-				fmt.Printf("[Image: MIME type %s, %d bytes]\n", imageContent.MIMEType, len(imageContent.Data))
-			} else if audioContent, ok := mcp.AsAudioContent(content); ok {
-				fmt.Printf("[Audio: MIME type %s, %d bytes]\n", audioContent.MIMEType, len(audioContent.Data))
+			} else {
+				c.output.OutputLine(v.Text)
 			}
+		case mcp.ImageContent:
+			c.output.OutputLine("[Image: MIME type %s, %d bytes]", v.MIMEType, len(v.Data))
+		case mcp.AudioContent:
+			c.output.OutputLine("[Audio: MIME type %s, %d bytes]", v.MIMEType, len(v.Data))
+		default:
+			c.output.OutputLine("%+v", content)
 		}
 	}
 
@@ -83,7 +92,7 @@ func (c *CallCommand) Execute(ctx context.Context, args []string) error {
 
 // Usage returns the usage string
 func (c *CallCommand) Usage() string {
-	return "call <tool-name> [args...]"
+	return "call <tool-name> [json-arguments]"
 }
 
 // Description returns the command description
@@ -98,21 +107,6 @@ func (c *CallCommand) Completions(input string) []string {
 
 // Aliases returns command aliases
 func (c *CallCommand) Aliases() []string {
-	return []string{}
+	return []string{"run", "exec"}
 }
 
-// parseJSONArgs parses JSON arguments from string, providing helpful error messages
-func (c *CallCommand) parseJSONArgs(argsStr, itemType, itemName string) (map[string]interface{}, error) {
-	if argsStr == "" {
-		return nil, nil
-	}
-
-	var args map[string]interface{}
-	if err := json.Unmarshal([]byte(argsStr), &args); err != nil {
-		fmt.Printf("Error: Arguments must be valid JSON\n")
-		fmt.Printf("Example: %s %s {\"param1\": \"value1\", \"param2\": 123}\n", itemType, itemName)
-		return nil, fmt.Errorf("invalid JSON arguments: %w", err)
-	}
-
-	return args, nil
-}

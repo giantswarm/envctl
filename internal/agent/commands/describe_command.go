@@ -2,46 +2,85 @@ package commands
 
 import (
 	"context"
-	"fmt"
 	"strings"
 )
 
-// DescribeCommand handles describing various resources
+// DescribeCommand shows detailed information about tools, resources, or prompts
 type DescribeCommand struct {
 	*BaseCommand
 }
 
 // NewDescribeCommand creates a new describe command
-func NewDescribeCommand(client ClientInterface, logger LoggerInterface, transport TransportInterface) *DescribeCommand {
+func NewDescribeCommand(client ClientInterface, output OutputLogger, transport TransportInterface) *DescribeCommand {
 	return &DescribeCommand{
-		BaseCommand: NewBaseCommand(client, logger, transport),
+		BaseCommand: NewBaseCommand(client, output, transport),
 	}
 }
 
-// Execute runs the describe command
+// Execute describes a tool, resource, or prompt
 func (d *DescribeCommand) Execute(ctx context.Context, args []string) error {
-	if len(args) < 2 {
-		return fmt.Errorf("usage: %s", d.Usage())
+	parsed, err := d.parseArgs(args, 2, d.Usage())
+	if err != nil {
+		return err
 	}
 
-	targetType := strings.ToLower(args[0])
-	name := d.joinArgsFrom(args, 1)
+	itemType := strings.ToLower(parsed[0])
+	itemName := parsed[1]
 
-	switch targetType {
+	switch itemType {
 	case "tool":
-		return d.describeTool(name)
+		return d.describeTool(itemName)
 	case "resource":
-		return d.describeResource(name)
+		return d.describeResource(itemName)
 	case "prompt":
-		return d.describePrompt(name)
+		return d.describePrompt(itemName)
 	default:
-		return fmt.Errorf("unknown describe target: %s. Use 'tool', 'resource', or 'prompt'", args[0])
+		return d.validateTarget(itemType, []string{"tool", "resource", "prompt"})
 	}
+}
+
+// describeTool shows detailed information about a tool
+func (d *DescribeCommand) describeTool(name string) error {
+	tools := d.client.GetToolCache()
+	tool := d.getFormatters().FindTool(tools, name)
+	if tool == nil {
+		d.output.Error("Tool not found: %s", name)
+		return nil
+	}
+
+	d.output.OutputLine(d.getFormatters().FormatToolDetail(*tool))
+	return nil
+}
+
+// describeResource shows detailed information about a resource
+func (d *DescribeCommand) describeResource(uri string) error {
+	resources := d.client.GetResourceCache()
+	resource := d.getFormatters().FindResource(resources, uri)
+	if resource == nil {
+		d.output.Error("Resource not found: %s", uri)
+		return nil
+	}
+
+	d.output.OutputLine(d.getFormatters().FormatResourceDetail(*resource))
+	return nil
+}
+
+// describePrompt shows detailed information about a prompt
+func (d *DescribeCommand) describePrompt(name string) error {
+	prompts := d.client.GetPromptCache()
+	prompt := d.getFormatters().FindPrompt(prompts, name)
+	if prompt == nil {
+		d.output.Error("Prompt not found: %s", name)
+		return nil
+	}
+
+	d.output.OutputLine(d.getFormatters().FormatPromptDetail(*prompt))
+	return nil
 }
 
 // Usage returns the usage string
 func (d *DescribeCommand) Usage() string {
-	return "describe <tool|resource|prompt> <name>"
+	return "describe <tool|resource|prompt> <name|uri>"
 }
 
 // Description returns the command description
@@ -52,63 +91,26 @@ func (d *DescribeCommand) Description() string {
 // Completions returns possible completions
 func (d *DescribeCommand) Completions(input string) []string {
 	parts := strings.Fields(input)
-
-	// If no args yet, suggest targets
-	if len(parts) <= 1 {
-		return []string{"tool", "resource", "prompt"}
+	
+	if len(parts) == 1 {
+		// Complete the type
+		return d.getCompletionsForTargets([]string{"tool", "resource", "prompt"})
+	} else if len(parts) == 2 {
+		// Complete the name based on type
+		switch strings.ToLower(parts[1]) {
+		case "tool":
+			return d.getToolCompletions()
+		case "resource":
+			return d.getResourceCompletions()
+		case "prompt":
+			return d.getPromptCompletions()
+		}
 	}
-
-	// If we have the target type, suggest items of that type
-	targetType := strings.ToLower(parts[1])
-	switch targetType {
-	case "tool":
-		return d.getToolCompletions()
-	case "resource":
-		return d.getResourceCompletions()
-	case "prompt":
-		return d.getPromptCompletions()
-	default:
-		return []string{}
-	}
+	
+	return []string{}
 }
 
 // Aliases returns command aliases
 func (d *DescribeCommand) Aliases() []string {
 	return []string{"desc", "info"}
-}
-
-// describeTool shows detailed information about a tool
-func (d *DescribeCommand) describeTool(name string) error {
-	tools := d.client.GetToolCache()
-	tool := d.getFormatters().FindTool(tools, name)
-	if tool == nil {
-		return fmt.Errorf("tool not found: %s", name)
-	}
-
-	fmt.Println(d.getFormatters().FormatToolDetail(*tool))
-	return nil
-}
-
-// describeResource shows detailed information about a resource
-func (d *DescribeCommand) describeResource(uri string) error {
-	resources := d.client.GetResourceCache()
-	resource := d.getFormatters().FindResource(resources, uri)
-	if resource == nil {
-		return fmt.Errorf("resource not found: %s", uri)
-	}
-
-	fmt.Println(d.getFormatters().FormatResourceDetail(*resource))
-	return nil
-}
-
-// describePrompt shows detailed information about a prompt
-func (d *DescribeCommand) describePrompt(name string) error {
-	prompts := d.client.GetPromptCache()
-	prompt := d.getFormatters().FindPrompt(prompts, name)
-	if prompt == nil {
-		return fmt.Errorf("prompt not found: %s", name)
-	}
-
-	fmt.Println(d.getFormatters().FormatPromptDetail(*prompt))
-	return nil
 }

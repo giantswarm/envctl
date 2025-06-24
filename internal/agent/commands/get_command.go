@@ -3,63 +3,59 @@ package commands
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-// GetCommand handles retrieving MCP resources
+// GetCommand retrieves resources
 type GetCommand struct {
 	*BaseCommand
 }
 
 // NewGetCommand creates a new get command
-func NewGetCommand(client ClientInterface, logger LoggerInterface, transport TransportInterface) *GetCommand {
+func NewGetCommand(client ClientInterface, output OutputLogger, transport TransportInterface) *GetCommand {
 	return &GetCommand{
-		BaseCommand: NewBaseCommand(client, logger, transport),
+		BaseCommand: NewBaseCommand(client, output, transport),
 	}
 }
 
-// Execute runs the get command
+// Execute retrieves a resource
 func (g *GetCommand) Execute(ctx context.Context, args []string) error {
-	if len(args) < 1 {
-		return fmt.Errorf("usage: %s", g.Usage())
+	parsed, err := g.parseArgs(args, 1, g.Usage())
+	if err != nil {
+		return err
 	}
 
-	uri := args[0]
+	uri := parsed[0]
+	
+	g.output.Info("Retrieving resource: %s...", uri)
 
-	// Find and validate resource exists
-	resources := g.client.GetResourceCache()
-	resource := g.getFormatters().FindResource(resources, uri)
-	if resource == nil {
-		return fmt.Errorf("resource not found: %s", uri)
-	}
-
-	// Retrieve the resource
-	fmt.Printf("Retrieving resource: %s...\n", uri)
+	// Get the resource
 	result, err := g.client.GetResource(ctx, uri)
 	if err != nil {
-		return fmt.Errorf("resource retrieval failed: %w", err)
+		g.output.Error("Failed to get resource: %v", err)
+		return nil
 	}
 
 	// Display contents
-	fmt.Println("Contents:")
+	g.output.OutputLine("Contents:")
 	for _, content := range result.Contents {
-		if textContent, ok := mcp.AsTextResourceContents(content); ok {
-			// Check MIME type for appropriate display
-			if resource.MIMEType == "application/json" {
-				var jsonData interface{}
-				if err := json.Unmarshal([]byte(textContent.Text), &jsonData); err == nil {
-					b, _ := json.MarshalIndent(jsonData, "", "  ")
-					fmt.Println(string(b))
+		if textContent, ok := content.(mcp.TextResourceContents); ok {
+			// Try to format as JSON if possible
+			var jsonObj interface{}
+			if err := json.Unmarshal([]byte(textContent.Text), &jsonObj); err == nil {
+				if b, err := json.MarshalIndent(jsonObj, "", "  "); err == nil {
+					g.output.OutputLine(string(b))
 				} else {
-					fmt.Println(textContent.Text)
+					g.output.OutputLine(textContent.Text)
 				}
 			} else {
-				fmt.Println(textContent.Text)
+				g.output.OutputLine(textContent.Text)
 			}
-		} else if blobContent, ok := mcp.AsBlobResourceContents(content); ok {
-			fmt.Printf("[Binary data: %d bytes]\n", len(blobContent.Blob))
+		} else if blobContent, ok := content.(mcp.BlobResourceContents); ok {
+			g.output.OutputLine("[Binary data: %d bytes]", len(blobContent.Blob))
+		} else {
+			g.output.OutputLine("%+v", content)
 		}
 	}
 
@@ -73,7 +69,7 @@ func (g *GetCommand) Usage() string {
 
 // Description returns the command description
 func (g *GetCommand) Description() string {
-	return "Retrieve a resource"
+	return "Retrieve a resource by URI"
 }
 
 // Completions returns possible completions
@@ -83,5 +79,5 @@ func (g *GetCommand) Completions(input string) []string {
 
 // Aliases returns command aliases
 func (g *GetCommand) Aliases() []string {
-	return []string{}
+	return []string{"fetch"}
 }

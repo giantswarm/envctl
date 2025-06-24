@@ -2,150 +2,139 @@ package commands
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-// FilterCommand handles filtering tools
+// FilterCommand filters tools by pattern and description
 type FilterCommand struct {
 	*BaseCommand
 }
 
 // NewFilterCommand creates a new filter command
-func NewFilterCommand(client ClientInterface, logger LoggerInterface, transport TransportInterface) *FilterCommand {
+func NewFilterCommand(client ClientInterface, output OutputLogger, transport TransportInterface) *FilterCommand {
 	return &FilterCommand{
-		BaseCommand: NewBaseCommand(client, logger, transport),
+		BaseCommand: NewBaseCommand(client, output, transport),
 	}
 }
 
-// Execute runs the filter command
+// Execute filters tools based on patterns
 func (f *FilterCommand) Execute(ctx context.Context, args []string) error {
-	if len(args) < 1 {
-		return fmt.Errorf("usage: %s", f.Usage())
+	parsed, err := f.parseArgs(args, 1, f.Usage())
+	if err != nil {
+		return err
 	}
 
-	if strings.ToLower(args[0]) != "tools" {
-		return fmt.Errorf("filter only supports 'tools' currently")
+	target := strings.ToLower(parsed[0])
+	if target != "tools" {
+		return f.validateTarget(target, []string{"tools"})
 	}
 
-	// Parse command line arguments
+	// Get pattern and description filter from args
 	var pattern, descriptionFilter string
 	var caseSensitive bool
 
-	if len(args) > 1 && args[1] != "" {
-		pattern = args[1]
+	if len(parsed) > 1 {
+		pattern = parsed[1]
 	}
-	if len(args) > 2 && args[2] != "" {
-		descriptionFilter = args[2]
+	if len(parsed) > 2 {
+		descriptionFilter = parsed[2]
 	}
-	if len(args) > 3 && strings.ToLower(args[3]) == "case-sensitive" {
-		caseSensitive = true
+	if len(parsed) > 3 {
+		caseSensitive = strings.ToLower(parsed[3]) == "true"
 	}
 
-	// Get tools from cache
+	return f.filterTools(pattern, descriptionFilter, caseSensitive)
+}
+
+// filterTools filters tools by pattern and description
+func (f *FilterCommand) filterTools(pattern, descriptionFilter string, caseSensitive bool) error {
 	tools := f.client.GetToolCache()
-
 	if len(tools) == 0 {
-		fmt.Println("No tools available to filter")
+		f.output.OutputLine("No tools available to filter")
 		return nil
 	}
 
-	// Filter tools based on criteria
 	var filteredTools []mcp.Tool
 
 	for _, tool := range tools {
-		// Check if tool matches the filters
-		matches := true
+		nameMatch := pattern == "" || f.matchesPattern(tool.Name, pattern, caseSensitive)
+		descMatch := descriptionFilter == "" || f.containsDescription(tool.Description, descriptionFilter, caseSensitive)
 
-		// Check pattern filter (supports basic wildcard matching)
-		if pattern != "" {
-			toolName := tool.Name
-			searchPattern := pattern
-
-			if !caseSensitive {
-				toolName = strings.ToLower(toolName)
-				searchPattern = strings.ToLower(searchPattern)
-			}
-
-			// Simple wildcard matching
-			if strings.Contains(searchPattern, "*") {
-				// Convert wildcard pattern to prefix/suffix matching
-				if strings.HasPrefix(searchPattern, "*") && strings.HasSuffix(searchPattern, "*") {
-					// *pattern* - contains
-					middle := strings.Trim(searchPattern, "*")
-					matches = matches && strings.Contains(toolName, middle)
-				} else if strings.HasPrefix(searchPattern, "*") {
-					// *pattern - ends with
-					suffix := strings.TrimPrefix(searchPattern, "*")
-					matches = matches && strings.HasSuffix(toolName, suffix)
-				} else if strings.HasSuffix(searchPattern, "*") {
-					// pattern* - starts with
-					prefix := strings.TrimSuffix(searchPattern, "*")
-					matches = matches && strings.HasPrefix(toolName, prefix)
-				} else {
-					// pattern*pattern - more complex, use simple contains for each part
-					parts := strings.Split(searchPattern, "*")
-					for _, part := range parts {
-						if part != "" && !strings.Contains(toolName, part) {
-							matches = false
-							break
-						}
-					}
-				}
-			} else {
-				// Exact match or contains
-				matches = matches && strings.Contains(toolName, searchPattern)
-			}
-		}
-
-		// Check description filter
-		if descriptionFilter != "" && matches {
-			toolDesc := tool.Description
-			searchDesc := descriptionFilter
-
-			if !caseSensitive {
-				toolDesc = strings.ToLower(toolDesc)
-				searchDesc = strings.ToLower(searchDesc)
-			}
-
-			matches = matches && strings.Contains(toolDesc, searchDesc)
-		}
-
-		// Add to filtered results if it matches
-		if matches {
+		if nameMatch && descMatch {
 			filteredTools = append(filteredTools, tool)
 		}
 	}
 
-	// Display results
-	fmt.Printf("Filtering tools with:\n")
-	if pattern != "" {
-		fmt.Printf("  Pattern: %s\n", pattern)
+	// Show filter details if in verbose mode  
+	if pattern != "" || descriptionFilter != "" {
+		f.output.Info("Filtering tools with:")
+		if pattern != "" {
+			f.output.Info("  Pattern: %s", pattern)
+		}
+		if descriptionFilter != "" {
+			f.output.Info("  Description filter: %s", descriptionFilter)
+		}
+		f.output.Info("  Case sensitive: %t", caseSensitive)
+		f.output.Info("Results: %d of %d tools match", len(filteredTools), len(tools))
 	}
-	if descriptionFilter != "" {
-		fmt.Printf("  Description filter: %s\n", descriptionFilter)
-	}
-	fmt.Printf("  Case sensitive: %t\n", caseSensitive)
-	fmt.Printf("\nResults: %d of %d tools match\n", len(filteredTools), len(tools))
 
 	if len(filteredTools) == 0 {
-		fmt.Println("No tools match the specified filters.")
+		f.output.OutputLine("No tools match the specified filters.")
 		return nil
 	}
 
-	fmt.Println("\nMatching tools:")
+	// Display matching tools
+	f.output.OutputLine("\nMatching tools:")
 	for i, tool := range filteredTools {
-		fmt.Printf("  %d. %-30s - %s\n", i+1, tool.Name, tool.Description)
+		f.output.OutputLine("  %d. %-30s - %s", i+1, tool.Name, tool.Description)
 	}
 
 	return nil
 }
 
+// matchesPattern checks if a name matches a pattern (supports wildcards)
+func (f *FilterCommand) matchesPattern(name, pattern string, caseSensitive bool) bool {
+	if !caseSensitive {
+		name = strings.ToLower(name)
+		pattern = strings.ToLower(pattern)
+	}
+
+	// Simple wildcard matching
+	if strings.Contains(pattern, "*") {
+		// Replace * with regex equivalent and check
+		parts := strings.Split(pattern, "*")
+		current := name
+		for _, part := range parts {
+			if part == "" {
+				continue
+			}
+			index := strings.Index(current, part)
+			if index == -1 {
+				return false
+			}
+			current = current[index+len(part):]
+		}
+		return true
+	}
+
+	// Exact or substring match
+	return strings.Contains(name, pattern)
+}
+
+// containsDescription checks if description contains the filter text
+func (f *FilterCommand) containsDescription(description, filter string, caseSensitive bool) bool {
+	if !caseSensitive {
+		description = strings.ToLower(description)
+		filter = strings.ToLower(filter)
+	}
+	return strings.Contains(description, filter)
+}
+
 // Usage returns the usage string
 func (f *FilterCommand) Usage() string {
-	return "filter <tools> [pattern] [description_filter]"
+	return "filter tools [pattern] [description-filter] [case-sensitive]"
 }
 
 // Description returns the command description
@@ -155,10 +144,16 @@ func (f *FilterCommand) Description() string {
 
 // Completions returns possible completions
 func (f *FilterCommand) Completions(input string) []string {
-	return []string{"tools"}
+	parts := strings.Fields(input)
+	
+	if len(parts) == 1 {
+		return []string{"tools"}
+	}
+	
+	return []string{}
 }
 
 // Aliases returns command aliases
 func (f *FilterCommand) Aliases() []string {
-	return []string{}
+	return []string{"find", "search"}
 }

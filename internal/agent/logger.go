@@ -56,6 +56,17 @@ func NewLoggerWithWriter(verbose, useColor, jsonRPCMode bool, writer io.Writer) 
 	}
 }
 
+// Output writes user-facing output directly to stdout without timestamps
+// This is for command results, formatted data, etc.
+func (l *Logger) Output(format string, args ...interface{}) {
+	fmt.Fprintf(os.Stdout, format, args...)
+}
+
+// OutputLine writes user-facing output with a newline
+func (l *Logger) OutputLine(format string, args ...interface{}) {
+	fmt.Fprintf(os.Stdout, format+"\n", args...)
+}
+
 // timestamp returns the current timestamp string
 func (l *Logger) timestamp() string {
 	return time.Now().Format("2006-01-02 15:04:05")

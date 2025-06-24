@@ -38,11 +38,6 @@ type FormatterInterface interface {
 	FindPrompt(prompts []mcp.Prompt, name string) *mcp.Prompt
 }
 
-// LoggerInterface defines the interface for logging operations
-type LoggerInterface interface {
-	SetVerbose(verbose bool)
-}
-
 // TransportInterface defines the interface for transport checking
 type TransportInterface interface {
 	SupportsNotifications() bool
@@ -51,15 +46,15 @@ type TransportInterface interface {
 // BaseCommand provides common functionality for all commands
 type BaseCommand struct {
 	client    ClientInterface
-	logger    LoggerInterface
+	output    OutputLogger
 	transport TransportInterface
 }
 
 // NewBaseCommand creates a new base command
-func NewBaseCommand(client ClientInterface, logger LoggerInterface, transport TransportInterface) *BaseCommand {
+func NewBaseCommand(client ClientInterface, output OutputLogger, transport TransportInterface) *BaseCommand {
 	return &BaseCommand{
 		client:    client,
-		logger:    logger,
+		output:    output,
 		transport: transport,
 	}
 }
