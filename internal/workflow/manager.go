@@ -116,8 +116,10 @@ func (wm *WorkflowManager) validateWorkflowDefinition(def *api.Workflow) error {
 		}
 	}
 
-	// Validate steps (allow empty workflows as per test requirements)
-	if len(def.Steps) > 0 {
+	// Validate steps - workflows must have at least one step
+	if len(def.Steps) == 0 {
+		errors.Add("steps", "must have at least one step for workflow")
+	} else {
 		stepIDs := make(map[string]bool)
 
 		// Validate each step

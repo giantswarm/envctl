@@ -81,10 +81,8 @@ steps:
       required: []
     steps: []
   expected:
-    success: true
-  cleanup:
-  - tool: "core_workflow_delete"
-    args: { name: "empty-steps-workflow" }
+    success: false
+    error_contains: ["must have at least one step"]
 
 - id: "run-workflow-that-overwrites-context"
   tool: "core_workflow_create"
