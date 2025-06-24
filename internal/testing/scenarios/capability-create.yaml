@@ -13,6 +13,7 @@ steps:
     version: "1.0.0"
     operations:
       test_operation:
+        description: "Test operation for basic capability creation"
         requires: []
   expected:
     success: true

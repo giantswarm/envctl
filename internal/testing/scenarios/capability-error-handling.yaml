@@ -11,6 +11,7 @@ steps:
     type: "test"
     operations:
       test_operation:
+        description: "Test operation for missing name test"
         requires: []
   expected:
     success: false
@@ -22,6 +23,7 @@ steps:
     name: "missing-type-capability"
     operations:
       test_operation:
+        description: "Test operation for missing type test"
         requires: []
   expected:
     success: false
@@ -34,7 +36,7 @@ steps:
     type: "test"
   expected:
     success: false
-    error_contains: ["operations", "required"]
+    error_contains: ["must have at least one operation"]
 
 - id: "delete-non-existent-capability"
   tool: "core_capability_delete"
@@ -54,8 +56,12 @@ steps:
 
 - id: "update-non-existent-capability"
   tool: "core_capability_update"
+  args:
+    name: "non-existent-capability"
+    description: "Trying to update a capability that doesn't exist"
   expected:
-    success: true
+    success: false
+    error_contains: ["not found"]
 
 - id: "create-capability-duplicate-name"
   tool: "core_capability_create"
@@ -64,6 +70,7 @@ steps:
     type: "test"
     operations:
       test_operation:
+        description: "Test operation for duplicate name test"
         requires: []
   expected:
     success: true
@@ -78,7 +85,8 @@ steps:
     type: "test"
     operations:
       test_operation:
+        description: "Test operation for duplicate name test"
         requires: []
   expected:
     success: false
-    error_contains: ["already exists", "conflict"] 
+    error_contains: ["already exists"] 

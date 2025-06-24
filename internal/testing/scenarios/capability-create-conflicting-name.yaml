@@ -12,6 +12,7 @@ pre_configuration:
         type: "test"
         operations:
           existing_operation:
+            description: "Existing operation for conflict test"
             requires: []
 
 steps:
@@ -22,7 +23,8 @@ steps:
     type: "test"
     operations:
       test_operation:
+        description: "Test operation for conflicting name test"
         requires: []
   expected:
     success: false
-    error_contains: ["already exists", "conflict"] 
+    error_contains: ["already exists"] 

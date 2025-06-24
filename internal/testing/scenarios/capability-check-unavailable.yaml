@@ -6,7 +6,7 @@ timeout: "1m"
 
 steps:
 - id: "check-is-unavailable"
-  tool: "core_mcpserver_available"
+  tool: "core_capability_check"
   args:
     name: "i-do-not-exist"
   expected:

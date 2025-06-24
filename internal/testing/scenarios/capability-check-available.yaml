@@ -9,11 +9,15 @@ pre_configuration:
     - name: "available-test-capability"
       config:
         name: "available-test-capability"
-        # type: "test" # removed - no longer supported
+        type: "test"
+        operations:
+          test_operation:
+            description: "Test operation for availability check"
+            requires: []
 
 steps:
 - id: "check-is-available"
-  tool: "core_mcpserver_available"
+  tool: "core_capability_check"
   args:
     name: "available-test-capability"
   expected:

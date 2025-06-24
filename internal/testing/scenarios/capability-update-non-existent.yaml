@@ -7,6 +7,9 @@ timeout: "1m"
 steps:
 - id: "update-non-existent-capability"
   tool: "core_capability_update"
+  args:
+    name: "non-existent-capability"
+    description: "Trying to update non-existent capability"
   expected:
     success: false
-    error_contains: ["not found", "does not exist"] 
+    error_contains: ["not found"] 

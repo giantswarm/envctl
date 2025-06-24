@@ -29,6 +29,7 @@ steps:
     version: "1.0.0"
     operations:
       test_operation:
+        description: "Test operation for CRUD capability testing"
         requires: []
   expected:
     success: true
@@ -44,6 +45,9 @@ steps:
 
 - id: "update-capability-description"
   tool: "core_capability_update"
+  args:
+    name: "crud-test-capability"
+    description: "Updated description for CRUD test capability"
   expected:
     success: true
 

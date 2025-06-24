@@ -11,6 +11,7 @@ steps:
     name: "no-type-capability"
     operations:
       test_operation:
+        description: "Test operation for no-type capability"
         requires: []
   expected:
     success: false

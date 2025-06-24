@@ -11,6 +11,7 @@ steps:
     type: "test"
     operations:
       test_operation:
+        description: "Test operation for missing name test"
         requires: []
   expected:
     success: false

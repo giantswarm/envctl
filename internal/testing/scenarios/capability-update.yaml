@@ -12,12 +12,16 @@ steps:
     type: "test"
     operations:
       initial_operation:
+        description: "Initial operation for update test"
         requires: []
   expected:
     success: true
 
 - id: "update-capability"
   tool: "core_capability_update"
+  args:
+    name: "update-test-capability"
+    description: "Updated description for update test"
   expected:
     success: true
   cleanup:

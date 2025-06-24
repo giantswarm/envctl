@@ -9,7 +9,11 @@ pre_configuration:
     - name: "delete-test-capability"
       config:
         name: "delete-test-capability"
-        # type: "test" # removed - no longer supported
+        type: "test"
+        operations:
+          test_operation:
+            description: "Test operation for delete test"
+            requires: []
 
 steps:
 - id: "delete-the-capability"

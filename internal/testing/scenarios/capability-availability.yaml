@@ -13,6 +13,7 @@ steps:
     version: "1.0.0"
     operations:
       check_status:
+        description: "Check status operation for availability test"
         requires: []
   expected:
     success: true
@@ -22,11 +23,15 @@ steps:
 
 - id: "check-capability-is-available"
   tool: "core_capability_check"
+  args:
+    name: "availability-test-cap"
   expected:
     success: true
 
 - id: "check-non-existent-capability-is-unavailable"
   tool: "core_capability_check"
+  args:
+    name: "non-existent-capability"
   expected:
     success: true
 

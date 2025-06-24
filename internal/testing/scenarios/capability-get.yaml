@@ -9,7 +9,11 @@ pre_configuration:
     - name: "get-test-capability"
       config:
         name: "get-test-capability"
-        # type: "test" # removed - no longer supported
+        type: "test"
+        operations:
+          test_operation:
+            description: "Test operation for capability get test"
+            requires: []
 
 steps:
 - id: "get-specific-capability"

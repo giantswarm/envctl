@@ -335,7 +335,7 @@ func (a *Adapter) getCapability(ctx context.Context, name string) (*api.CallTool
 	}
 
 	return &api.CallToolResult{
-		Content: []interface{}{fmt.Sprintf("Capability: %s (Type: %s, Available: %v)", def.Name, def.Type, available), result},
+		Content: []interface{}{result},
 		IsError: false,
 	}, nil
 }
@@ -350,7 +350,7 @@ func (a *Adapter) checkCapabilityAvailable(ctx context.Context, name string) (*a
 	}
 
 	return &api.CallToolResult{
-		Content: []interface{}{fmt.Sprintf("Capability '%s' available: %v", name, available), result},
+		Content: []interface{}{result},
 		IsError: false,
 	}, nil
 }
@@ -447,29 +447,45 @@ func (a *Adapter) handleCapabilityCreate(ctx context.Context, name, capType, ver
 }
 
 func (a *Adapter) handleCapabilityUpdate(ctx context.Context, name, capType, version, description string, operations map[string]api.OperationDefinition) (*api.CallToolResult, error) {
-	def := &api.Capability{
-		Name:        name,
-		Type:        capType,
-		Version:     version,
-		Description: description,
-		Operations:  operations,
+	// Check if capability exists and get the current definition
+	existingDef, exists := a.manager.GetDefinition(name)
+	if !exists {
+		return api.HandleErrorWithPrefix(api.NewCapabilityNotFoundError(name), "Failed to update capability"), nil
 	}
 
-	// Validate the definition
-	if err := a.manager.ValidateDefinition(def); err != nil {
+	// Create updated definition by merging provided fields with existing definition
+	updatedDef := &api.Capability{
+		Name:        name, // Name cannot be changed
+		Type:        existingDef.Type,
+		Version:     existingDef.Version,
+		Description: existingDef.Description,
+		Operations:  existingDef.Operations,
+	}
+
+	// Apply updates for non-empty fields
+	if capType != "" {
+		updatedDef.Type = capType
+	}
+	if version != "" {
+		updatedDef.Version = version
+	}
+	if description != "" {
+		updatedDef.Description = description
+	}
+	if operations != nil && len(operations) > 0 {
+		updatedDef.Operations = operations
+	}
+
+	// Validate the merged definition
+	if err := a.manager.ValidateDefinition(updatedDef); err != nil {
 		return &api.CallToolResult{
 			Content: []interface{}{fmt.Sprintf("Invalid capability definition: %v", err)},
 			IsError: true,
 		}, nil
 	}
 
-	// Check if it exists
-	if _, exists := a.manager.GetDefinition(name); !exists {
-		return api.HandleErrorWithPrefix(api.NewCapabilityNotFoundError(name), "Failed to update capability"), nil
-	}
-
 	// Update the capability
-	if err := a.manager.UpdateCapability(def); err != nil {
+	if err := a.manager.UpdateCapability(updatedDef); err != nil {
 		return api.HandleErrorWithPrefix(err, "Failed to update capability"), nil
 	}
 

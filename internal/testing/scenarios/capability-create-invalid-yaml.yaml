@@ -12,4 +12,4 @@ steps:
     # type: "test" # removed - no longer supported
   expected:
     success: false
-    error_contains: ["operations parameter is required"] 
+    error_contains: ["must have at least one operation"] 
