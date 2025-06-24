@@ -30,7 +30,7 @@ func (f *TableFormatter) FormatToolsList(tools []mcp.Tool) string {
 	}
 
 	t := f.createTable()
-	
+
 	// Set headers
 	headers := []interface{}{
 		text.FgHiCyan.Sprint("NAME"),
@@ -68,7 +68,7 @@ func (f *TableFormatter) FormatResourcesList(resources []mcp.Resource) string {
 	}
 
 	t := f.createTable()
-	
+
 	// Set headers
 	headers := []interface{}{
 		text.FgHiCyan.Sprint("URI"),
@@ -84,7 +84,7 @@ func (f *TableFormatter) FormatResourcesList(resources []mcp.Resource) string {
 		if desc == "" {
 			desc = resource.Name
 		}
-		
+
 		row := []interface{}{
 			text.FgHiCyan.Sprint(resource.URI),
 			resource.Name,
@@ -115,7 +115,7 @@ func (f *TableFormatter) FormatPromptsList(prompts []mcp.Prompt) string {
 	}
 
 	t := f.createTable()
-	
+
 	// Set headers
 	headers := []interface{}{
 		text.FgHiCyan.Sprint("NAME"),
@@ -151,7 +151,7 @@ func (f *TableFormatter) FormatPromptsList(prompts []mcp.Prompt) string {
 // FormatToolDetail formats detailed tool information
 func (f *TableFormatter) FormatToolDetail(tool mcp.Tool) string {
 	t := f.createTable()
-	
+
 	// Set headers
 	headers := []interface{}{
 		text.FgHiCyan.Sprint("FIELD"),
@@ -162,7 +162,7 @@ func (f *TableFormatter) FormatToolDetail(tool mcp.Tool) string {
 	// Add rows
 	t.AppendRow([]interface{}{"Name", text.FgHiCyan.Sprint(tool.Name)})
 	t.AppendRow([]interface{}{"Description", tool.Description})
-	
+
 	// Format schema as JSON
 	schemaBytes, _ := json.MarshalIndent(tool.InputSchema, "", "  ")
 	t.AppendRow([]interface{}{"Input Schema", string(schemaBytes)})
@@ -178,7 +178,7 @@ func (f *TableFormatter) FormatToolDetail(tool mcp.Tool) string {
 // FormatResourceDetail formats detailed resource information
 func (f *TableFormatter) FormatResourceDetail(resource mcp.Resource) string {
 	t := f.createTable()
-	
+
 	// Set headers
 	headers := []interface{}{
 		text.FgHiCyan.Sprint("FIELD"),
@@ -207,7 +207,7 @@ func (f *TableFormatter) FormatResourceDetail(resource mcp.Resource) string {
 // FormatPromptDetail formats detailed prompt information
 func (f *TableFormatter) FormatPromptDetail(prompt mcp.Prompt) string {
 	var result strings.Builder
-	
+
 	// Main info table
 	t := f.createTable()
 	headers := []interface{}{
@@ -225,7 +225,7 @@ func (f *TableFormatter) FormatPromptDetail(prompt mcp.Prompt) string {
 	// Arguments table if present
 	if len(prompt.Arguments) > 0 {
 		result.WriteString("\n" + text.FgHiCyan.Sprint("Arguments:") + "\n")
-		
+
 		argTable := f.createTable()
 		argHeaders := []interface{}{
 			text.FgHiCyan.Sprint("NAME"),
@@ -239,7 +239,7 @@ func (f *TableFormatter) FormatPromptDetail(prompt mcp.Prompt) string {
 			if arg.Required {
 				required = text.FgGreen.Sprint("✅ Yes")
 			}
-			
+
 			argTable.AppendRow([]interface{}{
 				text.FgHiCyan.Sprint(arg.Name),
 				required,
@@ -351,7 +351,7 @@ func (f *TableFormatter) formatEmptyMessage(icon, message string) string {
 // formatObjectData formats object data as key-value pairs
 func (f *TableFormatter) formatObjectData(data map[string]interface{}) error {
 	t := f.createTable()
-	
+
 	headers := []interface{}{
 		text.FgHiCyan.Sprint("KEY"),
 		text.FgHiCyan.Sprint("VALUE"),
@@ -363,7 +363,7 @@ func (f *TableFormatter) formatObjectData(data map[string]interface{}) error {
 		if len(valueStr) > 100 {
 			valueStr = valueStr[:97] + "..."
 		}
-		
+
 		t.AppendRow([]interface{}{
 			text.FgHiCyan.Sprint(key),
 			valueStr,
@@ -385,11 +385,11 @@ func (f *TableFormatter) formatArrayData(data []interface{}) error {
 	for i, item := range data {
 		fmt.Printf("  %d. %v\n", i+1, item)
 	}
-	
+
 	fmt.Printf("\n%s %s %s\n",
 		text.FgHiBlue.Sprint("Total:"),
 		text.FgHiWhite.Sprint(len(data)),
 		text.FgHiBlue.Sprint("items"))
 
 	return nil
-} 
+}

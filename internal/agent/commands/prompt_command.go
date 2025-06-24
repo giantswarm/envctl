@@ -28,7 +28,7 @@ func (p *PromptCommand) Execute(ctx context.Context, args []string) error {
 	}
 
 	promptName := parsed[0]
-	
+
 	// Parse arguments (default to empty if not provided)
 	var promptArgs map[string]string
 	if len(parsed) > 1 {
@@ -39,7 +39,7 @@ func (p *PromptCommand) Execute(ctx context.Context, args []string) error {
 			p.output.OutputLine("Example: %s %s {\"arg1\": \"value1\", \"arg2\": \"value2\"}", "prompt", promptName)
 			return nil
 		}
-		
+
 		// Convert to string map
 		promptArgs = make(map[string]string)
 		for k, v := range genericArgs {

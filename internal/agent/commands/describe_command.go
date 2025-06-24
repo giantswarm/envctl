@@ -91,7 +91,7 @@ func (d *DescribeCommand) Description() string {
 // Completions returns possible completions
 func (d *DescribeCommand) Completions(input string) []string {
 	parts := strings.Fields(input)
-	
+
 	if len(parts) == 1 {
 		// Complete the type
 		return d.getCompletionsForTargets([]string{"tool", "resource", "prompt"})
@@ -106,7 +106,7 @@ func (d *DescribeCommand) Completions(input string) []string {
 			return d.getPromptCompletions()
 		}
 	}
-	
+
 	return []string{}
 }
 

@@ -22,8 +22,8 @@ const (
 // Options configures the formatter behavior
 type Options struct {
 	Format OutputFormat
-	Quiet  bool   // Suppress decorative elements
-	Color  bool   // Enable colored output
+	Quiet  bool // Suppress decorative elements
+	Color  bool // Enable colored output
 }
 
 // Formatter provides unified formatting for MCP resources
@@ -45,7 +45,7 @@ type Formatter interface {
 
 	// Generic data formatting (for CLI tool results)
 	FormatData(data interface{}) error
-	
+
 	// Configuration
 	SetOptions(options Options)
 	GetOptions() Options
@@ -78,4 +78,4 @@ func (f *factory) CreateFormatter(options Options) Formatter {
 	default:
 		return NewConsoleFormatter(options)
 	}
-} 
+}

@@ -207,4 +207,4 @@ func (f *YAMLFormatter) marshal(data interface{}) string {
 	}
 
 	return string(yamlBytes)
-} 
+}

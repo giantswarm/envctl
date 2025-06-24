@@ -27,7 +27,7 @@ func (g *GetCommand) Execute(ctx context.Context, args []string) error {
 	}
 
 	uri := parsed[0]
-	
+
 	g.output.Info("Retrieving resource: %s...", uri)
 
 	// Get the resource

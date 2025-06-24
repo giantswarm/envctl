@@ -67,7 +67,7 @@ func (f *FilterCommand) filterTools(pattern, descriptionFilter string, caseSensi
 		}
 	}
 
-	// Show filter details if in verbose mode  
+	// Show filter details if in verbose mode
 	if pattern != "" || descriptionFilter != "" {
 		f.output.Info("Filtering tools with:")
 		if pattern != "" {
@@ -145,11 +145,11 @@ func (f *FilterCommand) Description() string {
 // Completions returns possible completions
 func (f *FilterCommand) Completions(input string) []string {
 	parts := strings.Fields(input)
-	
+
 	if len(parts) == 1 {
 		return []string{"tools"}
 	}
-	
+
 	return []string{}
 }
 

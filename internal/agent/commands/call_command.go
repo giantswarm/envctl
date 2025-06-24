@@ -27,7 +27,7 @@ func (c *CallCommand) Execute(ctx context.Context, args []string) error {
 	}
 
 	toolName := parsed[0]
-	
+
 	// Parse arguments (default to empty JSON object if not provided)
 	var toolArgs map[string]interface{}
 	if len(parsed) > 1 {
@@ -109,4 +109,3 @@ func (c *CallCommand) Completions(input string) []string {
 func (c *CallCommand) Aliases() []string {
 	return []string{"run", "exec"}
 }
-

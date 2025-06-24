@@ -217,4 +217,4 @@ func (f *JSONFormatter) marshal(data interface{}) string {
 	}
 
 	return string(jsonBytes)
-} 
+}

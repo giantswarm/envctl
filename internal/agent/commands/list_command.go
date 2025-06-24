@@ -63,12 +63,12 @@ func (l *ListCommand) listPrompts() error {
 	return nil
 }
 
-// listCoreTools lists envctl core tools by making an MCP call  
+// listCoreTools lists envctl core tools by making an MCP call
 func (l *ListCommand) listCoreTools(ctx context.Context) error {
 	l.output.Info("Fetching core envctl tools...")
-	
+
 	// Call the list_core_tools MCP tool
-	result, err := l.client.CallTool(ctx, "muster-agent_list_core_tools", map[string]interface{}{
+	result, err := l.client.CallTool(ctx, "list_core_tools", map[string]interface{}{
 		"random_string": "dummy", // Required parameter
 	})
 	if err != nil {
@@ -105,7 +105,7 @@ func (l *ListCommand) listCoreTools(ctx context.Context) error {
 
 	// Look for tools in various possible structures
 	var coreTools []map[string]interface{}
-	
+
 	// Try direct "tools" field
 	if tools, ok := coreToolsData["tools"].([]interface{}); ok {
 		for _, tool := range tools {
@@ -133,7 +133,7 @@ func (l *ListCommand) listCoreTools(ctx context.Context) error {
 	toolsByServer := make(map[string][]map[string]interface{})
 	for _, tool := range coreTools {
 		toolName, _ := tool["name"].(string)
-		
+
 		// Determine server type from tool name
 		var serverType string
 		if strings.HasPrefix(toolName, "mcp_") {
@@ -146,13 +146,13 @@ func (l *ListCommand) listCoreTools(ctx context.Context) error {
 		} else {
 			serverType = "core"
 		}
-		
+
 		toolsByServer[serverType] = append(toolsByServer[serverType], tool)
 	}
 
 	// Display tools grouped by server
 	l.output.OutputLine("Core envctl tools (%d):", len(coreTools))
-	
+
 	// Show core tools first
 	if coreTools, exists := toolsByServer["core"]; exists {
 		l.output.OutputLine("\nCore tools:")

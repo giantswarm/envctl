@@ -28,7 +28,7 @@ func (h *HelpCommand) Execute(ctx context.Context, args []string) error {
 
 	// Show help for specific command
 	commandName := strings.ToLower(args[0])
-	
+
 	// Handle ? alias
 	if commandName == "?" {
 		commandName = "help"
@@ -83,7 +83,7 @@ func (h *HelpCommand) showCommandHelp(commandName string, cmd Command) {
 	h.output.OutputLine("Command: %s", commandName)
 	h.output.OutputLine("Description: %s", cmd.Description())
 	h.output.OutputLine("Usage: %s", cmd.Usage())
-	
+
 	aliases := cmd.Aliases()
 	if len(aliases) > 0 {
 		h.output.OutputLine("Aliases: %v", aliases)

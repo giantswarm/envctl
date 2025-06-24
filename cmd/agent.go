@@ -127,23 +127,13 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	// Create logger
 	logger := agent.NewLogger(agentVerbose, !agentNoColor, agentJSONRPC)
 
-	// Create and run agent client
-	logger.Info("Connecting to aggregator at: %s using %s transport", endpoint, transport)
+	// Create agent client
 	client := agent.NewClient(endpoint, logger, transport)
 
-	timeoutCtx, timeoutCancel := context.WithTimeout(ctx, agentTimeout)
-	defer timeoutCancel()
-
-	if err := client.Run(timeoutCtx); err != nil {
-		if err == context.DeadlineExceeded {
-			logger.Info("Timeout reached after %v", agentTimeout)
-			return nil
-		}
-		return fmt.Errorf("agent error: %w", err)
-	}
-
-	// Run in MCP Server mode if requested
+	// Run in different modes
 	if agentMCPServer {
+		// MCP Server mode
+		logger.Info("Connecting to aggregator at: %s using %s transport", endpoint, transport)
 		server, err := agent.NewMCPServer(client, logger, false)
 		if err != nil {
 			return fmt.Errorf("failed to create MCP server: %w", err)
@@ -155,17 +145,26 @@ func runAgent(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("MCP server error: %w", err)
 		}
 		return nil
-	}
-
-	// Run in REPL mode if requested
-	if agentREPL {
-		// REPL mode doesn't use timeout
+	} else if agentREPL {
+		// REPL mode - let REPL handle its own connection and logging
 		repl := agent.NewREPL(client, logger)
 		if err := repl.Run(ctx); err != nil {
 			return fmt.Errorf("REPL error: %w", err)
 		}
 		return nil
-	}
+	} else {
+		// Normal agent mode
+		logger.Info("Connecting to aggregator at: %s using %s transport", endpoint, transport)
+		timeoutCtx, timeoutCancel := context.WithTimeout(ctx, agentTimeout)
+		defer timeoutCancel()
 
-	return nil
+		if err := client.Run(timeoutCtx); err != nil {
+			if err == context.DeadlineExceeded {
+				logger.Info("Timeout reached after %v", agentTimeout)
+				return nil
+			}
+			return fmt.Errorf("agent error: %w", err)
+		}
+		return nil
+	}
 }

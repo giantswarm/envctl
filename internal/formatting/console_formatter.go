@@ -170,4 +170,4 @@ func (f *ConsoleFormatter) prettyJSON(v interface{}) string {
 		return fmt.Sprintf("Error formatting JSON: %v", err)
 	}
 	return string(jsonBytes)
-} 
+}
