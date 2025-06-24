@@ -578,26 +578,169 @@ func (r *REPL) handleNotifications(setting string) error {
 
 // listCoreTools displays core envctl tools
 func (r *REPL) listCoreTools(ctx context.Context) error {
-	// This calls the MCP tool directly through the agent client
-	result, err := r.client.CallTool(ctx, "list_core_tools", nil)
-	if err != nil {
-		return fmt.Errorf("failed to list core tools: %w", err)
+	// Define core envctl tools that are built-in functionality
+	// These are tools that envctl provides natively, separate from external MCP servers
+	coreTools := []map[string]interface{}{
+		{
+			"name":        "capability_create",
+			"description": "Create a new capability definition",
+			"category":    "capability",
+		},
+		{
+			"name":        "capability_list",
+			"description": "List all available capabilities",
+			"category":    "capability",
+		},
+		{
+			"name":        "capability_get",
+			"description": "Get detailed information about a specific capability",
+			"category":    "capability",
+		},
+		{
+			"name":        "capability_update",
+			"description": "Update an existing capability definition",
+			"category":    "capability",
+		},
+		{
+			"name":        "capability_delete",
+			"description": "Delete a capability definition",
+			"category":    "capability",
+		},
+		{
+			"name":        "serviceclass_create",
+			"description": "Create a new service class definition",
+			"category":    "serviceclass",
+		},
+		{
+			"name":        "serviceclass_list",
+			"description": "List all available service classes",
+			"category":    "serviceclass",
+		},
+		{
+			"name":        "serviceclass_get",
+			"description": "Get detailed information about a specific service class",
+			"category":    "serviceclass",
+		},
+		{
+			"name":        "serviceclass_update",
+			"description": "Update an existing service class definition",
+			"category":    "serviceclass",
+		},
+		{
+			"name":        "serviceclass_delete",
+			"description": "Delete a service class definition",
+			"category":    "serviceclass",
+		},
+		{
+			"name":        "workflow_create",
+			"description": "Create a new workflow definition",
+			"category":    "workflow",
+		},
+		{
+			"name":        "workflow_list",
+			"description": "List all available workflows",
+			"category":    "workflow",
+		},
+		{
+			"name":        "workflow_get",
+			"description": "Get detailed information about a specific workflow",
+			"category":    "workflow",
+		},
+		{
+			"name":        "workflow_update",
+			"description": "Update an existing workflow definition",
+			"category":    "workflow",
+		},
+		{
+			"name":        "workflow_delete",
+			"description": "Delete a workflow definition",
+			"category":    "workflow",
+		},
+		{
+			"name":        "workflow_run",
+			"description": "Execute a workflow with given inputs",
+			"category":    "workflow",
+		},
+		{
+			"name":        "mcpserver_create",
+			"description": "Create a new MCP server definition",
+			"category":    "mcpserver",
+		},
+		{
+			"name":        "mcpserver_list",
+			"description": "List all available MCP servers",
+			"category":    "mcpserver",
+		},
+		{
+			"name":        "mcpserver_get",
+			"description": "Get detailed information about a specific MCP server",
+			"category":    "mcpserver",
+		},
+		{
+			"name":        "mcpserver_update",
+			"description": "Update an existing MCP server definition",
+			"category":    "mcpserver",
+		},
+		{
+			"name":        "mcpserver_delete",
+			"description": "Delete an MCP server definition",
+			"category":    "mcpserver",
+		},
+		{
+			"name":        "service_create",
+			"description": "Create a new service instance",
+			"category":    "service",
+		},
+		{
+			"name":        "service_list",
+			"description": "List all service instances",
+			"category":    "service",
+		},
+		{
+			"name":        "service_get",
+			"description": "Get detailed information about a service instance",
+			"category":    "service",
+		},
+		{
+			"name":        "service_start",
+			"description": "Start a service instance",
+			"category":    "service",
+		},
+		{
+			"name":        "service_stop",
+			"description": "Stop a service instance",
+			"category":    "service",
+		},
+		{
+			"name":        "service_restart",
+			"description": "Restart a service instance",
+			"category":    "service",
+		},
+		{
+			"name":        "service_delete",
+			"description": "Delete a service instance",
+			"category":    "service",
+		},
 	}
 
-	if result.IsError {
-		var errorMsgs []string
-		for _, content := range result.Content {
-			if textContent, ok := mcp.AsTextContent(content); ok {
-				errorMsgs = append(errorMsgs, textContent.Text)
+	fmt.Printf("Core envctl tools (%d):\n", len(coreTools))
+	
+	// Group by category
+	categories := make(map[string][]map[string]interface{})
+	for _, tool := range coreTools {
+		category := tool["category"].(string)
+		categories[category] = append(categories[category], tool)
+	}
+
+	// Display by category
+	for _, category := range []string{"capability", "serviceclass", "workflow", "mcpserver", "service"} {
+		if tools, exists := categories[category]; exists {
+			// Capitalize the first letter manually
+			displayName := strings.ToUpper(category[:1]) + category[1:]
+			fmt.Printf("\n%s tools:\n", displayName)
+			for i, tool := range tools {
+				fmt.Printf("  %d. %-25s - %s\n", i+1, tool["name"], tool["description"])
 			}
-		}
-		return fmt.Errorf("core tools listing error: %s", strings.Join(errorMsgs, "\n"))
-	}
-
-	// Display the result
-	for _, content := range result.Content {
-		if textContent, ok := mcp.AsTextContent(content); ok {
-			fmt.Println(textContent.Text)
 		}
 	}
 
@@ -606,41 +749,116 @@ func (r *REPL) listCoreTools(ctx context.Context) error {
 
 // handleFilterTools handles tool filtering in REPL
 func (r *REPL) handleFilterTools(ctx context.Context, args ...string) error {
-	// Prepare arguments for the filter_tools MCP tool
-	toolArgs := make(map[string]interface{})
-
 	// Parse command line arguments
+	var pattern, descriptionFilter string
+	var caseSensitive bool
+	
 	if len(args) > 0 && args[0] != "" {
-		toolArgs["pattern"] = args[0]
+		pattern = args[0]
 	}
 	if len(args) > 1 && args[1] != "" {
-		toolArgs["description_filter"] = args[1]
+		descriptionFilter = args[1]
 	}
 	if len(args) > 2 && strings.ToLower(args[2]) == "case-sensitive" {
-		toolArgs["case_sensitive"] = true
+		caseSensitive = true
 	}
 
-	// Call the MCP tool
-	result, err := r.client.CallTool(ctx, "filter_tools", toolArgs)
-	if err != nil {
-		return fmt.Errorf("failed to filter tools: %w", err)
+	// Get tools from cache
+	r.client.mu.RLock()
+	tools := r.client.toolCache
+	r.client.mu.RUnlock()
+
+	if len(tools) == 0 {
+		fmt.Println("No tools available to filter")
+		return nil
 	}
 
-	if result.IsError {
-		var errorMsgs []string
-		for _, content := range result.Content {
-			if textContent, ok := mcp.AsTextContent(content); ok {
-				errorMsgs = append(errorMsgs, textContent.Text)
+	// Filter tools based on criteria
+	var filteredTools []mcp.Tool
+
+	for _, tool := range tools {
+		// Check if tool matches the filters
+		matches := true
+
+		// Check pattern filter (supports basic wildcard matching)
+		if pattern != "" {
+			toolName := tool.Name
+			searchPattern := pattern
+			
+			if !caseSensitive {
+				toolName = strings.ToLower(toolName)
+				searchPattern = strings.ToLower(searchPattern)
+			}
+
+			// Simple wildcard matching
+			if strings.Contains(searchPattern, "*") {
+				// Convert wildcard pattern to prefix/suffix matching
+				if strings.HasPrefix(searchPattern, "*") && strings.HasSuffix(searchPattern, "*") {
+					// *pattern* - contains
+					middle := strings.Trim(searchPattern, "*")
+					matches = matches && strings.Contains(toolName, middle)
+				} else if strings.HasPrefix(searchPattern, "*") {
+					// *pattern - ends with
+					suffix := strings.TrimPrefix(searchPattern, "*")
+					matches = matches && strings.HasSuffix(toolName, suffix)
+				} else if strings.HasSuffix(searchPattern, "*") {
+					// pattern* - starts with
+					prefix := strings.TrimSuffix(searchPattern, "*")
+					matches = matches && strings.HasPrefix(toolName, prefix)
+				} else {
+					// pattern*pattern - more complex, use simple contains for each part
+					parts := strings.Split(searchPattern, "*")
+					for _, part := range parts {
+						if part != "" && !strings.Contains(toolName, part) {
+							matches = false
+							break
+						}
+					}
+				}
+			} else {
+				// Exact match or contains
+				matches = matches && strings.Contains(toolName, searchPattern)
 			}
 		}
-		return fmt.Errorf("tool filtering error: %s", strings.Join(errorMsgs, "\n"))
+
+		// Check description filter
+		if descriptionFilter != "" && matches {
+			toolDesc := tool.Description
+			searchDesc := descriptionFilter
+			
+			if !caseSensitive {
+				toolDesc = strings.ToLower(toolDesc)
+				searchDesc = strings.ToLower(searchDesc)
+			}
+
+			matches = matches && strings.Contains(toolDesc, searchDesc)
+		}
+
+		// Add to filtered results if it matches
+		if matches {
+			filteredTools = append(filteredTools, tool)
+		}
 	}
 
-	// Display the result
-	for _, content := range result.Content {
-		if textContent, ok := mcp.AsTextContent(content); ok {
-			fmt.Println(textContent.Text)
-		}
+	// Display results
+	fmt.Printf("Filtering tools with:\n")
+	if pattern != "" {
+		fmt.Printf("  Pattern: %s\n", pattern)
+	}
+	if descriptionFilter != "" {
+		fmt.Printf("  Description filter: %s\n", descriptionFilter)
+	}
+	fmt.Printf("  Case sensitive: %t\n", caseSensitive)
+	fmt.Printf("\nResults: %d of %d tools match\n", len(filteredTools), len(tools))
+
+	if len(filteredTools) == 0 {
+		fmt.Println("No tools match the specified filters.")
+		return nil
+	}
+
+	fmt.Println("\nMatching tools:")
+	for i, tool := range filteredTools {
+		fmt.Printf("  %d. %-30s - %s\n", i+1, tool.Name, tool.Description)
 	}
 
 	return nil
