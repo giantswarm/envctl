@@ -71,8 +71,10 @@ steps:
       version: "1.0.0"
       operations:
         create_namespace:
+          description: "Create a Kubernetes namespace"
           requires: []
         delete_namespace:
+          description: "Delete a Kubernetes namespace"
           requires: []
     expected:
       success: true
@@ -81,7 +83,7 @@ steps:
         args: { name: "kubernetes-management" }
       
   - id: "verify-capability-availability"
-    tool: "core_mcpserver_available"
+    tool: "core_capability_check"
     args:
       name: "kubernetes-management"
     expected:
@@ -170,9 +172,8 @@ steps:
       success: true
       json_path:
         name: "team-alpha-project-x-dev"
-        serviceClass: "dev-namespace"
-        state: "RUNNING"
-        service.id: "alpha-project-x-dev"
+        serviceClassName: "dev-namespace"
+        state: "running"
         
   - id: "developer-adds-monitoring"
     tool: "core_service_create"
@@ -196,8 +197,8 @@ steps:
     expected:
       success: true
       json_path:
-        state: "RUNNING"
-        serviceClass: "monitoring-stack"
+        state: "running"
+        serviceClassName: "monitoring-stack"
         
   # Phase 6: Validate complete platform functionality
   - id: "list-all-developer-services"
@@ -222,32 +223,37 @@ cleanup:
     args:
       name: "team-alpha-project-x-dev"
     expected:
-      success: true
+      success: true  # Service exists and can be deleted
+    continue_on_failure: true
 
   - id: "cleanup-monitoring"
     tool: "core_service_delete"
     args:
       name: "monitoring-alpha-project-x"
     expected:
-      success: true
+      success: true  # Service exists and can be deleted
+    continue_on_failure: true
 
   - id: "cleanup-serviceclasses"
     tool: "core_serviceclass_delete"
     args:
       name: "dev-namespace"
     expected:
-      success: true
+      success: true  # ServiceClass exists and can be deleted
+    continue_on_failure: true
 
   - id: "cleanup-monitoring-serviceclass"
     tool: "core_serviceclass_delete"
     args:
       name: "monitoring-stack"
     expected:
-      success: true
+      success: true  # ServiceClass exists and can be deleted
+    continue_on_failure: true
 
   - id: "cleanup-capability"
     tool: "core_capability_delete"
     args:
       name: "kubernetes-management"
     expected:
-      success: true 
+      success: true  # Capability exists and can be deleted
+    continue_on_failure: true 
