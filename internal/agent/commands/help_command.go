@@ -25,7 +25,7 @@ func (h *HelpCommand) Execute(ctx context.Context, args []string) error {
 	if len(args) > 0 {
 		return h.showCommandHelp(args[0])
 	}
-	
+
 	// Show general help
 	return h.showGeneralHelp()
 }
@@ -91,15 +91,15 @@ func (h *HelpCommand) showCommandHelp(commandName string) error {
 	if !exists {
 		return fmt.Errorf("unknown command: %s", commandName)
 	}
-	
+
 	fmt.Printf("Command: %s\n", commandName)
 	fmt.Printf("Description: %s\n", cmd.Description())
 	fmt.Printf("Usage: %s\n", cmd.Usage())
-	
+
 	aliases := cmd.Aliases()
 	if len(aliases) > 0 {
 		fmt.Printf("Aliases: %v\n", aliases)
 	}
-	
+
 	return nil
-} 
+}

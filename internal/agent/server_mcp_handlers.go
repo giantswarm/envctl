@@ -441,22 +441,22 @@ func (m *MCPServer) handleListCoreTools(ctx context.Context, request mcp.CallToo
 func (m *MCPServer) handleFilterTools(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	// Get filter parameters from arguments
 	args := request.GetArguments()
-	
+
 	var pattern, descriptionFilter string
 	var caseSensitive bool
-	
+
 	if patternVal, ok := args["pattern"]; ok {
 		if str, ok := patternVal.(string); ok {
 			pattern = str
 		}
 	}
-	
+
 	if descFilterVal, ok := args["description_filter"]; ok {
 		if str, ok := descFilterVal.(string); ok {
 			descriptionFilter = str
 		}
 	}
-	
+
 	if caseVal, ok := args["case_sensitive"]; ok {
 		if b, ok := caseVal.(bool); ok {
 			caseSensitive = b
@@ -483,7 +483,7 @@ func (m *MCPServer) handleFilterTools(ctx context.Context, request mcp.CallToolR
 		if pattern != "" {
 			toolName := tool.Name
 			searchPattern := pattern
-			
+
 			if !caseSensitive {
 				toolName = strings.ToLower(toolName)
 				searchPattern = strings.ToLower(searchPattern)
@@ -524,7 +524,7 @@ func (m *MCPServer) handleFilterTools(ctx context.Context, request mcp.CallToolR
 		if descriptionFilter != "" && matches {
 			toolDesc := tool.Description
 			searchDesc := descriptionFilter
-			
+
 			if !caseSensitive {
 				toolDesc = strings.ToLower(toolDesc)
 				searchDesc = strings.ToLower(searchDesc)

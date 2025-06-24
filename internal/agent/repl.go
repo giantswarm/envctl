@@ -35,10 +35,10 @@ func NewREPL(client *Client, logger *Logger) *REPL {
 		stopChan:         make(chan struct{}),
 		commandRegistry:  commands.NewRegistry(),
 	}
-	
+
 	// Register all commands
 	repl.registerCommands()
-	
+
 	return repl
 }
 
@@ -46,7 +46,7 @@ func NewREPL(client *Client, logger *Logger) *REPL {
 func (r *REPL) registerCommands() {
 	// Create transport adapter for commands
 	transport := &transportAdapter{client: r.client}
-	
+
 	// Register all commands
 	r.commandRegistry.Register("help", commands.NewHelpCommand(r.client, r.logger, transport, r.commandRegistry))
 	r.commandRegistry.Register("list", commands.NewListCommand(r.client, r.logger, transport))
@@ -248,11 +248,3 @@ func (r *REPL) notificationListener(ctx context.Context) {
 		}
 	}
 }
-
-
-
-
-
-
-
-

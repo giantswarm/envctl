@@ -41,4 +41,4 @@ func (e *ExitCommand) Completions(input string) []string {
 // Aliases returns command aliases
 func (e *ExitCommand) Aliases() []string {
 	return []string{"quit"}
-} 
+}

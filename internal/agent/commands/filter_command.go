@@ -161,4 +161,4 @@ func (f *FilterCommand) Completions(input string) []string {
 // Aliases returns command aliases
 func (f *FilterCommand) Aliases() []string {
 	return []string{}
-} 
+}

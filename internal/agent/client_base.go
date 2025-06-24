@@ -136,7 +136,7 @@ func (c *Client) initialize(ctx context.Context) error {
 		}{
 			ProtocolVersion: "2024-11-05",
 			ClientInfo: mcp.Implementation{
-				Name:    func() string {
+				Name: func() string {
 					if c.logger != nil {
 						return "envctl-agent"
 					}
@@ -541,5 +541,3 @@ func (c *Client) GetFormatters() interface{} {
 func (c *Client) SupportsNotifications() bool {
 	return c.transport == TransportSSE
 }
-
- 

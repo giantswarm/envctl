@@ -241,4 +241,4 @@ func (c *Client) showPromptDiff(oldPrompts, newPrompts []mcp.Prompt) {
 	} else {
 		c.logger.Info("No prompt changes detected")
 	}
-} 
+}

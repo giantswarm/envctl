@@ -281,4 +281,4 @@ func (f *Formatters) FindPrompt(prompts []mcp.Prompt, name string) *mcp.Prompt {
 		}
 	}
 	return nil
-} 
+}

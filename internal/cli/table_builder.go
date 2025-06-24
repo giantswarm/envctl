@@ -308,4 +308,4 @@ func (b *TableBuilder) Pluralize(word string) string {
 		return word
 	}
 	return word + "s"
-} 
+}

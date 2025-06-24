@@ -33,7 +33,7 @@ func DetectAggregatorEndpoint() (string, error) {
 	return endpoint, nil
 }
 
-// NewCLIClient creates a new CLI client with auto-detected endpoint  
+// NewCLIClient creates a new CLI client with auto-detected endpoint
 func NewCLIClient() (*Client, error) {
 	endpoint, err := DetectAggregatorEndpoint()
 	if err != nil {
@@ -66,4 +66,4 @@ func NewCLIClientWithEndpoint(endpoint string) *Client {
 		cacheEnabled:  false, // No caching for CLI usage
 		formatters:    NewFormatters(),
 	}
-} 
+}

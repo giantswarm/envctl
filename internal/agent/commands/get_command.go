@@ -85,5 +85,3 @@ func (g *GetCommand) Completions(input string) []string {
 func (g *GetCommand) Aliases() []string {
 	return []string{}
 }
-
- 

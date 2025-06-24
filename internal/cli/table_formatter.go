@@ -498,4 +498,4 @@ func (f *TableFormatter) min(a, b int) int {
 		return a
 	}
 	return b
-} 
+}

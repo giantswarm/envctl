@@ -116,5 +116,3 @@ func (c *CallCommand) parseJSONArgs(argsStr, itemType, itemName string) (map[str
 
 	return args, nil
 }
-
- 

@@ -70,4 +70,4 @@ func (n *NotificationsCommand) Completions(input string) []string {
 // Aliases returns command aliases
 func (n *NotificationsCommand) Aliases() []string {
 	return []string{}
-} 
+}

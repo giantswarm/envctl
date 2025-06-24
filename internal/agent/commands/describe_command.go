@@ -52,12 +52,12 @@ func (d *DescribeCommand) Description() string {
 // Completions returns possible completions
 func (d *DescribeCommand) Completions(input string) []string {
 	parts := strings.Fields(input)
-	
+
 	// If no args yet, suggest targets
 	if len(parts) <= 1 {
 		return []string{"tool", "resource", "prompt"}
 	}
-	
+
 	// If we have the target type, suggest items of that type
 	targetType := strings.ToLower(parts[1])
 	switch targetType {
@@ -111,4 +111,4 @@ func (d *DescribeCommand) describePrompt(name string) error {
 
 	fmt.Println(d.getFormatters().FormatPromptDetail(*prompt))
 	return nil
-} 
+}

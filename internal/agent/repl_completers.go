@@ -85,4 +85,4 @@ func filterInput(r rune) (rune, bool) {
 		return r, false
 	}
 	return r, true
-} 
+}

@@ -25,7 +25,7 @@ func (l *ListCommand) Execute(ctx context.Context, args []string) error {
 	}
 
 	target := strings.ToLower(args[0])
-	
+
 	switch target {
 	case "tools", "tool":
 		return l.listTools()
@@ -230,7 +230,7 @@ func (l *ListCommand) listCoreTools() error {
 	}
 
 	fmt.Printf("Core envctl tools (%d):\n", len(coreTools))
-	
+
 	// Group by category
 	categories := make(map[string][]map[string]interface{})
 	for _, tool := range coreTools {
@@ -251,4 +251,4 @@ func (l *ListCommand) listCoreTools() error {
 	}
 
 	return nil
-} 
+}

@@ -136,4 +136,4 @@ func (p *PromptCommand) validateRequiredArgs(args map[string]string, requiredArg
 		}
 	}
 	return nil
-} 
+}

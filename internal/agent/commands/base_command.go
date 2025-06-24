@@ -15,13 +15,13 @@ type ClientInterface interface {
 	GetToolCache() []mcp.Tool
 	GetResourceCache() []mcp.Resource
 	GetPromptCache() []mcp.Prompt
-	
+
 	// Operations
 	CallTool(ctx context.Context, name string, args map[string]interface{}) (*mcp.CallToolResult, error)
 	GetResource(ctx context.Context, uri string) (*mcp.ReadResourceResult, error)
 	GetPrompt(ctx context.Context, name string, args map[string]string) (*mcp.GetPromptResult, error)
-	
-	// Formatters - expect the concrete Formatters type  
+
+	// Formatters - expect the concrete Formatters type
 	GetFormatters() interface{} // Will cast to *Formatters
 }
 
@@ -132,4 +132,4 @@ func (b *BaseCommand) getPromptCompletions() []string {
 // getFormatters returns the formatters interface cast to the concrete type
 func (b *BaseCommand) getFormatters() FormatterInterface {
 	return b.client.GetFormatters().(FormatterInterface)
-} 
+}
