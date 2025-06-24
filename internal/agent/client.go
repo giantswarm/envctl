@@ -32,30 +32,117 @@ type Client struct {
 	timeout       time.Duration
 	cacheEnabled  bool
 	formatters    *Formatters
+	NotificationChan chan mcp.JSONRPCNotification
+}
+
+// NewClient creates a new agent client with specified transport
+func NewClient(endpoint string, logger *Logger, transport TransportType) *Client {
+	return &Client{
+		endpoint:      endpoint,
+		transport:     transport,
+		logger:        logger,
+		toolCache:     []mcp.Tool{},
+		resourceCache: []mcp.Resource{},
+		promptCache:   []mcp.Prompt{},
+		timeout:       30 * time.Second,
+		cacheEnabled:  true,
+		formatters:    NewFormatters(),
+		NotificationChan: make(chan mcp.JSONRPCNotification, 10),
+	}
+}
+
+// Run executes the agent workflow
+func (c *Client) Run(ctx context.Context) error {
+	c.logger.Info("Connecting to MCP aggregator at %s using %s transport...", c.endpoint, c.transport)
+
+	// Create and connect MCP client
+	mcpClient, err := c.createAndConnectClient(ctx)
+	if err != nil {
+		return err
+	}
+	defer mcpClient.Close()
+
+	c.client = mcpClient
+
+	// Initialize session and load initial data
+	if err := c.initializeAndLoadData(ctx); err != nil {
+		return err
+	}
+
+	// For streamable-http, we just connect and list items, then exit
+	if c.transport == TransportStreamableHTTP {
+		c.logger.Info("Successfully connected and listed available items. Streamable-HTTP transport doesn't support notifications.")
+		return nil
+	}
+
+	// Wait for notifications (SSE only)
+	c.logger.Info("Waiting for notifications (press Ctrl+C to exit)...")
+
+	for {
+		select {
+		case <-ctx.Done():
+			c.logger.Info("Shutting down...")
+			return nil
+
+		case notification := <-c.NotificationChan:
+			if err := c.handleNotification(ctx, notification); err != nil {
+				c.logger.Error("Failed to handle notification: %v", err)
+			}
+		}
+	}
+}
+
+
+// handleNotification processes incoming notifications
+func (c *Client) handleNotification(ctx context.Context, notification mcp.JSONRPCNotification) error {
+	// Log the notification only if logger is available
+	if c.logger != nil {
+		c.logger.Notification(notification.Method, notification.Params)
+	}
+
+	// Handle specific notifications only if caching is enabled
+	if c.cacheEnabled {
+		switch notification.Method {
+		case "notifications/tools/list_changed":
+			return c.listTools(ctx, false)
+
+		case "notifications/resources/list_changed":
+			return c.listResources(ctx, false)
+
+		case "notifications/prompts/list_changed":
+			return c.listPrompts(ctx, false)
+
+		default:
+			// Unknown notification type
+		}
+	}
+
+	return nil
 }
 
 // createAndConnectClient creates and connects an MCP client based on transport type
-func (c *Client) createAndConnectClient(ctx context.Context) (client.MCPClient, chan mcp.JSONRPCNotification, error) {
-	var mcpClient client.MCPClient
-	var notificationChan chan mcp.JSONRPCNotification
+func (c *Client) createAndConnectClient(ctx context.Context) (client.MCPClient, error) {
+	if c.transport != TransportSSE && c.transport != TransportStreamableHTTP {
+		return nil, fmt.Errorf("unsupported transport type: %s", c.transport)
+	}
 
+	var mcpClient client.MCPClient
 	switch c.transport {
 	case TransportSSE:
 		sseClient, err := client.NewSSEMCPClient(c.endpoint)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to create SSE client: %w", err)
+			return nil, fmt.Errorf("failed to create SSE client: %w", err)
 		}
 
 		// Start the transport
 		if err := sseClient.Start(ctx); err != nil {
-			return nil, nil, fmt.Errorf("failed to start SSE client: %w", err)
+			return nil, fmt.Errorf("failed to start SSE client: %w", err)
 		}
 
 		// Set up notification handler for SSE
-		notificationChan = make(chan mcp.JSONRPCNotification, 10)
 		sseClient.OnNotification(func(notification mcp.JSONRPCNotification) {
 			select {
-			case notificationChan <- notification:
+			case c.NotificationChan <- notification:
 			case <-ctx.Done():
 			}
 		})
@@ -65,36 +152,32 @@ func (c *Client) createAndConnectClient(ctx context.Context) (client.MCPClient, 
 	case TransportStreamableHTTP:
 		httpClient, err := client.NewStreamableHttpClient(c.endpoint)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to create streamable-http client: %w", err)
+			return nil, fmt.Errorf("failed to create streamable-http client: %w", err)
 		}
 
 		// Start the transport
 		if err := httpClient.Start(ctx); err != nil {
-			return nil, nil, fmt.Errorf("failed to start streamable-http client: %w", err)
+			return nil, fmt.Errorf("failed to start streamable-http client: %w", err)
 		}
 
 		// Set up notification handler for streamable HTTP
-		notificationChan = make(chan mcp.JSONRPCNotification, 10)
 		httpClient.OnNotification(func(notification mcp.JSONRPCNotification) {
 			select {
-			case notificationChan <- notification:
+			case c.NotificationChan <- notification:
 			case <-ctx.Done():
 			}
 		})
 
 		mcpClient = httpClient
-
-	default:
-		return nil, nil, fmt.Errorf("unsupported transport type: %s", c.transport)
 	}
 
-	return mcpClient, notificationChan, nil
+	return mcpClient, nil
 }
 
 // Connect establishes connection to the MCP aggregator (CLI-style)
 func (c *Client) Connect(ctx context.Context) error {
 	// Create and connect MCP client (without notifications for CLI usage)
-	mcpClient, _, err := c.createAndConnectClient(ctx)
+	mcpClient, err := c.createAndConnectClient(ctx)
 	if err != nil {
 		return err
 	}

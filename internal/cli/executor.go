@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"envctl/internal/agent"
+	"envctl/internal/config"
 
 	"github.com/briandowns/spinner"
 	"github.com/jedib0t/go-pretty/v6/text"
@@ -45,11 +46,30 @@ func NewToolExecutor(options ExecutorOptions) (*ToolExecutor, error) {
 		return nil, err
 	}
 
-	client, err := agent.NewCLIClient()
+	cfg, err := config.LoadConfig()
 	if err != nil {
 		return nil, err
 	}
+	logger := agent.NewLogger(false, false, false)
 
+	transport := agent.TransportType(cfg.Aggregator.Transport)
+	var endpoint string
+
+	if transport == agent.TransportStreamableHTTP {
+		endpoint = fmt.Sprintf("http://%s:%d/mcp", cfg.Aggregator.Host, cfg.Aggregator.Port)
+	} else if transport == agent.TransportSSE {
+		endpoint = fmt.Sprintf("http://%s:%d/sse", cfg.Aggregator.Host, cfg.Aggregator.Port)
+	} else {
+		return nil, fmt.Errorf("unsupported transport: %s", cfg.Aggregator.Transport)
+	}
+
+	client := agent.NewClient(endpoint, logger, transport)
+
+	go func() {
+		for notification := range client.NotificationChan {
+			fmt.Println(notification)
+		}
+	}()
 	return &ToolExecutor{
 		client:    client,
 		options:   options,

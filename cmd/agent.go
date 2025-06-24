@@ -130,10 +130,16 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	// Create agent client
 	client := agent.NewClient(endpoint, logger, transport)
 
+	// Connect to aggregator and load tools/resources/prompts
+	logger.Info("Connecting to aggregator at: %s using %s transport", endpoint, transport)
+	err := client.Run(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to connect to aggregator: %w", err)
+	}
+
 	// Run in different modes
 	if agentMCPServer {
 		// MCP Server mode
-		logger.Info("Connecting to aggregator at: %s using %s transport", endpoint, transport)
 		server, err := agent.NewMCPServer(client, logger, false)
 		if err != nil {
 			return fmt.Errorf("failed to create MCP server: %w", err)

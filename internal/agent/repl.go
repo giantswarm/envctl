@@ -95,21 +95,11 @@ func (r *REPL) executeCommand(ctx context.Context, input string) error {
 
 // Run starts the REPL
 func (r *REPL) Run(ctx context.Context) error {
-	r.logger.Info("Connecting to MCP aggregator at %s using %s transport...", r.client.endpoint, r.client.transport)
-
-	// Create and connect MCP client
-	mcpClient, notificationChan, err := r.client.createAndConnectClient(ctx)
-	if err != nil {
-		return err
-	}
-	defer mcpClient.Close()
-
-	r.client.client = mcpClient
 
 	// Set up REPL-specific notification channel routing for transports that support notifications
-	if r.client.SupportsNotifications() && notificationChan != nil {
+	if r.client.SupportsNotifications() && r.client.NotificationChan != nil {
 		go func() {
-			for notification := range notificationChan {
+			for notification := range r.client.NotificationChan {
 				select {
 				case r.notificationChan <- notification:
 				case <-ctx.Done():
@@ -117,11 +107,6 @@ func (r *REPL) Run(ctx context.Context) error {
 				}
 			}
 		}()
-	}
-
-	// Initialize session and load initial data
-	if err := r.client.initializeAndLoadData(ctx); err != nil {
-		return err
 	}
 
 	// Set up readline with tab completion
