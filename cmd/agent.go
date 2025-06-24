@@ -137,9 +137,18 @@ func runAgent(cmd *cobra.Command, args []string) error {
 
 	// Connect to aggregator and load tools/resources/prompts
 	logger.Info("Connecting to aggregator at: %s using %s transport", endpoint, transport)
-	err := client.Run(ctx)
+	
+	// For REPL mode with streamable-http, connect without running the full agent workflow
+	// This keeps the connection open for the REPL to use
+	err := client.Connect(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to connect to aggregator: %w", err)
+	}
+	defer client.Close()
+	
+	// Load initial data for REPL
+	if err := client.InitializeAndLoadData(ctx); err != nil {
+		return fmt.Errorf("failed to load initial data: %w", err)
 	}
 
 	// Run in different modes

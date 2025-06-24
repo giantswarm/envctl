@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"envctl/internal/agent/commands"
 
@@ -69,7 +70,7 @@ func (t *transportAdapter) SupportsNotifications() bool {
 }
 
 // executeCommand parses and executes a command using the registry
-func (r *REPL) executeCommand(ctx context.Context, input string) error {
+func (r *REPL) executeCommand(input string) error {
 	parts := strings.Fields(input)
 	if len(parts) == 0 {
 		return nil
@@ -89,8 +90,14 @@ func (r *REPL) executeCommand(ctx context.Context, input string) error {
 		return fmt.Errorf("unknown command: %s. Type 'help' for available commands", parts[0])
 	}
 
+	// Create a separate context for command execution with a reasonable timeout
+	// This prevents tool calls from being canceled by agent lifecycle events
+	// but still allows for reasonable timeouts and manual cancellation
+	commandCtx, commandCancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer commandCancel()
+	
 	// Execute the command
-	return command.Execute(ctx, args)
+	return command.Execute(commandCtx, args)
 }
 
 // Run starts the REPL
@@ -179,7 +186,7 @@ func (r *REPL) Run(ctx context.Context) error {
 		}
 
 		// Parse and execute command
-		if err := r.executeCommand(ctx, input); err != nil {
+		if err := r.executeCommand(input); err != nil {
 			if err.Error() == "exit" {
 				if r.client.SupportsNotifications() {
 					close(r.stopChan)

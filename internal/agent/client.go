@@ -65,7 +65,7 @@ func (c *Client) Run(ctx context.Context) error {
 	c.client = mcpClient
 
 	// Initialize session and load initial data
-	if err := c.initializeAndLoadData(ctx); err != nil {
+	if err := c.InitializeAndLoadData(ctx); err != nil {
 		return err
 	}
 
@@ -193,8 +193,8 @@ func (c *Client) Connect(ctx context.Context) error {
 	return nil
 }
 
-// initializeAndLoadData performs the standard initialization and data loading sequence
-func (c *Client) initializeAndLoadData(ctx context.Context) error {
+// InitializeAndLoadData performs the standard initialization and data loading sequence
+func (c *Client) InitializeAndLoadData(ctx context.Context) error {
 	// Initialize the session
 	if err := c.initialize(ctx); err != nil {
 		return fmt.Errorf("initialization failed: %w", err)
