@@ -106,8 +106,8 @@ func (r *REPL) Run(ctx context.Context) error {
 
 	r.client.client = mcpClient
 
-	// Set up REPL-specific notification channel routing for SSE
-	if r.client.transport == TransportSSE && notificationChan != nil {
+	// Set up REPL-specific notification channel routing for transports that support notifications
+	if r.client.SupportsNotifications() && notificationChan != nil {
 		go func() {
 			for notification := range notificationChan {
 				select {
@@ -146,8 +146,8 @@ func (r *REPL) Run(ctx context.Context) error {
 	defer rl.Close()
 	r.rl = rl
 
-	// Start notification listener in background (only for SSE transport)
-	if r.client.transport == TransportSSE {
+	// Start notification listener in background for transports that support notifications
+	if r.client.SupportsNotifications() {
 		r.wg.Add(1)
 		go r.notificationListener(ctx)
 		r.logger.Info("MCP REPL started with notification support. Type 'help' for available commands. Use TAB for completion.")
@@ -162,7 +162,7 @@ func (r *REPL) Run(ctx context.Context) error {
 		// Check if context is cancelled
 		select {
 		case <-ctx.Done():
-			if r.client.transport == TransportSSE {
+			if r.client.SupportsNotifications() {
 				close(r.stopChan)
 				r.wg.Wait()
 			}
@@ -178,7 +178,7 @@ func (r *REPL) Run(ctx context.Context) error {
 				continue
 			}
 		} else if err == io.EOF {
-			if r.client.transport == TransportSSE {
+			if r.client.SupportsNotifications() {
 				close(r.stopChan)
 				r.wg.Wait()
 			}
@@ -196,7 +196,7 @@ func (r *REPL) Run(ctx context.Context) error {
 		// Parse and execute command
 		if err := r.executeCommand(ctx, input); err != nil {
 			if err.Error() == "exit" {
-				if r.client.transport == TransportSSE {
+				if r.client.SupportsNotifications() {
 					close(r.stopChan)
 					r.wg.Wait()
 				}

@@ -73,6 +73,15 @@ func (c *Client) createAndConnectClient(ctx context.Context) (client.MCPClient, 
 			return nil, nil, fmt.Errorf("failed to start streamable-http client: %w", err)
 		}
 
+		// Set up notification handler for streamable HTTP
+		notificationChan = make(chan mcp.JSONRPCNotification, 10)
+		httpClient.OnNotification(func(notification mcp.JSONRPCNotification) {
+			select {
+			case notificationChan <- notification:
+			case <-ctx.Done():
+			}
+		})
+
 		mcpClient = httpClient
 
 	default:
@@ -539,5 +548,5 @@ func (c *Client) GetFormatters() interface{} {
 
 // SupportsNotifications returns whether the transport supports notifications
 func (c *Client) SupportsNotifications() bool {
-	return c.transport == TransportSSE
+	return c.transport == TransportSSE || c.transport == TransportStreamableHTTP
 }

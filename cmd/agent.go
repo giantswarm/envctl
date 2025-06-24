@@ -40,7 +40,7 @@ The agent command can run in three modes:
 3. MCP Server mode (--mcp-server): Runs an MCP server that exposes REPL functionality via stdio
 
 Transport options:
-- streamable-http (default): Fast HTTP-based transport, compatible with envctl serve
+- streamable-http (default): Fast HTTP-based transport with notification support, compatible with envctl serve
 - sse: Server-Sent Events transport with real-time notification support
 
 In REPL mode, you can:

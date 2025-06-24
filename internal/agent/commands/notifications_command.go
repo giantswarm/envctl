@@ -29,7 +29,7 @@ func (n *NotificationsCommand) Execute(ctx context.Context, args []string) error
 	switch action {
 	case "on", "enable", "true":
 		if !n.transport.SupportsNotifications() {
-			n.output.Error("Notifications are not supported with current transport. Use --transport=sse for notification support.")
+			n.output.Error("Notifications are not supported with current transport. Use --transport=sse or --transport=streamable-http for notification support.")
 			return nil
 		}
 		// Enable notifications (implementation would go here)
