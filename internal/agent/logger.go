@@ -36,6 +36,15 @@ func (l *Logger) SetWriter(w io.Writer) {
 	l.writer = w
 }
 
+func NewDevNullLogger() *Logger {
+	return &Logger{
+		verbose:     false,
+		useColor:    false,
+		jsonRPCMode: false,
+		writer:      io.Discard,
+	}
+}
+
 // NewLogger creates a new logger
 func NewLogger(verbose, useColor, jsonRPCMode bool) *Logger {
 	return &Logger{

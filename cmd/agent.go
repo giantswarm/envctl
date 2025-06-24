@@ -86,13 +86,21 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	ctx, cancel := context.WithCancel(cmd.Context())
 	defer cancel()
 
+	var logger *agent.Logger
+	if agentMCPServer {
+		// no logging for mpc servers in stdio
+		logger = agent.NewDevNullLogger()
+	} else {
+		logger = agent.NewLogger(agentVerbose, !agentNoColor, agentJSONRPC)
+	}
+
 	// Handle interrupts gracefully
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-sigChan
 		if !agentMCPServer {
-			fmt.Println("\nReceived interrupt signal, shutting down gracefully...")
+			logger.Info("\nReceived interrupt signal, shutting down gracefully...")
 		}
 		cancel()
 	}()
@@ -106,7 +114,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 			// Use fallback default that matches system defaults
 			endpoint = "http://localhost:8090/mcp"
 			if !agentMCPServer && agentVerbose {
-				fmt.Printf("Warning: Could not detect endpoint (%v), using default: %s\n", err, endpoint)
+				logger.Info("Warning: Could not detect endpoint (%v), using default: %s\n", err, endpoint)
 			}
 		} else {
 			endpoint = detectedEndpoint
@@ -123,9 +131,6 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	default:
 		return fmt.Errorf("unsupported transport: %s (supported: streamable-http, sse)", agentTransport)
 	}
-
-	// Create logger
-	logger := agent.NewLogger(agentVerbose, !agentNoColor, agentJSONRPC)
 
 	// Create agent client
 	client := agent.NewClient(endpoint, logger, transport)
@@ -160,17 +165,11 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		return nil
 	} else {
 		// Normal agent mode
-		logger.Info("Connecting to aggregator at: %s using %s transport", endpoint, transport)
-		timeoutCtx, timeoutCancel := context.WithTimeout(ctx, agentTimeout)
-		defer timeoutCancel()
-
-		if err := client.Run(timeoutCtx); err != nil {
-			if err == context.DeadlineExceeded {
-				logger.Info("Timeout reached after %v", agentTimeout)
+		for {
+			select {
+			case <-ctx.Done():
 				return nil
 			}
-			return fmt.Errorf("agent error: %w", err)
 		}
-		return nil
 	}
 }
