@@ -3,6 +3,8 @@ package cli
 import (
 	"testing"
 
+	"envctl/internal/agent"
+
 	"github.com/stretchr/testify/assert"
 )
 
@@ -79,7 +81,7 @@ func TestToolExecutor_Structure(t *testing.T) {
 
 func TestToolExecutor_Methods_Exist(t *testing.T) {
 	// Create a mock executor to test method signatures
-	client := NewCLIClientWithEndpoint("http://localhost:8090/mcp")
+	client := agent.NewCLIClientWithEndpoint("http://localhost:8090/mcp")
 	executor := &ToolExecutor{
 		client: client,
 		options: ExecutorOptions{
@@ -97,7 +99,7 @@ func TestToolExecutor_Methods_Exist(t *testing.T) {
 }
 
 func TestToolExecutor_Close(t *testing.T) {
-	client := NewCLIClientWithEndpoint("http://localhost:8090/mcp")
+	client := agent.NewCLIClientWithEndpoint("http://localhost:8090/mcp")
 	executor := &ToolExecutor{
 		client: client,
 		options: ExecutorOptions{

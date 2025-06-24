@@ -27,7 +27,7 @@ var (
 // agentCmd represents the agent command
 var agentCmd = &cobra.Command{
 	Use:   "agent",
-	Short: "Debug the envctl aggregator server using an MCP client",
+	Short: "MCP Client for the envctl aggregator server",
 	Long: `The agent command connects to the MCP aggregator as a client agent, 
 logs all JSON-RPC communication, and demonstrates dynamic tool updates.
 
@@ -35,7 +35,7 @@ This is useful for connecting the aggregator's behavior, filtering
 tools, and ensuring that the agent can execute tools.
 
 The agent command can run in three modes:
-1. Normal mode (default): Connects, lists tools, and waits for notifications (SSE only)
+1. Normal mode (default): Connects, lists tools, and waits for notifications
 2. REPL mode (--repl): Provides an interactive interface to explore and execute tools
 3. MCP Server mode (--mcp-server): Runs an MCP server that exposes REPL functionality via stdio
 
@@ -49,7 +49,7 @@ In REPL mode, you can:
 - Execute tools interactively with JSON arguments
 - View resources and retrieve their contents
 - Execute prompts with arguments
-- Toggle notification display (SSE transport only)
+- Toggle notification display
 
 In MCP Server mode:
 - The agent command acts as an MCP server using stdio transport
@@ -61,7 +61,7 @@ By default, it connects to the aggregator endpoint configured in your
 envctl configuration file. You can override this with the --endpoint flag.
 
 Note: The aggregator server must be running (use 'envctl serve') before using this command.`,
-	RunE: runDebug,
+	RunE: runAgent,
 }
 
 func init() {
@@ -75,13 +75,13 @@ func init() {
 	agentCmd.Flags().BoolVar(&agentJSONRPC, "json-rpc", false, "Enable full JSON-RPC message logging")
 	agentCmd.Flags().BoolVar(&agentREPL, "repl", false, "Start interactive REPL mode")
 	agentCmd.Flags().BoolVar(&agentMCPServer, "mcp-server", false, "Run as MCP server (stdio transport)")
-	agentCmd.Flags().StringVar(&agentTransport, "transport", "streamable-http", "Transport to use (streamable-http, sse)")
+	agentCmd.Flags().StringVar(&agentTransport, "transport", string(agent.TransportStreamableHTTP), "Transport to use (streamable-http, sse)")
 
 	// Mark flags as mutually exclusive
 	agentCmd.MarkFlagsMutuallyExclusive("repl", "mcp-server")
 }
 
-func runDebug(cmd *cobra.Command, args []string) error {
+func runAgent(cmd *cobra.Command, args []string) error {
 	// Create context with signal handling
 	ctx, cancel := context.WithCancel(cmd.Context())
 	defer cancel()
@@ -127,24 +127,35 @@ func runDebug(cmd *cobra.Command, args []string) error {
 	// Create logger
 	logger := agent.NewLogger(agentVerbose, !agentNoColor, agentJSONRPC)
 
+	// Create and run agent client
+	logger.Info("Connecting to aggregator at: %s using %s transport", endpoint, transport)
+	client := agent.NewClient(endpoint, logger, transport)
+
+	timeoutCtx, timeoutCancel := context.WithTimeout(ctx, agentTimeout)
+	defer timeoutCancel()
+
+	if err := client.Run(timeoutCtx); err != nil {
+		if err == context.DeadlineExceeded {
+			logger.Info("Timeout reached after %v", agentTimeout)
+			return nil
+		}
+		return fmt.Errorf("agent error: %w", err)
+	}
+
 	// Run in MCP Server mode if requested
 	if agentMCPServer {
-		server, err := agent.NewMCPServerWithTransport(endpoint, logger, false, transport)
+		server, err := agent.NewMCPServer(client, logger, false)
 		if err != nil {
 			return fmt.Errorf("failed to create MCP server: %w", err)
 		}
 
 		logger.Info("Starting envctl agent MCP server (stdio transport)...")
-		logger.Info("Connecting to aggregator at: %s using %s transport", endpoint, transport)
 
 		if err := server.Start(ctx); err != nil {
 			return fmt.Errorf("MCP server error: %w", err)
 		}
 		return nil
 	}
-
-	// Create and run agent client
-	client := agent.NewClientWithTransport(endpoint, logger, transport)
 
 	// Run in REPL mode if requested
 	if agentREPL {
@@ -156,18 +167,6 @@ func runDebug(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Create timeout context for non-REPL mode
-	timeoutCtx, timeoutCancel := context.WithTimeout(ctx, agentTimeout)
-	defer timeoutCancel()
-
-	// Run the agent in normal mode
-	if err := client.Run(timeoutCtx); err != nil {
-		if err == context.DeadlineExceeded {
-			logger.Info("Timeout reached after %v", agentTimeout)
-			return nil
-		}
-		return fmt.Errorf("agent error: %w", err)
-	}
 
 	return nil
 }

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"envctl/internal/agent"
+
 	"github.com/briandowns/spinner"
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/jedib0t/go-pretty/v6/text"
@@ -33,7 +35,7 @@ type ExecutorOptions struct {
 
 // ToolExecutor provides high-level tool execution functionality
 type ToolExecutor struct {
-	client  *CLIClient
+	client  *agent.Client
 	options ExecutorOptions
 }
 
@@ -44,7 +46,7 @@ func NewToolExecutor(options ExecutorOptions) (*ToolExecutor, error) {
 		return nil, err
 	}
 
-	client, err := NewCLIClient()
+	client, err := agent.NewCLIClient()
 	if err != nil {
 		return nil, err
 	}

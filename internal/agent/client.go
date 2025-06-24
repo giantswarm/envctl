@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"time"
+
+	"envctl/internal/config"
 
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -18,7 +21,7 @@ const (
 	TransportStreamableHTTP    TransportType = "streamable-http"
 )
 
-// Client represents an MCP agent client
+// Client represents an MCP client that can be used for both agent and CLI operations
 type Client struct {
 	endpoint      string
 	transport     TransportType
@@ -28,22 +31,13 @@ type Client struct {
 	resourceCache []mcp.Resource
 	promptCache   []mcp.Prompt
 	mu            sync.RWMutex
+	timeout       time.Duration
+	cacheEnabled  bool
+	formatters    *Formatters
 }
 
-// NewClient creates a new agent client with default streamable-http transport
-func NewClient(endpoint string, logger *Logger) *Client {
-	return &Client{
-		endpoint:      endpoint,
-		transport:     TransportStreamableHTTP,
-		logger:        logger,
-		toolCache:     []mcp.Tool{},
-		resourceCache: []mcp.Resource{},
-		promptCache:   []mcp.Prompt{},
-	}
-}
-
-// NewClientWithTransport creates a new agent client with specified transport
-func NewClientWithTransport(endpoint string, logger *Logger, transport TransportType) *Client {
+// NewClient creates a new agent client with specified transport
+func NewClient(endpoint string, logger *Logger, transport TransportType) *Client {
 	return &Client{
 		endpoint:      endpoint,
 		transport:     transport,
@@ -51,6 +45,68 @@ func NewClientWithTransport(endpoint string, logger *Logger, transport Transport
 		toolCache:     []mcp.Tool{},
 		resourceCache: []mcp.Resource{},
 		promptCache:   []mcp.Prompt{},
+		timeout:       30 * time.Second,
+		cacheEnabled:  true,
+		formatters:    NewFormatters(),
+	}
+}
+
+// DetectAggregatorEndpoint detects the aggregator endpoint from configuration
+func DetectAggregatorEndpoint() (string, error) {
+	// Load configuration to get aggregator settings
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		// Use default if config cannot be loaded
+		endpoint := "http://localhost:8090/mcp"
+		return endpoint, nil
+	}
+
+	// Build endpoint from config
+	host := cfg.Aggregator.Host
+	if host == "" {
+		host = "localhost"
+	}
+	port := cfg.Aggregator.Port
+	if port == 0 {
+		port = 8090
+	}
+	endpoint := fmt.Sprintf("http://%s:%d/mcp", host, port)
+
+	return endpoint, nil
+}
+
+// NewCLIClient creates a new CLI client with auto-detected endpoint  
+func NewCLIClient() (*Client, error) {
+	endpoint, err := DetectAggregatorEndpoint()
+	if err != nil {
+		return nil, fmt.Errorf("failed to detect aggregator endpoint: %w", err)
+	}
+
+	return &Client{
+		endpoint:      endpoint,
+		transport:     TransportStreamableHTTP,
+		logger:        nil, // No logging for CLI usage
+		toolCache:     []mcp.Tool{},
+		resourceCache: []mcp.Resource{},
+		promptCache:   []mcp.Prompt{},
+		timeout:       30 * time.Second,
+		cacheEnabled:  false, // No caching for CLI usage
+		formatters:    NewFormatters(),
+	}, nil
+}
+
+// NewCLIClientWithEndpoint creates a new CLI client with a specific endpoint
+func NewCLIClientWithEndpoint(endpoint string) *Client {
+	return &Client{
+		endpoint:      endpoint,
+		transport:     TransportStreamableHTTP,
+		logger:        nil, // No logging for CLI usage
+		toolCache:     []mcp.Tool{},
+		resourceCache: []mcp.Resource{},
+		promptCache:   []mcp.Prompt{},
+		timeout:       30 * time.Second,
+		cacheEnabled:  false, // No caching for CLI usage
+		formatters:    NewFormatters(),
 	}
 }
 
@@ -58,72 +114,18 @@ func NewClientWithTransport(endpoint string, logger *Logger, transport Transport
 func (c *Client) Run(ctx context.Context) error {
 	c.logger.Info("Connecting to MCP aggregator at %s using %s transport...", c.endpoint, c.transport)
 
-	// Create appropriate client based on transport
-	var mcpClient client.MCPClient
-	var notificationChan chan mcp.JSONRPCNotification
-
-	switch c.transport {
-	case TransportSSE:
-		sseClient, err := client.NewSSEMCPClient(c.endpoint)
-		if err != nil {
-			return fmt.Errorf("failed to create SSE client: %w", err)
-		}
-
-		// Start the transport
-		if err := sseClient.Start(ctx); err != nil {
-			return fmt.Errorf("failed to start SSE client: %w", err)
-		}
-		defer sseClient.Close()
-
-		// Set up notification handler for SSE
-		notificationChan = make(chan mcp.JSONRPCNotification, 10)
-		sseClient.OnNotification(func(notification mcp.JSONRPCNotification) {
-			select {
-			case notificationChan <- notification:
-			case <-ctx.Done():
-			}
-		})
-
-		mcpClient = sseClient
-
-	case TransportStreamableHTTP:
-		httpClient, err := client.NewStreamableHttpClient(c.endpoint)
-		if err != nil {
-			return fmt.Errorf("failed to create streamable-http client: %w", err)
-		}
-
-		// Start the transport
-		if err := httpClient.Start(ctx); err != nil {
-			return fmt.Errorf("failed to start streamable-http client: %w", err)
-		}
-		defer httpClient.Close()
-
-		mcpClient = httpClient
-
-	default:
-		return fmt.Errorf("unsupported transport type: %s", c.transport)
+	// Create and connect MCP client
+	mcpClient, notificationChan, err := c.createAndConnectClient(ctx)
+	if err != nil {
+		return err
 	}
+	defer mcpClient.Close()
 
 	c.client = mcpClient
 
-	// Initialize the session
-	if err := c.initialize(ctx); err != nil {
-		return fmt.Errorf("initialization failed: %w", err)
-	}
-
-	// List tools initially
-	if err := c.listTools(ctx, true); err != nil {
-		return fmt.Errorf("initial tool listing failed: %w", err)
-	}
-
-	// List resources initially
-	if err := c.listResources(ctx, true); err != nil {
-		return fmt.Errorf("initial resource listing failed: %w", err)
-	}
-
-	// List prompts initially
-	if err := c.listPrompts(ctx, true); err != nil {
-		return fmt.Errorf("initial prompt listing failed: %w", err)
+	// Initialize session and load initial data
+	if err := c.initializeAndLoadData(ctx); err != nil {
+		return err
 	}
 
 	// For streamable-http, we just connect and list items, then exit
@@ -149,6 +151,33 @@ func (c *Client) Run(ctx context.Context) error {
 	}
 }
 
+// handleNotification processes incoming notifications
+func (c *Client) handleNotification(ctx context.Context, notification mcp.JSONRPCNotification) error {
+	// Log the notification only if logger is available
+	if c.logger != nil {
+		c.logger.Notification(notification.Method, notification.Params)
+	}
+
+	// Handle specific notifications only if caching is enabled
+	if c.cacheEnabled {
+		switch notification.Method {
+		case "notifications/tools/list_changed":
+			return c.listTools(ctx, false)
+
+		case "notifications/resources/list_changed":
+			return c.listResources(ctx, false)
+
+		case "notifications/prompts/list_changed":
+			return c.listPrompts(ctx, false)
+
+		default:
+			// Unknown notification type
+		}
+	}
+
+	return nil
+}
+
 // initialize performs the MCP protocol handshake
 func (c *Client) initialize(ctx context.Context) error {
 	req := mcp.InitializeRequest{
@@ -159,25 +188,40 @@ func (c *Client) initialize(ctx context.Context) error {
 		}{
 			ProtocolVersion: "2024-11-05",
 			ClientInfo: mcp.Implementation{
-				Name:    "envctl-agent",
+				Name:    func() string {
+					if c.logger != nil {
+						return "envctl-agent"
+					}
+					return "envctl-cli"
+				}(),
 				Version: "1.0.0",
 			},
 			Capabilities: mcp.ClientCapabilities{},
 		},
 	}
 
-	// Log request
-	c.logger.Request("initialize", req.Params)
+	// Log request only if logger is available
+	if c.logger != nil {
+		c.logger.Request("initialize", req.Params)
+	}
+
+	// Create timeout context
+	timeoutCtx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
 
 	// Send request
-	result, err := c.client.Initialize(ctx, req)
+	result, err := c.client.Initialize(timeoutCtx, req)
 	if err != nil {
-		c.logger.Error("Initialize failed: %v", err)
+		if c.logger != nil {
+			c.logger.Error("Initialize failed: %v", err)
+		}
 		return err
 	}
 
-	// Log response
-	c.logger.Response("initialize", result)
+	// Log response only if logger is available
+	if c.logger != nil {
+		c.logger.Response("initialize", result)
+	}
 
 	return nil
 }
@@ -186,35 +230,50 @@ func (c *Client) initialize(ctx context.Context) error {
 func (c *Client) listTools(ctx context.Context, initial bool) error {
 	req := mcp.ListToolsRequest{}
 
-	// Log request
-	c.logger.Request("tools/list", req.Params)
+	// Log request only if logger is available
+	if c.logger != nil {
+		c.logger.Request("tools/list", req.Params)
+	}
+
+	// Create timeout context
+	timeoutCtx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
 
 	// Send request
-	result, err := c.client.ListTools(ctx, req)
+	result, err := c.client.ListTools(timeoutCtx, req)
 	if err != nil {
-		c.logger.Error("ListTools failed: %v", err)
+		if c.logger != nil {
+			c.logger.Error("ListTools failed: %v", err)
+		}
 		return err
 	}
 
-	// Log response
-	c.logger.Response("tools/list", result)
+	// Log response only if logger is available
+	if c.logger != nil {
+		c.logger.Response("tools/list", result)
+	}
 
-	// Compare with cache if not initial
-	if !initial {
-		c.mu.RLock()
-		oldTools := c.toolCache
-		c.mu.RUnlock()
+	// Only do caching and diff comparison if caching is enabled
+	if c.cacheEnabled {
+		// Compare with cache if not initial
+		if !initial {
+			c.mu.RLock()
+			oldTools := c.toolCache
+			c.mu.RUnlock()
 
-		c.mu.Lock()
-		c.toolCache = result.Tools
-		c.mu.Unlock()
+			c.mu.Lock()
+			c.toolCache = result.Tools
+			c.mu.Unlock()
 
-		// Show differences
-		c.showToolDiff(oldTools, result.Tools)
-	} else {
-		c.mu.Lock()
-		c.toolCache = result.Tools
-		c.mu.Unlock()
+			// Show differences only if logger is available
+			if c.logger != nil {
+				c.showToolDiff(oldTools, result.Tools)
+			}
+		} else {
+			c.mu.Lock()
+			c.toolCache = result.Tools
+			c.mu.Unlock()
+		}
 	}
 
 	return nil
@@ -224,35 +283,50 @@ func (c *Client) listTools(ctx context.Context, initial bool) error {
 func (c *Client) listResources(ctx context.Context, initial bool) error {
 	req := mcp.ListResourcesRequest{}
 
-	// Log request
-	c.logger.Request("resources/list", req.Params)
+	// Log request only if logger is available
+	if c.logger != nil {
+		c.logger.Request("resources/list", req.Params)
+	}
+
+	// Create timeout context
+	timeoutCtx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
 
 	// Send request
-	result, err := c.client.ListResources(ctx, req)
+	result, err := c.client.ListResources(timeoutCtx, req)
 	if err != nil {
-		c.logger.Error("ListResources failed: %v", err)
+		if c.logger != nil {
+			c.logger.Error("ListResources failed: %v", err)
+		}
 		return err
 	}
 
-	// Log response
-	c.logger.Response("resources/list", result)
+	// Log response only if logger is available
+	if c.logger != nil {
+		c.logger.Response("resources/list", result)
+	}
 
-	// Compare with cache if not initial
-	if !initial {
-		c.mu.RLock()
-		oldResources := c.resourceCache
-		c.mu.RUnlock()
+	// Only do caching and diff comparison if caching is enabled
+	if c.cacheEnabled {
+		// Compare with cache if not initial
+		if !initial {
+			c.mu.RLock()
+			oldResources := c.resourceCache
+			c.mu.RUnlock()
 
-		c.mu.Lock()
-		c.resourceCache = result.Resources
-		c.mu.Unlock()
+			c.mu.Lock()
+			c.resourceCache = result.Resources
+			c.mu.Unlock()
 
-		// Show differences
-		c.showResourceDiff(oldResources, result.Resources)
-	} else {
-		c.mu.Lock()
-		c.resourceCache = result.Resources
-		c.mu.Unlock()
+			// Show differences only if logger is available
+			if c.logger != nil {
+				c.showResourceDiff(oldResources, result.Resources)
+			}
+		} else {
+			c.mu.Lock()
+			c.resourceCache = result.Resources
+			c.mu.Unlock()
+		}
 	}
 
 	return nil
@@ -262,58 +336,50 @@ func (c *Client) listResources(ctx context.Context, initial bool) error {
 func (c *Client) listPrompts(ctx context.Context, initial bool) error {
 	req := mcp.ListPromptsRequest{}
 
-	// Log request
-	c.logger.Request("prompts/list", req.Params)
+	// Log request only if logger is available
+	if c.logger != nil {
+		c.logger.Request("prompts/list", req.Params)
+	}
+
+	// Create timeout context
+	timeoutCtx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
 
 	// Send request
-	result, err := c.client.ListPrompts(ctx, req)
+	result, err := c.client.ListPrompts(timeoutCtx, req)
 	if err != nil {
-		c.logger.Error("ListPrompts failed: %v", err)
+		if c.logger != nil {
+			c.logger.Error("ListPrompts failed: %v", err)
+		}
 		return err
 	}
 
-	// Log response
-	c.logger.Response("prompts/list", result)
-
-	// Compare with cache if not initial
-	if !initial {
-		c.mu.RLock()
-		oldPrompts := c.promptCache
-		c.mu.RUnlock()
-
-		c.mu.Lock()
-		c.promptCache = result.Prompts
-		c.mu.Unlock()
-
-		// Show differences
-		c.showPromptDiff(oldPrompts, result.Prompts)
-	} else {
-		c.mu.Lock()
-		c.promptCache = result.Prompts
-		c.mu.Unlock()
+	// Log response only if logger is available
+	if c.logger != nil {
+		c.logger.Response("prompts/list", result)
 	}
 
-	return nil
-}
+	// Only do caching and diff comparison if caching is enabled
+	if c.cacheEnabled {
+		// Compare with cache if not initial
+		if !initial {
+			c.mu.RLock()
+			oldPrompts := c.promptCache
+			c.mu.RUnlock()
 
-// handleNotification processes incoming notifications
-func (c *Client) handleNotification(ctx context.Context, notification mcp.JSONRPCNotification) error {
-	// Log the notification
-	c.logger.Notification(notification.Method, notification.Params)
+			c.mu.Lock()
+			c.promptCache = result.Prompts
+			c.mu.Unlock()
 
-	// Handle specific notifications
-	switch notification.Method {
-	case "notifications/tools/list_changed":
-		return c.listTools(ctx, false)
-
-	case "notifications/resources/list_changed":
-		return c.listResources(ctx, false)
-
-	case "notifications/prompts/list_changed":
-		return c.listPrompts(ctx, false)
-
-	default:
-		// Unknown notification type
+			// Show differences only if logger is available
+			if c.logger != nil {
+				c.showPromptDiff(oldPrompts, result.Prompts)
+			}
+		} else {
+			c.mu.Lock()
+			c.promptCache = result.Prompts
+			c.mu.Unlock()
+		}
 	}
 
 	return nil
@@ -487,4 +553,257 @@ func PrettyJSON(v interface{}) string {
 // prettyJSON is a wrapper for backward compatibility
 func prettyJSON(v interface{}) string {
 	return PrettyJSON(v)
+}
+
+// Connect establishes connection to the MCP aggregator (CLI-style)
+func (c *Client) Connect(ctx context.Context) error {
+	// Create and connect MCP client (without notifications for CLI usage)
+	mcpClient, _, err := c.createAndConnectClient(ctx)
+	if err != nil {
+		return err
+	}
+
+	c.client = mcpClient
+
+	// Initialize the session
+	if err := c.initialize(ctx); err != nil {
+		c.client.Close()
+		return fmt.Errorf("initialization failed: %w", err)
+	}
+
+	return nil
+}
+
+// createAndConnectClient creates and connects an MCP client based on transport type
+func (c *Client) createAndConnectClient(ctx context.Context) (client.MCPClient, chan mcp.JSONRPCNotification, error) {
+	var mcpClient client.MCPClient
+	var notificationChan chan mcp.JSONRPCNotification
+
+	switch c.transport {
+	case TransportSSE:
+		sseClient, err := client.NewSSEMCPClient(c.endpoint)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to create SSE client: %w", err)
+		}
+
+		// Start the transport
+		if err := sseClient.Start(ctx); err != nil {
+			return nil, nil, fmt.Errorf("failed to start SSE client: %w", err)
+		}
+
+		// Set up notification handler for SSE
+		notificationChan = make(chan mcp.JSONRPCNotification, 10)
+		sseClient.OnNotification(func(notification mcp.JSONRPCNotification) {
+			select {
+			case notificationChan <- notification:
+			case <-ctx.Done():
+			}
+		})
+
+		mcpClient = sseClient
+
+	case TransportStreamableHTTP:
+		httpClient, err := client.NewStreamableHttpClient(c.endpoint)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to create streamable-http client: %w", err)
+		}
+
+		// Start the transport
+		if err := httpClient.Start(ctx); err != nil {
+			return nil, nil, fmt.Errorf("failed to start streamable-http client: %w", err)
+		}
+
+		mcpClient = httpClient
+
+	default:
+		return nil, nil, fmt.Errorf("unsupported transport type: %s", c.transport)
+	}
+
+	return mcpClient, notificationChan, nil
+}
+
+// initializeAndLoadData performs the standard initialization and data loading sequence
+func (c *Client) initializeAndLoadData(ctx context.Context) error {
+	// Initialize the session
+	if err := c.initialize(ctx); err != nil {
+		return fmt.Errorf("initialization failed: %w", err)
+	}
+
+	// List tools initially
+	if err := c.listTools(ctx, true); err != nil {
+		return fmt.Errorf("initial tool listing failed: %w", err)
+	}
+
+	// List resources initially
+	if err := c.listResources(ctx, true); err != nil {
+		return fmt.Errorf("initial resource listing failed: %w", err)
+	}
+
+	// List prompts initially
+	if err := c.listPrompts(ctx, true); err != nil {
+		return fmt.Errorf("initial prompt listing failed: %w", err)
+	}
+
+	return nil
+}
+
+// CallTool executes a tool and returns the result
+func (c *Client) CallTool(ctx context.Context, name string, args map[string]interface{}) (*mcp.CallToolResult, error) {
+	if c.client == nil {
+		return nil, fmt.Errorf("client not connected")
+	}
+
+	req := mcp.CallToolRequest{
+		Params: struct {
+			Name      string    `json:"name"`
+			Arguments any       `json:"arguments,omitempty"`
+			Meta      *mcp.Meta `json:"_meta,omitempty"`
+		}{
+			Name:      name,
+			Arguments: args,
+		},
+	}
+
+	// Create timeout context
+	timeoutCtx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+
+	// Send request
+	result, err := c.client.CallTool(timeoutCtx, req)
+	if err != nil {
+		return nil, fmt.Errorf("tool call failed: %w", err)
+	}
+
+	return result, nil
+}
+
+// CallToolSimple executes a tool and returns the text content as a string
+func (c *Client) CallToolSimple(ctx context.Context, name string, args map[string]interface{}) (string, error) {
+	result, err := c.CallTool(ctx, name, args)
+	if err != nil {
+		return "", err
+	}
+
+	if result.IsError {
+		var errorMsgs []string
+		for _, content := range result.Content {
+			if textContent, ok := mcp.AsTextContent(content); ok {
+				errorMsgs = append(errorMsgs, textContent.Text)
+			}
+		}
+		return "", fmt.Errorf("tool error: %s", fmt.Sprintf("%v", errorMsgs))
+	}
+
+	var output []string
+	for _, content := range result.Content {
+		if textContent, ok := mcp.AsTextContent(content); ok {
+			output = append(output, textContent.Text)
+		}
+	}
+
+	if len(output) == 0 {
+		return "", nil
+	}
+
+	return output[0], nil
+}
+
+// CallToolJSON executes a tool and returns the result as parsed JSON
+func (c *Client) CallToolJSON(ctx context.Context, name string, args map[string]interface{}) (interface{}, error) {
+	textResult, err := c.CallToolSimple(ctx, name, args)
+	if err != nil {
+		return nil, err
+	}
+
+	var jsonResult interface{}
+	if err := json.Unmarshal([]byte(textResult), &jsonResult); err != nil {
+		// If it's not JSON, return the text as-is
+		return textResult, nil
+	}
+
+	return jsonResult, nil
+}
+
+// Close closes the connection
+func (c *Client) Close() error {
+	if c.client != nil {
+		c.client.Close()
+		c.client = nil
+	}
+	return nil
+}
+
+// GetResource reads a resource and returns its content
+func (c *Client) GetResource(ctx context.Context, uri string) (*mcp.ReadResourceResult, error) {
+	req := mcp.ReadResourceRequest{
+		Params: struct {
+			URI       string         `json:"uri"`
+			Arguments map[string]any `json:"arguments,omitempty"`
+		}{
+			URI: uri,
+		},
+	}
+
+	// Log request only if logger is available
+	if c.logger != nil {
+		c.logger.Request("resources/read", req.Params)
+	}
+
+	// Create timeout context
+	timeoutCtx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+
+	// Send request
+	result, err := c.client.ReadResource(timeoutCtx, req)
+	if err != nil {
+		if c.logger != nil {
+			c.logger.Error("ReadResource failed: %v", err)
+		}
+		return nil, err
+	}
+
+	// Log response only if logger is available
+	if c.logger != nil {
+		c.logger.Response("resources/read", result)
+	}
+
+	return result, nil
+}
+
+// GetPrompt retrieves a prompt with the given arguments
+func (c *Client) GetPrompt(ctx context.Context, name string, args map[string]string) (*mcp.GetPromptResult, error) {
+	req := mcp.GetPromptRequest{
+		Params: struct {
+			Name      string            `json:"name"`
+			Arguments map[string]string `json:"arguments,omitempty"`
+		}{
+			Name:      name,
+			Arguments: args,
+		},
+	}
+
+	// Log request only if logger is available
+	if c.logger != nil {
+		c.logger.Request(fmt.Sprintf("prompts/get (%s)", name), req.Params)
+	}
+
+	// Create timeout context
+	timeoutCtx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+
+	// Send request
+	result, err := c.client.GetPrompt(timeoutCtx, req)
+	if err != nil {
+		if c.logger != nil {
+			c.logger.Error("GetPrompt failed: %v", err)
+		}
+		return nil, err
+	}
+
+	// Log response only if logger is available
+	if c.logger != nil {
+		c.logger.Response(fmt.Sprintf("prompts/get (%s)", name), result)
+	}
+
+	return result, nil
 }

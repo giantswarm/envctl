@@ -330,25 +330,12 @@ When running `envctl serve`, the Terminal User Interface (TUI) provides a visual
 | h            | Toggle help overlay                      |
 | L            | Toggle log overlay                       |
 | C            | Toggle MCP config overlay                |
-| A            | Toggle Agent REPL overlay                |
+
 | D            | Toggle dark/light mode                   |
 | z            | Toggle debug information                 |
 | y            | Copy logs/config (when in overlay)       |
-| Esc          | Close help/log/config/REPL overlay       |
+| Esc          | Close help/log/config overlay            |
 
-### Agent REPL Overlay
-
-The Agent REPL (Read-Eval-Print Loop) overlay provides an interactive interface within the TUI for communicating with MCP servers directly:
-
-- **Access**: Press 'A' to open the Agent REPL overlay
-- **Command Execution**: Run MCP commands like `list tools`, `call <tool> {json}`, `get <resource>`
-- **Tab Completion**: Smart completion for commands, tool names, and resource URIs
-- **Command History**: Navigate through previous commands with up/down arrows
-- **Auto-connection**: Automatically connects to the MCP aggregator when needed
-- **Scrollable Output**: View long outputs with PgUp/PgDn
-- **Integrated Help**: Type `help` to see all available commands
-
-The Agent REPL overlay allows you to interact with MCP servers without leaving the TUI, making it easy to test tools, inspect resources, and debug MCP connections. For detailed usage, see the [Agent REPL TUI documentation](docs/agent-repl-tui.md).
 
 For more details on the implementation and architecture of the TUI, see the [TUI documentation](docs/tui.md).
 

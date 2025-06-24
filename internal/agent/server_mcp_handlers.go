@@ -15,30 +15,12 @@ func (m *MCPServer) handleListTools(ctx context.Context, request mcp.CallToolReq
 	tools := m.client.toolCache
 	m.client.mu.RUnlock()
 
-	if len(tools) == 0 {
-		return mcp.NewToolResultText("No tools available"), nil
-	}
-
-	// Format tools as JSON for structured output
-	type ToolInfo struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
-	}
-
-	toolList := make([]ToolInfo, len(tools))
-	for i, tool := range tools {
-		toolList[i] = ToolInfo{
-			Name:        tool.Name,
-			Description: tool.Description,
-		}
-	}
-
-	jsonData, err := json.MarshalIndent(toolList, "", "  ")
+	jsonData, err := m.client.formatters.FormatToolsListJSON(tools)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to format tools: %v", err)), nil
 	}
 
-	return mcp.NewToolResultText(string(jsonData)), nil
+	return mcp.NewToolResultText(jsonData), nil
 }
 
 // handleListResources handles the list_resources MCP tool
@@ -47,38 +29,12 @@ func (m *MCPServer) handleListResources(ctx context.Context, request mcp.CallToo
 	resources := m.client.resourceCache
 	m.client.mu.RUnlock()
 
-	if len(resources) == 0 {
-		return mcp.NewToolResultText("No resources available"), nil
-	}
-
-	// Format resources as JSON
-	type ResourceInfo struct {
-		URI         string `json:"uri"`
-		Name        string `json:"name"`
-		Description string `json:"description,omitempty"`
-		MIMEType    string `json:"mimeType,omitempty"`
-	}
-
-	resourceList := make([]ResourceInfo, len(resources))
-	for i, resource := range resources {
-		desc := resource.Description
-		if desc == "" {
-			desc = resource.Name
-		}
-		resourceList[i] = ResourceInfo{
-			URI:         resource.URI,
-			Name:        resource.Name,
-			Description: desc,
-			MIMEType:    resource.MIMEType,
-		}
-	}
-
-	jsonData, err := json.MarshalIndent(resourceList, "", "  ")
+	jsonData, err := m.client.formatters.FormatResourcesListJSON(resources)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to format resources: %v", err)), nil
 	}
 
-	return mcp.NewToolResultText(string(jsonData)), nil
+	return mcp.NewToolResultText(jsonData), nil
 }
 
 // handleListPrompts handles the list_prompts MCP tool
@@ -87,30 +43,12 @@ func (m *MCPServer) handleListPrompts(ctx context.Context, request mcp.CallToolR
 	prompts := m.client.promptCache
 	m.client.mu.RUnlock()
 
-	if len(prompts) == 0 {
-		return mcp.NewToolResultText("No prompts available"), nil
-	}
-
-	// Format prompts as JSON
-	type PromptInfo struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
-	}
-
-	promptList := make([]PromptInfo, len(prompts))
-	for i, prompt := range prompts {
-		promptList[i] = PromptInfo{
-			Name:        prompt.Name,
-			Description: prompt.Description,
-		}
-	}
-
-	jsonData, err := json.MarshalIndent(promptList, "", "  ")
+	jsonData, err := m.client.formatters.FormatPromptsListJSON(prompts)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to format prompts: %v", err)), nil
 	}
 
-	return mcp.NewToolResultText(string(jsonData)), nil
+	return mcp.NewToolResultText(jsonData), nil
 }
 
 // handleDescribeTool handles the describe_tool MCP tool
@@ -121,27 +59,20 @@ func (m *MCPServer) handleDescribeTool(ctx context.Context, request mcp.CallTool
 	}
 
 	m.client.mu.RLock()
-	defer m.client.mu.RUnlock()
+	tools := m.client.toolCache
+	m.client.mu.RUnlock()
 
-	for _, tool := range m.client.toolCache {
-		if tool.Name == name {
-			// Format tool info as JSON
-			toolInfo := map[string]interface{}{
-				"name":        tool.Name,
-				"description": tool.Description,
-				"inputSchema": tool.InputSchema,
-			}
-
-			jsonData, err := json.MarshalIndent(toolInfo, "", "  ")
-			if err != nil {
-				return mcp.NewToolResultError(fmt.Sprintf("Failed to format tool info: %v", err)), nil
-			}
-
-			return mcp.NewToolResultText(string(jsonData)), nil
-		}
+	tool := m.client.formatters.FindTool(tools, name)
+	if tool == nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Tool not found: %s", name)), nil
 	}
 
-	return mcp.NewToolResultError(fmt.Sprintf("Tool not found: %s", name)), nil
+	jsonData, err := m.client.formatters.FormatToolDetailJSON(*tool)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to format tool info: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(jsonData), nil
 }
 
 // handleDescribeResource handles the describe_resource MCP tool
@@ -152,28 +83,20 @@ func (m *MCPServer) handleDescribeResource(ctx context.Context, request mcp.Call
 	}
 
 	m.client.mu.RLock()
-	defer m.client.mu.RUnlock()
+	resources := m.client.resourceCache
+	m.client.mu.RUnlock()
 
-	for _, resource := range m.client.resourceCache {
-		if resource.URI == uri {
-			// Format resource info as JSON
-			resourceInfo := map[string]interface{}{
-				"uri":         resource.URI,
-				"name":        resource.Name,
-				"description": resource.Description,
-				"mimeType":    resource.MIMEType,
-			}
-
-			jsonData, err := json.MarshalIndent(resourceInfo, "", "  ")
-			if err != nil {
-				return mcp.NewToolResultError(fmt.Sprintf("Failed to format resource info: %v", err)), nil
-			}
-
-			return mcp.NewToolResultText(string(jsonData)), nil
-		}
+	resource := m.client.formatters.FindResource(resources, uri)
+	if resource == nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Resource not found: %s", uri)), nil
 	}
 
-	return mcp.NewToolResultError(fmt.Sprintf("Resource not found: %s", uri)), nil
+	jsonData, err := m.client.formatters.FormatResourceDetailJSON(*resource)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to format resource info: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(jsonData), nil
 }
 
 // handleDescribePrompt handles the describe_prompt MCP tool
@@ -184,38 +107,20 @@ func (m *MCPServer) handleDescribePrompt(ctx context.Context, request mcp.CallTo
 	}
 
 	m.client.mu.RLock()
-	defer m.client.mu.RUnlock()
+	prompts := m.client.promptCache
+	m.client.mu.RUnlock()
 
-	for _, prompt := range m.client.promptCache {
-		if prompt.Name == name {
-			// Format prompt info as JSON
-			promptInfo := map[string]interface{}{
-				"name":        prompt.Name,
-				"description": prompt.Description,
-			}
-
-			if len(prompt.Arguments) > 0 {
-				args := make([]map[string]interface{}, len(prompt.Arguments))
-				for i, arg := range prompt.Arguments {
-					args[i] = map[string]interface{}{
-						"name":        arg.Name,
-						"description": arg.Description,
-						"required":    arg.Required,
-					}
-				}
-				promptInfo["arguments"] = args
-			}
-
-			jsonData, err := json.MarshalIndent(promptInfo, "", "  ")
-			if err != nil {
-				return mcp.NewToolResultError(fmt.Sprintf("Failed to format prompt info: %v", err)), nil
-			}
-
-			return mcp.NewToolResultText(string(jsonData)), nil
-		}
+	prompt := m.client.formatters.FindPrompt(prompts, name)
+	if prompt == nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Prompt not found: %s", name)), nil
 	}
 
-	return mcp.NewToolResultError(fmt.Sprintf("Prompt not found: %s", name)), nil
+	jsonData, err := m.client.formatters.FormatPromptDetailJSON(*prompt)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to format prompt info: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(jsonData), nil
 }
 
 // handleCallTool handles the call_tool MCP tool
@@ -379,144 +284,145 @@ func (m *MCPServer) handleGetPrompt(ctx context.Context, request mcp.CallToolReq
 func (m *MCPServer) handleListCoreTools(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	// Define core envctl tools that are built-in functionality
 	// These are tools that envctl provides natively, separate from external MCP servers
+	// Names are shown with the "x_" prefix as they appear in the aggregator
 	coreTools := []map[string]interface{}{
 		{
-			"name":        "capability_create",
+			"name":        "x_capability_create",
 			"description": "Create a new capability definition",
 			"category":    "capability",
 		},
 		{
-			"name":        "capability_list",
+			"name":        "x_capability_list",
 			"description": "List all available capabilities",
 			"category":    "capability",
 		},
 		{
-			"name":        "capability_get",
+			"name":        "x_capability_get",
 			"description": "Get detailed information about a specific capability",
 			"category":    "capability",
 		},
 		{
-			"name":        "capability_update",
+			"name":        "x_capability_update",
 			"description": "Update an existing capability definition",
 			"category":    "capability",
 		},
 		{
-			"name":        "capability_delete",
+			"name":        "x_capability_delete",
 			"description": "Delete a capability definition",
 			"category":    "capability",
 		},
 		{
-			"name":        "serviceclass_create",
+			"name":        "x_serviceclass_create",
 			"description": "Create a new service class definition",
 			"category":    "serviceclass",
 		},
 		{
-			"name":        "serviceclass_list",
+			"name":        "x_serviceclass_list",
 			"description": "List all available service classes",
 			"category":    "serviceclass",
 		},
 		{
-			"name":        "serviceclass_get",
+			"name":        "x_serviceclass_get",
 			"description": "Get detailed information about a specific service class",
 			"category":    "serviceclass",
 		},
 		{
-			"name":        "serviceclass_update",
+			"name":        "x_serviceclass_update",
 			"description": "Update an existing service class definition",
 			"category":    "serviceclass",
 		},
 		{
-			"name":        "serviceclass_delete",
+			"name":        "x_serviceclass_delete",
 			"description": "Delete a service class definition",
 			"category":    "serviceclass",
 		},
 		{
-			"name":        "workflow_create",
+			"name":        "x_workflow_create",
 			"description": "Create a new workflow definition",
 			"category":    "workflow",
 		},
 		{
-			"name":        "workflow_list",
+			"name":        "x_workflow_list",
 			"description": "List all available workflows",
 			"category":    "workflow",
 		},
 		{
-			"name":        "workflow_get",
+			"name":        "x_workflow_get",
 			"description": "Get detailed information about a specific workflow",
 			"category":    "workflow",
 		},
 		{
-			"name":        "workflow_update",
+			"name":        "x_workflow_update",
 			"description": "Update an existing workflow definition",
 			"category":    "workflow",
 		},
 		{
-			"name":        "workflow_delete",
+			"name":        "x_workflow_delete",
 			"description": "Delete a workflow definition",
 			"category":    "workflow",
 		},
 		{
-			"name":        "workflow_run",
+			"name":        "x_workflow_run",
 			"description": "Execute a workflow with given inputs",
 			"category":    "workflow",
 		},
 		{
-			"name":        "mcpserver_create",
+			"name":        "x_mcpserver_create",
 			"description": "Create a new MCP server definition",
 			"category":    "mcpserver",
 		},
 		{
-			"name":        "mcpserver_list",
+			"name":        "x_mcpserver_list",
 			"description": "List all available MCP servers",
 			"category":    "mcpserver",
 		},
 		{
-			"name":        "mcpserver_get",
+			"name":        "x_mcpserver_get",
 			"description": "Get detailed information about a specific MCP server",
 			"category":    "mcpserver",
 		},
 		{
-			"name":        "mcpserver_update",
+			"name":        "x_mcpserver_update",
 			"description": "Update an existing MCP server definition",
 			"category":    "mcpserver",
 		},
 		{
-			"name":        "mcpserver_delete",
+			"name":        "x_mcpserver_delete",
 			"description": "Delete an MCP server definition",
 			"category":    "mcpserver",
 		},
 		{
-			"name":        "service_create",
+			"name":        "x_service_create",
 			"description": "Create a new service instance",
 			"category":    "service",
 		},
 		{
-			"name":        "service_list",
+			"name":        "x_service_list",
 			"description": "List all service instances",
 			"category":    "service",
 		},
 		{
-			"name":        "service_get",
+			"name":        "x_service_get",
 			"description": "Get detailed information about a service instance",
 			"category":    "service",
 		},
 		{
-			"name":        "service_start",
+			"name":        "x_service_start",
 			"description": "Start a service instance",
 			"category":    "service",
 		},
 		{
-			"name":        "service_stop",
+			"name":        "x_service_stop",
 			"description": "Stop a service instance",
 			"category":    "service",
 		},
 		{
-			"name":        "service_restart",
+			"name":        "x_service_restart",
 			"description": "Restart a service instance",
 			"category":    "service",
 		},
 		{
-			"name":        "service_delete",
+			"name":        "x_service_delete",
 			"description": "Delete a service instance",
 			"category":    "service",
 		},

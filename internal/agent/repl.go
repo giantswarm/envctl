@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -10,7 +11,6 @@ import (
 	"sync"
 
 	"github.com/chzyer/readline"
-	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
@@ -38,68 +38,31 @@ func NewREPL(client *Client, logger *Logger) *REPL {
 func (r *REPL) Run(ctx context.Context) error {
 	r.logger.Info("Connecting to MCP aggregator at %s using %s transport...", r.client.endpoint, r.client.transport)
 
-	// Create appropriate client based on transport
-	var mcpClient client.MCPClient
-
-	switch r.client.transport {
-	case TransportSSE:
-		sseClient, err := client.NewSSEMCPClient(r.client.endpoint)
-		if err != nil {
-			return fmt.Errorf("failed to create SSE client: %w", err)
-		}
-
-		// Start the SSE transport
-		if err := sseClient.Start(ctx); err != nil {
-			return fmt.Errorf("failed to start SSE client: %w", err)
-		}
-		defer sseClient.Close()
-
-		// Set up notification handler for SSE
-		sseClient.OnNotification(func(notification mcp.JSONRPCNotification) {
-			select {
-			case r.notificationChan <- notification:
-			case <-ctx.Done():
-			}
-		})
-
-		mcpClient = sseClient
-
-	case TransportStreamableHTTP:
-		httpClient, err := client.NewStreamableHttpClient(r.client.endpoint)
-		if err != nil {
-			return fmt.Errorf("failed to create streamable-http client: %w", err)
-		}
-
-		// Start the streamable-http transport
-		if err := httpClient.Start(ctx); err != nil {
-			return fmt.Errorf("failed to start streamable-http client: %w", err)
-		}
-		defer httpClient.Close()
-
-		mcpClient = httpClient
-
-	default:
-		return fmt.Errorf("unsupported transport type: %s", r.client.transport)
+	// Create and connect MCP client
+	mcpClient, notificationChan, err := r.client.createAndConnectClient(ctx)
+	if err != nil {
+		return err
 	}
+	defer mcpClient.Close()
 
 	r.client.client = mcpClient
 
-	// Initialize the session
-	if err := r.client.initialize(ctx); err != nil {
-		return fmt.Errorf("initialization failed: %w", err)
+	// Set up REPL-specific notification channel routing for SSE
+	if r.client.transport == TransportSSE && notificationChan != nil {
+		go func() {
+			for notification := range notificationChan {
+				select {
+				case r.notificationChan <- notification:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
 	}
 
-	// List tools, resources, and prompts initially
-	if err := r.client.listTools(ctx, true); err != nil {
-		return fmt.Errorf("initial tool listing failed: %w", err)
-	}
-
-	if err := r.client.listResources(ctx, true); err != nil {
-		return fmt.Errorf("initial resource listing failed: %w", err)
-	}
-
-	if err := r.client.listPrompts(ctx, true); err != nil {
-		return fmt.Errorf("initial prompt listing failed: %w", err)
+	// Initialize session and load initial data
+	if err := r.client.initializeAndLoadData(ctx); err != nil {
+		return err
 	}
 
 	// Set up readline with tab completion
@@ -150,7 +113,7 @@ func (r *REPL) Run(ctx context.Context) error {
 		}
 
 		// Read input
-		line, err := rl.Readline()
+		line, err := r.rl.Readline()
 		if err == readline.ErrInterrupt {
 			if len(line) == 0 {
 				continue
@@ -424,15 +387,7 @@ func (r *REPL) listTools(ctx context.Context) error {
 	tools := r.client.toolCache
 	r.client.mu.RUnlock()
 
-	if len(tools) == 0 {
-		fmt.Println("No tools available.")
-		return nil
-	}
-
-	fmt.Printf("Available tools (%d):\n", len(tools))
-	for i, tool := range tools {
-		fmt.Printf("  %d. %-30s - %s\n", i+1, tool.Name, tool.Description)
-	}
+	fmt.Println(r.client.formatters.FormatToolsList(tools))
 	return nil
 }
 
@@ -442,19 +397,7 @@ func (r *REPL) listResources(ctx context.Context) error {
 	resources := r.client.resourceCache
 	r.client.mu.RUnlock()
 
-	if len(resources) == 0 {
-		fmt.Println("No resources available.")
-		return nil
-	}
-
-	fmt.Printf("Available resources (%d):\n", len(resources))
-	for i, resource := range resources {
-		desc := resource.Description
-		if desc == "" {
-			desc = resource.Name
-		}
-		fmt.Printf("  %d. %-40s - %s\n", i+1, resource.URI, desc)
-	}
+	fmt.Println(r.client.formatters.FormatResourcesList(resources))
 	return nil
 }
 
@@ -464,15 +407,7 @@ func (r *REPL) listPrompts(ctx context.Context) error {
 	prompts := r.client.promptCache
 	r.client.mu.RUnlock()
 
-	if len(prompts) == 0 {
-		fmt.Println("No prompts available.")
-		return nil
-	}
-
-	fmt.Printf("Available prompts (%d):\n", len(prompts))
-	for i, prompt := range prompts {
-		fmt.Printf("  %d. %-30s - %s\n", i+1, prompt.Name, prompt.Description)
-	}
+	fmt.Println(r.client.formatters.FormatPromptsList(prompts))
 	return nil
 }
 
@@ -493,76 +428,65 @@ func (r *REPL) handleDescribe(ctx context.Context, targetType, name string) erro
 // describeTool shows detailed information about a tool
 func (r *REPL) describeTool(ctx context.Context, name string) error {
 	r.client.mu.RLock()
-	defer r.client.mu.RUnlock()
+	tools := r.client.toolCache
+	r.client.mu.RUnlock()
 
-	for _, tool := range r.client.toolCache {
-		if tool.Name == name {
-			fmt.Printf("Tool: %s\n", tool.Name)
-			fmt.Printf("Description: %s\n", tool.Description)
-			fmt.Println("Input Schema:")
-			fmt.Printf("%s\n", PrettyJSON(tool.InputSchema))
-			return nil
-		}
+	tool := r.client.formatters.FindTool(tools, name)
+	if tool == nil {
+		return fmt.Errorf("tool not found: %s", name)
 	}
 
-	return fmt.Errorf("tool not found: %s", name)
+	fmt.Println(r.client.formatters.FormatToolDetail(*tool))
+	return nil
 }
 
 // describeResource shows detailed information about a resource
 func (r *REPL) describeResource(ctx context.Context, uri string) error {
 	r.client.mu.RLock()
-	defer r.client.mu.RUnlock()
+	resources := r.client.resourceCache
+	r.client.mu.RUnlock()
 
-	for _, resource := range r.client.resourceCache {
-		if resource.URI == uri {
-			fmt.Printf("Resource: %s\n", resource.URI)
-			fmt.Printf("Name: %s\n", resource.Name)
-			if resource.Description != "" {
-				fmt.Printf("Description: %s\n", resource.Description)
-			}
-			if resource.MIMEType != "" {
-				fmt.Printf("MIME Type: %s\n", resource.MIMEType)
-			}
-			return nil
-		}
+	resource := r.client.formatters.FindResource(resources, uri)
+	if resource == nil {
+		return fmt.Errorf("resource not found: %s", uri)
 	}
 
-	return fmt.Errorf("resource not found: %s", uri)
+	fmt.Println(r.client.formatters.FormatResourceDetail(*resource))
+	return nil
 }
 
 // describePrompt shows detailed information about a prompt
 func (r *REPL) describePrompt(ctx context.Context, name string) error {
 	r.client.mu.RLock()
-	defer r.client.mu.RUnlock()
+	prompts := r.client.promptCache
+	r.client.mu.RUnlock()
 
-	for _, prompt := range r.client.promptCache {
-		if prompt.Name == name {
-			fmt.Printf("Prompt: %s\n", prompt.Name)
-			fmt.Printf("Description: %s\n", prompt.Description)
-			if len(prompt.Arguments) > 0 {
-				fmt.Println("Arguments:")
-				for _, arg := range prompt.Arguments {
-					required := ""
-					if arg.Required {
-						required = " (required)"
-					}
-					fmt.Printf("  - %s%s: %s\n", arg.Name, required, arg.Description)
-				}
-			}
-			return nil
-		}
+	prompt := r.client.formatters.FindPrompt(prompts, name)
+	if prompt == nil {
+		return fmt.Errorf("prompt not found: %s", name)
 	}
 
-	return fmt.Errorf("prompt not found: %s", name)
+	fmt.Println(r.client.formatters.FormatPromptDetail(*prompt))
+	return nil
 }
 
 // handleNotifications toggles notification display
 func (r *REPL) handleNotifications(setting string) error {
+	// First validate the setting is valid
+	switch strings.ToLower(setting) {
+	case "on", "off":
+		// Valid setting, continue
+	default:
+		return fmt.Errorf("invalid setting: %s. Use 'on' or 'off'", setting)
+	}
+
+	// Check if transport supports notifications
 	if r.client.transport != TransportSSE {
 		fmt.Printf("Notifications are not supported with %s transport. Use --transport=sse for notification support.\n", r.client.transport)
 		return nil
 	}
 
+	// Apply the setting
 	switch strings.ToLower(setting) {
 	case "on":
 		r.logger.SetVerbose(true)
@@ -570,8 +494,6 @@ func (r *REPL) handleNotifications(setting string) error {
 	case "off":
 		r.logger.SetVerbose(false)
 		fmt.Println("Notifications disabled")
-	default:
-		return fmt.Errorf("invalid setting: %s. Use 'on' or 'off'", setting)
 	}
 	return nil
 }
@@ -580,144 +502,145 @@ func (r *REPL) handleNotifications(setting string) error {
 func (r *REPL) listCoreTools(ctx context.Context) error {
 	// Define core envctl tools that are built-in functionality
 	// These are tools that envctl provides natively, separate from external MCP servers
+	// Names are shown with the "x_" prefix as they appear in the aggregator
 	coreTools := []map[string]interface{}{
 		{
-			"name":        "capability_create",
+			"name":        "x_capability_create",
 			"description": "Create a new capability definition",
 			"category":    "capability",
 		},
 		{
-			"name":        "capability_list",
+			"name":        "x_capability_list",
 			"description": "List all available capabilities",
 			"category":    "capability",
 		},
 		{
-			"name":        "capability_get",
+			"name":        "x_capability_get",
 			"description": "Get detailed information about a specific capability",
 			"category":    "capability",
 		},
 		{
-			"name":        "capability_update",
+			"name":        "x_capability_update",
 			"description": "Update an existing capability definition",
 			"category":    "capability",
 		},
 		{
-			"name":        "capability_delete",
+			"name":        "x_capability_delete",
 			"description": "Delete a capability definition",
 			"category":    "capability",
 		},
 		{
-			"name":        "serviceclass_create",
+			"name":        "x_serviceclass_create",
 			"description": "Create a new service class definition",
 			"category":    "serviceclass",
 		},
 		{
-			"name":        "serviceclass_list",
+			"name":        "x_serviceclass_list",
 			"description": "List all available service classes",
 			"category":    "serviceclass",
 		},
 		{
-			"name":        "serviceclass_get",
+			"name":        "x_serviceclass_get",
 			"description": "Get detailed information about a specific service class",
 			"category":    "serviceclass",
 		},
 		{
-			"name":        "serviceclass_update",
+			"name":        "x_serviceclass_update",
 			"description": "Update an existing service class definition",
 			"category":    "serviceclass",
 		},
 		{
-			"name":        "serviceclass_delete",
+			"name":        "x_serviceclass_delete",
 			"description": "Delete a service class definition",
 			"category":    "serviceclass",
 		},
 		{
-			"name":        "workflow_create",
+			"name":        "x_workflow_create",
 			"description": "Create a new workflow definition",
 			"category":    "workflow",
 		},
 		{
-			"name":        "workflow_list",
+			"name":        "x_workflow_list",
 			"description": "List all available workflows",
 			"category":    "workflow",
 		},
 		{
-			"name":        "workflow_get",
+			"name":        "x_workflow_get",
 			"description": "Get detailed information about a specific workflow",
 			"category":    "workflow",
 		},
 		{
-			"name":        "workflow_update",
+			"name":        "x_workflow_update",
 			"description": "Update an existing workflow definition",
 			"category":    "workflow",
 		},
 		{
-			"name":        "workflow_delete",
+			"name":        "x_workflow_delete",
 			"description": "Delete a workflow definition",
 			"category":    "workflow",
 		},
 		{
-			"name":        "workflow_run",
+			"name":        "x_workflow_run",
 			"description": "Execute a workflow with given inputs",
 			"category":    "workflow",
 		},
 		{
-			"name":        "mcpserver_create",
+			"name":        "x_mcpserver_create",
 			"description": "Create a new MCP server definition",
 			"category":    "mcpserver",
 		},
 		{
-			"name":        "mcpserver_list",
+			"name":        "x_mcpserver_list",
 			"description": "List all available MCP servers",
 			"category":    "mcpserver",
 		},
 		{
-			"name":        "mcpserver_get",
+			"name":        "x_mcpserver_get",
 			"description": "Get detailed information about a specific MCP server",
 			"category":    "mcpserver",
 		},
 		{
-			"name":        "mcpserver_update",
+			"name":        "x_mcpserver_update",
 			"description": "Update an existing MCP server definition",
 			"category":    "mcpserver",
 		},
 		{
-			"name":        "mcpserver_delete",
+			"name":        "x_mcpserver_delete",
 			"description": "Delete an MCP server definition",
 			"category":    "mcpserver",
 		},
 		{
-			"name":        "service_create",
+			"name":        "x_service_create",
 			"description": "Create a new service instance",
 			"category":    "service",
 		},
 		{
-			"name":        "service_list",
+			"name":        "x_service_list",
 			"description": "List all service instances",
 			"category":    "service",
 		},
 		{
-			"name":        "service_get",
+			"name":        "x_service_get",
 			"description": "Get detailed information about a service instance",
 			"category":    "service",
 		},
 		{
-			"name":        "service_start",
+			"name":        "x_service_start",
 			"description": "Start a service instance",
 			"category":    "service",
 		},
 		{
-			"name":        "service_stop",
+			"name":        "x_service_stop",
 			"description": "Stop a service instance",
 			"category":    "service",
 		},
 		{
-			"name":        "service_restart",
+			"name":        "x_service_restart",
 			"description": "Restart a service instance",
 			"category":    "service",
 		},
 		{
-			"name":        "service_delete",
+			"name":        "x_service_delete",
 			"description": "Delete a service instance",
 			"category":    "service",
 		},
@@ -739,7 +662,7 @@ func (r *REPL) listCoreTools(ctx context.Context) error {
 			displayName := strings.ToUpper(category[:1]) + category[1:]
 			fmt.Printf("\n%s tools:\n", displayName)
 			for i, tool := range tools {
-				fmt.Printf("  %d. %-25s - %s\n", i+1, tool["name"], tool["description"])
+				fmt.Printf("  %d. %-27s - %s\n", i+1, tool["name"], tool["description"])
 			}
 		}
 	}
@@ -859,6 +782,212 @@ func (r *REPL) handleFilterTools(ctx context.Context, args ...string) error {
 	fmt.Println("\nMatching tools:")
 	for i, tool := range filteredTools {
 		fmt.Printf("  %d. %-30s - %s\n", i+1, tool.Name, tool.Description)
+	}
+
+	return nil
+}
+
+// parseJSONArgs parses JSON arguments from string, providing helpful error messages
+func (r *REPL) parseJSONArgs(argsStr, itemType, itemName string) (map[string]interface{}, error) {
+	if argsStr == "" {
+		return nil, nil
+	}
+
+	var args map[string]interface{}
+	if err := json.Unmarshal([]byte(argsStr), &args); err != nil {
+		fmt.Printf("Error: Arguments must be valid JSON\n")
+		fmt.Printf("Example: %s %s {\"param1\": \"value1\", \"param2\": 123}\n", itemType, itemName)
+		return nil, fmt.Errorf("invalid JSON arguments: %w", err)
+	}
+
+	return args, nil
+}
+
+// parseJSONStringArgs parses JSON arguments and converts all values to strings
+func (r *REPL) parseJSONStringArgs(argsStr, itemType, itemName string, requiredArgs []mcp.PromptArgument) (map[string]string, error) {
+	if argsStr == "" {
+		return make(map[string]string), nil
+	}
+
+	var jsonArgs map[string]interface{}
+	if err := json.Unmarshal([]byte(argsStr), &jsonArgs); err != nil {
+		fmt.Printf("Error: Arguments must be valid JSON\n")
+		fmt.Printf("Example: %s %s {\"arg1\": \"value1\", \"arg2\": \"value2\"}\n", itemType, itemName)
+
+		// Show required arguments
+		if len(requiredArgs) > 0 {
+			fmt.Println("Required arguments:")
+			for _, arg := range requiredArgs {
+				if arg.Required {
+					fmt.Printf("  - %s: %s\n", arg.Name, arg.Description)
+				}
+			}
+		}
+		return nil, fmt.Errorf("invalid JSON arguments: %w", err)
+	}
+
+	// Convert to string map
+	args := make(map[string]string)
+	for k, v := range jsonArgs {
+		args[k] = fmt.Sprintf("%v", v)
+	}
+
+	return args, nil
+}
+
+// validateRequiredArgs checks that all required arguments are provided
+func (r *REPL) validateRequiredArgs(args map[string]string, requiredArgs []mcp.PromptArgument) error {
+	for _, arg := range requiredArgs {
+		if arg.Required && args[arg.Name] == "" {
+			return fmt.Errorf("missing required argument: %s", arg.Name)
+		}
+	}
+	return nil
+}
+
+// handleCallTool executes a tool with the given arguments
+func (r *REPL) handleCallTool(ctx context.Context, toolName string, argsStr string) error {
+	// Find and validate tool exists
+	r.client.mu.RLock()
+	tools := r.client.toolCache
+	r.client.mu.RUnlock()
+
+	tool := r.client.formatters.FindTool(tools, toolName)
+	if tool == nil {
+		return fmt.Errorf("tool not found: %s", toolName)
+	}
+
+	// Parse arguments
+	args, err := r.parseJSONArgs(argsStr, "call", toolName)
+	if err != nil {
+		return err
+	}
+
+	// Execute the tool
+	fmt.Printf("Executing tool: %s...\n", toolName)
+	result, err := r.client.CallTool(ctx, toolName, args)
+	if err != nil {
+		return fmt.Errorf("tool execution failed: %w", err)
+	}
+
+	// Display results
+	if result.IsError {
+		fmt.Println("Tool returned an error:")
+		for _, content := range result.Content {
+			if textContent, ok := mcp.AsTextContent(content); ok {
+				fmt.Printf("  %s\n", textContent.Text)
+			}
+		}
+	} else {
+		fmt.Println("Result:")
+		for _, content := range result.Content {
+			if textContent, ok := mcp.AsTextContent(content); ok {
+				// Try to pretty-print if it's JSON
+				var jsonData interface{}
+				if err := json.Unmarshal([]byte(textContent.Text), &jsonData); err == nil {
+					fmt.Println(PrettyJSON(jsonData))
+				} else {
+					fmt.Println(textContent.Text)
+				}
+			} else if imageContent, ok := mcp.AsImageContent(content); ok {
+				fmt.Printf("[Image: MIME type %s, %d bytes]\n", imageContent.MIMEType, len(imageContent.Data))
+			} else if audioContent, ok := mcp.AsAudioContent(content); ok {
+				fmt.Printf("[Audio: MIME type %s, %d bytes]\n", audioContent.MIMEType, len(audioContent.Data))
+			}
+		}
+	}
+
+	return nil
+}
+
+// handleGetResource retrieves and displays a resource
+func (r *REPL) handleGetResource(ctx context.Context, uri string) error {
+	// Find and validate resource exists
+	r.client.mu.RLock()
+	resources := r.client.resourceCache
+	r.client.mu.RUnlock()
+
+	resource := r.client.formatters.FindResource(resources, uri)
+	if resource == nil {
+		return fmt.Errorf("resource not found: %s", uri)
+	}
+
+	// Retrieve the resource
+	fmt.Printf("Retrieving resource: %s...\n", uri)
+	result, err := r.client.GetResource(ctx, uri)
+	if err != nil {
+		return fmt.Errorf("resource retrieval failed: %w", err)
+	}
+
+	// Display contents
+	fmt.Println("Contents:")
+	for _, content := range result.Contents {
+		if textContent, ok := mcp.AsTextResourceContents(content); ok {
+			// Check MIME type for appropriate display
+			if resource.MIMEType == "application/json" {
+				var jsonData interface{}
+				if err := json.Unmarshal([]byte(textContent.Text), &jsonData); err == nil {
+					fmt.Println(PrettyJSON(jsonData))
+				} else {
+					fmt.Println(textContent.Text)
+				}
+			} else {
+				fmt.Println(textContent.Text)
+			}
+		} else if blobContent, ok := mcp.AsBlobResourceContents(content); ok {
+			fmt.Printf("[Binary data: %d bytes]\n", len(blobContent.Blob))
+		}
+	}
+
+	return nil
+}
+
+// handleGetPrompt retrieves and displays a prompt with arguments
+func (r *REPL) handleGetPrompt(ctx context.Context, promptName string, argsStr string) error {
+	// Find and validate prompt exists
+	r.client.mu.RLock()
+	prompts := r.client.promptCache
+	r.client.mu.RUnlock()
+
+	prompt := r.client.formatters.FindPrompt(prompts, promptName)
+	if prompt == nil {
+		return fmt.Errorf("prompt not found: %s", promptName)
+	}
+
+	// Parse arguments
+	args, err := r.parseJSONStringArgs(argsStr, "prompt", promptName, prompt.Arguments)
+	if err != nil {
+		return err
+	}
+
+	// Validate required arguments
+	if err := r.validateRequiredArgs(args, prompt.Arguments); err != nil {
+		return err
+	}
+
+	// Get the prompt
+	fmt.Printf("Getting prompt: %s...\n", promptName)
+	result, err := r.client.GetPrompt(ctx, promptName, args)
+	if err != nil {
+		return fmt.Errorf("prompt retrieval failed: %w", err)
+	}
+
+	// Display messages
+	fmt.Println("Messages:")
+	for i, msg := range result.Messages {
+		fmt.Printf("\n[%d] Role: %s\n", i+1, msg.Role)
+		if textContent, ok := mcp.AsTextContent(msg.Content); ok {
+			fmt.Printf("Content: %s\n", textContent.Text)
+		} else if imageContent, ok := mcp.AsImageContent(msg.Content); ok {
+			fmt.Printf("Content: [Image: MIME type %s, %d bytes]\n", imageContent.MIMEType, len(imageContent.Data))
+		} else if audioContent, ok := mcp.AsAudioContent(msg.Content); ok {
+			fmt.Printf("Content: [Audio: MIME type %s, %d bytes]\n", audioContent.MIMEType, len(audioContent.Data))
+		} else if resource, ok := mcp.AsEmbeddedResource(msg.Content); ok {
+			fmt.Printf("Content: [Embedded Resource: %v]\n", resource.Resource)
+		} else {
+			// Fallback for unknown content types
+			fmt.Printf("Content: %+v\n", msg.Content)
+		}
 	}
 
 	return nil

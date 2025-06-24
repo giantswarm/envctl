@@ -9,10 +9,10 @@ import (
 
 func TestNewClient(t *testing.T) {
 	logger := NewLogger(false, false, false)
-	client := NewClient("http://localhost:8090/sse", logger)
+	client := NewClient("http://localhost:8090/mcp", logger, TransportStreamableHTTP)
 
 	assert.NotNil(t, client)
-	assert.Equal(t, "http://localhost:8090/sse", client.endpoint)
+	assert.Equal(t, "http://localhost:8090/mcp", client.endpoint)
 	assert.NotNil(t, client.logger)
 	assert.NotNil(t, client.toolCache)
 	assert.Equal(t, 0, len(client.toolCache))
@@ -48,7 +48,7 @@ func TestColorize(t *testing.T) {
 
 func TestShowToolDiff(t *testing.T) {
 	logger := NewLogger(false, false, false)
-	client := NewClient("http://localhost:8090/sse", logger)
+	client := NewClient("http://localhost:8090/mcp", logger, TransportStreamableHTTP)
 
 	oldTools := []mcp.Tool{
 		{Name: "tool1", Description: "Tool 1"},

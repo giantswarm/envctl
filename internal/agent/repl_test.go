@@ -10,7 +10,7 @@ import (
 
 func TestNewREPL(t *testing.T) {
 	logger := NewLogger(false, false, false)
-	client := NewClient("http://localhost:8090/sse", logger)
+	client := NewClient("http://localhost:8090/sse", logger, TransportStreamableHTTP)
 
 	repl := NewREPL(client, logger)
 
@@ -37,7 +37,7 @@ func TestNewREPL(t *testing.T) {
 
 func TestREPLHelp(t *testing.T) {
 	logger := NewLogger(false, false, false)
-	client := NewClient("http://localhost:8090/sse", logger)
+	client := NewClient("http://localhost:8090/sse", logger, TransportStreamableHTTP)
 	repl := NewREPL(client, logger)
 
 	// Test help command
@@ -49,7 +49,7 @@ func TestREPLHelp(t *testing.T) {
 
 func TestREPLCreateCompleter(t *testing.T) {
 	logger := NewLogger(false, false, false)
-	client := NewClient("http://localhost:8090/sse", logger)
+	client := NewClient("http://localhost:8090/sse", logger, TransportStreamableHTTP)
 	repl := NewREPL(client, logger)
 
 	// Add some test data
@@ -82,7 +82,7 @@ func TestREPLCreateCompleter(t *testing.T) {
 
 func TestREPLExecuteCommand(t *testing.T) {
 	logger := NewLogger(false, false, false)
-	client := NewClient("http://localhost:8090/sse", logger)
+	client := NewClient("http://localhost:8090/sse", logger, TransportStreamableHTTP)
 	repl := NewREPL(client, logger)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
@@ -154,7 +154,7 @@ func TestREPLExecuteCommand(t *testing.T) {
 
 func TestREPLHandleNotifications(t *testing.T) {
 	logger := NewLogger(false, false, false)
-	client := NewClient("http://localhost:8090/sse", logger)
+	client := NewClient("http://localhost:8090/sse", logger, TransportStreamableHTTP)
 	repl := NewREPL(client, logger)
 
 	tests := []struct {
@@ -191,7 +191,7 @@ func TestREPLHandleNotifications(t *testing.T) {
 
 func TestREPLCallTool(t *testing.T) {
 	logger := NewLogger(false, false, false)
-	client := NewClient("http://localhost:8090/sse", logger)
+	client := NewClient("http://localhost:8090/sse", logger, TransportStreamableHTTP)
 	repl := NewREPL(client, logger)
 
 	// Simulate tool in cache
@@ -227,7 +227,7 @@ func TestREPLCallTool(t *testing.T) {
 
 func TestREPLGetResource(t *testing.T) {
 	logger := NewLogger(false, false, false)
-	client := NewClient("http://localhost:8090/sse", logger)
+	client := NewClient("http://localhost:8090/sse", logger, TransportStreamableHTTP)
 	repl := NewREPL(client, logger)
 
 	// Simulate resource in cache
@@ -253,7 +253,7 @@ func TestREPLGetResource(t *testing.T) {
 
 func TestREPLGetPrompt(t *testing.T) {
 	logger := NewLogger(false, false, false)
-	client := NewClient("http://localhost:8090/sse", logger)
+	client := NewClient("http://localhost:8090/sse", logger, TransportStreamableHTTP)
 	repl := NewREPL(client, logger)
 
 	// Simulate prompt in cache
