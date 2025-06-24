@@ -233,6 +233,7 @@ func (r *REPL) createCompleter() *readline.PrefixCompleter {
 			readline.PcItem("tools"),
 			readline.PcItem("resources"),
 			readline.PcItem("prompts"),
+			readline.PcItem("core-tools"),
 		),
 		readline.PcItem("describe",
 			readline.PcItem("tool", toolCompleter...),
@@ -242,6 +243,9 @@ func (r *REPL) createCompleter() *readline.PrefixCompleter {
 		readline.PcItem("call", toolCompleter...),
 		readline.PcItem("get", resourceCompleter...),
 		readline.PcItem("prompt", promptCompleter...),
+		readline.PcItem("filter",
+			readline.PcItem("tools"),
+		),
 		readline.PcItem("notifications",
 			readline.PcItem("on"),
 			readline.PcItem("off"),
@@ -313,9 +317,18 @@ func (r *REPL) executeCommand(ctx context.Context, input string) error {
 
 	case "list":
 		if len(parts) < 2 {
-			return fmt.Errorf("usage: list <tools|resources|prompts>")
+			return fmt.Errorf("usage: list <tools|resources|prompts|core-tools>")
 		}
 		return r.handleList(ctx, parts[1])
+
+	case "filter":
+		if len(parts) < 2 {
+			return fmt.Errorf("usage: filter <tools> [pattern] [description_filter]")
+		}
+		if parts[1] == "tools" {
+			return r.handleFilterTools(ctx, parts[2:]...)
+		}
+		return fmt.Errorf("filter only supports 'tools' currently")
 
 	case "describe":
 		if len(parts) < 3 {
@@ -362,6 +375,8 @@ func (r *REPL) showHelp() error {
 	fmt.Println("  list tools                   - List all available tools")
 	fmt.Println("  list resources               - List all available resources")
 	fmt.Println("  list prompts                 - List all available prompts")
+	fmt.Println("  list core-tools              - List core envctl tools (built-in functionality)")
+	fmt.Println("  filter tools [pattern] [desc] - Filter tools by name pattern or description")
 	fmt.Println("  describe tool <name>         - Show detailed information about a tool")
 	fmt.Println("  describe resource <uri>      - Show detailed information about a resource")
 	fmt.Println("  describe prompt <name>       - Show detailed information about a prompt")
@@ -382,6 +397,8 @@ func (r *REPL) showHelp() error {
 	fmt.Println("  call calculate {\"operation\": \"add\", \"x\": 5, \"y\": 3}")
 	fmt.Println("  get docs://readme")
 	fmt.Println("  prompt greeting {\"name\": \"Alice\"}")
+	fmt.Println("  filter tools *workflow*      - Find tools with 'workflow' in name")
+	fmt.Println("  filter tools \"\" \"kubernetes\" - Find tools with 'kubernetes' in description")
 	return nil
 }
 
@@ -394,8 +411,10 @@ func (r *REPL) handleList(ctx context.Context, target string) error {
 		return r.listResources(ctx)
 	case "prompts", "prompt":
 		return r.listPrompts(ctx)
+	case "core-tools", "coretools":
+		return r.listCoreTools(ctx)
 	default:
-		return fmt.Errorf("unknown list target: %s. Use 'tools', 'resources', or 'prompts'", target)
+		return fmt.Errorf("unknown list target: %s. Use 'tools', 'resources', 'prompts', or 'core-tools'", target)
 	}
 }
 
@@ -554,5 +573,75 @@ func (r *REPL) handleNotifications(setting string) error {
 	default:
 		return fmt.Errorf("invalid setting: %s. Use 'on' or 'off'", setting)
 	}
+	return nil
+}
+
+// listCoreTools displays core envctl tools
+func (r *REPL) listCoreTools(ctx context.Context) error {
+	// This calls the MCP tool directly through the agent client
+	result, err := r.client.CallTool(ctx, "list_core_tools", nil)
+	if err != nil {
+		return fmt.Errorf("failed to list core tools: %w", err)
+	}
+
+	if result.IsError {
+		var errorMsgs []string
+		for _, content := range result.Content {
+			if textContent, ok := mcp.AsTextContent(content); ok {
+				errorMsgs = append(errorMsgs, textContent.Text)
+			}
+		}
+		return fmt.Errorf("core tools listing error: %s", strings.Join(errorMsgs, "\n"))
+	}
+
+	// Display the result
+	for _, content := range result.Content {
+		if textContent, ok := mcp.AsTextContent(content); ok {
+			fmt.Println(textContent.Text)
+		}
+	}
+
+	return nil
+}
+
+// handleFilterTools handles tool filtering in REPL
+func (r *REPL) handleFilterTools(ctx context.Context, args ...string) error {
+	// Prepare arguments for the filter_tools MCP tool
+	toolArgs := make(map[string]interface{})
+
+	// Parse command line arguments
+	if len(args) > 0 && args[0] != "" {
+		toolArgs["pattern"] = args[0]
+	}
+	if len(args) > 1 && args[1] != "" {
+		toolArgs["description_filter"] = args[1]
+	}
+	if len(args) > 2 && strings.ToLower(args[2]) == "case-sensitive" {
+		toolArgs["case_sensitive"] = true
+	}
+
+	// Call the MCP tool
+	result, err := r.client.CallTool(ctx, "filter_tools", toolArgs)
+	if err != nil {
+		return fmt.Errorf("failed to filter tools: %w", err)
+	}
+
+	if result.IsError {
+		var errorMsgs []string
+		for _, content := range result.Content {
+			if textContent, ok := mcp.AsTextContent(content); ok {
+				errorMsgs = append(errorMsgs, textContent.Text)
+			}
+		}
+		return fmt.Errorf("tool filtering error: %s", strings.Join(errorMsgs, "\n"))
+	}
+
+	// Display the result
+	for _, content := range result.Content {
+		if textContent, ok := mcp.AsTextContent(content); ok {
+			fmt.Println(textContent.Text)
+		}
+	}
+
 	return nil
 }

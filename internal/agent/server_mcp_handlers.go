@@ -374,3 +374,284 @@ func (m *MCPServer) handleGetPrompt(ctx context.Context, request mcp.CallToolReq
 
 	return mcp.NewToolResultText(string(jsonData)), nil
 }
+
+// handleListCoreTools handles the list_core_tools MCP tool
+func (m *MCPServer) handleListCoreTools(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	// Define core envctl tools that are built-in functionality
+	// These are tools that envctl provides natively, separate from external MCP servers
+	coreTools := []map[string]interface{}{
+		{
+			"name":        "capability_create",
+			"description": "Create a new capability definition",
+			"category":    "capability",
+		},
+		{
+			"name":        "capability_list",
+			"description": "List all available capabilities",
+			"category":    "capability",
+		},
+		{
+			"name":        "capability_get",
+			"description": "Get detailed information about a specific capability",
+			"category":    "capability",
+		},
+		{
+			"name":        "capability_update",
+			"description": "Update an existing capability definition",
+			"category":    "capability",
+		},
+		{
+			"name":        "capability_delete",
+			"description": "Delete a capability definition",
+			"category":    "capability",
+		},
+		{
+			"name":        "serviceclass_create",
+			"description": "Create a new service class definition",
+			"category":    "serviceclass",
+		},
+		{
+			"name":        "serviceclass_list",
+			"description": "List all available service classes",
+			"category":    "serviceclass",
+		},
+		{
+			"name":        "serviceclass_get",
+			"description": "Get detailed information about a specific service class",
+			"category":    "serviceclass",
+		},
+		{
+			"name":        "serviceclass_update",
+			"description": "Update an existing service class definition",
+			"category":    "serviceclass",
+		},
+		{
+			"name":        "serviceclass_delete",
+			"description": "Delete a service class definition",
+			"category":    "serviceclass",
+		},
+		{
+			"name":        "workflow_create",
+			"description": "Create a new workflow definition",
+			"category":    "workflow",
+		},
+		{
+			"name":        "workflow_list",
+			"description": "List all available workflows",
+			"category":    "workflow",
+		},
+		{
+			"name":        "workflow_get",
+			"description": "Get detailed information about a specific workflow",
+			"category":    "workflow",
+		},
+		{
+			"name":        "workflow_update",
+			"description": "Update an existing workflow definition",
+			"category":    "workflow",
+		},
+		{
+			"name":        "workflow_delete",
+			"description": "Delete a workflow definition",
+			"category":    "workflow",
+		},
+		{
+			"name":        "workflow_run",
+			"description": "Execute a workflow with given inputs",
+			"category":    "workflow",
+		},
+		{
+			"name":        "mcpserver_create",
+			"description": "Create a new MCP server definition",
+			"category":    "mcpserver",
+		},
+		{
+			"name":        "mcpserver_list",
+			"description": "List all available MCP servers",
+			"category":    "mcpserver",
+		},
+		{
+			"name":        "mcpserver_get",
+			"description": "Get detailed information about a specific MCP server",
+			"category":    "mcpserver",
+		},
+		{
+			"name":        "mcpserver_update",
+			"description": "Update an existing MCP server definition",
+			"category":    "mcpserver",
+		},
+		{
+			"name":        "mcpserver_delete",
+			"description": "Delete an MCP server definition",
+			"category":    "mcpserver",
+		},
+		{
+			"name":        "service_create",
+			"description": "Create a new service instance",
+			"category":    "service",
+		},
+		{
+			"name":        "service_list",
+			"description": "List all service instances",
+			"category":    "service",
+		},
+		{
+			"name":        "service_get",
+			"description": "Get detailed information about a service instance",
+			"category":    "service",
+		},
+		{
+			"name":        "service_start",
+			"description": "Start a service instance",
+			"category":    "service",
+		},
+		{
+			"name":        "service_stop",
+			"description": "Stop a service instance",
+			"category":    "service",
+		},
+		{
+			"name":        "service_restart",
+			"description": "Restart a service instance",
+			"category":    "service",
+		},
+		{
+			"name":        "service_delete",
+			"description": "Delete a service instance",
+			"category":    "service",
+		},
+	}
+
+	// Format as JSON
+	jsonData, err := json.MarshalIndent(coreTools, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to format core tools: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(jsonData)), nil
+}
+
+// handleFilterTools handles the filter_tools MCP tool
+func (m *MCPServer) handleFilterTools(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	// Get filter parameters from arguments
+	args := request.GetArguments()
+	
+	var pattern, descriptionFilter string
+	var caseSensitive bool
+	
+	if patternVal, ok := args["pattern"]; ok {
+		if str, ok := patternVal.(string); ok {
+			pattern = str
+		}
+	}
+	
+	if descFilterVal, ok := args["description_filter"]; ok {
+		if str, ok := descFilterVal.(string); ok {
+			descriptionFilter = str
+		}
+	}
+	
+	if caseVal, ok := args["case_sensitive"]; ok {
+		if b, ok := caseVal.(bool); ok {
+			caseSensitive = b
+		}
+	}
+
+	// Get tools from cache
+	m.client.mu.RLock()
+	tools := m.client.toolCache
+	m.client.mu.RUnlock()
+
+	if len(tools) == 0 {
+		return mcp.NewToolResultText("No tools available to filter"), nil
+	}
+
+	// Filter tools based on criteria
+	var filteredTools []map[string]interface{}
+
+	for _, tool := range tools {
+		// Check if tool matches the filters
+		matches := true
+
+		// Check pattern filter (supports basic wildcard matching)
+		if pattern != "" {
+			toolName := tool.Name
+			searchPattern := pattern
+			
+			if !caseSensitive {
+				toolName = strings.ToLower(toolName)
+				searchPattern = strings.ToLower(searchPattern)
+			}
+
+			// Simple wildcard matching
+			if strings.Contains(searchPattern, "*") {
+				// Convert wildcard pattern to prefix/suffix matching
+				if strings.HasPrefix(searchPattern, "*") && strings.HasSuffix(searchPattern, "*") {
+					// *pattern* - contains
+					middle := strings.Trim(searchPattern, "*")
+					matches = matches && strings.Contains(toolName, middle)
+				} else if strings.HasPrefix(searchPattern, "*") {
+					// *pattern - ends with
+					suffix := strings.TrimPrefix(searchPattern, "*")
+					matches = matches && strings.HasSuffix(toolName, suffix)
+				} else if strings.HasSuffix(searchPattern, "*") {
+					// pattern* - starts with
+					prefix := strings.TrimSuffix(searchPattern, "*")
+					matches = matches && strings.HasPrefix(toolName, prefix)
+				} else {
+					// pattern*pattern - more complex, use simple contains for each part
+					parts := strings.Split(searchPattern, "*")
+					for _, part := range parts {
+						if part != "" && !strings.Contains(toolName, part) {
+							matches = false
+							break
+						}
+					}
+				}
+			} else {
+				// Exact match or contains
+				matches = matches && strings.Contains(toolName, searchPattern)
+			}
+		}
+
+		// Check description filter
+		if descriptionFilter != "" && matches {
+			toolDesc := tool.Description
+			searchDesc := descriptionFilter
+			
+			if !caseSensitive {
+				toolDesc = strings.ToLower(toolDesc)
+				searchDesc = strings.ToLower(searchDesc)
+			}
+
+			matches = matches && strings.Contains(toolDesc, searchDesc)
+		}
+
+		// Add to filtered results if it matches
+		if matches {
+			filteredTools = append(filteredTools, map[string]interface{}{
+				"name":        tool.Name,
+				"description": tool.Description,
+			})
+		}
+	}
+
+	// Prepare result
+	result := map[string]interface{}{
+		"filters": map[string]interface{}{
+			"pattern":            pattern,
+			"description_filter": descriptionFilter,
+			"case_sensitive":     caseSensitive,
+		},
+		"total_tools":    len(tools),
+		"filtered_count": len(filteredTools),
+		"tools":          filteredTools,
+	}
+
+	jsonData, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to format filtered tools: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(jsonData)), nil
+}

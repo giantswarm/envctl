@@ -208,4 +208,25 @@ func (m *MCPServer) registerTools() {
 		),
 	)
 	m.mcpServer.AddTool(getPromptTool, m.handleGetPrompt)
+
+	// List core tools
+	listCoreToolsTool := mcp.NewTool("list_core_tools",
+		mcp.WithDescription("List core envctl tools (built-in functionality separate from external MCP servers)"),
+	)
+	m.mcpServer.AddTool(listCoreToolsTool, m.handleListCoreTools)
+
+	// Filter tools
+	filterToolsTool := mcp.NewTool("filter_tools",
+		mcp.WithDescription("Filter available tools based on name patterns or descriptions"),
+		mcp.WithString("pattern",
+			mcp.Description("Pattern to match against tool names (supports wildcards like *)"),
+		),
+		mcp.WithString("description_filter",
+			mcp.Description("Filter by description content (case-insensitive substring match)"),
+		),
+		mcp.WithBoolean("case_sensitive",
+			mcp.Description("Whether pattern matching should be case-sensitive (default: false)"),
+		),
+	)
+	m.mcpServer.AddTool(filterToolsTool, m.handleFilterTools)
 }
