@@ -280,156 +280,44 @@ func (m *MCPServer) handleGetPrompt(ctx context.Context, request mcp.CallToolReq
 	return mcp.NewToolResultText(string(jsonData)), nil
 }
 
-// handleListCoreTools handles the list_core_tools MCP tool
+// handleListCoreTools handles the list_core_tools MCP tool by filtering tools that start with "core_"
 func (m *MCPServer) handleListCoreTools(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	// Define core envctl tools that are built-in functionality
-	// These are tools that envctl provides natively, separate from external MCP servers
-	// Names are shown with the "x_" prefix as they appear in the aggregator
-	coreTools := []map[string]interface{}{
-		{
-			"name":        "x_capability_create",
-			"description": "Create a new capability definition",
-			"category":    "capability",
-		},
-		{
-			"name":        "x_capability_list",
-			"description": "List all available capabilities",
-			"category":    "capability",
-		},
-		{
-			"name":        "x_capability_get",
-			"description": "Get detailed information about a specific capability",
-			"category":    "capability",
-		},
-		{
-			"name":        "x_capability_update",
-			"description": "Update an existing capability definition",
-			"category":    "capability",
-		},
-		{
-			"name":        "x_capability_delete",
-			"description": "Delete a capability definition",
-			"category":    "capability",
-		},
-		{
-			"name":        "x_serviceclass_create",
-			"description": "Create a new service class definition",
-			"category":    "serviceclass",
-		},
-		{
-			"name":        "x_serviceclass_list",
-			"description": "List all available service classes",
-			"category":    "serviceclass",
-		},
-		{
-			"name":        "x_serviceclass_get",
-			"description": "Get detailed information about a specific service class",
-			"category":    "serviceclass",
-		},
-		{
-			"name":        "x_serviceclass_update",
-			"description": "Update an existing service class definition",
-			"category":    "serviceclass",
-		},
-		{
-			"name":        "x_serviceclass_delete",
-			"description": "Delete a service class definition",
-			"category":    "serviceclass",
-		},
-		{
-			"name":        "x_workflow_create",
-			"description": "Create a new workflow definition",
-			"category":    "workflow",
-		},
-		{
-			"name":        "x_workflow_list",
-			"description": "List all available workflows",
-			"category":    "workflow",
-		},
-		{
-			"name":        "x_workflow_get",
-			"description": "Get detailed information about a specific workflow",
-			"category":    "workflow",
-		},
-		{
-			"name":        "x_workflow_update",
-			"description": "Update an existing workflow definition",
-			"category":    "workflow",
-		},
-		{
-			"name":        "x_workflow_delete",
-			"description": "Delete a workflow definition",
-			"category":    "workflow",
-		},
-		{
-			"name":        "x_workflow_run",
-			"description": "Execute a workflow with given inputs",
-			"category":    "workflow",
-		},
-		{
-			"name":        "x_mcpserver_create",
-			"description": "Create a new MCP server definition",
-			"category":    "mcpserver",
-		},
-		{
-			"name":        "x_mcpserver_list",
-			"description": "List all available MCP servers",
-			"category":    "mcpserver",
-		},
-		{
-			"name":        "x_mcpserver_get",
-			"description": "Get detailed information about a specific MCP server",
-			"category":    "mcpserver",
-		},
-		{
-			"name":        "x_mcpserver_update",
-			"description": "Update an existing MCP server definition",
-			"category":    "mcpserver",
-		},
-		{
-			"name":        "x_mcpserver_delete",
-			"description": "Delete an MCP server definition",
-			"category":    "mcpserver",
-		},
-		{
-			"name":        "x_service_create",
-			"description": "Create a new service instance",
-			"category":    "service",
-		},
-		{
-			"name":        "x_service_list",
-			"description": "List all service instances",
-			"category":    "service",
-		},
-		{
-			"name":        "x_service_get",
-			"description": "Get detailed information about a service instance",
-			"category":    "service",
-		},
-		{
-			"name":        "x_service_start",
-			"description": "Start a service instance",
-			"category":    "service",
-		},
-		{
-			"name":        "x_service_stop",
-			"description": "Stop a service instance",
-			"category":    "service",
-		},
-		{
-			"name":        "x_service_restart",
-			"description": "Restart a service instance",
-			"category":    "service",
-		},
-		{
-			"name":        "x_service_delete",
-			"description": "Delete a service instance",
-			"category":    "service",
-		},
+	// Get all tools from cache
+	m.client.mu.RLock()
+	tools := m.client.toolCache
+	m.client.mu.RUnlock()
+
+	if len(tools) == 0 {
+		return mcp.NewToolResultText("No tools available"), nil
 	}
 
-	// Format as JSON
-	jsonData, err := json.MarshalIndent(coreTools, "", "  ")
+	// Filter tools that start with "core" (case-insensitive)
+	var coreTools []map[string]interface{}
+	pattern := "core"
+
+	for _, tool := range tools {
+		toolName := strings.ToLower(tool.Name)
+		if strings.HasPrefix(toolName, pattern) {
+			coreTools = append(coreTools, map[string]interface{}{
+				"name":        tool.Name,
+				"description": tool.Description,
+			})
+		}
+	}
+
+	// Prepare result in the same format as filter_tools
+	result := map[string]interface{}{
+		"filters": map[string]interface{}{
+			"pattern":            "core*",
+			"description_filter": "",
+			"case_sensitive":     false,
+		},
+		"total_tools":    len(tools),
+		"filtered_count": len(coreTools),
+		"tools":          coreTools,
+	}
+
+	jsonData, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to format core tools: %v", err)), nil
 	}

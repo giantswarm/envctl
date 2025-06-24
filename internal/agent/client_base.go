@@ -421,6 +421,10 @@ func (c *Client) CallToolJSON(ctx context.Context, name string, args map[string]
 
 // GetResource reads a resource and returns its content
 func (c *Client) GetResource(ctx context.Context, uri string) (*mcp.ReadResourceResult, error) {
+	if c.client == nil {
+		return nil, fmt.Errorf("client not connected")
+	}
+
 	req := mcp.ReadResourceRequest{
 		Params: struct {
 			URI       string         `json:"uri"`
@@ -458,6 +462,10 @@ func (c *Client) GetResource(ctx context.Context, uri string) (*mcp.ReadResource
 
 // GetPrompt retrieves a prompt with the given arguments
 func (c *Client) GetPrompt(ctx context.Context, name string, args map[string]string) (*mcp.GetPromptResult, error) {
+	if c.client == nil {
+		return nil, fmt.Errorf("client not connected")
+	}
+
 	req := mcp.GetPromptRequest{
 		Params: struct {
 			Name      string            `json:"name"`
