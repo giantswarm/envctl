@@ -498,15 +498,48 @@ func (c *Client) Close() error {
 func PrettyJSON(v interface{}) string {
 	b, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
-		return fmt.Sprintf("%+v", v)
+		return fmt.Sprintf("%v", v)
 	}
 	return string(b)
 }
 
-// prettyJSON is a wrapper for backward compatibility
 func prettyJSON(v interface{}) string {
 	return PrettyJSON(v)
 }
 
-// NotificationHandler is a helper type for type-safe notification handling
-type NotificationHandler func(notification mcp.JSONRPCNotification) 
+type NotificationHandler func(notification mcp.JSONRPCNotification)
+
+// Command interface implementations for Client
+
+// GetToolCache returns the tool cache for commands
+func (c *Client) GetToolCache() []mcp.Tool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.toolCache
+}
+
+// GetResourceCache returns the resource cache for commands
+func (c *Client) GetResourceCache() []mcp.Resource {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.resourceCache
+}
+
+// GetPromptCache returns the prompt cache for commands
+func (c *Client) GetPromptCache() []mcp.Prompt {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.promptCache
+}
+
+// GetFormatters returns the formatters for commands
+func (c *Client) GetFormatters() interface{} {
+	return c.formatters
+}
+
+// SupportsNotifications returns whether the transport supports notifications
+func (c *Client) SupportsNotifications() bool {
+	return c.transport == TransportSSE
+}
+
+ 

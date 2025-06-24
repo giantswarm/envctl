@@ -40,10 +40,10 @@ func TestREPLHelp(t *testing.T) {
 	client := NewClient("http://localhost:8090/sse", logger, TransportStreamableHTTP)
 	repl := NewREPL(client, logger)
 
-	// Test help command
-	err := repl.showHelp()
+	// Test help command using the command pattern
+	err := repl.executeCommand(context.Background(), "help")
 	if err != nil {
-		t.Errorf("showHelp returned error: %v", err)
+		t.Errorf("help command returned error: %v", err)
 	}
 }
 
@@ -181,9 +181,9 @@ func TestREPLHandleNotifications(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := repl.handleNotifications(tt.setting)
+			err := repl.executeCommand(context.Background(), "notifications "+tt.setting)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("handleNotifications(%q) error = %v, wantErr %v", tt.setting, err, tt.wantErr)
+				t.Errorf("notifications command error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
@@ -213,13 +213,13 @@ func TestREPLCallTool(t *testing.T) {
 	ctx := context.Background()
 
 	// Test with non-existent tool
-	err := repl.handleCallTool(ctx, "nonexistent", `{"param1": "value"}`)
+	err := repl.executeCommand(ctx, "call nonexistent {\"param1\": \"value\"}")
 	if err == nil || !contains(err.Error(), "tool not found") {
 		t.Errorf("Expected 'tool not found' error, got: %v", err)
 	}
 
 	// Test with invalid JSON
-	err = repl.handleCallTool(ctx, "test_tool", "invalid json")
+	err = repl.executeCommand(ctx, "call test_tool invalid json")
 	if err == nil || !contains(err.Error(), "invalid JSON") {
 		t.Errorf("Expected 'invalid JSON' error, got: %v", err)
 	}
@@ -245,7 +245,7 @@ func TestREPLGetResource(t *testing.T) {
 	ctx := context.Background()
 
 	// Test with non-existent resource
-	err := repl.handleGetResource(ctx, "nonexistent://resource")
+	err := repl.executeCommand(ctx, "get nonexistent://resource")
 	if err == nil || !contains(err.Error(), "resource not found") {
 		t.Errorf("Expected 'resource not found' error, got: %v", err)
 	}
@@ -275,19 +275,19 @@ func TestREPLGetPrompt(t *testing.T) {
 	ctx := context.Background()
 
 	// Test with non-existent prompt
-	err := repl.handleGetPrompt(ctx, "nonexistent", `{"arg1": "value"}`)
+	err := repl.executeCommand(ctx, "prompt nonexistent {\"arg1\": \"value\"}")
 	if err == nil || !contains(err.Error(), "prompt not found") {
 		t.Errorf("Expected 'prompt not found' error, got: %v", err)
 	}
 
 	// Test with missing required argument
-	err = repl.handleGetPrompt(ctx, "test_prompt", `{}`)
+	err = repl.executeCommand(ctx, "prompt test_prompt {}")
 	if err == nil || !contains(err.Error(), "missing required argument") {
 		t.Errorf("Expected 'missing required argument' error, got: %v", err)
 	}
 
 	// Test with invalid JSON
-	err = repl.handleGetPrompt(ctx, "test_prompt", "invalid json")
+	err = repl.executeCommand(ctx, "prompt test_prompt invalid json")
 	if err == nil || !contains(err.Error(), "invalid JSON") {
 		t.Errorf("Expected 'invalid JSON' error, got: %v", err)
 	}

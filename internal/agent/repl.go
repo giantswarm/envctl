@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 
+	"envctl/internal/agent/commands"
+
 	"github.com/chzyer/readline"
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -21,16 +23,74 @@ type REPL struct {
 	notificationChan chan mcp.JSONRPCNotification
 	stopChan         chan struct{}
 	wg               sync.WaitGroup
+	commandRegistry  *commands.Registry
 }
 
 // NewREPL creates a new REPL instance
 func NewREPL(client *Client, logger *Logger) *REPL {
-	return &REPL{
+	repl := &REPL{
 		client:           client,
 		logger:           logger,
 		notificationChan: make(chan mcp.JSONRPCNotification, 10),
 		stopChan:         make(chan struct{}),
+		commandRegistry:  commands.NewRegistry(),
 	}
+	
+	// Register all commands
+	repl.registerCommands()
+	
+	return repl
+}
+
+// registerCommands registers all available commands
+func (r *REPL) registerCommands() {
+	// Create transport adapter for commands
+	transport := &transportAdapter{client: r.client}
+	
+	// Register all commands
+	r.commandRegistry.Register("help", commands.NewHelpCommand(r.client, r.logger, transport, r.commandRegistry))
+	r.commandRegistry.Register("list", commands.NewListCommand(r.client, r.logger, transport))
+	r.commandRegistry.Register("describe", commands.NewDescribeCommand(r.client, r.logger, transport))
+	r.commandRegistry.Register("call", commands.NewCallCommand(r.client, r.logger, transport))
+	r.commandRegistry.Register("get", commands.NewGetCommand(r.client, r.logger, transport))
+	r.commandRegistry.Register("prompt", commands.NewPromptCommand(r.client, r.logger, transport))
+	r.commandRegistry.Register("filter", commands.NewFilterCommand(r.client, r.logger, transport))
+	r.commandRegistry.Register("notifications", commands.NewNotificationsCommand(r.client, r.logger, transport))
+	r.commandRegistry.Register("exit", commands.NewExitCommand(r.client, r.logger, transport))
+}
+
+// transportAdapter adapts Client to TransportInterface
+type transportAdapter struct {
+	client *Client
+}
+
+func (t *transportAdapter) SupportsNotifications() bool {
+	return t.client.SupportsNotifications()
+}
+
+// executeCommand parses and executes a command using the registry
+func (r *REPL) executeCommand(ctx context.Context, input string) error {
+	parts := strings.Fields(input)
+	if len(parts) == 0 {
+		return nil
+	}
+
+	commandName := strings.ToLower(parts[0])
+	args := parts[1:]
+
+	// Handle special case for ? alias
+	if commandName == "?" {
+		commandName = "help"
+	}
+
+	// Get command from registry
+	command, exists := r.commandRegistry.Get(commandName)
+	if !exists {
+		return fmt.Errorf("unknown command: %s. Type 'help' for available commands", parts[0])
+	}
+
+	// Execute the command
+	return command.Execute(ctx, args)
 }
 
 // Run starts the REPL
@@ -149,8 +209,6 @@ func (r *REPL) Run(ctx context.Context) error {
 		fmt.Println()
 	}
 }
-
-
 
 // notificationListener handles notifications in the background
 func (r *REPL) notificationListener(ctx context.Context) {

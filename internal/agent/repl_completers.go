@@ -4,7 +4,7 @@ import (
 	"github.com/chzyer/readline"
 )
 
-// createCompleter creates the tab completion configuration
+// createCompleter creates the tab completion configuration using the command registry
 func (r *REPL) createCompleter() *readline.PrefixCompleter {
 	// Get lists for completion
 	r.client.mu.RLock()
@@ -40,8 +40,16 @@ func (r *REPL) createCompleter() *readline.PrefixCompleter {
 		promptCompleter[i] = readline.PcItem(prompt)
 	}
 
+	// Get all command names from registry
+	commandNames := r.commandRegistry.AllCompletions()
+	commandCompleters := make([]readline.PrefixCompleterInterface, len(commandNames))
+	for i, name := range commandNames {
+		commandCompleters[i] = readline.PcItem(name)
+	}
+
 	return readline.NewPrefixCompleter(
-		readline.PcItem("help"),
+		// Commands with their specific completions
+		readline.PcItem("help", commandCompleters...),
 		readline.PcItem("?"),
 		readline.PcItem("exit"),
 		readline.PcItem("quit"),

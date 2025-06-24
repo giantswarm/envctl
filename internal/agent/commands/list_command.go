@@ -63,21 +63,21 @@ func (l *ListCommand) Aliases() []string {
 // listTools displays available tools
 func (l *ListCommand) listTools() error {
 	tools := l.client.GetToolCache()
-	fmt.Println(l.client.GetFormatters().FormatToolsList(tools))
+	fmt.Println(l.getFormatters().FormatToolsList(tools))
 	return nil
 }
 
 // listResources displays available resources
 func (l *ListCommand) listResources() error {
 	resources := l.client.GetResourceCache()
-	fmt.Println(l.client.GetFormatters().FormatResourcesList(resources))
+	fmt.Println(l.getFormatters().FormatResourcesList(resources))
 	return nil
 }
 
 // listPrompts displays available prompts
 func (l *ListCommand) listPrompts() error {
 	prompts := l.client.GetPromptCache()
-	fmt.Println(l.client.GetFormatters().FormatPromptsList(prompts))
+	fmt.Println(l.getFormatters().FormatPromptsList(prompts))
 	return nil
 }
 

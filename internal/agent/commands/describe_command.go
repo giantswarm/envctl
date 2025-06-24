@@ -80,35 +80,35 @@ func (d *DescribeCommand) Aliases() []string {
 // describeTool shows detailed information about a tool
 func (d *DescribeCommand) describeTool(name string) error {
 	tools := d.client.GetToolCache()
-	tool := d.client.GetFormatters().FindTool(tools, name)
+	tool := d.getFormatters().FindTool(tools, name)
 	if tool == nil {
 		return fmt.Errorf("tool not found: %s", name)
 	}
 
-	fmt.Println(d.client.GetFormatters().FormatToolDetail(*tool))
+	fmt.Println(d.getFormatters().FormatToolDetail(*tool))
 	return nil
 }
 
 // describeResource shows detailed information about a resource
 func (d *DescribeCommand) describeResource(uri string) error {
 	resources := d.client.GetResourceCache()
-	resource := d.client.GetFormatters().FindResource(resources, uri)
+	resource := d.getFormatters().FindResource(resources, uri)
 	if resource == nil {
 		return fmt.Errorf("resource not found: %s", uri)
 	}
 
-	fmt.Println(d.client.GetFormatters().FormatResourceDetail(*resource))
+	fmt.Println(d.getFormatters().FormatResourceDetail(*resource))
 	return nil
 }
 
 // describePrompt shows detailed information about a prompt
 func (d *DescribeCommand) describePrompt(name string) error {
 	prompts := d.client.GetPromptCache()
-	prompt := d.client.GetFormatters().FindPrompt(prompts, name)
+	prompt := d.getFormatters().FindPrompt(prompts, name)
 	if prompt == nil {
 		return fmt.Errorf("prompt not found: %s", name)
 	}
 
-	fmt.Println(d.client.GetFormatters().FormatPromptDetail(*prompt))
+	fmt.Println(d.getFormatters().FormatPromptDetail(*prompt))
 	return nil
 } 

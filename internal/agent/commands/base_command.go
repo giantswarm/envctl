@@ -9,6 +9,7 @@ import (
 )
 
 // ClientInterface defines the interface that commands need from the client
+// Since we know the concrete types, let's just import the agent package
 type ClientInterface interface {
 	// Cache access
 	GetToolCache() []mcp.Tool
@@ -20,8 +21,8 @@ type ClientInterface interface {
 	GetResource(ctx context.Context, uri string) (*mcp.ReadResourceResult, error)
 	GetPrompt(ctx context.Context, name string, args map[string]string) (*mcp.GetPromptResult, error)
 	
-	// Formatters
-	GetFormatters() FormatterInterface
+	// Formatters - expect the concrete Formatters type  
+	GetFormatters() interface{} // Will cast to *Formatters
 }
 
 // FormatterInterface defines the interface for formatting operations
@@ -126,4 +127,9 @@ func (b *BaseCommand) getPromptCompletions() []string {
 		completions = append(completions, prompt.Name)
 	}
 	return completions
+}
+
+// getFormatters returns the formatters interface cast to the concrete type
+func (b *BaseCommand) getFormatters() FormatterInterface {
+	return b.client.GetFormatters().(FormatterInterface)
 } 
