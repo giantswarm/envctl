@@ -410,7 +410,7 @@ func (r *testRunner) runStepWithClient(ctx context.Context, step TestStep, confi
 	result.Duration = result.EndTime.Sub(result.StartTime)
 
 	// Validate expectations (always check, even with errors - they might be expected)
-	if !r.validateExpectations(step.Expected, response, err) {
+	if !r.validateExpectationsWithClient(stepCtx, step.Expected, response, err, client, step.Tool, step.Args) {
 		if err != nil {
 			result.Result = ResultError
 			result.Error = fmt.Sprintf("tool call failed: %v", err)
@@ -425,6 +425,67 @@ func (r *testRunner) runStepWithClient(ctx context.Context, step TestStep, confi
 	result.Result = ResultPassed
 
 	return result
+}
+
+// validateExpectationsWithClient checks if the step response meets the expected criteria with state waiting support
+func (r *testRunner) validateExpectationsWithClient(ctx context.Context, expected TestExpectation, response interface{}, err error, client MCPTestClient, stepTool string, stepArgs map[string]interface{}) bool {
+	// Handle state waiting if configured
+	if expected.WaitForState > 0 {
+		if r.debug {
+			r.logger.Debug("⏳ State waiting configured - polling for expected state\n")
+		}
+		
+		// Use the configured timeout
+		timeout := expected.WaitForState
+		pollInterval := 1 * time.Second // Default poll interval
+				
+		// Start polling with timeout
+		waitCtx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		
+		pollTicker := time.NewTicker(pollInterval)
+		defer pollTicker.Stop()
+		
+		if r.debug {
+			r.logger.Debug("🔄 Starting state polling: tool=%s, timeout=%v, interval=%v\n", stepTool, timeout, pollInterval)
+		}
+		
+		// Poll for expected state
+		for {
+			select {
+			case <-waitCtx.Done():
+				if r.debug {
+					r.logger.Debug("⏰ State waiting timeout reached\n")
+				}
+				return false // Timeout reached without achieving expected state
+				
+			case <-pollTicker.C:
+				// Make status call using the polling tool and args
+				response, err := client.CallTool(waitCtx, stepTool, stepArgs)
+				
+				if r.debug {
+					r.logger.Debug("📊 Status poll result: error=%v\n", err)
+				}
+				
+				// Check if the status call succeeded and meets JSON path expectations
+				if err == nil {
+					if r.validateExpectations(expected, response, nil) {
+						if r.debug {
+							r.logger.Debug("✅ Expected state achieved!\n")
+						}
+						return true
+					} else {
+						if r.debug {
+							r.logger.Debug("🔄 State not yet achieved, continuing to poll...\n")
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	// Continue with normal validation using original response and error
+	return r.validateExpectations(expected, response, err)
 }
 
 // validateExpectations checks if the step response meets the expected criteria

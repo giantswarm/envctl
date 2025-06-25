@@ -258,6 +258,8 @@ type TestExpectation struct {
 	JSONPath map[string]interface{} `yaml:"json_path,omitempty"`
 	// StatusCode for HTTP-based expectations
 	StatusCode int `yaml:"status_code,omitempty"`
+	// WaitForState enables polling for state changes with timeout
+	WaitForState time.Duration `yaml:"wait_for_state,omitempty"`
 }
 
 // RetryConfig defines retry behavior for test steps

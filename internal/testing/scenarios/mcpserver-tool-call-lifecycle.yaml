@@ -70,12 +70,13 @@ steps:
     expected:
       success: true
 
-  - id: "verify-service-stopped"
+  - id: "wait-for-stopped-mcpserver-service"
     tool: "core_service_status"
     args:
       name: "tool-call-test-provider"
     expected:
       success: true
+      wait_for_state: "30s"
       json_path:
         name: "tool-call-test-provider"
         state: "stopped"
@@ -106,12 +107,13 @@ steps:
     expected:
       success: true
 
-  - id: "verify-service-running-after-restart"
+  - id: "wait-for-started-mcpserver-service"
     tool: "core_service_status"
     args:
       name: "tool-call-test-provider"
     expected:
       success: true
+      wait_for_state: "30s"
       json_path:
         name: "tool-call-test-provider"
         state: "running"

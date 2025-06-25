@@ -164,7 +164,7 @@ func init() {
 
 	// Test execution control
 	testCmd.Flags().BoolVar(&testFailFast, "fail-fast", false, "Stop test execution on first failure")
-	testCmd.Flags().IntVar(&testParallel, "parallel", 1, "Number of parallel test workers (1-10)")
+	testCmd.Flags().IntVar(&testParallel, "parallel", 1, "Number of parallel test workers (1-20)")
 
 	// MCP Server mode
 	testCmd.Flags().BoolVar(&testMCPServer, "mcp-server", false, "Run as MCP server (stdio transport)")
@@ -220,8 +220,8 @@ func init() {
 
 	// Validate parallel flag
 	testCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
-		if !testMCPServer && !testMockMCPServer && !testGenerateSchema && !testValidateScenarios && (testParallel < 1 || testParallel > 10) {
-			return fmt.Errorf("parallel workers must be between 1 and 10, got %d", testParallel)
+		if !testMCPServer && !testMockMCPServer && !testGenerateSchema && !testValidateScenarios && (testParallel < 1 || testParallel > 20) {
+			return fmt.Errorf("parallel workers must be between 1 and 20, got %d", testParallel)
 		}
 		if testMockMCPServer && testMockConfig == "" {
 			return fmt.Errorf("--mock-config is required when using --mock-mcp-server")

@@ -66,6 +66,7 @@ steps:
       name: "test-tool-provider"
     expected:
       success: true
+      wait_for_state: "30s"
       json_path:
         name: "test-tool-provider"
         state: "stopped"
@@ -92,6 +93,7 @@ steps:
       name: "test-tool-provider"
     expected:
       success: true
+      wait_for_state: "30s"
       json_path:
         name: "test-tool-provider"
         state: "running"
