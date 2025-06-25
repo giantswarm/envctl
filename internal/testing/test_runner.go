@@ -401,83 +401,28 @@ func (r *testRunner) runStepWithClient(ctx context.Context, step TestStep, confi
 		defer cancel()
 	}
 
-	// Execute step with retries
-	maxAttempts := 1
-	if step.Retry != nil && step.Retry.Count > 0 {
-		maxAttempts = step.Retry.Count + 1
-	}
+	// Execute the tool call
+	response, err := client.CallTool(stepCtx, step.Tool, step.Args)
 
-	var lastErr error
-	for attempt := 0; attempt < maxAttempts; attempt++ {
-		if attempt > 0 {
-			result.RetryCount = attempt
-
-			// Apply retry delay
-			if step.Retry != nil && step.Retry.Delay > 0 {
-				delay := step.Retry.Delay
-				if step.Retry.BackoffMultiplier > 0 {
-					for i := 1; i < attempt; i++ {
-						delay = time.Duration(float64(delay) * step.Retry.BackoffMultiplier)
-					}
-				}
-
-				if r.debug {
-					r.logger.Debug("⏳ Retrying step '%s' in %v (attempt %d/%d)\n", step.ID, delay, attempt+1, maxAttempts)
-				}
-
-				select {
-				case <-time.After(delay):
-				case <-stepCtx.Done():
-					result.Result = ResultError
-					result.Error = "step cancelled during retry delay"
-					result.EndTime = time.Now()
-					result.Duration = result.EndTime.Sub(result.StartTime)
-					return result
-				}
-			}
-		}
-
-		// Execute the tool call
-		response, err := client.CallTool(stepCtx, step.Tool, step.Args)
-
-		// Store response (even if there's an error)
-		result.Response = response
-
-		// Validate expectations (always check, even with errors - they might be expected)
-		if !r.validateExpectations(step.Expected, response, err) {
-			lastErr = err
-			if lastErr == nil {
-				lastErr = fmt.Errorf("expectations not met")
-			}
-			if attempt < maxAttempts-1 {
-				continue // Retry
-			}
-
-			if err != nil {
-				result.Result = ResultError
-				result.Error = fmt.Sprintf("tool call failed: %v", err)
-			} else {
-				result.Result = ResultFailed
-				result.Error = "step expectations not met"
-			}
-			break
-		}
-
-		// Success - expectations met, even if there was an error
-		result.Result = ResultPassed
-		lastErr = nil // Clear any error since expectations were met
-		break
-	}
-
-	// Set final error if we exhausted retries
-	if lastErr != nil && result.Error == "" {
-		result.Result = ResultError
-		result.Error = lastErr.Error()
-	}
-
-	// Finalize result
+	// Store response (even if there's an error)
+	result.Response = response
 	result.EndTime = time.Now()
 	result.Duration = result.EndTime.Sub(result.StartTime)
+
+	// Validate expectations (always check, even with errors - they might be expected)
+	if !r.validateExpectations(step.Expected, response, err) {
+		if err != nil {
+			result.Result = ResultError
+			result.Error = fmt.Sprintf("tool call failed: %v", err)
+		} else {
+			result.Result = ResultFailed
+			result.Error = "step expectations not met"
+		}
+		return result
+	}
+
+	// Success - expectations met, even if there was an error
+	result.Result = ResultPassed
 
 	return result
 }

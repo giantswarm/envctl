@@ -8,7 +8,7 @@ import (
 // DefaultTestConfiguration returns a default test configuration
 func DefaultTestConfiguration() TestConfiguration {
 	return TestConfiguration{
-		Timeout:    30 * time.Minute,
+		Timeout:    5 * time.Minute,
 		Parallel:   1,
 		FailFast:   false,
 		Verbose:    false,
