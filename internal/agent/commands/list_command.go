@@ -68,7 +68,7 @@ func (l *ListCommand) listCoreTools(ctx context.Context) error {
 
 	// Get all tools from cache
 	tools := l.client.GetToolCache()
-	
+
 	if len(tools) == 0 {
 		l.output.OutputLine("No tools available")
 		return nil
@@ -77,7 +77,7 @@ func (l *ListCommand) listCoreTools(ctx context.Context) error {
 	// Filter tools that start with "core" (case-insensitive)
 	var coreTools []mcp.Tool
 	pattern := "core"
-	
+
 	for _, tool := range tools {
 		toolName := strings.ToLower(tool.Name)
 		if strings.HasPrefix(toolName, pattern) {

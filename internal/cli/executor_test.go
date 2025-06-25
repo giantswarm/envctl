@@ -81,7 +81,8 @@ func TestToolExecutor_Structure(t *testing.T) {
 
 func TestToolExecutor_Methods_Exist(t *testing.T) {
 	// Create a mock executor to test method signatures
-	client := agent.NewCLIClientWithEndpoint("http://localhost:8090/mcp")
+	logger := agent.NewLogger(false, false, false)
+	client := agent.NewClient("http://localhost:8090/mcp", logger, agent.TransportStreamableHTTP)
 	executor := &ToolExecutor{
 		client: client,
 		options: ExecutorOptions{
@@ -99,7 +100,8 @@ func TestToolExecutor_Methods_Exist(t *testing.T) {
 }
 
 func TestToolExecutor_Close(t *testing.T) {
-	client := agent.NewCLIClientWithEndpoint("http://localhost:8090/mcp")
+	logger := agent.NewLogger(false, false, false)
+	client := agent.NewClient("http://localhost:8090/mcp", logger, agent.TransportStreamableHTTP)
 	executor := &ToolExecutor{
 		client: client,
 		options: ExecutorOptions{

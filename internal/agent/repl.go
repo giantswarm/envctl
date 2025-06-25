@@ -95,7 +95,7 @@ func (r *REPL) executeCommand(input string) error {
 	// but still allows for reasonable timeouts and manual cancellation
 	commandCtx, commandCancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer commandCancel()
-	
+
 	// Execute the command
 	return command.Execute(commandCtx, args)
 }

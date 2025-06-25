@@ -150,7 +150,7 @@ func (f *TableFormatter) optimizeColumns(sample map[string]interface{}) []string
 	priorityColumns := map[string][]string{
 		"services":       {"health", "state", "service_type", "metadata"},
 		"serviceClasses": {"available", "serviceType", "description", "requiredTools"},
-		"mcpServers":     {"available", "serverType", "description", "requiredTools"},
+		"mcpServers":     {"state", "serverType", "description"},
 		"workflows":      {"status", "description", "steps"},
 		"capabilities":   {"available", "capabilityType", "description"},
 		"generic":        {"status", "type", "description", "available"},

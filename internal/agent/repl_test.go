@@ -1,9 +1,7 @@
 package agent
 
 import (
-	"context"
 	"testing"
-	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -41,7 +39,7 @@ func TestREPLHelp(t *testing.T) {
 	repl := NewREPL(client, logger)
 
 	// Test help command using the command pattern
-	err := repl.executeCommand(context.Background(), "help")
+	err := repl.executeCommand("help")
 	if err != nil {
 		t.Errorf("help command returned error: %v", err)
 	}
@@ -84,9 +82,6 @@ func TestREPLExecuteCommand(t *testing.T) {
 	logger := NewLogger(false, false, false)
 	client := NewClient("http://localhost:8090/sse", logger, TransportStreamableHTTP)
 	repl := NewREPL(client, logger)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-	defer cancel()
 
 	tests := []struct {
 		name    string
@@ -138,7 +133,7 @@ func TestREPLExecuteCommand(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := repl.executeCommand(ctx, tt.input)
+			err := repl.executeCommand(tt.input)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("executeCommand(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
 				return
@@ -181,7 +176,7 @@ func TestREPLHandleNotifications(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := repl.executeCommand(context.Background(), "notifications "+tt.setting)
+			err := repl.executeCommand("notifications " + tt.setting)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("notifications command error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -210,16 +205,14 @@ func TestREPLCallTool(t *testing.T) {
 	}
 	client.mu.Unlock()
 
-	ctx := context.Background()
-
 	// Test with non-existent tool (will get "client not connected" since no real connection)
-	err := repl.executeCommand(ctx, "call nonexistent {\"param1\": \"value\"}")
+	err := repl.executeCommand("call nonexistent {\"param1\": \"value\"}")
 	if err != nil {
 		t.Errorf("Command should handle error gracefully, got: %v", err)
 	}
 
 	// Test with invalid JSON (this should be handled by the command)
-	err = repl.executeCommand(ctx, "call test_tool invalid json")
+	err = repl.executeCommand("call test_tool invalid json")
 	if err != nil {
 		t.Errorf("Command should handle invalid JSON gracefully, got: %v", err)
 	}
@@ -242,10 +235,8 @@ func TestREPLGetResource(t *testing.T) {
 	}
 	client.mu.Unlock()
 
-	ctx := context.Background()
-
 	// Test with non-existent resource (will get connection error since no real connection)
-	err := repl.executeCommand(ctx, "get nonexistent://resource")
+	err := repl.executeCommand("get nonexistent://resource")
 	if err != nil {
 		t.Errorf("Command should handle error gracefully, got: %v", err)
 	}
@@ -272,22 +263,20 @@ func TestREPLGetPrompt(t *testing.T) {
 	}
 	client.mu.Unlock()
 
-	ctx := context.Background()
-
 	// Test with non-existent prompt (will get connection error since no real connection)
-	err := repl.executeCommand(ctx, "prompt nonexistent {\"arg1\": \"value\"}")
+	err := repl.executeCommand("prompt nonexistent {\"arg1\": \"value\"}")
 	if err != nil {
 		t.Errorf("Command should handle error gracefully, got: %v", err)
 	}
 
 	// Test with existing prompt (will get connection error since no real connection)
-	err = repl.executeCommand(ctx, "prompt test_prompt {}")
+	err = repl.executeCommand("prompt test_prompt {}")
 	if err != nil {
 		t.Errorf("Command should handle error gracefully, got: %v", err)
 	}
 
 	// Test with invalid JSON (this should be handled by the command)
-	err = repl.executeCommand(ctx, "prompt test_prompt invalid json")
+	err = repl.executeCommand("prompt test_prompt invalid json")
 	if err != nil {
 		t.Errorf("Command should handle invalid JSON gracefully, got: %v", err)
 	}

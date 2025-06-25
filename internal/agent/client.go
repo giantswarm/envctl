@@ -21,32 +21,32 @@ const (
 
 // Client represents an MCP client that can be used for both agent and CLI operations
 type Client struct {
-	endpoint      string
-	transport     TransportType
-	logger        *Logger
-	client        client.MCPClient
-	toolCache     []mcp.Tool
-	resourceCache []mcp.Resource
-	promptCache   []mcp.Prompt
-	mu            sync.RWMutex
-	timeout       time.Duration
-	cacheEnabled  bool
-	formatters    *Formatters
+	endpoint         string
+	transport        TransportType
+	logger           *Logger
+	client           client.MCPClient
+	toolCache        []mcp.Tool
+	resourceCache    []mcp.Resource
+	promptCache      []mcp.Prompt
+	mu               sync.RWMutex
+	timeout          time.Duration
+	cacheEnabled     bool
+	formatters       *Formatters
 	NotificationChan chan mcp.JSONRPCNotification
 }
 
 // NewClient creates a new agent client with specified transport
 func NewClient(endpoint string, logger *Logger, transport TransportType) *Client {
 	return &Client{
-		endpoint:      endpoint,
-		transport:     transport,
-		logger:        logger,
-		toolCache:     []mcp.Tool{},
-		resourceCache: []mcp.Resource{},
-		promptCache:   []mcp.Prompt{},
-		timeout:       30 * time.Second,
-		cacheEnabled:  true,
-		formatters:    NewFormatters(),
+		endpoint:         endpoint,
+		transport:        transport,
+		logger:           logger,
+		toolCache:        []mcp.Tool{},
+		resourceCache:    []mcp.Resource{},
+		promptCache:      []mcp.Prompt{},
+		timeout:          30 * time.Second,
+		cacheEnabled:     true,
+		formatters:       NewFormatters(),
 		NotificationChan: make(chan mcp.JSONRPCNotification, 10),
 	}
 }
@@ -91,7 +91,6 @@ func (c *Client) Run(ctx context.Context) error {
 		}
 	}
 }
-
 
 // handleNotification processes incoming notifications
 func (c *Client) handleNotification(ctx context.Context, notification mcp.JSONRPCNotification) error {
