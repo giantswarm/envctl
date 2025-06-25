@@ -167,26 +167,10 @@ func (msm *MCPServerManager) ListDefinitions() []api.MCPServer {
 	return result
 }
 
-// ListAvailableDefinitions returns all MCP server definitions (since no tool checking is done)
+// ListAvailableDefinitions returns all MCP server definitions
 func (msm *MCPServerManager) ListAvailableDefinitions() []api.MCPServer {
-	// For MCP servers, all definitions are considered available since we don't check tool availability
+	// All definitions are available since we don't need availability checking anymore
 	return msm.ListDefinitions()
-}
-
-// IsAvailable checks if an MCP server definition is available
-func (msm *MCPServerManager) IsAvailable(name string) bool {
-	msm.mu.RLock()
-	defer msm.mu.RUnlock()
-
-	_, exists := msm.definitions[name]
-	// For MCP servers, availability is simply whether the definition exists
-	return exists
-}
-
-// RefreshAvailability refreshes the availability status of all MCP servers
-func (msm *MCPServerManager) RefreshAvailability() {
-	// For MCP servers, availability is static (no tool checking), so no refresh needed
-	logging.Debug("MCPServerManager", "Refreshed MCP server availability (no tool checking required)")
 }
 
 // GetDefinitionsPath returns the paths where MCP server definitions are loaded from

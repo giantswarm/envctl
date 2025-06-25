@@ -37,7 +37,7 @@ var checkCmd = &cobra.Command{
 
 Available resource types:
   serviceclass - Check if a ServiceClass is available for use
-  mcpserver    - Check if an MCP server is available
+  mcpserver    - Check MCP server status
   capability   - Check if a capability is available
 
 Examples:
@@ -63,7 +63,7 @@ Note: The aggregator server must be running (use 'envctl serve') before using th
 // Resource type mappings for check operations
 var checkResourceMappings = map[string]string{
 	"serviceclass": "core_serviceclass_available",
-	"mcpserver":    "core_mcpserver_available",
+	"mcpserver":    "core_service_status",
 	"capability":   "core_capability_available",
 }
 

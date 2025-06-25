@@ -203,36 +203,6 @@ func TestMCPServerManager_ListAvailableDefinitions(t *testing.T) {
 	assert.True(t, availableNames["server2"])
 }
 
-func TestMCPServerManager_IsAvailable(t *testing.T) {
-	storage := config.NewStorage()
-	manager, err := NewMCPServerManager(storage)
-	require.NoError(t, err)
-
-	// Test non-existent server
-	assert.False(t, manager.IsAvailable("non-existent"))
-
-	// Add a definition
-	testDef := &api.MCPServer{
-		Name:      "test-server",
-		Type:      api.MCPServerTypeLocalCommand,
-		Command:   []string{"echo", "hello"},
-		AutoStart: true,
-	}
-	manager.definitions["test-server"] = testDef
-
-	// Test existing server
-	assert.True(t, manager.IsAvailable("test-server"))
-}
-
-func TestMCPServerManager_RefreshAvailability(t *testing.T) {
-	storage := config.NewStorage()
-	manager, err := NewMCPServerManager(storage)
-	require.NoError(t, err)
-
-	// This should not panic and should be a no-op for MCP servers
-	manager.RefreshAvailability()
-}
-
 func TestMCPServerManager_GetDefinitionsPath(t *testing.T) {
 	storage := config.NewStorage()
 	manager, err := NewMCPServerManager(storage)

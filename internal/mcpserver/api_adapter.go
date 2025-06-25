@@ -6,10 +6,9 @@ import (
 	"time"
 
 	"envctl/internal/api"
-	"envctl/pkg/logging"
 )
 
-// Adapter implements api.MCPServerManagerHandler for the MCP server manager
+// Adapter provides MCP server management functionality
 type Adapter struct {
 	manager *MCPServerManager
 }
@@ -21,13 +20,12 @@ func NewAdapter(manager *MCPServerManager) *Adapter {
 	}
 }
 
-// Register registers this adapter with the API layer
+// Register registers the adapter with the API
 func (a *Adapter) Register() {
 	api.RegisterMCPServerManager(a)
-	logging.Debug("MCPServerAdapter", "Registered MCP server adapter with API layer")
 }
 
-// ListMCPServers returns all MCP server definitions with availability status
+// ListMCPServers returns all MCP server definitions
 func (a *Adapter) ListMCPServers() []api.MCPServerInfo {
 	if a.manager == nil {
 		return []api.MCPServerInfo{}
@@ -43,7 +41,6 @@ func (a *Adapter) ListMCPServers() []api.MCPServerInfo {
 			State:       string(def.State),
 			Health:      string(def.Health),
 			AutoStart:   def.AutoStart,
-			Available:   a.manager.IsAvailable(def.Name),
 			Description: def.Description,
 			Command:     def.Command,
 			Image:       def.Image,
@@ -55,7 +52,7 @@ func (a *Adapter) ListMCPServers() []api.MCPServerInfo {
 	return result
 }
 
-// GetMCPServer returns detailed information about a specific MCP server
+// GetMCPServer returns information about a specific MCP server
 func (a *Adapter) GetMCPServer(name string) (*api.MCPServerInfo, error) {
 	if a.manager == nil {
 		return nil, fmt.Errorf("MCP server manager not available")
@@ -72,22 +69,12 @@ func (a *Adapter) GetMCPServer(name string) (*api.MCPServerInfo, error) {
 		State:       string(def.State),
 		Health:      string(def.Health),
 		AutoStart:   def.AutoStart,
-		Available:   a.manager.IsAvailable(def.Name),
 		Description: def.Description,
 		Command:     def.Command,
 		Image:       def.Image,
 		Env:         def.Env,
 		Error:       def.Error,
 	}, nil
-}
-
-// IsMCPServerAvailable checks if an MCP server is available
-func (a *Adapter) IsMCPServerAvailable(name string) bool {
-	if a.manager == nil {
-		return false
-	}
-
-	return a.manager.IsAvailable(name)
 }
 
 // GetManager returns the underlying MCPServerManager (for internal use)
@@ -103,7 +90,7 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 	return []api.ToolMetadata{
 		{
 			Name:        "mcpserver_list",
-			Description: "List all MCP server definitions with their availability status",
+			Description: "List all MCP server definitions with their status",
 		},
 		{
 			Name:        "mcpserver_get",
@@ -114,18 +101,6 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 					Type:        "string",
 					Required:    true,
 					Description: "Name of the MCP server to retrieve",
-				},
-			},
-		},
-		{
-			Name:        "mcpserver_available",
-			Description: "Check if an MCP server is available",
-			Parameters: []api.ParameterMetadata{
-				{
-					Name:        "name",
-					Type:        "string",
-					Required:    true,
-					Description: "Name of the MCP server to check",
 				},
 			},
 		},
@@ -145,49 +120,42 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 		},
 		{
 			Name:        "mcpserver_create",
-			Description: "Create a new dynamic MCP server",
+			Description: "Create a new MCP server definition",
 			Parameters: []api.ParameterMetadata{
 				{Name: "name", Type: "string", Required: true, Description: "MCP server name"},
 				{Name: "type", Type: "string", Required: true, Description: "MCP server type (localCommand or container)"},
 				{Name: "autoStart", Type: "boolean", Required: false, Description: "Whether server should auto-start"},
-				{Name: "healthCheckInterval", Type: "string", Required: false, Description: "Health check interval duration"},
-				{Name: "toolPrefix", Type: "string", Required: false, Description: "Custom tool prefix"},
 				{Name: "command", Type: "array", Required: false, Description: "Command and arguments (for localCommand type)"},
-				{Name: "env", Type: "object", Required: false, Description: "Environment variables (for localCommand type)"},
 				{Name: "image", Type: "string", Required: false, Description: "Container image (for container type)"},
+				{Name: "env", Type: "object", Required: false, Description: "Environment variables"},
 				{Name: "containerPorts", Type: "array", Required: false, Description: "Port mappings (for container type)"},
-				{Name: "containerEnv", Type: "object", Required: false, Description: "Container environment variables"},
-				{Name: "containerVolumes", Type: "array", Required: false, Description: "Volume mounts"},
-				{Name: "healthCheckCmd", Type: "array", Required: false, Description: "Health check command"},
-				{Name: "entrypoint", Type: "array", Required: false, Description: "Container entrypoint"},
-				{Name: "containerUser", Type: "string", Required: false, Description: "Container user"},
+				{Name: "description", Type: "string", Required: false, Description: "MCP server description"},
 			},
 		},
 		{
 			Name:        "mcpserver_update",
-			Description: "Update an existing MCP server",
+			Description: "Update an existing MCP server definition",
 			Parameters: []api.ParameterMetadata{
-				{Name: "name", Type: "string", Required: true, Description: "Name of the MCP server to update"},
-				{Name: "type", Type: "string", Required: true, Description: "MCP server type (localCommand or container)"},
+				{Name: "name", Type: "string", Required: true, Description: "MCP server name"},
+				{Name: "type", Type: "string", Required: false, Description: "MCP server type (localCommand or container)"},
 				{Name: "autoStart", Type: "boolean", Required: false, Description: "Whether server should auto-start"},
-				{Name: "healthCheckInterval", Type: "string", Required: false, Description: "Health check interval duration"},
-				{Name: "toolPrefix", Type: "string", Required: false, Description: "Custom tool prefix"},
 				{Name: "command", Type: "array", Required: false, Description: "Command and arguments (for localCommand type)"},
-				{Name: "env", Type: "object", Required: false, Description: "Environment variables (for localCommand type)"},
 				{Name: "image", Type: "string", Required: false, Description: "Container image (for container type)"},
+				{Name: "env", Type: "object", Required: false, Description: "Environment variables"},
 				{Name: "containerPorts", Type: "array", Required: false, Description: "Port mappings (for container type)"},
-				{Name: "containerEnv", Type: "object", Required: false, Description: "Container environment variables"},
-				{Name: "containerVolumes", Type: "array", Required: false, Description: "Volume mounts"},
-				{Name: "healthCheckCmd", Type: "array", Required: false, Description: "Health check command"},
-				{Name: "entrypoint", Type: "array", Required: false, Description: "Container entrypoint"},
-				{Name: "containerUser", Type: "string", Required: false, Description: "Container user"},
+				{Name: "description", Type: "string", Required: false, Description: "MCP server description"},
 			},
 		},
 		{
 			Name:        "mcpserver_delete",
-			Description: "Delete an MCP server",
+			Description: "Delete an MCP server definition",
 			Parameters: []api.ParameterMetadata{
-				{Name: "name", Type: "string", Required: true, Description: "Name of the MCP server to delete"},
+				{
+					Name:        "name",
+					Type:        "string",
+					Required:    true,
+					Description: "Name of the MCP server to delete",
+				},
 			},
 		},
 	}
@@ -200,8 +168,6 @@ func (a *Adapter) ExecuteTool(ctx context.Context, toolName string, args map[str
 		return a.handleMCPServerList()
 	case "mcpserver_get":
 		return a.handleMCPServerGet(args)
-	case "mcpserver_available":
-		return a.handleMCPServerAvailable(args)
 	case "mcpserver_validate":
 		return a.handleMCPServerValidate(args)
 	case "mcpserver_create":
@@ -247,28 +213,6 @@ func (a *Adapter) handleMCPServerGet(args map[string]interface{}) (*api.CallTool
 
 	return &api.CallToolResult{
 		Content: []interface{}{mcpServer},
-		IsError: false,
-	}, nil
-}
-
-func (a *Adapter) handleMCPServerAvailable(args map[string]interface{}) (*api.CallToolResult, error) {
-	name, ok := args["name"].(string)
-	if !ok {
-		return &api.CallToolResult{
-			Content: []interface{}{"name parameter is required"},
-			IsError: true,
-		}, nil
-	}
-
-	available := a.IsMCPServerAvailable(name)
-
-	result := map[string]interface{}{
-		"name":      name,
-		"available": available,
-	}
-
-	return &api.CallToolResult{
-		Content: []interface{}{result},
 		IsError: false,
 	}, nil
 }
@@ -401,133 +345,6 @@ func simpleError(msg string) (*api.CallToolResult, error) {
 
 func simpleOK(msg string) (*api.CallToolResult, error) {
 	return &api.CallToolResult{Content: []interface{}{msg}, IsError: false}, nil
-}
-
-// convertToMCPServer converts structured parameters to api.MCPServer
-func convertToMCPServer(args map[string]interface{}) (api.MCPServer, error) {
-	var def api.MCPServer
-
-	// Required fields
-	name, ok := args["name"].(string)
-	if !ok || name == "" {
-		return def, fmt.Errorf("name parameter is required")
-	}
-	def.Name = name
-
-	serverType, ok := args["type"].(string)
-	if !ok || serverType == "" {
-		return def, fmt.Errorf("type parameter is required")
-	}
-	def.Type = api.MCPServerType(serverType)
-
-	// Optional fields
-	if autoStart, ok := args["autoStart"].(bool); ok {
-		def.AutoStart = autoStart
-	}
-	if toolPrefix, ok := args["toolPrefix"].(string); ok {
-		def.ToolPrefix = toolPrefix
-	}
-	if image, ok := args["image"].(string); ok {
-		def.Image = image
-	}
-	if containerUser, ok := args["containerUser"].(string); ok {
-		def.ContainerUser = containerUser
-	}
-
-	// Convert healthCheckInterval string to time.Duration
-	if healthCheckInterval, ok := args["healthCheckInterval"].(string); ok && healthCheckInterval != "" {
-		duration, err := time.ParseDuration(healthCheckInterval)
-		if err != nil {
-			return def, fmt.Errorf("invalid healthCheckInterval: %v", err)
-		}
-		def.HealthCheckInterval = duration
-	}
-
-	// Convert command array
-	if command, ok := args["command"].([]interface{}); ok {
-		def.Command = make([]string, len(command))
-		for i, cmd := range command {
-			if cmdStr, ok := cmd.(string); ok {
-				def.Command[i] = cmdStr
-			} else {
-				return def, fmt.Errorf("command element at index %d must be a string", i)
-			}
-		}
-	}
-
-	// Convert env map
-	if env, ok := args["env"].(map[string]interface{}); ok {
-		def.Env = make(map[string]string)
-		for key, value := range env {
-			if strValue, ok := value.(string); ok {
-				def.Env[key] = strValue
-			} else {
-				return def, fmt.Errorf("env value for key '%s' must be a string", key)
-			}
-		}
-	}
-
-	// Convert containerPorts array
-	if containerPorts, ok := args["containerPorts"].([]interface{}); ok {
-		def.ContainerPorts = make([]string, len(containerPorts))
-		for i, port := range containerPorts {
-			if portStr, ok := port.(string); ok {
-				def.ContainerPorts[i] = portStr
-			} else {
-				return def, fmt.Errorf("containerPorts element at index %d must be a string", i)
-			}
-		}
-	}
-
-	// Convert containerEnv map
-	if containerEnv, ok := args["containerEnv"].(map[string]interface{}); ok {
-		def.ContainerEnv = make(map[string]string)
-		for key, value := range containerEnv {
-			if strValue, ok := value.(string); ok {
-				def.ContainerEnv[key] = strValue
-			} else {
-				return def, fmt.Errorf("containerEnv value for key '%s' must be a string", key)
-			}
-		}
-	}
-
-	// Convert containerVolumes array
-	if containerVolumes, ok := args["containerVolumes"].([]interface{}); ok {
-		def.ContainerVolumes = make([]string, len(containerVolumes))
-		for i, volume := range containerVolumes {
-			if volumeStr, ok := volume.(string); ok {
-				def.ContainerVolumes[i] = volumeStr
-			} else {
-				return def, fmt.Errorf("containerVolumes element at index %d must be a string", i)
-			}
-		}
-	}
-
-	// Convert healthCheckCmd array
-	if healthCheckCmd, ok := args["healthCheckCmd"].([]interface{}); ok {
-		def.HealthCheckCmd = make([]string, len(healthCheckCmd))
-		for i, cmd := range healthCheckCmd {
-			if cmdStr, ok := cmd.(string); ok {
-				def.HealthCheckCmd[i] = cmdStr
-			} else {
-				return def, fmt.Errorf("healthCheckCmd element at index %d must be a string", i)
-			}
-		}
-	}
-
-	// Convert entrypoint array
-	if entrypoint, ok := args["entrypoint"].([]interface{}); ok {
-		def.Entrypoint = make([]string, len(entrypoint))
-		for i, entry := range entrypoint {
-			if entryStr, ok := entry.(string); ok {
-				def.Entrypoint[i] = entryStr
-			} else {
-				return def, fmt.Errorf("entrypoint element at index %d must be a string", i)
-			}
-		}
-	}
-
-	return def, nil
 }
 
 // convertRequestToMCPServer converts a typed request to api.MCPServer

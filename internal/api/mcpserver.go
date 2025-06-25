@@ -30,7 +30,6 @@ type MCPServer struct {
 	// Runtime state fields (for API responses)
 	State       ServiceState `json:"state,omitempty" yaml:"-"`
 	Health      HealthStatus `json:"health,omitempty" yaml:"-"`
-	Available   bool         `json:"available,omitempty" yaml:"-"`
 	Error       string       `json:"error,omitempty" yaml:"-"`
 	Description string       `json:"description,omitempty" yaml:"-"`
 }
@@ -50,7 +49,6 @@ type MCPServerInfo struct {
 	State       string            `json:"state"`
 	Health      string            `json:"health"`
 	AutoStart   bool              `json:"autoStart"`
-	Available   bool              `json:"available"`
 	Description string            `json:"description,omitempty"`
 	Command     []string          `json:"command,omitempty"`
 	Image       string            `json:"image,omitempty"`
@@ -63,7 +61,6 @@ type MCPServerManagerHandler interface {
 	// MCP server definition management
 	ListMCPServers() []MCPServerInfo
 	GetMCPServer(name string) (*MCPServerInfo, error)
-	IsMCPServerAvailable(name string) bool
 
 	// Tool provider interface for exposing MCP server management tools
 	ToolProvider

@@ -6,16 +6,16 @@ import (
 	"testing"
 )
 
-func TestNewAdapter(t *testing.T) {
+func TestNewAPIAdapter(t *testing.T) {
 	storage := config.NewStorage()
 	manager, err := NewMCPServerManager(storage)
 	if err != nil {
 		t.Fatalf("Failed to create MCP server manager: %v", err)
 	}
 
-	adapter := NewAdapter(manager)
+	adapter := NewAPIAdapter(manager)
 	if adapter == nil {
-		t.Fatal("NewAdapter returned nil")
+		t.Fatal("NewAPIAdapter returned nil")
 	}
 
 	if adapter.manager != manager {
@@ -30,7 +30,7 @@ func TestAdapterListMCPServers(t *testing.T) {
 		t.Fatalf("Failed to create MCP server manager: %v", err)
 	}
 
-	adapter := NewAdapter(manager)
+	adapter := NewAPIAdapter(manager)
 
 	servers := adapter.ListMCPServers()
 	if servers == nil {
@@ -50,7 +50,7 @@ func TestAdapterGetMCPServer(t *testing.T) {
 		t.Fatalf("Failed to create MCP server manager: %v", err)
 	}
 
-	adapter := NewAdapter(manager)
+	adapter := NewAPIAdapter(manager)
 
 	// Test getting non-existent server
 	server, err := adapter.GetMCPServer("nonexistent")
@@ -62,22 +62,6 @@ func TestAdapterGetMCPServer(t *testing.T) {
 	}
 }
 
-func TestAdapterIsMCPServerAvailable(t *testing.T) {
-	storage := config.NewStorage()
-	manager, err := NewMCPServerManager(storage)
-	if err != nil {
-		t.Fatalf("Failed to create MCP server manager: %v", err)
-	}
-
-	adapter := NewAdapter(manager)
-
-	// Test non-existent server
-	available := adapter.IsMCPServerAvailable("nonexistent")
-	if available {
-		t.Error("Expected non-existent server to be unavailable")
-	}
-}
-
 func TestAdapterGetTools(t *testing.T) {
 	storage := config.NewStorage()
 	manager, err := NewMCPServerManager(storage)
@@ -85,18 +69,17 @@ func TestAdapterGetTools(t *testing.T) {
 		t.Fatalf("Failed to create MCP server manager: %v", err)
 	}
 
-	adapter := NewAdapter(manager)
+	adapter := NewAPIAdapter(manager)
 
 	tools := adapter.GetTools()
 	if tools == nil {
 		t.Error("GetTools returned nil")
 	}
 
-	// Should have the expected tools (updated to include mcpserver_validate)
+	// Should have the expected tools (availability tool removed)
 	expectedTools := []string{
 		"mcpserver_list",
 		"mcpserver_get",
-		"mcpserver_available",
 		"mcpserver_validate",
 		"mcpserver_create",
 		"mcpserver_update",
@@ -121,7 +104,7 @@ func TestAdapterExecuteTool(t *testing.T) {
 		t.Fatalf("Failed to create MCP server manager: %v", err)
 	}
 
-	adapter := NewAdapter(manager)
+	adapter := NewAPIAdapter(manager)
 	ctx := context.Background()
 
 	// Test mcpserver_list tool
@@ -144,7 +127,7 @@ func TestAdapterExecuteTool(t *testing.T) {
 }
 
 func TestAdapterNilManager(t *testing.T) {
-	adapter := NewAdapter(nil)
+	adapter := NewAPIAdapter(nil)
 
 	// Test various methods with nil manager
 	servers := adapter.ListMCPServers()
@@ -158,11 +141,6 @@ func TestAdapterNilManager(t *testing.T) {
 	}
 	if server != nil {
 		t.Error("Expected nil server with nil manager")
-	}
-
-	available := adapter.IsMCPServerAvailable("test")
-	if available {
-		t.Error("Expected unavailable with nil manager")
 	}
 
 	// Phase 1: LoadDefinitions and GetDefinitionsPath methods removed
