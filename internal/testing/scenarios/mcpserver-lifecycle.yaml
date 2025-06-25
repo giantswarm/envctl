@@ -30,13 +30,16 @@ steps:
     success: true
     contains: ["new-mcpserver"]
 
-- id: "check-server-availability"
-  description: "Check if the server is available"
-  tool: "core_mcpserver_available"
+- id: "verify-server-created"
+  description: "Verify the server was created successfully"
+  tool: "core_mcpserver_get"
   args:
     name: "new-mcpserver"
   expected:
     success: true
+    json_path:
+      name: "new-mcpserver"
+      type: "localCommand"
 
 - id: "update-new-server"
   description: "Update the new server configuration"

@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "description": "Generated schema for envctl core API tools for test scenario validation",
-  "generated_at": "2025-06-23T19:04:21+02:00",
+  "generated_at": "2025-06-25T18:28:11+02:00",
   "properties": {
     "tools": {
       "description": "Core API tools available in envctl serve",
@@ -198,19 +198,6 @@
           ],
           "type": "object"
         },
-        "core_mcpserver_available": {
-          "description": "Parameters for core_mcpserver_available tool",
-          "properties": {
-            "name": {
-              "description": "Name of the MCP server to check",
-              "type": "string"
-            }
-          },
-          "required": [
-            "name"
-          ],
-          "type": "object"
-        },
         "core_mcpserver_create": {
           "description": "Parameters for core_mcpserver_create tool",
           "properties": {
@@ -222,37 +209,17 @@
               "description": "Command and arguments (for localCommand type)",
               "type": "array"
             },
-            "containerEnv": {
-              "description": "Container environment variables",
-              "type": "object"
-            },
             "containerPorts": {
               "description": "Port mappings (for container type)",
               "type": "array"
             },
-            "containerUser": {
-              "description": "Container user",
+            "description": {
+              "description": "MCP server description",
               "type": "string"
-            },
-            "containerVolumes": {
-              "description": "Volume mounts",
-              "type": "array"
-            },
-            "entrypoint": {
-              "description": "Container entrypoint",
-              "type": "array"
             },
             "env": {
-              "description": "Environment variables (for localCommand type)",
+              "description": "Environment variables",
               "type": "object"
-            },
-            "healthCheckCmd": {
-              "description": "Health check command",
-              "type": "array"
-            },
-            "healthCheckInterval": {
-              "description": "Health check interval duration",
-              "type": "string"
             },
             "image": {
               "description": "Container image (for container type)",
@@ -260,10 +227,6 @@
             },
             "name": {
               "description": "MCP server name",
-              "type": "string"
-            },
-            "toolPrefix": {
-              "description": "Custom tool prefix",
               "type": "string"
             },
             "type": {
@@ -319,48 +282,24 @@
               "description": "Command and arguments (for localCommand type)",
               "type": "array"
             },
-            "containerEnv": {
-              "description": "Container environment variables",
-              "type": "object"
-            },
             "containerPorts": {
               "description": "Port mappings (for container type)",
               "type": "array"
             },
-            "containerUser": {
-              "description": "Container user",
+            "description": {
+              "description": "MCP server description",
               "type": "string"
-            },
-            "containerVolumes": {
-              "description": "Volume mounts",
-              "type": "array"
-            },
-            "entrypoint": {
-              "description": "Container entrypoint",
-              "type": "array"
             },
             "env": {
-              "description": "Environment variables (for localCommand type)",
+              "description": "Environment variables",
               "type": "object"
-            },
-            "healthCheckCmd": {
-              "description": "Health check command",
-              "type": "array"
-            },
-            "healthCheckInterval": {
-              "description": "Health check interval duration",
-              "type": "string"
             },
             "image": {
               "description": "Container image (for container type)",
               "type": "string"
             },
             "name": {
-              "description": "Name of the MCP server to update",
-              "type": "string"
-            },
-            "toolPrefix": {
-              "description": "Custom tool prefix",
+              "description": "MCP server name",
               "type": "string"
             },
             "type": {
@@ -369,8 +308,7 @@
             }
           },
           "required": [
-            "name",
-            "type"
+            "name"
           ],
           "type": "object"
         },
@@ -463,7 +401,7 @@
           "description": "Parameters for core_service_get tool",
           "properties": {
             "name": {
-              "description": "Name of the ServiceClass instance to get",
+              "description": "Name of the service to get",
               "type": "string"
             }
           },
