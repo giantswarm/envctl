@@ -303,13 +303,13 @@ func (a *Adapter) GetTools() []api.ToolMetadata {
 		},
 		{
 			Name:        "service_get",
-			Description: "Get detailed information about a ServiceClass-based service instance",
+			Description: "Get detailed information about any service (MCP servers, aggregator, ServiceClass instances)",
 			Parameters: []api.ParameterMetadata{
 				{
 					Name:        "name",
 					Type:        "string",
 					Required:    true,
-					Description: "Name of the ServiceClass instance to get",
+					Description: "Name of the service to get",
 				},
 			},
 		},
@@ -577,7 +577,7 @@ func (a *Adapter) handleServiceClassInstanceGet(args map[string]interface{}) (*a
 	instance, err := a.GetService(name)
 	if err != nil {
 		return &api.CallToolResult{
-			Content: []interface{}{fmt.Sprintf("Failed to get ServiceClass instance: %v", err)},
+			Content: []interface{}{fmt.Sprintf("Failed to get service: %v", err)},
 			IsError: true,
 		}, nil
 	}
@@ -623,11 +623,39 @@ func (a *Adapter) DeleteService(ctx context.Context, name string) error {
 
 // GetService returns detailed service information by name
 func (a *Adapter) GetService(name string) (*api.ServiceInstance, error) {
+	// First check if the service exists at all by getting its status
+	status, err := a.GetServiceStatus(name)
+	if err != nil {
+		return nil, fmt.Errorf("service '%s' not found", name)
+	}
+
+	// For ServiceClass instances, return detailed ServiceInstance information
 	if internalInfo, err := a.orchestrator.GetServiceClassInstance(name); err == nil {
 		return a.convertToAPIServiceInstance(internalInfo), nil
 	}
 
-	return nil, fmt.Errorf("service '%s' not found or is not a ServiceClass instance", name)
+	// For static services (MCP servers, aggregator), return service information
+	// in ServiceInstance format with additional service_type field in ServiceData
+	now := time.Time{}
+	serviceData := status.Metadata
+	if serviceData == nil {
+		serviceData = make(map[string]interface{})
+	}
+	// Add service_type to serviceData for API compatibility
+	serviceData["service_type"] = status.ServiceType
+	
+	return &api.ServiceInstance{
+		Name:             status.Name,
+		ServiceClassName: "", // Not applicable for static services
+		ServiceClassType: "", // Not applicable for static services  
+		State:            api.ServiceState(status.State),
+		Health:           api.HealthStatus(status.Health),
+		LastError:        status.Error,
+		CreatedAt:        now,   // Default for static services
+		LastChecked:      nil,   // Default for static services
+		ServiceData:      serviceData, // Include service_type in metadata
+		Parameters:       nil, // Not applicable for static services
+	}, nil
 }
 
 // handleServiceValidate handles the 'service_validate' tool.

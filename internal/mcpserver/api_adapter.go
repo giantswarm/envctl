@@ -3,7 +3,6 @@ package mcpserver
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"envctl/internal/api"
 )
@@ -38,8 +37,6 @@ func (a *Adapter) ListMCPServers() []api.MCPServerInfo {
 		result[i] = api.MCPServerInfo{
 			Name:        def.Name,
 			Type:        string(def.Type),
-			State:       string(def.State),
-			Health:      string(def.Health),
 			AutoStart:   def.AutoStart,
 			Description: def.Description,
 			Command:     def.Command,
@@ -66,8 +63,6 @@ func (a *Adapter) GetMCPServer(name string) (*api.MCPServerInfo, error) {
 	return &api.MCPServerInfo{
 		Name:        def.Name,
 		Type:        string(def.Type),
-		State:       string(def.State),
-		Health:      string(def.Health),
 		AutoStart:   def.AutoStart,
 		Description: def.Description,
 		Command:     def.Command,
@@ -229,14 +224,13 @@ func (a *Adapter) handleMCPServerValidate(args map[string]interface{}) (*api.Cal
 
 	// Build internal api.MCPServer from structured parameters
 	def := api.MCPServer{
-		Name:                req.Name,
-		Type:                api.MCPServerType(req.Type),
-		AutoStart:           req.AutoStart,
-		Image:               req.Image,
-		Command:             req.Command,
-		Env:                 req.Env,
-		ContainerPorts:      req.ContainerPorts,
-		HealthCheckInterval: 0, // Default for validation
+		Name:           req.Name,
+		Type:           api.MCPServerType(req.Type),
+		AutoStart:      req.AutoStart,
+		Image:          req.Image,
+		Command:        req.Command,
+		Env:            req.Env,
+		ContainerPorts: req.ContainerPorts,
 	}
 
 	// Validate without persisting
@@ -360,18 +354,8 @@ func convertRequestToMCPServer(req api.MCPServerUpdateRequest) (api.MCPServer, e
 		ContainerPorts:   req.ContainerPorts,
 		ContainerEnv:     req.ContainerEnv,
 		ContainerVolumes: req.ContainerVolumes,
-		HealthCheckCmd:   req.HealthCheckCmd,
 		Entrypoint:       req.Entrypoint,
 		ContainerUser:    req.ContainerUser,
-	}
-
-	// Convert healthCheckInterval string to time.Duration
-	if req.HealthCheckInterval != "" {
-		duration, err := time.ParseDuration(req.HealthCheckInterval)
-		if err != nil {
-			return def, fmt.Errorf("invalid healthCheckInterval: %v", err)
-		}
-		def.HealthCheckInterval = duration
 	}
 
 	return def, nil
@@ -390,18 +374,8 @@ func convertCreateRequestToMCPServer(req api.MCPServerCreateRequest) (api.MCPSer
 		ContainerPorts:   req.ContainerPorts,
 		ContainerEnv:     req.ContainerEnv,
 		ContainerVolumes: req.ContainerVolumes,
-		HealthCheckCmd:   req.HealthCheckCmd,
 		Entrypoint:       req.Entrypoint,
 		ContainerUser:    req.ContainerUser,
-	}
-
-	// Convert healthCheckInterval string to time.Duration
-	if req.HealthCheckInterval != "" {
-		duration, err := time.ParseDuration(req.HealthCheckInterval)
-		if err != nil {
-			return def, fmt.Errorf("invalid healthCheckInterval: %v", err)
-		}
-		def.HealthCheckInterval = duration
 	}
 
 	return def, nil

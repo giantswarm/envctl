@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"envctl/internal/api"
 	"envctl/pkg/logging"
@@ -77,15 +76,6 @@ func LoadDefinitionFromFile(filepath string) (*api.MCPServer, error) {
 	if err := yaml.Unmarshal(content, &def); err != nil {
 		return nil, fmt.Errorf("failed to parse YAML from %s: %w", filepath, err)
 	}
-
-	// Set defaults
-	if def.HealthCheckInterval == 0 {
-		def.HealthCheckInterval = 30 * time.Second
-	}
-
-	// Set initial state
-	def.State = api.StateUnknown
-	def.Health = api.HealthUnknown
 
 	logging.Debug("MCPServerLoader", "Loaded definition for %s from %s", def.Name, filepath)
 	return &def, nil

@@ -13,9 +13,9 @@ func TestNewAPIAdapter(t *testing.T) {
 		t.Fatalf("Failed to create MCP server manager: %v", err)
 	}
 
-	adapter := NewAPIAdapter(manager)
+	adapter := NewAdapter(manager)
 	if adapter == nil {
-		t.Fatal("NewAPIAdapter returned nil")
+		t.Fatal("NewAdapter returned nil")
 	}
 
 	if adapter.manager != manager {
@@ -30,7 +30,7 @@ func TestAdapterListMCPServers(t *testing.T) {
 		t.Fatalf("Failed to create MCP server manager: %v", err)
 	}
 
-	adapter := NewAPIAdapter(manager)
+	adapter := NewAdapter(manager)
 
 	servers := adapter.ListMCPServers()
 	if servers == nil {
@@ -50,7 +50,7 @@ func TestAdapterGetMCPServer(t *testing.T) {
 		t.Fatalf("Failed to create MCP server manager: %v", err)
 	}
 
-	adapter := NewAPIAdapter(manager)
+	adapter := NewAdapter(manager)
 
 	// Test getting non-existent server
 	server, err := adapter.GetMCPServer("nonexistent")
@@ -69,7 +69,7 @@ func TestAdapterGetTools(t *testing.T) {
 		t.Fatalf("Failed to create MCP server manager: %v", err)
 	}
 
-	adapter := NewAPIAdapter(manager)
+	adapter := NewAdapter(manager)
 
 	tools := adapter.GetTools()
 	if tools == nil {
@@ -104,7 +104,7 @@ func TestAdapterExecuteTool(t *testing.T) {
 		t.Fatalf("Failed to create MCP server manager: %v", err)
 	}
 
-	adapter := NewAPIAdapter(manager)
+	adapter := NewAdapter(manager)
 	ctx := context.Background()
 
 	// Test mcpserver_list tool
@@ -127,7 +127,7 @@ func TestAdapterExecuteTool(t *testing.T) {
 }
 
 func TestAdapterNilManager(t *testing.T) {
-	adapter := NewAPIAdapter(nil)
+	adapter := NewAdapter(nil)
 
 	// Test various methods with nil manager
 	servers := adapter.ListMCPServers()

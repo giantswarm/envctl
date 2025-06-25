@@ -225,10 +225,8 @@ func (s *Service) CheckHealth(ctx context.Context) (services.HealthStatus, error
 
 // GetHealthCheckInterval implements HealthChecker
 func (s *Service) GetHealthCheckInterval() time.Duration {
-	if s.definition.HealthCheckInterval > 0 {
-		return s.definition.HealthCheckInterval
-	}
-	// Default health check interval
+	// Fixed default health check interval since MCP servers no longer define their own health check interval
+	// Health checking is managed by the service orchestrator
 	return 30 * time.Second
 }
 

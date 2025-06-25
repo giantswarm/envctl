@@ -58,37 +58,33 @@ type ServiceClassValidateRequest struct {
 
 // MCPServer request types
 type MCPServerCreateRequest struct {
-	Name                string            `json:"name" validate:"required"`
-	Type                string            `json:"type" validate:"required"`
-	AutoStart           bool              `json:"autoStart,omitempty"`
-	HealthCheckInterval string            `json:"healthCheckInterval,omitempty"`
-	ToolPrefix          string            `json:"toolPrefix,omitempty"`
-	Command             []string          `json:"command,omitempty"`
-	Env                 map[string]string `json:"env,omitempty"`
-	Image               string            `json:"image,omitempty"`
-	ContainerPorts      []string          `json:"containerPorts,omitempty"`
-	ContainerEnv        map[string]string `json:"containerEnv,omitempty"`
-	ContainerVolumes    []string          `json:"containerVolumes,omitempty"`
-	HealthCheckCmd      []string          `json:"healthCheckCmd,omitempty"`
-	Entrypoint          []string          `json:"entrypoint,omitempty"`
-	ContainerUser       string            `json:"containerUser,omitempty"`
+	Name             string            `json:"name" validate:"required"`
+	Type             string            `json:"type" validate:"required"`
+	AutoStart        bool              `json:"autoStart,omitempty"`
+	ToolPrefix       string            `json:"toolPrefix,omitempty"`
+	Command          []string          `json:"command,omitempty"`
+	Env              map[string]string `json:"env,omitempty"`
+	Image            string            `json:"image,omitempty"`
+	ContainerPorts   []string          `json:"containerPorts,omitempty"`
+	ContainerEnv     map[string]string `json:"containerEnv,omitempty"`
+	ContainerVolumes []string          `json:"containerVolumes,omitempty"`
+	Entrypoint       []string          `json:"entrypoint,omitempty"`
+	ContainerUser    string            `json:"containerUser,omitempty"`
 }
 
 type MCPServerUpdateRequest struct {
-	Name                string            `json:"name" validate:"required"`
-	Type                string            `json:"type" validate:"required"`
-	AutoStart           bool              `json:"autoStart,omitempty"`
-	HealthCheckInterval string            `json:"healthCheckInterval,omitempty"`
-	ToolPrefix          string            `json:"toolPrefix,omitempty"`
-	Command             []string          `json:"command,omitempty"`
-	Env                 map[string]string `json:"env,omitempty"`
-	Image               string            `json:"image,omitempty"`
-	ContainerPorts      []string          `json:"containerPorts,omitempty"`
-	ContainerEnv        map[string]string `json:"containerEnv,omitempty"`
-	ContainerVolumes    []string          `json:"containerVolumes,omitempty"`
-	HealthCheckCmd      []string          `json:"healthCheckCmd,omitempty"`
-	Entrypoint          []string          `json:"entrypoint,omitempty"`
-	ContainerUser       string            `json:"containerUser,omitempty"`
+	Name             string            `json:"name" validate:"required"`
+	Type             string            `json:"type" validate:"required"`
+	AutoStart        bool              `json:"autoStart,omitempty"`
+	ToolPrefix       string            `json:"toolPrefix,omitempty"`
+	Command          []string          `json:"command,omitempty"`
+	Env              map[string]string `json:"env,omitempty"`
+	Image            string            `json:"image,omitempty"`
+	ContainerPorts   []string          `json:"containerPorts,omitempty"`
+	ContainerEnv     map[string]string `json:"containerEnv,omitempty"`
+	ContainerVolumes []string          `json:"containerVolumes,omitempty"`
+	Entrypoint       []string          `json:"entrypoint,omitempty"`
+	ContainerUser    string            `json:"containerUser,omitempty"`
 }
 
 type MCPServerValidateRequest struct {
