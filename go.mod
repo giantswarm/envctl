@@ -2,7 +2,7 @@ module github.com/giantswarm/envctl
 
 go 1.24.0
 
-toolchain go1.24.4
+toolchain go1.24.5
 
 require (
 	github.com/charmbracelet/bubbles v0.21.0
